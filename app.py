@@ -339,14 +339,14 @@ def japscan_list():
     """Liste les mangas disponibles sur Japscan."""
     try:
         scraper = japscan_scraper.JapscanScraper(MANGA_DIR)
-        mangas = scraper.list_manga()
+        mangas = scraper.list_manga_sync()
         return jsonify({"ok": True, "mangas": mangas})
     except Exception as e:
         logger.error(f"Erreur liste Japscan: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-@app.route("/api/japscan/chapters/<manga_id>")
+@app.route("/api/japscan/chapters/<manga_id>", methods=["POST"])
 def japscan_chapters(manga_id: str):
     """Récupère les chapitres d'un manga."""
     try:
@@ -357,7 +357,7 @@ def japscan_chapters(manga_id: str):
             return jsonify({"ok": False, "error": "URL manquante"}), 400
 
         scraper = japscan_scraper.JapscanScraper(MANGA_DIR)
-        chapters = scraper.get_chapters(manga_url)
+        chapters = scraper.get_chapters_sync(manga_url)
         return jsonify({"ok": True, "chapters": chapters})
     except Exception as e:
         logger.error(f"Erreur chapitres Japscan: {e}")
@@ -378,7 +378,7 @@ def japscan_download():
         import uuid
 
         job_id = str(uuid.uuid4())[:12]
-        output_dir = MANGA_DIR / manga_title
+        output_dir = MANGA_DIR / japscan_scraper.nom_sur(manga_title)
 
         # Lance le téléchargement en arrière-plan
         thread = threading.Thread(

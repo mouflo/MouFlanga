@@ -17,7 +17,38 @@ from urllib.parse import urljoin
 from datetime import datetime
 
 from bs4 import BeautifulSoup
-from patchright.async_api import async_playwright
+
+
+def async_playwright():
+    """Import paresseux : l'appli démarre même si Patchright n'est pas installé."""
+    from patchright.async_api import async_playwright as _ap
+    return _ap()
+
+
+def nom_sur(texte: str, defaut: str = "sans-titre") -> str:
+    """Rend un texte utilisable comme nom de fichier/dossier (pas de / ni de ..)."""
+    texte = re.sub(r'[\\/:*?"<>|\x00-\x1f]', " ", texte or "")
+    texte = re.sub(r"\s+", " ", texte).strip(" .")
+    return texte[:120] or defaut
+
+
+CHALLENGE_TITRES = ("just a moment", "un instant", "attention required")
+
+
+async def attendre_cloudflare(page, secondes: int = 45) -> str:
+    """Attend la fin du défi Cloudflare ; renvoie le titre final de la page."""
+    titre = ""
+    for _ in range(secondes):
+        try:
+            titre = (await page.title()) or ""
+        except Exception:
+            titre = ""  # page en cours de navigation
+        if titre and not any(k in titre.lower() for k in CHALLENGE_TITRES):
+            return titre
+        await asyncio.sleep(1)
+    logger.warning(f"Défi Cloudflare non résolu (titre : {titre!r})")
+    return titre
+
 
 logger = logging.getLogger("japscan_scraper")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -81,6 +112,7 @@ class JapscanScraper:
                     logger.info(f"Essai endpoint : {url}")
                     try:
                         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                        await attendre_cloudflare(page)
                         await asyncio.sleep(2)
                         html = await page.content()
                         if html and len(html) > 1000:
@@ -161,15 +193,7 @@ class JapscanScraper:
                 # domcontentloaded au lieu de networkidle pour éviter les timeouts
                 await page.goto(manga_url, wait_until="domcontentloaded", timeout=30000)
 
-                # Attend la résolution d'un éventuel défi Cloudflare (max ~45s)
-                title = ""
-                for _ in range(45):
-                    title = (await page.title()) or ""
-                    if not any(k in title.lower() for k in ["just a moment", "un instant", "attention required"]):
-                        break
-                    await asyncio.sleep(1)
-                else:
-                    logger.warning(f"Défi Cloudflare non résolu sur la fiche série (titre: {title!r})")
+                title = await attendre_cloudflare(page)
 
                 await asyncio.sleep(2)  # Laisse le JS injecter la liste
                 html = await page.content()
@@ -241,7 +265,8 @@ class JapscanScraper:
                     if "image" in content_type and response.status == 200:
                         url = response.url
                         # Exclure les éléments d'interface (logos, pubs, avatars, favicons)
-                        if not any(k in url for k in ["logo", "avatar", "banner", "pub", "icon", "theme"]):
+                        chemin = url.split("?")[0].lower()
+                        if not any(k in chemin for k in ["logo", "avatar", "banner", "/ads/", "/ad/", "favicon", "/icons/"]):
                             body = await response.body()
                             if len(body) > 15000:  # Exclure les petites images/icônes (< 15 Ko)
                                 captured_images[url] = body
@@ -252,7 +277,8 @@ class JapscanScraper:
 
             try:
                 await page.goto(chapter_url, wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(4)  # Laisser passer Cloudflare et charger le lecteur JS
+                await attendre_cloudflare(page)
+                await asyncio.sleep(4)  # Laisser charger le lecteur JS
 
                 # Simuler un défilement progressif vers le bas pour forcer le chargement de toutes les pages
                 logger.info("Défilement de la page pour forcer le lazy-loading...")
@@ -268,7 +294,9 @@ class JapscanScraper:
                 await browser.close()
 
         # Tri des images par URL/ordre de capture
-        sorted_urls = sorted(captured_images.keys())
+        def _naturel(u):
+            return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", u.split("?")[0])]
+        sorted_urls = sorted(captured_images.keys(), key=_naturel)
         images_bytes = [captured_images[u] for u in sorted_urls]
         logger.info(f"✓ {len(images_bytes)} pages capturées sur le réseau.")
         return images_bytes
@@ -299,10 +327,18 @@ class JapscanScraper:
             logger.error(f"Erreur création CBZ : {e}")
             return False
 
-    # Wrapper synchrone pour compatibilité avec le code existant
+    # ------------------------------------------------------------------
+    # Versions synchrones (Flask n'est pas asynchrone)
+    # ------------------------------------------------------------------
+    def list_manga_sync(self) -> list[dict]:
+        return asyncio.run(self.list_manga())
+
+    def get_chapters_sync(self, manga_url: str) -> list[dict]:
+        return asyncio.run(self.get_chapters(manga_url))
+
     def download_manga_sync(self, job_id: str, manga_title: str, chapters: list[dict],
                             progress_callback=None):
-        """Télécharge un manga en arrière-plan (wrapper sync pour asyncio)."""
+        """Télécharge les chapitres un par un et crée un .cbz par chapitre."""
         job = {
             "id": job_id,
             "title": manga_title,
@@ -310,40 +346,46 @@ class JapscanScraper:
             "progress": 0,
             "total": len(chapters),
             "downloaded": [],
+            "failed": [],
             "error": None,
-            "started": datetime.now().isoformat()
+            "started": datetime.now().isoformat(),
         }
         download_jobs[job_id] = job
 
         try:
             for idx, chapter in enumerate(chapters):
+                titre = chapter.get("title") or f"Chapitre {idx + 1}"
                 try:
-                    # Télécharge les pages en async
                     pages = asyncio.run(self.download_chapter_pages(chapter["url"]))
                     if not pages:
-                        logger.warning(f"Aucune page pour {chapter['title']}")
-                        continue
-
-                    # Crée le CBZ
-                    chapter_file = self.output_dir / f"{chapter['num']:03d} - {chapter['title']}.cbz"
-                    if self.create_cbz(pages, chapter_file):
-                        job["downloaded"].append(str(chapter_file))
-
-                    # Mise à jour progression
-                    job["progress"] = idx + 1
-                    if progress_callback:
-                        progress_callback(job)
-
+                        logger.warning(f"Aucune page pour {titre}")
+                        job["failed"].append(titre)
+                    else:
+                        num = int(chapter.get("num") or idx + 1)
+                        fichier = self.output_dir / f"{num:03d} - {nom_sur(titre)}.cbz"
+                        if self.create_cbz(pages, fichier):
+                            job["downloaded"].append(str(fichier))
+                        else:
+                            job["failed"].append(titre)
                 except Exception as e:
-                    logger.error(f"Erreur chapitre {chapter['title']}: {e}")
+                    logger.error(f"Erreur chapitre {titre} : {e}")
+                    job["failed"].append(titre)
                     job["error"] = str(e)
 
-            job["status"] = "completed"
-            logger.info(f"Téléchargement terminé: {job_id}")
+                job["progress"] = idx + 1
+                if progress_callback:
+                    progress_callback(job)
 
+            job["status"] = "completed"
+            logger.info(f"Téléchargement terminé : {job_id}")
         except Exception as e:
             job["status"] = "error"
             job["error"] = str(e)
-            logger.error(f"Erreur téléchargement: {e}")
+            logger.error(f"Erreur téléchargement : {e}")
 
         job["ended"] = datetime.now().isoformat()
+
+
+def download_manga_background(job_id: str, manga_title: str, chapters: list[dict], output_dir: Path):
+    """Point d'entrée utilisé par l'appli (dans un thread)."""
+    JapscanScraper(output_dir).download_manga_sync(job_id, manga_title, chapters)

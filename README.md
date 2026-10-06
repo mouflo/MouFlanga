@@ -44,6 +44,7 @@ Pour installer l'appli sur le serveur et la remettre en route après une panne, 
 - ⌨️ **Commandes** : flèches du clavier, espace, touches Début / Fin, clic sur le côté gauche ou droit de l'image (ou toucher sur téléphone), touche `H` pour masquer les barres
 - ⏭️ **Chapitre suivant automatique** en arrivant à la fin, avec reprise exactement à la page où tu t'étais arrêté
 - ✔️ **Suivi de lecture** enregistré sur le serveur : chapitres lus, « Tout marquer lu / non lu »
+- 📥 **Téléchargeur de mangas** (page « Télécharger des mangas ») : choisis une série, coche les chapitres, l'appli les récupère et crée un `.cbz` par chapitre dans ton dossier des mangas. Elle utilise un navigateur Chromium sous écran virtuel (Xvfb), installé automatiquement par le déploiement
 - 🔒 **Connexion** par identifiant et mot de passe (le mot de passe n'est jamais stocké en clair)
 - 🩺 **Journal** : un rapport complet à copier-coller pour comprendre un problème, sans se connecter au serveur
 - ⚙️ **Réglages** : dossier des mangas (avec un explorateur de dossiers) et préférences de lecture

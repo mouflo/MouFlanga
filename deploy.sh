@@ -44,6 +44,21 @@ if git diff "$OLD_COMMIT" HEAD -- requirements.txt | grep -q .; then
     fi
 fi
 
+# Écran virtuel (Chromium du scraper) : installé si absent, puis service mis à jour si besoin
+if ! command -v xvfb-run >/dev/null 2>&1; then
+    log "📦 Installation de xvfb (écran virtuel pour le scraper)..."
+    apt-get install -y -q xvfb >>"$LOG_FILE" 2>&1
+fi
+if command -v xvfb-run >/dev/null 2>&1 && ! cmp -s "$REPO_DIR/mouflanga.service" /etc/systemd/system/mouflanga.service; then
+    log "🛠 Mise à jour du fichier de service..."
+    cp "$REPO_DIR/mouflanga.service" /etc/systemd/system/mouflanga.service
+    systemctl daemon-reload
+fi
+# Navigateur de Patchright (idempotent : ne retélécharge pas s'il est déjà là)
+if [ -x "./venv/bin/python" ]; then
+    ./venv/bin/python -m patchright install chromium >>"$LOG_FILE" 2>&1 || log "⚠️ Installation de Chromium (Patchright) échouée, voir le journal"
+fi
+
 log "🔄 Redémarrage du service..."
 if systemctl is-active --quiet "$SERVICE_NAME"; then
     systemctl restart "$SERVICE_NAME"

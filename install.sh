@@ -21,6 +21,10 @@ if ! command -v unrar >/dev/null && ! command -v 7z >/dev/null && ! command -v b
     (apt-get install -y -qq libarchive-tools >/dev/null 2>&1 && echo "✅ bsdtar installé") || echo "⚠️ Installation impossible : seuls les .cbz et les .cbr en ZIP s'ouvriront (voir le Journal)"
 fi
 
+# Scraper de mangas : écran virtuel + navigateur Patchright
+command -v xvfb-run >/dev/null || apt-get install -y -qq xvfb >/dev/null 2>&1 || echo "⚠️ xvfb non installé : le téléchargeur de mangas ne marchera pas"
+./venv/bin/python -m patchright install chromium || echo "⚠️ Chromium (Patchright) non installé"
+
 mkdir -p data
 chmod +x deploy.sh setup-cronjob.sh set-login.sh set-secret.sh
 
