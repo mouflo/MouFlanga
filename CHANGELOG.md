@@ -6,6 +6,7 @@
 - Après la vérification, l'appli attend la vraie fiche série (page « Loading… ») avant de chercher les chapitres
 - Rapport : historique des échecs réseau du défi, empreinte du navigateur, test DNS et test IPv6
 - Téléchargement : l'onglet « ⏳ En cours » fonctionne enfin (liste des téléchargements, avancement, chapitre en cours, bouton Annuler) et reste à jour même après un rechargement de la page ou une vérification Cloudflare
+- Claude Code sur le serveur : script `scripts/installer-claude-code.sh` et mémos `CLAUDE.md` / `docs/claude-opt.md` (règles et état du projet) pour piloter les applis directement depuis le conteneur
 - Rapport : section « Carte graphique » (le serveur voit-il /dev/dri, les outils graphiques présents) et rendu WebGL annoncé par le navigateur, pour préparer l'usage de la puce Intel Iris Xe
 - Pages des chapitres : elles sont maintenant rangées dans l'ordre où le lecteur les demande (les noms de fichiers du site sont des suites de lettres sans ordre) ; le rapport indique le nombre de pages annoncées et capturées
 - Téléchargement : un seul navigateur pour tous les chapitres (au lieu d'un par chapitre) : plus rapide, et le site garde la même session
