@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Vérification · MouFlanga</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mouflanga.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
+<link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+<link rel="stylesheet" href="/ui/mou-settings.css?v={{ version|urlencode }}">
+<link rel="stylesheet" href="/ui/verification.css?v={{ version|urlencode }}">
+<script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+<script src="/ui/mou-settings.js?v={{ version|urlencode }}"></script>
+</head>
+<body>
+<div class="container">
+    <div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}" data-sub="Vérification"></div>
+    <a class="back" href="/telecharger">← Retour au téléchargement</a>
+
+    <div class="panel">
+        <h2>🛡️ Vérification Cloudflare</h2>
+        <div class="sub">Le site veut s'assurer que tu es un humain. Tu vois ci-dessous le navigateur du serveur : clique sur la case « Vérifiez que vous êtes humain » comme sur n'importe quel site. Dès que c'est passé, le téléchargement reprend tout seul et cette page se met à jour.</div>
+        <div id="vState" class="note warn">Recherche d'une vérification en attente…</div>
+        <div id="vBox" class="vbox" hidden>
+            <img id="vImg" alt="Navigateur du serveur" draggable="false">
+            <div class="vhint">👆 Clique directement sur l'image.</div>
+        </div>
+    </div>
+</div>
+<script src="/ui/verification.js?v={{ version|urlencode }}"></script>
+</body>
+</html>

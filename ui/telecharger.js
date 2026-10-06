@@ -300,3 +300,15 @@ async function loadJobs() {
 document.addEventListener("DOMContentLoaded", () => {
     loadMangas();
 });
+
+// Bandeau « vérification Cloudflare en attente » (mis à jour toutes les 3 secondes)
+async function surveillerVerification() {
+    try {
+        const r = await fetch("/api/japscan/verif/etat");
+        const d = await r.json();
+        const b = document.getElementById("verif-banner");
+        if (b) b.style.display = d.actif ? "block" : "none";
+    } catch (e) { /* réseau coupé un instant */ }
+}
+setInterval(surveillerVerification, 3000);
+surveillerVerification();

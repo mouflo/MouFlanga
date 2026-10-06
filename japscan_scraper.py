@@ -55,27 +55,114 @@ async def _cliquer_case_cloudflare(page) -> bool:
         return False
 
 
-async def attendre_cloudflare(page, secondes: int = 60) -> str:
-    """Attend la fin du défi Cloudflare (en cochant la case si elle apparaît) ; renvoie le titre final."""
+# ----------------------------------------------------------------------
+# Vérification Cloudflare faite à la main (page « Vérification » de l'appli)
+# ----------------------------------------------------------------------
+_VERIF = {"actif": False, "loop": None, "page": None, "depuis": 0.0, "url": "", "alerte": 0.0}
+_VERIF_VERROU = threading.Lock()
+PATIENCE_HUMAIN = 600          # secondes laissées à l'utilisateur pour intervenir
+RAPPEL_ALERTE = 900            # pas deux alertes Telegram à moins de 15 minutes
+
+
+def verif_etat() -> dict:
+    """État lu par l'appli : une vérification attend-elle l'utilisateur ?"""
+    with _VERIF_VERROU:
+        return {"actif": _VERIF["actif"], "depuis": _VERIF["depuis"], "url": _VERIF["url"]}
+
+
+def _sur_la_boucle(coro_fn, timeout: float = 20):
+    """Exécute une action sur la page depuis un autre thread (celui de Flask)."""
+    with _VERIF_VERROU:
+        boucle, page, actif = _VERIF["loop"], _VERIF["page"], _VERIF["actif"]
+    if not actif or boucle is None or page is None:
+        raise RuntimeError("Aucune vérification en attente")
+    return asyncio.run_coroutine_threadsafe(coro_fn(page), boucle).result(timeout)
+
+
+def verif_capture() -> bytes:
+    """Capture d'écran (PNG) du navigateur du serveur."""
+    async def f(page):
+        return await page.screenshot(type="png")
+    return _sur_la_boucle(f)
+
+
+def verif_clic(x: float, y: float) -> None:
+    """Clique à cet endroit de la page (coordonnées de la capture)."""
+    async def f(page):
+        await page.mouse.move(x - 12, y - 6, steps=6)
+        await asyncio.sleep(0.25)
+        await page.mouse.move(x, y, steps=4)
+        await asyncio.sleep(0.15)
+        await page.mouse.click(x, y, delay=90)
+    _sur_la_boucle(f)
+
+
+def _alerter_telegram(url_page: str):
+    """Prévient sur Telegram (au plus une fois par RAPPEL_ALERTE)."""
+    with _VERIF_VERROU:
+        if time.time() - _VERIF["alerte"] < RAPPEL_ALERTE:
+            return
+        _VERIF["alerte"] = time.time()
+    try:
+        import notifier
+        base = os.getenv("APP_URL", "").strip().rstrip("/")
+        lien = f"\n\n👉 {base}/verification" if base else "\n\nOuvre MouFlanga → Télécharger : la vérification t'attend."
+        ok, msg = notifier.envoyer("🛡️ MouFlanga : Cloudflare demande une vérification humaine. "
+                                   "Le téléchargement est en pause en attendant ton clic." + lien)
+        logger.info("Alerte Telegram : %s", msg if not ok else "envoyée")
+    except Exception as e:
+        logger.warning(f"Alerte Telegram impossible : {e}")
+
+
+def _titre_defi(titre: str) -> bool:
+    return (not titre) or any(k in titre.lower() for k in CHALLENGE_TITRES)
+
+
+async def attendre_cloudflare(page, secondes: int = 25, humain: bool = False) -> str:
+    """Attend la fin du défi Cloudflare ; renvoie le titre final.
+
+    1) quelques secondes pour la vérification automatique (avec un clic de tentative sur la case) ;
+    2) si humain=True et que le défi est toujours là : alerte Telegram puis attente de l'utilisateur
+       (il passe la vérification depuis la page « Vérification » de l'appli).
+    """
     titre = ""
     for i in range(secondes):
         try:
             titre = (await page.title()) or ""
         except Exception:
             titre = ""  # page en cours de navigation
-        if titre and not any(k in titre.lower() for k in CHALLENGE_TITRES):
+        if not _titre_defi(titre):
             return titre
         if i >= 4 and i % 6 == 4:
             await _cliquer_case_cloudflare(page)
         await asyncio.sleep(1)
-    logger.warning(f"Défi Cloudflare non résolu (titre : {titre!r})")
+
+    if not humain:
+        logger.warning(f"Défi Cloudflare non résolu (titre : {titre!r})")
+        return titre
+
+    # --- vérification humaine ---
+    logger.warning("Cloudflare demande une vérification humaine : en attente de l'utilisateur")
+    with _VERIF_VERROU:
+        _VERIF.update(actif=True, loop=asyncio.get_running_loop(), page=page, depuis=time.time(), url=page.url)
     try:
-        await page.screenshot(path="/tmp/japscan_cloudflare.png")
-        iframes = [f.url for f in page.frames]
-        logger.warning(f"Cadres de la page : {iframes} (capture : /tmp/japscan_cloudflare.png)")
-    except Exception:
-        pass
-    return titre
+        await asyncio.to_thread(_alerter_telegram, page.url)
+        fin = time.time() + PATIENCE_HUMAIN
+        while time.time() < fin:
+            await asyncio.sleep(2)
+            try:
+                titre = (await page.title()) or ""
+            except Exception:
+                continue
+            if not _titre_defi(titre):
+                logger.info("✓ Vérification Cloudflare passée")
+                await asyncio.sleep(1)
+                return titre
+        logger.error("Vérification non faite dans le temps imparti")
+        return titre
+    finally:
+        with _VERIF_VERROU:
+            _VERIF.update(actif=False, loop=None, page=None)
 
 
 logger = logging.getLogger("japscan_scraper")
@@ -189,7 +276,7 @@ class JapscanScraper:
         """Passe d'abord par la page d'accueil (comme un vrai visiteur) pour obtenir le cookie Cloudflare."""
         try:
             await page.goto(JAPSCAN_URL + "/", wait_until="domcontentloaded", timeout=30000)
-            await attendre_cloudflare(page)
+            await attendre_cloudflare(page, humain=True)
             await asyncio.sleep(2)
         except Exception as e:
             logger.warning(f"Page d'accueil non chargée : {e}")
@@ -220,7 +307,7 @@ class JapscanScraper:
                     logger.info(f"Essai endpoint : {url}")
                     try:
                         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                        await attendre_cloudflare(page)
+                        await attendre_cloudflare(page, humain=True)
                         await asyncio.sleep(2)
                         html = await page.content()
                         if html and len(html) > 1000:
@@ -302,7 +389,7 @@ class JapscanScraper:
                 await self._chauffer(page)
                 await page.goto(manga_url, wait_until="domcontentloaded", timeout=30000)
 
-                title = await attendre_cloudflare(page)
+                title = await attendre_cloudflare(page, humain=True)
 
                 await asyncio.sleep(2)  # Laisse le JS injecter la liste
                 html = await page.content()
@@ -388,7 +475,7 @@ class JapscanScraper:
                 await self._chauffer(page)
                 captured_images.clear()  # ignore les images de la page d'accueil
                 await page.goto(chapter_url, wait_until="domcontentloaded", timeout=30000)
-                await attendre_cloudflare(page)
+                await attendre_cloudflare(page, humain=True)
                 await asyncio.sleep(4)  # Laisser charger le lecteur JS
 
                 # Simuler un défilement progressif vers le bas pour forcer le chargement de toutes les pages

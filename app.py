@@ -403,6 +403,47 @@ def japscan_job(job_id: str):
     return jsonify({"ok": True, "job": job})
 
 
+@app.route("/api/japscan/verif/etat")
+def japscan_verif_etat():
+    """Une vérification Cloudflare attend-elle l'utilisateur ?"""
+    return jsonify({"ok": True, **japscan_scraper.verif_etat()})
+
+
+@app.route("/api/japscan/verif/capture")
+def japscan_verif_capture():
+    """Capture d'écran du navigateur du serveur (pour passer la vérification à la main)."""
+    try:
+        png = japscan_scraper.verif_capture()
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e) or "Capture impossible"}), 409
+    resp = Response(png, mimetype="image/png")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/api/japscan/verif/clic", methods=["POST"])
+def japscan_verif_clic():
+    """Relaie un clic de l'utilisateur dans le navigateur du serveur."""
+    body = request.get_json(silent=True) or {}
+    try:
+        x, y = float(body.get("x")), float(body.get("y"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Coordonnées invalides"}), 400
+    if not (0 <= x <= 5000 and 0 <= y <= 5000):
+        return jsonify({"ok": False, "error": "Coordonnées hors de la page"}), 400
+    try:
+        japscan_scraper.verif_clic(x, y)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e) or "Clic impossible"}), 409
+    return jsonify({"ok": True})
+
+
+@app.route("/verification")
+def verification():
+    """Page pour passer la vérification Cloudflare à la main."""
+    return render_template("verification.html", version=APP_VERSION)
+
+
 @app.route("/telecharger")
 def telecharger():
     """Page de téléchargement de mangas depuis Japscan."""
