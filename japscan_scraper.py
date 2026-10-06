@@ -160,30 +160,61 @@ class JapscanScraper:
             try:
                 # domcontentloaded au lieu de networkidle pour éviter les timeouts
                 await page.goto(manga_url, wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(3)  # Pause pour laisser tourner le JS initial
 
+                # Attend la résolution d'un éventuel défi Cloudflare (max ~45s)
+                title = ""
+                for _ in range(45):
+                    title = (await page.title()) or ""
+                    if not any(k in title.lower() for k in ["just a moment", "un instant", "attention required"]):
+                        break
+                    await asyncio.sleep(1)
+                else:
+                    logger.warning(f"Défi Cloudflare non résolu sur la fiche série (titre: {title!r})")
+
+                await asyncio.sleep(2)  # Laisse le JS injecter la liste
                 html = await page.content()
+                logger.info(f"Fiche série chargée : titre={title!r}, {len(html)} caractères")
+
+                # Dump de debug pour analyse hors-ligne
+                try:
+                    Path("/tmp/japscan_series_debug.html").write_text(html, encoding="utf-8")
+                except Exception:
+                    pass
+
                 soup = BeautifulSoup(html, "html.parser")
+                slug_match = re.search(r"/(?:manga|manhua|manhwa)/([^/]+)/?", manga_url)
+                slug = slug_match.group(1) if slug_match else None
                 chapters = []
                 seen_urls = set()
 
-                # Sélecteurs pour repérer la liste des chapitres
-                links = soup.select("div#chapters_list a, div.chapter-container a, a[href*='/manga/'], a[href*='/manhua/'], a[href*='/manhwa/']")
+                # Tous les liens pointant vers /<type>/<slug>/<numéro>/ de CETTE série
+                pattern = re.compile(
+                    r"/(?:manga|manhua|manhwa)/" + (re.escape(slug) if slug else r"[^/]+") + r"/([\w.\-]+)/?$"
+                )
+                for item in soup.find_all("a", href=True):
+                    href = item["href"]
+                    m = pattern.search(href)
+                    if not m or not re.search(r"\d", m.group(1)):
+                        continue
+                    full_url = urljoin(JAPSCAN_URL, href)
+                    if full_url in seen_urls:
+                        continue
+                    seen_urls.add(full_url)
+                    chapters.append({
+                        "title": item.get_text(strip=True) or f"Chapitre {m.group(1)}",
+                        "url": full_url,
+                        "chapter_id": m.group(1),
+                    })
 
-                for item in links:
-                    href = item.get("href", "")
-                    title = item.get_text(strip=True)
-
-                    # On ne garde que les URLs qui pointent vers un chapitre numérique
-                    if href and re.search(r"/\d+/?$", href):
-                        full_url = urljoin(JAPSCAN_URL, href)
-                        if full_url not in seen_urls:
-                            seen_urls.add(full_url)
-                            chapters.append({
-                                "title": title or full_url.split("/")[-2],
-                                "url": full_url,
-                                "num": len(chapters) + 1
-                            })
+                # Ordre chronologique (le site liste du plus récent au plus ancien)
+                def _key(c):
+                    try:
+                        return float(c["chapter_id"])
+                    except ValueError:
+                        return float("inf")
+                chapters.sort(key=_key)
+                for i, c in enumerate(chapters, 1):
+                    c["num"] = i
 
                 await browser.close()
                 logger.info(f"✓ {len(chapters)} chapitres trouvés.")
