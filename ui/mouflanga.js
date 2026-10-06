@@ -75,7 +75,10 @@
     $('sCoverMfs').hidden = !(perso && mfs);
     if (mfs) $('sCoverMfs').href = mfs.replace(/\/$/, '') + '/?mouflanga=' + encodeURIComponent(s.id) +
       '&q=' + encodeURIComponent(s.id) + '&retour=' + encodeURIComponent(location.origin + location.pathname + '#' + encodeURIComponent(s.id));
-    $('sMissingBox').hidden = true;
+    // Chapitres manquants : une ligne discrète, seulement s'il en manque
+    $('sMissingLine').hidden = !(s.manquants && s.manquants.length);
+    if (s.manquants && s.manquants.length) $('sMissingLine').textContent = '⚠ Manquants : ' + s.manquants.join(', ');
+    fermerMenus();
     var rg = s.rangement || {};
     $('sTomes').hidden = !(s.a_ranger || rg.en_cours);
     $('sTomes').disabled = !!rg.en_cours;
@@ -191,14 +194,18 @@
       if (!r.ok) { note('sMsg', r.error); return; }
       await openSeries(current.id, false);
     });
-    $('sMissing').addEventListener('click', function () {
-      var b = $('sMissingBox'), s = current;
-      if (!b.hidden) { b.hidden = true; return; }
-      if (s.premier == null) b.textContent = 'Impossible de trouver les numéros de chapitres dans les noms de fichiers.';
-      else if (!s.manquants.length) b.textContent = '✅ Aucun chapitre manquant entre le ' + s.premier + ' et le ' + s.dernier + '.';
-      else b.textContent = '⚠ Chapitres manquants entre le ' + s.premier + ' et le ' + s.dernier + ' : ' + s.manquants.join(', ') + '.';
-      b.hidden = false;
-    });
+    // Menus : appui sur la couverture (couverture) et sur « ⋯ » (actions moins courantes)
+    function basculer(menu, e) {
+      e.stopPropagation();
+      var ouvrir = $(menu).hidden;
+      fermerMenus();
+      $(menu).hidden = !ouvrir;
+    }
+    $('sCoverBtn').addEventListener('click', function (e) { if (current.id !== '(Sans série)') basculer('menuCover', e); });
+    $('sMore').addEventListener('click', function (e) { basculer('menuMore', e); });
+    document.addEventListener('click', function (e) { if (!e.target.closest('.menu')) fermerMenus(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') fermerMenus(); });
+    ['menuCover', 'menuMore'].forEach(function (m) { $(m).addEventListener('click', function () { setTimeout(fermerMenus, 0); }); });
     $('sDelete').addEventListener('click', async function () {
       var n = current.chapters.length;
       if (!confirm('Supprimer toute la série « ' + current.title + ' » (' + n + ' chapitre' + (n > 1 ? 's' : '') + ') ?\n\nLes fichiers vont dans la corbeille du dossier des mangas (effacés pour de bon après 30 jours).')) return;
@@ -210,6 +217,8 @@
     window.addEventListener('popstate', route);
     route();
   });
+
+  function fermerMenus() { $('menuCover').hidden = true; $('menuMore').hidden = true; }
 
   function showList() { $('seriesView').style.display = 'none'; $('listView').style.display = ''; loadList(); }
   function route() {

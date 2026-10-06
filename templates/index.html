@@ -38,25 +38,31 @@
         <a class="back" href="#" id="backList">← Toutes les séries</a>
         <div class="panel">
             <div class="series-head">
-                <img id="sCover" alt="">
+                <div class="cover-box">
+                    <button class="cover-btn" id="sCoverBtn" aria-label="Changer la couverture" aria-haspopup="true"><img id="sCover" alt=""><span class="cover-edit">✏️</span></button>
+                    <div class="menu" id="menuCover" hidden>
+                        <button id="sCoverPick">🖼 Choisir une image</button>
+                        <a id="sCoverMfs" hidden>🎨 Créer avec MouFloster</a>
+                        <button id="sCoverAuto" hidden>↺ Couverture automatique</button>
+                    </div>
+                    <input type="file" id="sCoverFile" accept="image/*" hidden>
+                </div>
                 <div class="series-info">
                     <h2 id="sTitle"></h2>
                     <div class="meta" id="sMeta"></div>
-                    <div class="row">
+                    <div class="missing-line" id="sMissingLine" hidden></div>
+                    <div class="actions">
                         <button id="sResume">▶ Reprendre</button>
-                        <button class="ghost" id="sAllRead">✔ Tout marquer lu</button>
-                        <button class="ghost" id="sAllUnread">↺ Tout marquer non lu</button>
-                        <button class="ghost danger" id="sDelete">🗑 Supprimer la série</button>
+                        <div class="more-box">
+                            <button class="ghost" id="sMore" aria-label="Plus d'actions" aria-haspopup="true">⋯</button>
+                            <div class="menu menu-droite" id="menuMore" hidden>
+                                <button id="sAllRead">✔ Tout marquer lu</button>
+                                <button id="sAllUnread">↺ Tout marquer non lu</button>
+                                <button id="sTomes" hidden>📚 Ranger en tomes</button>
+                                <button class="danger" id="sDelete">🗑 Supprimer la série</button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="row" style="margin-top:8px">
-                        <button class="ghost" id="sCoverPick">🖼 Changer la couverture</button>
-                        <a class="mou-btn ghost" id="sCoverMfs" hidden>🎨 Créer avec MouFloster</a>
-                        <button class="ghost" id="sCoverAuto" hidden>↺ Couverture automatique</button>
-                        <button class="ghost" id="sMissing">🔍 Chapitres manquants</button>
-                        <button class="ghost" id="sTomes" hidden>📚 Ranger en tomes</button>
-                        <input type="file" id="sCoverFile" accept="image/*" hidden>
-                    </div>
-                    <div class="missing" id="sMissingBox" hidden></div>
                 </div>
             </div>
             <div id="sMsg"></div>
