@@ -22,6 +22,7 @@ if ! command -v unrar >/dev/null && ! command -v 7z >/dev/null && ! command -v b
 fi
 
 # Scraper de mangas : écran virtuel + navigateur Patchright
+command -v xdotool >/dev/null || apt-get install -y -qq xdotool >/dev/null 2>&1 || echo "⚠️ xdotool non installé (clic de vérification Cloudflare moins crédible)"
 command -v xvfb-run >/dev/null || apt-get install -y -qq xvfb >/dev/null 2>&1 || echo "⚠️ xvfb non installé : le téléchargeur de mangas ne marchera pas"
 ./venv/bin/python -m patchright install chromium || echo "⚠️ Chromium (Patchright) non installé"
 

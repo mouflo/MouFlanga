@@ -43,6 +43,18 @@ class EcranTest(unittest.TestCase):
                 js._XVFB["proc"] = None
 
 
+class CoordonneesTest(unittest.TestCase):
+    def test_fenetre_sans_decor(self):
+        # fenêtre en (0,0), barre d'outils de 85 px : un point de la page est décalé vers le bas
+        self.assertEqual(js.coord_ecran({"sx": 0, "sy": 0, "dw": 0, "dh": 85}, 100, 200), (100, 285))
+
+    def test_fenetre_decalee(self):
+        self.assertEqual(js.coord_ecran({"sx": 10, "sy": 20, "dw": 16, "dh": 100}, 5, 5), (23, 125))
+
+    def test_valeurs_negatives_ignorees(self):
+        self.assertEqual(js.coord_ecran({"dw": -3, "dh": -9}, 7, 8), (7, 8))
+
+
 class CbzTest(unittest.TestCase):
     def test_creation_et_extensions(self):
         with tempfile.TemporaryDirectory() as d:

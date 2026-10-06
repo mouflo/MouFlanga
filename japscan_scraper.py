@@ -36,6 +36,43 @@ def nom_sur(texte: str, defaut: str = "sans-titre") -> str:
 CHALLENGE_TITRES = ("just a moment", "un instant", "attention required")
 
 
+def coord_ecran(geo: dict, x: float, y: float) -> tuple[int, int]:
+    """Position à l'écran (écran virtuel) d'un point de la page, à partir de la géométrie de la fenêtre."""
+    gauche = geo.get("sx", 0) + max(0, geo.get("dw", 0)) // 2
+    haut = geo.get("sy", 0) + max(0, geo.get("dh", 0))      # barre d'outils de Chrome au-dessus de la page
+    return int(gauche + x), int(haut + y)
+
+
+async def _clic_reel(page, x: float, y: float) -> bool:
+    """Clique comme une vraie souris, par l'écran virtuel (xdotool) : les coordonnées d'écran du clic sont alors
+    cohérentes, ce que le clic « d'automatisation » ne permet pas. Renvoie False si ce n'est pas possible."""
+    import shutil
+    exe = shutil.which("xdotool")
+    if not exe or not os.environ.get("DISPLAY"):
+        return False
+    try:
+        geo = await page.evaluate("""() => ({sx: window.screenX, sy: window.screenY,
+            dw: window.outerWidth - window.innerWidth, dh: window.outerHeight - window.innerHeight})""")
+        cx, cy = coord_ecran(geo, x, y)
+
+        async def xdo(*args):
+            proc = await asyncio.create_subprocess_exec(exe, *args, stdout=asyncio.subprocess.DEVNULL,
+                                                        stderr=asyncio.subprocess.DEVNULL)
+            await asyncio.wait_for(proc.wait(), 10)
+            return proc.returncode
+
+        # trajet de souris en plusieurs étapes, arrivée un peu lente, puis clic
+        for fx, fy in ((-90, -50), (-45, -22), (-14, -7), (-3, -1), (0, 0)):
+            if await xdo("mousemove", str(max(0, cx + fx)), str(max(0, cy + fy))) != 0:
+                return False
+            await asyncio.sleep(0.07)
+        await asyncio.sleep(0.15)
+        return await xdo("click", "1") == 0
+    except Exception as e:
+        logger.debug(f"Clic réel impossible : {e}")
+        return False
+
+
 async def _cliquer_case_cloudflare(page) -> bool:
     """Tente de cocher la case « Vérifiez que vous êtes humain » (Turnstile)."""
     try:
@@ -45,10 +82,14 @@ async def _cliquer_case_cloudflare(page) -> bool:
         boite = await cadre.bounding_box()
         if not boite:
             return False
-        await page.mouse.move(boite["x"] + 20, boite["y"] + boite["height"] / 2, steps=8)
+        cible_x, cible_y = boite["x"] + 28, boite["y"] + boite["height"] / 2
+        if await _clic_reel(page, cible_x, cible_y):
+            logger.info("Clic sur la case Cloudflare (souris de l'écran virtuel)")
+            return True
+        await page.mouse.move(boite["x"] + 20, cible_y, steps=8)
         await asyncio.sleep(0.4)
-        await page.mouse.click(boite["x"] + 28, boite["y"] + boite["height"] / 2)
-        logger.info("Clic sur la case Cloudflare")
+        await page.mouse.click(cible_x, cible_y)
+        logger.info("Clic sur la case Cloudflare (automatisation)")
         return True
     except Exception as e:
         logger.debug(f"Clic Cloudflare impossible : {e}")
@@ -103,13 +144,15 @@ def verif_capture() -> bytes:
 def verif_clic(x: float, y: float) -> dict:
     """Clique à cet endroit de la page (coordonnées de la capture) et renvoie ce que le site répond ensuite."""
     async def f(page):
-        await page.mouse.move(x - 14, y - 8, steps=5)
-        await asyncio.sleep(0.2)
-        await page.mouse.move(x, y, steps=3)
-        await asyncio.sleep(0.12)
-        await page.mouse.click(x, y, delay=80)
+        reel = await _clic_reel(page, x, y)
+        if not reel:
+            await page.mouse.move(x - 14, y - 8, steps=5)
+            await asyncio.sleep(0.2)
+            await page.mouse.move(x, y, steps=3)
+            await asyncio.sleep(0.12)
+            await page.mouse.click(x, y, delay=80)
         await asyncio.sleep(2.5)           # laisse Cloudflare réagir
-        info = {"titre": "", "cookie": False, "texte": "", "cadres": 0}
+        info = {"titre": "", "cookie": False, "texte": "", "cadres": 0, "mode": "souris écran" if reel else "automatisation"}
         try:
             info["titre"] = (await page.title()) or ""
             info["cookie"] = any(c["name"] == "cf_clearance" for c in await page.context.cookies())
@@ -120,7 +163,7 @@ def verif_clic(x: float, y: float) -> dict:
             info["texte"] = f"(lecture impossible : {e.__class__.__name__})"
         return info
     info = _sur_la_boucle(f, timeout=25)
-    _noter(f"clic ({x:.0f},{y:.0f}) → titre « {info['titre']} », cf_clearance {'présent' if info['cookie'] else 'absent'}, "
+    _noter(f"clic {info['mode']} ({x:.0f},{y:.0f}) → titre « {info['titre']} », cf_clearance {'présent' if info['cookie'] else 'absent'}, "
            f"{info['cadres']} cadre(s), texte : {info['texte']}")
     return info
 

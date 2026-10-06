@@ -49,6 +49,10 @@ if ! command -v xvfb-run >/dev/null 2>&1; then
     log "📦 Installation de xvfb (écran virtuel pour le scraper)..."
     apt-get install -y -q xvfb >>"$LOG_FILE" 2>&1
 fi
+if ! command -v xdotool >/dev/null 2>&1; then
+    log "📦 Installation de xdotool (vrai clic de souris pour la vérification Cloudflare)..."
+    apt-get install -y -q xdotool >>"$LOG_FILE" 2>&1 || log "⚠️ xdotool non installé : clic par automatisation à la place"
+fi
 if command -v xvfb-run >/dev/null 2>&1 && ! cmp -s "$REPO_DIR/mouflanga.service" /etc/systemd/system/mouflanga.service; then
     log "🛠 Mise à jour du fichier de service..."
     cp "$REPO_DIR/mouflanga.service" /etc/systemd/system/mouflanga.service

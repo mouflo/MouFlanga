@@ -56,7 +56,7 @@ img.addEventListener('click', async ev => {
         } else {
             const i = res.info || {};
             marque.textContent = '✔';
-            retour.textContent = `Clic effectué. Réponse du site : « ${i.titre || '…'} » · autorisation Cloudflare : ${i.cookie ? 'reçue' : 'pas encore'}` +
+            retour.textContent = `Clic effectué (${i.mode || '?'}). Réponse du site : « ${i.titre || '…'} » · autorisation Cloudflare : ${i.cookie ? 'reçue' : 'pas encore'}` +
                 (i.texte ? ` · page : ${i.texte}` : '');
         }
     } finally {
