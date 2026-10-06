@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Réglages · MouFlanga</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mouflanga.svg">
+<link rel="manifest" href="/icons/manifest.webmanifest">
+<meta name="theme-color" content="#121315">
+<link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+<link rel="stylesheet" href="/ui/mouflanga.css?v={{ version|urlencode }}">
+<script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+</head>
+<body class="mou-skin">
+<div class="container">
+    <div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}" data-sub="Réglages"></div>
+    <a class="back" href="/">← Retour à la liste</a>
+
+    <div class="mou-panel">
+        <h2>📁 Dossiers</h2>
+        <div class="sub">Où trouver tes mangas et autres paramètres. L'appli redémarre après l'enregistrement.</div>
+
+        <div class="field">
+            <label for="mangaDir">Dossier des mangas</label>
+            <input type="text" id="mangaDir" autocapitalize="off" spellcheck="false" placeholder="/mnt/data/manga">
+        </div>
+
+        <div class="field">
+            <label for="libraryDir">Dossier Emby (optionnel)</label>
+            <input type="text" id="libraryDir" autocapitalize="off" spellcheck="false" placeholder="/mnt/mouflosyno/Emby-Media">
+        </div>
+
+        <div class="field">
+            <label for="autoImport">
+                <input type="checkbox" id="autoImport"> Import automatique des nouveaux chapitres
+            </label>
+        </div>
+
+        <div class="row" style="margin-top:16px">
+            <button class="mou-btn" id="save-btn">Enregistrer</button>
+        </div>
+        <div id="save-msg"></div>
+    </div>
+</div>
+
+<script>
+async function loadSettings() {
+    const r = await fetch('/api/settings/get');
+    if (!r.ok) return;
+
+    const data = await r.json();
+    document.getElementById('mangaDir').value = data.manga_dir || '';
+    document.getElementById('libraryDir').value = data.library_dir || '';
+    document.getElementById('autoImport').checked = data.auto_import || false;
+}
+
+document.getElementById('save-btn').addEventListener('click', async () => {
+    const data = {
+        manga_dir: document.getElementById('mangaDir').value,
+        library_dir: document.getElementById('libraryDir').value,
+        auto_import: document.getElementById('autoImport').checked
+    };
+
+    const r = await fetch('/api/settings/save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    });
+
+    const msg = document.getElementById('save-msg');
+    if (r.ok) {
+        msg.textContent = '✅ Réglages enregistrés';
+        msg.style.color = '#52b54b';
+    } else {
+        msg.textContent = '❌ Erreur enregistrement';
+        msg.style.color = '#e5534b';
+    }
+});
+
+loadSettings();
+</script>
+</body>
+</html>

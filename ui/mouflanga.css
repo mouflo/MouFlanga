@@ -1,0 +1,301 @@
+/* MouFlanga - Styles spécifiques */
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 16px;
+}
+
+.view {
+    display: none;
+}
+
+.view.active {
+    display: block;
+}
+
+.back {
+    display: inline-block;
+    margin-bottom: 16px;
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.back:hover {
+    text-decoration: underline;
+}
+
+/* Grille de mangas */
+.manga-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.manga-card {
+    background: var(--card);
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.manga-card:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.manga-card img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    background: var(--field);
+}
+
+.manga-card-info {
+    padding: 12px;
+    font-size: 0.9rem;
+}
+
+.manga-card-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+}
+
+.manga-card-meta {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+/* Liste des chapitres */
+.section {
+    margin-bottom: 24px;
+}
+
+.section h2 {
+    margin: 0 0 16px;
+    color: var(--text);
+}
+
+.chapters-list {
+    display: grid;
+    gap: 8px;
+}
+
+.chapter-item {
+    background: var(--field);
+    padding: 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background 0.2s;
+}
+
+.chapter-item:hover {
+    background: var(--surface2);
+}
+
+.chapter-item .meta {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+/* Lecteur */
+.reader-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    gap: 8px;
+    padding: 8px;
+}
+
+.reader-controls {
+    background: var(--card);
+    padding: 12px;
+    border-radius: 4px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.reader-controls button {
+    padding: 8px 16px;
+}
+
+#page-counter {
+    flex: 1;
+    text-align: center;
+    color: var(--text2);
+}
+
+.reader-pages {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    border-radius: 4px;
+}
+
+.reader-pages img {
+    max-width: 95%;
+    max-height: 95%;
+    object-fit: contain;
+}
+
+.reader-nav {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+}
+
+.reader-nav button {
+    flex: 1;
+    padding: 12px;
+}
+
+/* Panel */
+.mou-panel {
+    background: var(--card);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+}
+
+.mou-panel h2 {
+    margin: 0 0 8px;
+    color: var(--text);
+}
+
+.sub {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 16px;
+}
+
+.field {
+    margin-bottom: 16px;
+}
+
+.field label {
+    display: block;
+    font-size: 0.9rem;
+    color: var(--text);
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.field input[type="text"],
+.field input[type="number"],
+.field input[type="password"],
+.field select {
+    width: 100%;
+    padding: 10px;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.95rem;
+}
+
+.field input:focus,
+.field select:focus {
+    border-color: var(--accent);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(82, 181, 75, 0.1);
+}
+
+.field input[type="checkbox"] {
+    margin-right: 8px;
+    accent-color: var(--accent);
+}
+
+.row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.mou-btn {
+    padding: 10px 20px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: background 0.2s;
+}
+
+.mou-btn:hover {
+    background: var(--accent-hover);
+}
+
+.mou-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#save-msg {
+    margin-top: 12px;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .manga-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    }
+
+    .reader-controls {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .reader-controls button {
+        width: 100%;
+    }
+
+    .reader-nav {
+        flex-direction: column;
+    }
+
+    .reader-nav button {
+        width: 100%;
+    }
+
+    .container {
+        padding: 8px;
+    }
+
+    .mou-panel {
+        padding: 16px;
+    }
+}
+
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg: #f5f5f5;
+        --card: #ffffff;
+        --surface: #ffffff;
+        --field: #f0f0f0;
+        --text: #1a1a1a;
+        --text2: #333333;
+        --muted: #666666;
+    }
+}

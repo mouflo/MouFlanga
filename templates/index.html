@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>MouFlanga</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mouflanga.svg">
+<link rel="manifest" href="/icons/manifest.webmanifest">
+<meta name="theme-color" content="#121315">
+<link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+<link rel="stylesheet" href="/ui/mouflanga.css?v={{ version|urlencode }}">
+<script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+<script src="/ui/mouflanga.js?v={{ version|urlencode }}" defer></script>
+</head>
+<body class="mou-skin">
+<div class="container">
+    <div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}" data-sub="Lecteur de mangas"></div>
+
+    <div id="manga-list-view" class="view">
+        <div class="section">
+            <h2>📚 Mes mangas</h2>
+            <div id="manga-grid" class="manga-grid"></div>
+        </div>
+    </div>
+
+    <div id="manga-detail-view" class="view" style="display:none">
+        <a class="back" href="/">← Retour</a>
+        <div class="panel">
+            <h2 id="manga-title"></h2>
+            <div id="chapters-list" class="chapters-list"></div>
+        </div>
+    </div>
+
+    <div id="reader-view" class="view" style="display:none">
+        <div class="reader-container">
+            <div class="reader-controls">
+                <button id="reader-back" class="btn ghost">← Retour</button>
+                <span id="page-counter"></span>
+                <button id="fullscreen-btn" class="btn ghost">⛶ Plein écran</button>
+            </div>
+            <div id="reader-pages" class="reader-pages"></div>
+            <div class="reader-nav">
+                <button id="prev-page" class="btn">← Page précédente</button>
+                <button id="next-page" class="btn">Page suivante →</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.container { max-width:1200px; margin:0 auto; padding:16px; }
+.view { display:none; }
+.view.active { display:block; }
+
+.back { display:inline-block; margin-bottom:16px; color:#52b54b; text-decoration:none; }
+.back:hover { text-decoration:underline; }
+
+.manga-grid {
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));
+    gap:16px;
+    margin-top:16px;
+}
+
+.manga-card {
+    background:#1c1c1c;
+    border-radius:8px;
+    overflow:hidden;
+    cursor:pointer;
+    transition:transform .2s;
+}
+
+.manga-card:hover {
+    transform:scale(1.05);
+}
+
+.manga-card img {
+    width:100%;
+    height:200px;
+    object-fit:cover;
+    background:#2a2a2a;
+}
+
+.manga-card-info {
+    padding:12px;
+    font-size:.9rem;
+}
+
+.manga-card-title {
+    font-weight:600;
+    margin-bottom:4px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.manga-card-meta {
+    color:#a0a0a0;
+    font-size:.8rem;
+}
+
+.chapters-list {
+    display:grid;
+    gap:8px;
+}
+
+.chapter-item {
+    background:#242424;
+    padding:12px;
+    border-radius:4px;
+    cursor:pointer;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+}
+
+.chapter-item:hover {
+    background:#2a2a2a;
+}
+
+.reader-container {
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+    gap:8px;
+}
+
+.reader-controls {
+    background:#1c1c1c;
+    padding:12px;
+    border-radius:4px;
+    display:flex;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+}
+
+.reader-pages {
+    flex:1;
+    overflow:auto;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#0a0a0a;
+}
+
+.reader-pages img {
+    max-width:100%;
+    max-height:100%;
+}
+
+.reader-nav {
+    display:flex;
+    gap:8px;
+    padding:8px;
+}
+
+.reader-nav button {
+    flex:1;
+}
+</style>
+</body>
+</html>
