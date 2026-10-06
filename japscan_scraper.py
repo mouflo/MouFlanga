@@ -153,6 +153,15 @@ _JS_ZONES_VISIBLES = r"""() => [...document.querySelectorAll('.list_chapters')].
 })"""
 
 
+# Le lecteur demande-t-il un captcha ? Oui si le script de la page le dit et qu'aucune page n'est encore affichée
+_JS_CAPTCHA_PRESENT = r"""() => {
+  const demande = [...document.querySelectorAll('script:not([src])')].some(s => /__captcha\s*=\s*\{\s*needed\s*:\s*true/.test(s.textContent || ''));
+  if (!demande) return false;
+  const pageVisible = [...document.querySelectorAll('canvas')].some(c => c.getBoundingClientRect().height > 100)
+    || [...document.querySelectorAll('img')].some(i => i.naturalWidth >= 300 && i.naturalHeight >= 300);
+  return !pageVisible;
+}"""
+
 # Décrit ce que contient la page du lecteur (pour le rapport)
 _JS_INFO_LECTEUR = r"""() => {
   const court = u => (u || '').split('?')[0].replace(/^https?:\/\//, '').slice(0, 80);
@@ -391,7 +400,9 @@ async def attendre_cloudflare(page, secondes: int = 25, humain: bool = False) ->
 async def _captcha_present(page) -> bool:
     """Le lecteur du site réclame-t-il un captcha avant d'afficher les pages ?"""
     try:
-        return bool(await page.evaluate("() => !!(window.__captcha && window.__captcha.needed)"))
+        # On lit le DOM (et non window.__captcha) : Camoufox exécute les scripts dans un monde isolé
+        # où les variables de la page sont invisibles
+        return bool(await page.evaluate(_JS_CAPTCHA_PRESENT))
     except Exception:
         return False   # page en cours de rechargement
 
