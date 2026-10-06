@@ -18,7 +18,7 @@ def test_xvfb_stealth():
     print(f"URL: {chapter_url}\n")
 
     try:
-        from playwright_stealth import stealth
+        import playwright_stealth
         print("✓ playwright-stealth importé")
     except ImportError:
         print("✗ playwright-stealth non installé")
@@ -35,11 +35,22 @@ def test_xvfb_stealth():
                 args=[
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
+                    "--disable-blink-features=AutomationControlled",
                 ]
             )
 
             page = browser.new_page()
-            stealth(page)  # Applique l'anti-détection
+
+            # Masquer la présence de Playwright
+            page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => false,
+                });
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5],
+                });
+            """)
+
             page.set_default_timeout(15000)
 
             print(f"Chargement {chapter_url}...")
