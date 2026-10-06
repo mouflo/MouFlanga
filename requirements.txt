@@ -6,3 +6,4 @@ requests
 beautifulsoup4
 patchright
 camoufox
+pymupdf

@@ -26,7 +26,11 @@ HORS_TOME = "Hors tome"
 _PAGE = re.compile(r"^c(\d{4,})\.(\d{2})-p\d+\.\w+$")
 
 
-def nom_page(num: float, k: int, donnees: bytes) -> str:
+def nom_page(num: float, k: int, donnees: bytes = b"", ext: str | None = None) -> str:
+    if ext:
+        ext = "jpg" if ext == "jpeg" else ext
+        entier = int(num)
+        return f"c{entier:04d}.{round((num - entier) * 100):02d}-p{k:03d}.{ext}"
     ext = "jpg"
     if donnees.startswith(b"\x89PNG"):
         ext = "png"

@@ -38,6 +38,7 @@ except ImportError:
 import archives
 import tomes
 import tomes_cbz
+import importer
 import diag
 import japscan_scraper
 
@@ -105,6 +106,21 @@ def _is_archive(p: Path):
     return p.suffix.lower() in archives.ARCHIVE_EXT and not p.name.startswith(".")
 
 
+LOT_MIN = 400 * 1048576        # une archive .rar/.zip/.7z plus grosse que ça regroupe plusieurs tomes
+
+
+def _a_importer(p: Path):
+    """PDF, ou grosse archive qui regroupe plusieurs tomes : à convertir par « Organiser » avant de pouvoir être lue."""
+    if p.name.startswith(".") or p.name.endswith(".tmp"):
+        return False
+    if p.suffix.lower() in (".pdf", ".7z"):
+        return True
+    try:
+        return importer.est_lot(p) and p.stat().st_size > LOT_MIN
+    except OSError:
+        return False
+
+
 def _scan():
     """{série: [fichiers]} — chaque sous-dossier est une série ; les fichiers posés à la racine forment « (Sans série) »."""
     series = {}
@@ -123,7 +139,7 @@ def _scan():
                 files = []
                 for dirpath, dirnames, filenames in os.walk(entry, onerror=lambda e: None):
                     dirnames[:] = [d for d in dirnames if not d.startswith((".", "@"))]
-                    files += [Path(dirpath) / n for n in filenames if _is_archive(Path(n))]
+                    files += [Path(dirpath) / n for n in filenames if _is_archive(Path(n)) or _a_importer(Path(dirpath) / n)]
                 if files:
                     series[entry.name] = sorted(files, key=lambda p: archives.natural_key(p.relative_to(entry)))
             elif _is_archive(entry):
@@ -139,15 +155,9 @@ def _rel(p: Path):
     return str(p.relative_to(MANGA_DIR))
 
 
-_NUM_TOME = re.compile(r"(?:^|[\s_\-.(\[])(?:t|tome|vol(?:ume)?\.?|v)\s*0*(\d{1,3})(?=$|[\s_\-.)\]])", re.I)
-
-
 def _numero_tome(nom):
-    """Numéro de tome d'après un nom de fichier (« Gintama T01 (…) », « Vol. 3 », « Tome 12 ») ; None pour un chapitre."""
-    if _NUM_CHAPITRE.search(nom):
-        return None
-    m = _NUM_TOME.search(nom)
-    return int(m.group(1)) if m else None
+    """Numéro de tome d'après un nom de fichier (« Gintama T01 (…) », « Toriko.Tome.38 », « Vol. 3 ») ; None pour un chapitre."""
+    return importer.numero_tome(nom)
 
 
 def _plage_chapitres(serie, tome):
@@ -172,6 +182,10 @@ def _entrees(files):
             taille = f.stat().st_size
         except OSError:
             taille = 0
+        if _a_importer(f):
+            out.append({"key": rel, "path": rel, "title": f"📦 {f.name}", "num": None, "groupe": None, "debut": 0,
+                        "nb": None, "a_importer": True, "size_mb": round(taille / 1048576, 1)})
+            continue
         info = tomes_cbz.lire_info(f) if f.suffix.lower() == ".cbz" else None
         if info is None:
             titre = _title_of(f)
@@ -226,6 +240,7 @@ def reader():
 def api_library():
     if not MANGA_DIR.is_dir():
         return jsonify({"error": f"Dossier des mangas introuvable : {MANGA_DIR} (le partage est-il monté ? voir ⚙️ Réglages)", "series": []}), 200
+    _organiser_auto()
     progress = _read_json(PROGRESS_FILE, {})
     out = []
     for name, files in _scan().items():
@@ -750,7 +765,36 @@ _MARQUE = re.compile(r"(?:^|[\s_\-.])(?:t|tome|vol(?:ume)?\.?|v|chap(?:itre|ter)
 _BRUIT = re.compile(r"\b(?:int[ée]grale?|complete|complet|fr|vf|vostfr|cbz|cbr|e-?books?|officiels?|digital|scans?|manga)\b", re.I)
 
 
+_PARTICULES = {"no", "wa", "ga", "ni", "to", "wo", "de", "na", "e", "of", "the", "a", "an", "and", "in", "on", "de", "du", "des", "la", "le", "les", "et"}
+CHOIX = DATA_DIR / "organiser-choix.json"
+
+
+def _majuscules(nom):
+    """« nanatsu no taizai » → « Nanatsu no Taizai » (seulement si le nom est tout en minuscules)."""
+    if nom != nom.lower():
+        return nom
+    mots = nom.split(" ")
+    return " ".join(m if (i and m in _PARTICULES) else m[:1].upper() + m[1:] for i, m in enumerate(mots))
+
+
+def _appris(dossier, propose):
+    """Applique ce que tu as choisi les fois précédentes : même dossier → même nom ; mots que tu retires toujours."""
+    choix = _read_json(CHOIX, [])
+    for c in reversed(choix):
+        if c.get("dossier") == dossier:
+            return c["choisi"]
+    retires = {}
+    for c in choix:
+        garde = set(c["choisi"].lower().split())
+        for mot in set(c["propose"].lower().split()) - garde:
+            retires[mot] = retires.get(mot, 0) + 1
+    mots = [m for m in propose.split(" ") if retires.get(m.lower(), 0) < 1]
+    return " ".join(mots) if mots else propose
+
+
 def _nettoyer_nom(texte):
+    if " " not in texte and texte.count(".") >= 2:          # noms « Gamaran.T01.FRENCH.HYBRiD… »
+        texte = texte.replace(".", " ")
     t = _CROCHETS.sub(" ", texte.replace("_", " "))
     t = _MARQUE.sub(" ", t)
     t = _BRUIT.sub(" ", t)
@@ -763,11 +807,13 @@ def _plan_organiser(name, files):
     Série ajoutée à la main : nom du dossier encombré (« Gintama Integrale T01-77 [FR][CBZ] »),
     tomes complets hors de leur dossier « Tome NN », ou chapitres pas encore rangés en tomes."""
     from collections import Counter
+    lots = [f for f in files if _a_importer(f)]
+    files = [f for f in files if f not in lots]
     noms = [_nettoyer_nom(f.stem) for f in files if f.parent != MANGA_DIR]
     noms = [n for n in noms if n]
     commun = Counter(noms).most_common(1)
     propose = commun[0][0] if commun and commun[0][1] >= max(2, len(files) * 0.6) else (_nettoyer_nom(name) or name)
-    propose = japscan_scraper.nom_sur(propose)
+    propose = japscan_scraper.nom_sur(_appris(name, _majuscules(propose)))
     tomes_fichiers, a_deplacer, chapitres = [], 0, 0
     for f in files:
         if tomes_cbz.lire_info(f) is not None:
@@ -780,9 +826,11 @@ def _plan_organiser(name, files):
                 a_deplacer += 1
         elif _numero_chapitre(f.stem) is not None:
             chapitres += 1
-    if propose == name and not a_deplacer and not chapitres:
+    if propose == name and not a_deplacer and not chapitres and not lots:
         return None
     return {"nom": propose, "tomes": len(tomes_fichiers), "a_deplacer": a_deplacer, "chapitres": chapitres,
+            "archives": sum(1 for f in lots if f.suffix.lower() != ".pdf"), "pdf": sum(1 for f in lots if f.suffix.lower() == ".pdf"),
+            "taille_go": round(sum(f.stat().st_size for f in lots) / 1073741824, 1),
             "premier_tome": min(tomes_fichiers) if tomes_fichiers else None,
             "dernier_tome": max(tomes_fichiers) if tomes_fichiers else None}
 
@@ -796,7 +844,7 @@ def _organiser(name, nouveau):
         raise ValueError(f"« {nouveau} » existe déjà et n'est pas un dossier")
     deplaces = {}
     for f in files:
-        if tomes_cbz.lire_info(f) is not None:
+        if _a_importer(f) or tomes_cbz.lire_info(f) is not None:
             cible = dossier / f.relative_to(ancien_dossier)
         else:
             t = _numero_tome(f.stem)
@@ -844,6 +892,46 @@ def _organiser(name, nouveau):
     return nouveau
 
 
+_AUTO = {"dernier": 0.0}
+
+
+def _organiser_auto():
+    """Réglage « Organiser tout seul » : à l'ouverture de la bibliothèque (au plus toutes les 5 minutes), chaque série
+    ajoutée à la main est organisée avec le nom proposé (qui tient compte de tes choix précédents)."""
+    if os.getenv("ORGANISER_AUTO", "") != "1" or time.time() - _AUTO["dernier"] < 300:
+        return
+    _AUTO["dernier"] = time.time()
+    if any(e.get("en_cours") for e in _RANGEMENTS.values()) or any(j.get("status") == "running" for j in japscan_scraper.download_jobs.values()):
+        return
+    series = _scan()
+    for name, files in series.items():
+        if name == "(Sans série)":
+            continue
+        plan = _plan_organiser(name, files)
+        if not plan or (plan["nom"] != name and plan["nom"] in series):
+            continue
+        try:
+            nouveau = _organiser(name, plan["nom"])
+            _noter_choix(name, plan["nom"], nouveau)
+            _lancer_import(nouveau)
+            logger.info("Organisation automatique : « %s » → « %s »", name, nouveau)
+        except Exception as e:
+            logger.warning("Organisation automatique de %s impossible : %s", name, e)
+        return                                           # une série à la fois
+
+
+@app.route("/api/settings/organiser-auto", methods=["GET", "POST"])
+def api_organiser_auto():
+    if request.method == "POST":
+        actif = bool((request.get_json(silent=True) or {}).get("actif"))
+        from secrets_store import write_secret
+        write_secret(DATA_DIR / "secrets.env", "ORGANISER_AUTO", "1" if actif else "0")
+        os.environ["ORGANISER_AUTO"] = "1" if actif else "0"
+        return jsonify({"ok": True, "message": "Les séries ajoutées à la main seront organisées toutes seules." if actif
+                        else "Organisation automatique coupée : un bandeau te le proposera sur chaque série."})
+    return jsonify({"actif": os.getenv("ORGANISER_AUTO", "") == "1", "choix": len(_read_json(CHOIX, []))})
+
+
 @app.route("/api/organiser", methods=["POST"])
 def api_organiser():
     """Bouton « Organiser » d'une série ajoutée à la main."""
@@ -860,29 +948,73 @@ def api_organiser():
     for j in list(japscan_scraper.download_jobs.values()):
         if j.get("status") == "running" and japscan_scraper.nom_sur(japscan_scraper.titre_serie(j.get("title") or "")) == name:
             return jsonify({"ok": False, "error": "Cette série est en cours de téléchargement : attends la fin."}), 409
+    plan = _plan_organiser(name, files)
     try:
         nouveau = _organiser(name, nouveau)
     except (OSError, ValueError) as e:
         logger.warning("Organiser %s impossible : %s", name, e)
         return jsonify({"ok": False, "error": f"Impossible d'organiser : {e}"}), 500
-    # Chapitres à regrouper en tomes : en arrière-plan (recherche sur Internet)
+    _noter_choix(name, plan.get("nom") if plan else nouveau, nouveau)
+    _lancer_import(nouveau)
+    return jsonify({"ok": True, "id": nouveau})
+
+
+def _noter_choix(dossier, propose, choisi):
+    """Garde ton choix de nom pour proposer mieux la prochaine fois."""
+    choix = _read_json(CHOIX, [])
+    choix.append({"dossier": dossier, "propose": propose, "choisi": choisi, "date": datetime.now().strftime("%Y-%m-%d %H:%M")})
+    _write_json(CHOIX, choix[-200:])
+
+
+def _lancer_import(nouveau):
+    """En arrière-plan : archives de tomes et PDF convertis, puis chapitres regroupés en tomes."""
     files = _scan().get(nouveau) or []
-    chapitres = any(tomes_cbz.lire_info(f) is None and _numero_tome(f.stem) is None and _numero_chapitre(f.stem) is not None for f in files)
-    _RANGEMENTS[nouveau] = {"en_cours": True, "fait": 0, "total": 0, "erreur": None, "message": "Recherche des tomes…"}
+    chapitres = any(not _a_importer(f) and tomes_cbz.lire_info(f) is None and _numero_tome(f.stem) is None
+                    and _numero_chapitre(f.stem) is not None for f in files)
+    lots = [f for f in files if _a_importer(f)]
+    _RANGEMENTS[nouveau] = {"en_cours": True, "fait": 0, "total": len(lots), "erreur": None, "message": "Préparation…"}
 
     def travail():
         etat = _RANGEMENTS[nouveau]
+        erreurs, crees = [], 0
+        for k, lot in enumerate(lots):
+            try:
+                if lot.suffix.lower() == ".pdf":
+                    t = _numero_tome(lot.stem) or 1
+                    cible = tomes_cbz.fichier_tome(MANGA_DIR / nouveau, nouveau, t)
+                    etat["message"] = f"Conversion de {lot.name}…"
+                    if cible.exists():
+                        raise importer.ErreurImport(f"{cible.name} existe déjà")
+                    importer.pdf_vers_cbz(lot, cible)
+                    crees += 1
+                else:
+                    crees += len(importer.importer_lot(lot, MANGA_DIR / nouveau, nouveau, etat))
+                _vers_corbeille(lot)                     # l'original est gardé 30 jours
+            except Exception as e:
+                logger.warning("Import de %s impossible : %s", lot.name, e)
+                erreurs.append(f"{lot.name} : {e}")
+            etat["fait"] = k + 1
+        if lots:
+            logger.info("Import de « %s » : %d tome(s) créé(s) depuis %d archive(s)/PDF", nouveau, crees, len(lots))
+            for d in sorted((x for x in (MANGA_DIR / nouveau).rglob("*") if x.is_dir()), key=lambda x: -len(x.parts)):
+                try:
+                    d.rmdir()                            # dossiers vidés (ex. « Gamaran.T01.FRENCH… »)
+                except OSError:
+                    pass
+        etat["message"] = "Recherche des tomes…"
         try:
             info = tomes.chercher(nouveau, forcer=True)
+            msg = "✅ Série organisée" + (f" : {crees} tome(s) importé(s)" if lots else "")
             if info and chapitres:
                 n = _ranger_en_tomes(nouveau, info, garder_en_cours=True)
-                etat.update(en_cours=False, message=f"✅ Série organisée ; {n} chapitre(s) rangé(s) en tomes (d'après {info['source']}).")
-            else:
-                etat.update(en_cours=False, message="✅ Série organisée." + (f" Tomes connus d'après {info['source']}." if info else ""))
+                msg += f" ; {n} chapitre(s) rangé(s) en tomes"
+            msg += f" (tomes d'après {info['source']})." if info else "."
         except Exception as e:
-            etat.update(en_cours=False, message=f"Série organisée, mais rangement des chapitres impossible : {e}")
+            msg = f"Série organisée, mais rangement des chapitres impossible : {e}"
+        if erreurs:
+            msg += " ⚠ Non importé : " + " · ".join(erreurs)
+        etat.update(en_cours=False, message=msg)
     threading.Thread(target=travail, daemon=True).start()
-    return jsonify({"ok": True, "id": nouveau})
 
 
 @app.route("/api/tomes/ranger", methods=["POST"])

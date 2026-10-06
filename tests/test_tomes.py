@@ -200,6 +200,7 @@ class BibliothequeTest(unittest.TestCase):
         self.A = A
         A.MANGA_DIR = self.root
         A.PROGRESS_FILE = t / "progress.json"
+        A.CHOIX = t / "choix.json"                       # pas la vraie mémoire des choix
         A.PROGRESS_FILE.write_text(json.dumps({"Serie": {
             "current": "Serie/003 - ​Chapitre 3 Titre 3.cbz", "page": 1,
             "read": ["Serie/001 - ​Chapitre 1 Titre 1.cbz", "Serie/002 - ​Chapitre 2 Titre 2.cbz"]}}))
@@ -327,8 +328,9 @@ class OrganiserTest(BibliothequeTest):
 
     def test_plan_propose(self):
         s = self.client.get("/api/series?id=" + self.vrac.name).json
-        self.assertEqual(s["organiser"], {"nom": "Gintama", "tomes": 3, "a_deplacer": 3, "chapitres": 0,
-                                          "premier_tome": 1, "dernier_tome": 4})
+        self.assertEqual({k: s["organiser"][k] for k in ("nom", "tomes", "a_deplacer", "chapitres", "premier_tome", "dernier_tome", "archives", "pdf")},
+                         {"nom": "Gintama", "tomes": 3, "a_deplacer": 3, "chapitres": 0, "premier_tome": 1, "dernier_tome": 4,
+                          "archives": 0, "pdf": 0})
         self.assertEqual([c["title"] for c in s["chapters"]], ["Tome 01", "Tome 02", "Tome 04"])
         self.assertEqual((s["type_manquants"], s["manquants"]), ("tomes", ["3"]))
 
@@ -369,3 +371,80 @@ class OrganiserTest(BibliothequeTest):
             self.assertEqual(s["chapters"][0]["title"], "Tome 01 · chapitres 1 à 2")
             marques = self.A._marquer_deja([{"chapter_id": "2"}, {"chapter_id": "9"}], "Gintama")
         self.assertEqual([c["deja"] for c in marques], [True, False])
+
+
+class ImportTest(BibliothequeTest):
+    """Archives de plusieurs tomes et PDF ajoutés à la main."""
+
+    def _attendre(self, nom):
+        import time
+        for _ in range(200):
+            if not (self.A._RANGEMENTS.get(nom) or {}).get("en_cours"):
+                return self.A._RANGEMENTS.get(nom)
+            time.sleep(0.05)
+        self.fail("import trop long")
+
+    def setUp(self):
+        super().setUp()
+        self.A.LOT_MIN = 1                                # dans les tests, toute archive .zip est un « paquet »
+        d = self.root / "nanatsu no taizai"
+        d.mkdir()
+        with zipfile.ZipFile(d / "nanatsu no taizai.zip", "w") as z:
+            z.writestr("Nanatsu No Taizai Tome 29/00.png", _jpeg((9, 9, 9)))          # couverture hors chapitre
+            for ch in (232, 233):
+                for k in (1, 2):
+                    z.writestr(f"Nanatsu No Taizai Tome 29/{ch}/{ch}-{k:03d}.png", _jpeg((ch % 255, k, 0)))
+            for k in (1, 2, 3):
+                z.writestr(f"Nanatsu No Taizai Tome 30/Nanatsu.Tome 30.P{k:03d}.jpg", _jpeg((k, 30, 0)))
+        import pymupdf
+        g = self.root / "Gamaran" / "Gamaran.T01.FRENCH.HYBRiD.eBook-X"
+        g.mkdir(parents=True)
+        doc = pymupdf.open()
+        for k in range(3):
+            page = doc.new_page(width=300, height=450)
+            page.insert_image(page.rect, stream=_jpeg((k * 50, 0, 0)))
+        doc.save(g / "Gamaran.T01.FRENCH.HYBRiD.eBook-X.pdf")
+
+    def test_reconnaissance(self):
+        import importer
+        self.assertEqual([importer.numero_tome(n) for n in ("Kenichi.t01-29", "Toriko.Tome.38", "tome 07", "Chapitre 3")],
+                         [None, 38, 7, None])
+        s = self.client.get("/api/series?id=nanatsu no taizai").json
+        self.assertEqual(s["organiser"]["nom"], "Nanatsu no Taizai")
+        self.assertEqual(s["organiser"]["archives"], 1)
+        self.assertTrue(s["chapters"][0]["a_importer"])
+        self.assertEqual(self.client.get("/api/series?id=Gamaran").json["organiser"]["pdf"], 1)
+
+    def test_archive_de_tomes(self):
+        r = self.client.post("/api/organiser", json={"series": "nanatsu no taizai", "nom": "Nanatsu no Taizai"})
+        self.assertTrue(r.json["ok"], r.json)
+        with mock.patch.object(tomes, "chercher", return_value=None):
+            etat = self._attendre("Nanatsu no Taizai")
+        self.assertIn("2 tome(s) importé(s)", etat["message"])
+        s = self.client.get("/api/series?id=Nanatsu no Taizai").json
+        self.assertEqual([(c["title"], c.get("nb")) for c in s["chapters"]],
+                         [("Chapitre 232", 3), ("Chapitre 233", 2), ("Tome 30", None)])  # couverture en tête du 232
+        self.assertFalse(list((self.root / "Nanatsu no Taizai").glob("*.zip")))     # original à la corbeille
+        self.assertTrue(list((self.root / ".corbeille").rglob("nanatsu no taizai.zip")))
+        self.assertFalse((self.root / "Nanatsu no Taizai" / ".import").exists())
+
+    def test_pdf(self):
+        with mock.patch.object(tomes, "chercher", return_value=None):
+            self.client.post("/api/organiser", json={"series": "Gamaran", "nom": "Gamaran"})
+            self._attendre("Gamaran")
+        f = self.root / "Gamaran" / "Tome 01" / "Gamaran - Tome 01.cbz"
+        self.assertEqual(len(__import__("archives").pages(f)), 3)
+        self.assertEqual(sorted(p.name for p in (self.root / "Gamaran").iterdir()), ["Tome 01"])   # dossier du PDF vidé
+
+    def test_apprend_des_choix(self):
+        self.A._noter_choix("Toriko [Scan-FR]", "Toriko Scan", "Toriko")
+        self.assertEqual(self.A._appris("Autre", "One Piece Scan"), "One Piece")          # mot que tu retires
+        self.assertEqual(self.A._appris("Toriko [Scan-FR]", "peu importe"), "Toriko")       # même dossier, même nom
+
+    def test_organisation_automatique(self):
+        with mock.patch.dict(os.environ, {"ORGANISER_AUTO": "1"}), mock.patch.object(tomes, "chercher", return_value=None):
+            self.A._AUTO["dernier"] = 0
+            self.client.get("/api/library")
+            nom = next(n for n in self.A._RANGEMENTS)
+            self._attendre(nom)
+        self.assertIn(nom, ("Gamaran", "Nanatsu no Taizai"))

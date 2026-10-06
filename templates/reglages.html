@@ -38,6 +38,14 @@
     </div>
 
     <div class="panel">
+        <h2>🧹 Séries ajoutées à la main</h2>
+        <div class="sub">Quand tu copies un manga directement dans le dossier des mangas, l'appli propose de l'organiser (nom propre, un dossier par tome, archives et PDF convertis). Elle apprend de tes choix de noms. Coche la case pour qu'elle le fasse toute seule, sans te demander.</div>
+        <div class="field"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="orgAuto" style="width:22px;height:22px;flex:none;margin-top:2px"><span><b>Organiser tout seul</b> les séries ajoutées à la main (vérifié à chaque ouverture de la bibliothèque)</span></label></div>
+        <div class="tabsinfo" id="orgInfo"></div>
+        <div id="orgMsg"></div>
+    </div>
+
+    <div class="panel">
         <h2>🎨 MouFloster (posters)</h2>
         <div class="sub">Pour créer la couverture d'une série avec MouFloster puis l'envoyer directement ici. <b>1.</b> Indique l'adresse de MouFloster : un bouton « 🎨 Créer avec MouFloster » apparaît sur la page de chaque série. Si tu y accèdes aussi de l'extérieur (proxy, nom de domaine), mets les deux : l'appli prend l'adresse locale quand tu es chez toi, l'adresse perso sinon. <b>2.</b> Génère une clé API et colle-la dans MouFloster → ⚙️ Réglages → MouFlanga (avec l'adresse de MouFlanga).</div>
         <div class="field"><label for="mfsUrl">Adresse de MouFloster sur le réseau local</label><input type="text" id="mfsUrl" placeholder="http://192.168.1.141:8000" autocapitalize="off" spellcheck="false"></div>
@@ -172,6 +180,12 @@ $('cleSupprimer').addEventListener('click', async () => {
     say('cleMsg', r.message || r.error, r.ok); $('cleBox').style.display = 'none'; loadCle();
 });
 loadCle();
+(async () => {
+    const o = await api('/api/settings/organiser-auto');
+    $('orgAuto').checked = !!o.actif;
+    $('orgInfo').textContent = o.choix ? o.choix + ' choix de nom retenu(s) pour mieux proposer.' : 'Aucun choix retenu pour l\'instant.';
+    $('orgAuto').addEventListener('change', async () => { const r = await post('/api/settings/organiser-auto', {actif: $('orgAuto').checked}); say('orgMsg', r.message || r.error, r.ok); });
+})();
 const PREFS = {dir: ['mfDir', 'rtl'], mode: ['mfMode', 'page'], fit: ['mfFit', 'height']};
 function getPref(k) { try { return localStorage.getItem(PREFS[k][0]) || PREFS[k][1]; } catch (e) { return PREFS[k][1]; } }
 for (const k of Object.keys(PREFS)) {

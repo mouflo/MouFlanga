@@ -23,6 +23,8 @@ Appli Flask (bibliothèque et lecteur de mangas) + scraper Japscan. Dossier `/op
 
 - Séries ajoutées à la main : `_plan_organiser()` (nom proposé d'après les noms de fichiers, crochets et « T01 » retirés) et `/api/organiser` (`_organiser()` : renommage, tomes complets déplacés dans `Tome NN/`, progression suivie, puis rangement des chapitres en arrière-plan). `_numero_tome()` reconnaît un tome complet ; `tomes_cbz._reecrire` refuse d'écraser un fichier qui n'est pas un fichier de tome.
 
+- Import (`importer.py`) : PDF et archives > 400 Mo (`LOT_MIN`) = « à importer » (affichés 📦, non lisibles) ; extraction avec `bsdtar` dans `<série>/.import/` sur le NAS (le disque du conteneur est petit), tome = dossier « …Tome NN… », chapitre = sous-dossier numérique ; PDF via PyMuPDF. Choix de noms retenus dans `data/organiser-choix.json` (`_appris`), option `ORGANISER_AUTO`.
+
 ## Le scraper Japscan (`japscan_scraper.py`)
 - Navigateur au choix dans ⚙ Réglages : Chrome (Patchright, profil `data/navigateur`) ou Camoufox (Firefox, profil `data/navigateur-firefox`), sous écran virtuel Xvfb ; clics réels avec xdotool.
 - Cloudflare impose une vérification interactive : la page `/verification` montre le navigateur du serveur (capture) et relaie clics, défilement et glisser du doigt ; alerte Telegram.

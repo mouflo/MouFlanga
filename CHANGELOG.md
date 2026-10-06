@@ -4,6 +4,8 @@
 - ⚙️ Réglages → Alertes Telegram : champ « Sujet du groupe » (groupe Telegram à sujets) et bouton « 🔎 Détecter le groupe et le sujet » ; vide = comportement d'avant (`TELEGRAM_THREAD_ID` dans `data/secrets.env`, propre à MouFlanga)
 
 ## Tomes
+- Import des séries ajoutées à la main : les grosses archives qui regroupent plusieurs tomes (.rar, .zip, .7z) sont extraites en arrière-plan et donnent un fichier par tome (avec les chapitres quand ils sont dans des dossiers séparés) ; les PDF sont convertis (images d'origine reprises sans perte) ; les originaux vont à la corbeille
+- L'appli apprend de tes choix de noms (même dossier → même nom ; mots que tu retires) et met les majuscules (« nanatsu no taizai » → « Nanatsu no Taizai ») ; réglage « Organiser tout seul » dans ⚙️ Réglages
 - Série ajoutée à la main (copiée directement dans le dossier des mangas) : bandeau « 🧹 Organiser » sur sa page ; propose un nom propre (« Gintama Integrale T01-77 [FR][CBZ] » → « Gintama », modifiable), range chaque tome complet dans « Tome NN/<Série> - Tome NN.cbz » (simples déplacements) et regroupe les chapitres en tomes ; progression et couverture gardées
 - Tomes complets reconnus dans les noms de fichiers (« T01 », « Tome 1 », « Vol. 1 ») : affichés « Tome 01 · chapitres 1 à 8 », tomes manquants signalés, leurs chapitres comptés comme déjà téléchargés ; un tome complet n'est jamais réécrit
 - Page d'une série allégée : titre et « ▶ Reprendre » à droite de la couverture ; appui sur la couverture pour la changer (image, MouFloster, automatique) ; « ⋯ » pour tout marquer lu / non lu, ranger en tomes, supprimer ; les chapitres manquants s'affichent tout seuls en une ligne, seulement s'il en manque

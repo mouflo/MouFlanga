@@ -85,6 +85,8 @@
     if (o) {
       var quoi = [];
       if (o.tomes) quoi.push(o.tomes + ' tome' + (o.tomes > 1 ? 's' : '') + ' complet' + (o.tomes > 1 ? 's' : '') + (o.premier_tome != null && o.tomes > 1 ? ' (' + o.premier_tome + ' à ' + o.dernier_tome + ')' : '') + ' rangé' + (o.tomes > 1 ? 's' : '') + ' chacun dans son dossier « Tome NN »');
+      if (o.archives) quoi.push(o.archives + ' archive' + (o.archives > 1 ? 's' : '') + ' (' + String(o.taille_go).replace('.', ',') + ' Go) extraite' + (o.archives > 1 ? 's' : '') + ' : un fichier par tome, avec les chapitres quand ils sont séparés (plusieurs minutes, en arrière-plan)');
+      if (o.pdf) quoi.push(o.pdf + ' PDF converti' + (o.pdf > 1 ? 's' : '') + ' en fichier de tome');
       if (o.chapitres) quoi.push(o.chapitres + ' chapitre' + (o.chapitres > 1 ? 's' : '') + ' regroupé' + (o.chapitres > 1 ? 's' : '') + ' en tomes (répartition cherchée sur Internet)');
       $('sOrgaTexte').innerHTML = '<b>Série ajoutée à la main.</b> « Organiser » la renomme' + (quoi.length ? ', puis : ' + esc(quoi.join(' ; ')) : '') + '. Ta progression et ta couverture sont gardées.';
       if (document.activeElement !== $('sOrgaNom')) $('sOrgaNom').value = o.nom;
@@ -179,7 +181,11 @@
         else await openSeries(current.id, false);
         return;
       }
-      var row = e.target.closest('.chap'); if (row) readChapter(row.dataset.path);
+      var row = e.target.closest('.chap');
+      if (row && current.chapters.some(function (c) { return c.key === row.dataset.path && c.a_importer; })) {
+        note('sMsg', 'Ce fichier doit d\'abord être converti : appuie sur « 🧹 Organiser » en haut de la page.', 'warn'); return;
+      }
+      if (row) readChapter(row.dataset.path);
     });
     async function markAll(v) { await post('/api/mark', {series: current.id, all: true, read: v}); await openSeries(current.id, false); }
     $('sAllRead').addEventListener('click', function () { markAll(true); });
