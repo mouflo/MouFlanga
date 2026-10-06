@@ -129,9 +129,9 @@ async function loadChapters() {
 
 function renderChapters() {
     const list = $("chapters-list");
-    list.innerHTML = state.chapters.map(ch => `
+    list.innerHTML = state.chapters.map((ch, i) => `
         <div class="chapter-item">
-            <input type="checkbox" value="${ch.title}" class="chapter-checkbox" checked>
+            <input type="checkbox" value="${i}" class="chapter-checkbox" checked>
             <div class="chapter-item-label">
                 <div class="chapter-item-name">${ch.title}</div>
             </div>
@@ -141,15 +141,40 @@ function renderChapters() {
     $$(".chapter-checkbox").forEach(cb => {
         cb.addEventListener("change", updateChapterSelection);
     });
+    // Tout est coché au départ : on le prend en compte tout de suite (sinon « Suivant » reste grisé)
+    updateChapterSelection();
 }
 
 function updateChapterSelection() {
-    const checked = $$(".chapter-checkbox:checked");
-    selectedChapters = state.chapters.filter(ch =>
-        [...$$(".chapter-checkbox")].find(cb => cb.value === ch.title && cb.checked)
-    );
+    // On retrouve les chapitres par leur position (deux chapitres peuvent avoir le même titre)
+    selectedChapters = [...$$(".chapter-checkbox")]
+        .filter(cb => cb.checked)
+        .map(cb => state.chapters[Number(cb.value)])
+        .filter(Boolean);
     $("btn-next-metadata").disabled = selectedChapters.length === 0;
+    $("chap-count").textContent = `${selectedChapters.length} chapitre(s) sélectionné(s) sur ${state.chapters.length}`;
 }
+
+function cocherChapitres(test) {
+    $$(".chapter-checkbox").forEach(cb => {
+        const ch = state.chapters[Number(cb.value)];
+        cb.checked = test(ch);
+    });
+    updateChapterSelection();
+}
+
+$("btn-chap-all").addEventListener("click", () => cocherChapitres(() => true));
+$("btn-chap-none").addEventListener("click", () => cocherChapitres(() => false));
+$("btn-chap-range").addEventListener("click", () => {
+    const de = parseFloat($("chap-from").value);
+    const a = parseFloat($("chap-to").value);
+    if (isNaN(de) && isNaN(a)) return;
+    // On compare avec le numéro du chapitre sur le site (chapter_id), pas avec sa position
+    cocherChapitres(ch => {
+        const n = parseFloat(ch.chapter_id);
+        return !isNaN(n) && (isNaN(de) || n >= de) && (isNaN(a) || n <= a);
+    });
+});
 
 $("btn-back-manga").addEventListener("click", () => {
     $("step-chapters").style.display = "none";

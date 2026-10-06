@@ -54,6 +54,17 @@
                 <h2>Étape 2: Sélectionner les chapitres</h2>
                 <p class="sub" id="manga-title-display"></p>
 
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px;">
+                    <button class="mou-btn secondary" id="btn-chap-all" type="button">Tout cocher</button>
+                    <button class="mou-btn secondary" id="btn-chap-none" type="button">Tout décocher</button>
+                    <span class="sub" style="margin: 0;">Du chapitre</span>
+                    <input type="number" id="chap-from" min="1" inputmode="numeric" style="width: 70px;">
+                    <span class="sub" style="margin: 0;">au</span>
+                    <input type="number" id="chap-to" min="1" inputmode="numeric" style="width: 70px;">
+                    <button class="mou-btn secondary" id="btn-chap-range" type="button">Appliquer</button>
+                </div>
+                <p class="sub" id="chap-count"></p>
+
                 <div id="chapters-list" class="chapters-list"></div>
 
                 <div style="margin-top: 20px; display: flex; gap: 10px;">
