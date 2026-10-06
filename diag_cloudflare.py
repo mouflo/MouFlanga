@@ -66,20 +66,15 @@ async def main():
             await etat_page(page, r, "A1 : page d'accueil")
 
             r = await page.goto(URL_SERIE, wait_until="domcontentloaded", timeout=30000)
-            await asyncio.sleep(10)
-            await etat_page(page, r, "A2 : fiche série (adresse tapée), après 10 s")
-
-            # Essai B : retour à l'accueil, puis clic sur un lien comme un vrai visiteur
-            r = await page.goto(JAPSCAN_URL + "/", wait_until="domcontentloaded", timeout=30000)
-            await asyncio.sleep(3)
-            lien = page.locator("a[href*='/manga/dandadan']").first
-            if await lien.count():
-                await lien.scroll_into_view_if_needed()
-                await lien.click()
-                await asyncio.sleep(12)
-                await etat_page(page, None, f"B : après clic sur un lien de l'accueil ({page.url})")
-            else:
-                print("\n--- B : aucun lien dandadan trouvé sur l'accueil ---")
+            titre = await attendre_cloudflare(page, 60)
+            await etat_page(page, r, f"A2 : fiche série après attente (titre final : {titre!r})")
+            try:
+                await page.screenshot(path="/tmp/diag_cf.png")
+                print("Capture : /tmp/diag_cf.png")
+            except Exception:
+                pass
+            freres = [f.url for f in page.frames]
+            print(f"Cadres : {freres}")
         finally:
             await browser.close()
 
