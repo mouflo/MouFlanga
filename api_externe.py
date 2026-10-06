@@ -102,7 +102,8 @@ def init_app(app, base_dir, version_fn, series_fn, couverture_fn, enregistrer_fn
     def cle_api_etat():
         fin = os.getenv("MOUFLANGA_CLE_API_FIN", "").strip()
         return jsonify({"configured": configuree(), "hint": ("…" + fin) if fin and configuree() else "",
-                        "moufloster": os.getenv("MOUFLOSTER_URL", "").strip()})
+                        "moufloster": os.getenv("MOUFLOSTER_URL", "").strip(),
+                        "moufloster_externe": os.getenv("MOUFLOSTER_URL_EXTERNE", "").strip()})
 
     @app.route("/api/settings/cle-api", methods=["POST"])
     def cle_api_action():
@@ -125,9 +126,17 @@ def init_app(app, base_dir, version_fn, series_fn, couverture_fn, enregistrer_fn
 
     @app.route("/api/settings/moufloster", methods=["POST"])
     def moufloster_adresse():
-        url = str((request.get_json(silent=True) or {}).get("url", "")).strip().rstrip("/")
-        if url and (not url.startswith(("http://", "https://")) or set('"$`\\ \n\r') & set(url)):
-            return jsonify({"ok": False, "error": "L'adresse doit ressembler à http://192.168.1.141:8000"}), 400
-        write_secret(fichier_secrets, "MOUFLOSTER_URL", url)
-        os.environ["MOUFLOSTER_URL"] = url
-        return jsonify({"ok": True, "message": "Adresse enregistrée." if url else "Adresse effacée : le bouton MouFloster est caché."})
+        # Deux adresses : celle du réseau local (rapide) et l'adresse perso (proxy, depuis l'extérieur).
+        # La page choisit selon la façon dont on est connecté à MouFlanga.
+        body = request.get_json(silent=True) or {}
+        adresses = {"MOUFLOSTER_URL": str(body.get("url", "")).strip().rstrip("/"),
+                    "MOUFLOSTER_URL_EXTERNE": str(body.get("url_externe", "")).strip().rstrip("/")}
+        for url in adresses.values():
+            if url and (not url.startswith(("http://", "https://")) or set('"$`\\ \n\r') & set(url)):
+                return jsonify({"ok": False, "error": f"Adresse invalide : « {url} » (elle commence par http:// ou https://)"}), 400
+        for nom, url in adresses.items():
+            write_secret(fichier_secrets, nom, url)
+            os.environ[nom] = url
+        if not any(adresses.values()):
+            return jsonify({"ok": True, "message": "Adresses effacées : le bouton MouFloster est caché."})
+        return jsonify({"ok": True, "message": "Adresses enregistrées."})

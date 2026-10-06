@@ -260,7 +260,8 @@ def api_series():
                     "manquants": trous, "premier": premier, "dernier": dernier,
                     "cover_perso": name != "(Sans série)" and (MANGA_DIR / name / COUVERTURE_PERSO).is_file(),
                     "cover_v": int(_couverture_mtime(name)),
-                    "moufloster": os.getenv("MOUFLOSTER_URL", "").strip()})
+                    "moufloster": os.getenv("MOUFLOSTER_URL", "").strip(),
+                    "moufloster_externe": os.getenv("MOUFLOSTER_URL_EXTERNE", "").strip()})
 
 
 @app.route("/api/cover")

@@ -39,9 +39,10 @@
 
     <div class="panel">
         <h2>🎨 MouFloster (posters)</h2>
-        <div class="sub">Pour créer la couverture d'une série avec MouFloster puis l'envoyer directement ici. <b>1.</b> Indique l'adresse de MouFloster : un bouton « 🎨 Créer avec MouFloster » apparaît sur la page de chaque série. <b>2.</b> Génère une clé API et colle-la dans MouFloster → ⚙️ Réglages → MouFlanga (avec l'adresse de MouFlanga).</div>
-        <div class="field"><label for="mfsUrl">Adresse de MouFloster</label><input type="text" id="mfsUrl" placeholder="http://192.168.1.141:8000" autocapitalize="off" spellcheck="false"></div>
-        <div class="row"><button class="btn" id="mfsUrlSave">Enregistrer l'adresse</button></div>
+        <div class="sub">Pour créer la couverture d'une série avec MouFloster puis l'envoyer directement ici. <b>1.</b> Indique l'adresse de MouFloster : un bouton « 🎨 Créer avec MouFloster » apparaît sur la page de chaque série. Si tu y accèdes aussi de l'extérieur (proxy, nom de domaine), mets les deux : l'appli prend l'adresse locale quand tu es chez toi, l'adresse perso sinon. <b>2.</b> Génère une clé API et colle-la dans MouFloster → ⚙️ Réglages → MouFlanga (avec l'adresse de MouFlanga).</div>
+        <div class="field"><label for="mfsUrl">Adresse de MouFloster sur le réseau local</label><input type="text" id="mfsUrl" placeholder="http://192.168.1.141:8000" autocapitalize="off" spellcheck="false"></div>
+        <div class="field"><label for="mfsUrlExt">Adresse perso de MouFloster (depuis l'extérieur, facultatif)</label><input type="text" id="mfsUrlExt" placeholder="https://moufloster.mondomaine.fr" autocapitalize="off" spellcheck="false"></div>
+        <div class="row"><button class="btn" id="mfsUrlSave">Enregistrer les adresses</button></div>
         <div id="mfsUrlMsg"></div>
         <div class="state" id="cleState" style="margin-top:14px"></div>
         <div class="field" id="cleBox" style="display:none"><label for="cleValeur">Nouvelle clé API (affichée une seule fois)</label>
@@ -138,10 +139,11 @@ loadTelegram();
 async function loadCle() {
     const c = await api('/api/settings/cle-api');
     $('mfsUrl').value = c.moufloster || '';
+    $('mfsUrlExt').value = c.moufloster_externe || '';
     $('cleState').textContent = c.configured ? 'Clé API active : ' + c.hint : 'Aucune clé API : aucune autre appli ne peut envoyer de couverture.';
     $('cleSupprimer').hidden = !c.configured;
 }
-simpleSave('mfsUrlSave', 'mfsUrlMsg', '/api/settings/moufloster', () => ({url: $('mfsUrl').value}));
+simpleSave('mfsUrlSave', 'mfsUrlMsg', '/api/settings/moufloster', () => ({url: $('mfsUrl').value, url_externe: $('mfsUrlExt').value}));
 $('cleGenerer').addEventListener('click', async () => {
     if ($('cleSupprimer').hidden === false && !confirm('Générer une nouvelle clé ? L\'ancienne ne marchera plus : il faudra coller la nouvelle dans MouFloster.')) return;
     const r = await post('/api/settings/cle-api', {action: 'generer'});

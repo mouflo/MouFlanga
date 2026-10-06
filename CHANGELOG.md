@@ -1,6 +1,7 @@
 # Historique des versions
 
 ## Couverture créée avec MouFloster
+- Deux adresses de MouFloster dans ⚙️ Réglages : réseau local et adresse perso (proxy) ; le bouton prend l'adresse locale quand on est connecté à MouFlanga en local (192.168…), l'adresse perso sinon
 - Page d'une série : bouton « 🎨 Créer avec MouFloster » (si l'adresse de MouFloster est réglée) : MouFloster s'ouvre avec la recherche déjà faite, puis propose de revenir ici une fois la couverture envoyée
 - ⚙️ Réglages → MouFloster : adresse de MouFloster et **clé API** générée par l'appli (montrée une seule fois, seule son empreinte est gardée) ; les autres applis l'utilisent pour lister les séries et envoyer une couverture (`/api/externe/…`, 10 mauvais essais → blocage 10 minutes)
 

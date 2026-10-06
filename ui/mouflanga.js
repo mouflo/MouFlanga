@@ -71,8 +71,9 @@
     $('sCoverPick').hidden = !perso;
     $('sCoverAuto').hidden = !s.cover_perso;
     // MouFloster s'ouvre avec la recherche déjà faite ; une fois le poster envoyé, il propose de revenir ici
-    $('sCoverMfs').hidden = !(perso && s.moufloster);
-    if (s.moufloster) $('sCoverMfs').href = s.moufloster.replace(/\/$/, '') + '/?mouflanga=' + encodeURIComponent(s.id) +
+    var mfs = adresseMoufloster(s);
+    $('sCoverMfs').hidden = !(perso && mfs);
+    if (mfs) $('sCoverMfs').href = mfs.replace(/\/$/, '') + '/?mouflanga=' + encodeURIComponent(s.id) +
       '&q=' + encodeURIComponent(s.id) + '&retour=' + encodeURIComponent(location.origin + location.pathname + '#' + encodeURIComponent(s.id));
     $('sMissingBox').hidden = true;
     $('sMeta').textContent = s.chapters.length + ' fichier' + (s.chapters.length > 1 ? 's' : '') + ' · ' + read + ' lu' + (read > 1 ? 's' : '');
@@ -86,6 +87,14 @@
         '<button class="tog del" data-del="' + esc(c.path) + '" title="Supprimer ce chapitre">🗑</button></div>';
     }).join('');
     note('sMsg', (!s.rar && s.chapters.some(function (c) { return /\.(cbr|rar)$/i.test(c.path); })) ? 'Les vrais fichiers RAR (.cbr) ne s\'ouvrent que si le serveur a « rarfile » et un outil de décompression : voir le Journal si une page refuse de s\'ouvrir.' : '', 'warn');
+  }
+
+  // Adresse de MouFloster : celle du réseau local si on est connecté à MouFlanga en local (192.168…),
+  // sinon l'adresse perso (proxy) ; à défaut, celle qui existe
+  function adresseMoufloster(s) {
+    var h = location.hostname;
+    var local = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h) || /\.(local|lan|home)$/.test(h);
+    return local ? (s.moufloster || s.moufloster_externe) : (s.moufloster_externe || s.moufloster);
   }
 
   function readChapter(path) {
