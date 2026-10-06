@@ -11,7 +11,6 @@ let currentJobId = null;
 const state = {
     mangas: [],
     chapters: [],
-    metadata: {}
 };
 
 // ============================================================================
@@ -201,31 +200,19 @@ $("btn-next-metadata").addEventListener("click", () => {
 // ============================================================================
 
 function generateMetadataForm() {
-    const form = $("metadata-form");
-
-    // Divise les chapitres en tomes (estimation: 10 chapitres par tome)
-    const chaptersPerTome = 10;
-    let html = '';
-
-    for (let i = 0; i < selectedChapters.length; i += chaptersPerTome) {
-        const tomeNum = Math.floor(i / chaptersPerTome) + 1;
-        const chaptersInTome = selectedChapters.slice(i, i + chaptersPerTome).length;
-
-        html += `
-            <div class="tome-group">
-                <h3>Tome ${tomeNum}</h3>
-                <div class="field">
-                    <label>Chapitres dans ce tome</label>
-                    <input type="number" class="tome-chapters" value="${chaptersInTome}" min="1">
-                </div>
-                <small style="color: var(--muted);">
-                    Chapitres: ${i + 1} - ${Math.min(i + chaptersPerTome, selectedChapters.length)}
-                </small>
-            </div>
-        `;
-    }
-
-    form.innerHTML = html;
+    // Récapitulatif avant de lancer : combien de chapitres, lesquels, et où ils seront rangés
+    const nums = selectedChapters.map(ch => ch.chapter_id).filter(Boolean);
+    const deja = state.chapters.filter(ch => ch.deja).length;
+    const titres = selectedChapters.slice(0, 8).map(ch => `<li>${echapper(ch.title)}</li>`).join("")
+        + (selectedChapters.length > 8 ? `<li>… et ${selectedChapters.length - 8} autre(s)</li>` : "");
+    $("metadata-form").innerHTML = `
+        <div class="tome-group">
+            <h3>${echapper(selectedManga.title)}</h3>
+            <p><b>${selectedChapters.length} chapitre(s)</b>${nums.length > 1 ? ` (du ${echapper(nums[0])} au ${echapper(nums[nums.length - 1])})` : ""}
+               ${deja ? `· ${deja} déjà dans ta bibliothèque` : ""}</p>
+            <ul style="margin: 8px 0 0; padding-left: 20px; color: var(--muted);">${titres}</ul>
+            <p style="color: var(--muted); margin-top: 10px;">Un fichier .cbz par chapitre, rangé dans le dossier « ${echapper(selectedManga.title)} » de ta bibliothèque.</p>
+        </div>`;
 
     $("step-chapters").style.display = "none";
     $("step-metadata").style.display = "block";
