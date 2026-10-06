@@ -658,6 +658,18 @@ class JapscanScraper:
             page = await context.new_page()
             _surveiller(page)
 
+            # Requêtes de données (XHR/fetch) faites par la page : la liste complète des chapitres
+            # est peut-être chargée à part
+            xhr = []
+
+            def _noter_xhr(r):
+                try:
+                    if r.request.resource_type in ("xhr", "fetch") and "cloudflare" not in r.url and len(xhr) < 40:
+                        xhr.append((r.status, r.url.split("?")[0]))
+                except Exception:
+                    pass
+            page.on("response", _noter_xhr)
+
             try:
                 # domcontentloaded au lieu de networkidle pour éviter les timeouts
                 await self._chauffer(page)
@@ -679,6 +691,14 @@ class JapscanScraper:
                         break
                     await asyncio.sleep(2)
                 await asyncio.sleep(1)
+                # Défilement progressif : certaines listes ne se remplissent qu'au passage de l'écran
+                try:
+                    for _ in range(10):
+                        await page.mouse.wheel(0, 1500)
+                        await asyncio.sleep(0.5)
+                    await asyncio.sleep(2)
+                except Exception:
+                    pass
                 html = await page.content()
                 logger.info(f"Fiche série chargée : titre={title!r}, {len(html)} caractères")
 
@@ -708,6 +728,30 @@ class JapscanScraper:
                     zones = [(e.name, " ".join(e.get("class", []))[:40], len(e.find_all("a")))
                              for e in soup.find_all(True, class_=re.compile("chapter|chapitre|episode", re.I))][:6]
                     _noter(f"  zones « chapitres » : {zones}")
+                    # Regroupe les liens par forme (les chiffres deviennent N) pour voir les familles de liens
+                    formes = {}
+                    for h, t in liens:
+                        f = re.sub(r"\d+", "N", re.sub(r"^https?://[^/]+", "", h))[:60]
+                        formes.setdefault(f, []).append((h, t))
+                    for f, lst in sorted(formes.items(), key=lambda kv: -len(kv[1]))[:8]:
+                        avec = [x for x in lst if x[1]]
+                        ex = (avec or lst)[-1]
+                        _noter(f"  forme {f} : {len(lst)} lien(s), {len(avec)} avec texte ; ex. {re.sub(r'^https?://[^/]+', '', ex[0])[:50]} → « {ex[1]} »")
+                    zone = soup.find(True, class_="list_chapters")
+                    if zone is not None:
+                        parent = zone.parent
+                        brut = re.sub(r"\s+", " ", str(zone))[:350]
+                        p_classe = " ".join(parent.get("class", []))[:60]
+                        p_id = parent.get("id", "")
+                        p_n = len(parent.find_all(True, class_="list_chapters"))
+                        _noter(f"  1re zone : {brut}")
+                        _noter(f"  parent : <{parent.name} class={p_classe!r} id={p_id!r}> : {p_n} zone(s) « list_chapters »")
+                    boutons = [e.get_text(' ', strip=True)[:25] for e in soup.find_all(["button", "a"])
+                               if re.search(r"chapitre|voir|plus|tous|afficher", e.get_text(' ', strip=True), re.I)
+                               and len(e.get_text(strip=True)) < 40][:8]
+                    _noter(f"  boutons/liens « voir plus » : {boutons}")
+                    for st, u in xhr[:10]:
+                        _noter(f"  requête de données {st} : {u[:90]}")
                 except Exception as e:
                     _noter(f"  diagnostic des liens impossible : {e.__class__.__name__}")
                 for item in soup.find_all("a", href=True):
