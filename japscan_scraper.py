@@ -152,6 +152,44 @@ _JS_ZONES_VISIBLES = r"""() => [...document.querySelectorAll('.list_chapters')].
   return {items};
 })"""
 
+
+# Décrit ce que contient la page du lecteur (pour le rapport)
+_JS_INFO_LECTEUR = r"""() => {
+  const court = u => (u || '').split('?')[0].replace(/^https?:\/\//, '').slice(0, 80);
+  const imgs = [...document.querySelectorAll('img')];
+  const cans = [...document.querySelectorAll('canvas')];
+  const gros = imgs.filter(i => i.naturalWidth >= 300 && i.naturalHeight >= 300);
+  return {
+    titre: document.title, url: location.pathname,
+    nImg: imgs.length, nImgGrandes: gros.length, nCanvas: cans.length,
+    grandes: gros.slice(0, 4).map(i => ({src: court(i.currentSrc || i.src), w: i.naturalWidth, h: i.naturalHeight, cls: (i.className || '').toString().slice(0, 30), parent: (i.parentElement && (i.parentElement.id || i.parentElement.className) || '').toString().slice(0, 30)})),
+    canvas: cans.slice(0, 4).map(c => ({w: c.width, h: c.height, cls: (c.className || '').toString().slice(0, 30), id: c.id})),
+    texte: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 160),
+  };
+}"""
+
+# Extrait les pages telles qu'on les voit : canvas (images remises en ordre par le site) ou grandes images
+_JS_EXTRAIRE_PAGES = r"""async () => {
+  const out = [];
+  const els = [...document.querySelectorAll('canvas, img')].filter(e => {
+    const w = e.naturalWidth || e.width, h = e.naturalHeight || e.height;
+    return w >= 300 && h >= 300;
+  });
+  for (const e of els) {
+    try {
+      if (e.tagName === 'CANVAS') {
+        out.push({type: 'canvas', data: e.toDataURL('image/png')});
+      } else {
+        const r = await fetch(e.currentSrc || e.src, {credentials: 'include'});
+        const b = await r.blob();
+        const data = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); });
+        out.push({type: 'img', data});
+      }
+    } catch (err) { out.push({type: 'erreur', data: String(err).slice(0, 80)}); }
+  }
+  return out;
+}"""
+
 _HISTORIQUE = []     # derniers événements de vérification (pour le rapport de l'appli)
 
 
@@ -852,13 +890,17 @@ class JapscanScraper:
                 return []
 
     async def download_chapter_pages(self, chapter_url: str) -> list[bytes]:
-        """Télécharge les pages en interceptant le flux réseau déchiffré."""
+        """Récupère les pages d'un chapitre : d'abord telles qu'affichées (canvas / grandes images),
+        sinon en interceptant les images qui passent sur le réseau."""
         logger.info(f"Début de l'aspiration du chapitre : {chapter_url}")
         captured_images = {}
+        vues = []          # images vues passer sur le réseau (pour le rapport)
+        pages_dom = []
 
         async with async_playwright() as p:
             browser, context = await self._init_browser(p)
             page = await context.new_page()
+            _surveiller(page)
 
             # Listener d'interception des requêtes d'images
             async def on_response(response):
@@ -866,10 +908,12 @@ class JapscanScraper:
                     content_type = response.headers.get("content-type", "")
                     if "image" in content_type and response.status == 200:
                         url = response.url
-                        # Exclure les éléments d'interface (logos, pubs, avatars, favicons)
                         chemin = url.split("?")[0].lower()
+                        body = await response.body()
+                        if len(vues) < 12:
+                            vues.append(f"{len(body) // 1024} Ko {content_type.split(';')[0]} {re.sub(r'^https?://', '', chemin)[:70]}")
+                        # Exclure les éléments d'interface (logos, pubs, avatars, favicons)
                         if not any(k in chemin for k in ["logo", "avatar", "banner", "/ads/", "/ad/", "favicon", "/icons/"]):
-                            body = await response.body()
                             if len(body) > 15000:  # Exclure les petites images/icônes (< 15 Ko)
                                 captured_images[url] = body
                 except Exception:
@@ -880,24 +924,80 @@ class JapscanScraper:
             try:
                 await self._chauffer(page)
                 captured_images.clear()  # ignore les images de la page d'accueil
+                vues.clear()
                 await page.goto(chapter_url, wait_until="domcontentloaded", timeout=30000)
-                await attendre_cloudflare(page, humain=True)
+                title = await attendre_cloudflare(page, humain=True)
+
+                # Après une vérification, le site affiche « Loading… » avant la vraie page
+                debut = time.time()
+                while time.time() - debut < 40:
+                    try:
+                        title = (await page.title()) or ""
+                    except Exception:
+                        title = "loading"   # la page se recharge
+                    if title and not title.lower().startswith("loading") and not _titre_defi(title):
+                        break
+                    await asyncio.sleep(2)
                 await asyncio.sleep(4)  # Laisser charger le lecteur JS
 
-                # Simuler un défilement progressif vers le bas pour forcer le chargement de toutes les pages
+                # Défilement progressif vers le bas pour forcer le chargement de toutes les pages
                 logger.info("Défilement de la page pour forcer le lazy-loading...")
                 for _ in range(15):
                     await page.mouse.wheel(0, 1200)
                     await asyncio.sleep(0.6)
-
                 await asyncio.sleep(2)
+
+                # Ce que contient la page (pour le rapport)
+                try:
+                    info = await page.evaluate(_JS_INFO_LECTEUR)
+                    _noter(f"lecteur : {info.get('titre')!r} {info.get('url')} · {info.get('nImg')} img "
+                           f"({info.get('nImgGrandes')} grandes), {info.get('nCanvas')} canvas")
+                    for g in info.get("grandes", []):
+                        _noter(f"  grande image : {g}")
+                    for c in info.get("canvas", []):
+                        _noter(f"  canvas : {c}")
+                    _noter(f"  texte de la page : {info.get('texte')}")
+                except Exception as e:
+                    _noter(f"lecteur : lecture de la page impossible ({e.__class__.__name__})")
+                for v in vues:
+                    _noter(f"  image réseau : {v}")
+
+                # Pages telles qu'affichées (les canvas contiennent les images déjà remises en ordre)
+                try:
+                    brut = await page.evaluate(_JS_EXTRAIRE_PAGES)
+                    _noter(f"  extraction de la page : {[(b['type'], len(b['data'])) for b in brut][:6]}")
+                    pages_dom = brut
+                except Exception as e:
+                    _noter(f"  extraction de la page impossible : {e.__class__.__name__}")
+
                 await browser.close()
 
             except Exception as e:
                 logger.error(f"Erreur lors du chargement du chapitre {chapter_url} : {e}")
-                await browser.close()
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
 
-        # Tri des images par URL/ordre de capture
+        import base64
+        from_dom, vus_hash = [], set()
+        for b in pages_dom:
+            if b.get("type") not in ("canvas", "img") or "," not in b.get("data", ""):
+                continue
+            try:
+                octets = base64.b64decode(b["data"].split(",", 1)[1])
+            except Exception:
+                continue
+            h = hashlib.md5(octets).hexdigest()
+            if len(octets) > 15000 and h not in vus_hash:
+                vus_hash.add(h)
+                from_dom.append(octets)
+        a_canvas = any(b.get("type") == "canvas" for b in pages_dom)
+        if from_dom and (a_canvas or not captured_images):
+            logger.info(f"✓ {len(from_dom)} pages lues dans la page ({'canvas' if a_canvas else 'images'}).")
+            return from_dom
+
+        # Sinon : images interceptées sur le réseau, triées par nom
         def _naturel(u):
             return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", u.split("?")[0])]
         sorted_urls = sorted(captured_images.keys(), key=_naturel)
@@ -957,14 +1057,22 @@ class JapscanScraper:
         download_jobs[job_id] = job
 
         try:
+            echecs_de_suite = 0
             for idx, chapter in enumerate(chapters):
+                if job.get("annule"):
+                    job["status"] = "annule"
+                    logger.info(f"Téléchargement annulé : {job_id}")
+                    break
                 titre = chapter.get("title") or f"Chapitre {idx + 1}"
+                job["en_cours"] = titre
                 try:
                     pages = asyncio.run(self.download_chapter_pages(chapter["url"]))
                     if not pages:
                         logger.warning(f"Aucune page pour {titre}")
                         job["failed"].append(titre)
+                        echecs_de_suite += 1
                     else:
+                        echecs_de_suite = 0
                         num = int(chapter.get("num") or idx + 1)
                         fichier = self.output_dir / f"{num:03d} - {nom_sur(titre)}.cbz"
                         if self.create_cbz(pages, fichier):
@@ -980,8 +1088,16 @@ class JapscanScraper:
                 if progress_callback:
                     progress_callback(job)
 
-            job["status"] = "completed"
-            logger.info(f"Téléchargement terminé : {job_id}")
+                if echecs_de_suite >= 3:
+                    job["status"] = "error"
+                    job["error"] = ("3 chapitres de suite sans aucune page : arrêt du téléchargement "
+                                    "(Cloudflare ou lecteur du site). Envoie le rapport pour qu'on cherche pourquoi.")
+                    logger.error(job["error"])
+                    break
+
+            if job["status"] == "running":
+                job["status"] = "completed"
+                logger.info(f"Téléchargement terminé : {job_id}")
         except Exception as e:
             job["status"] = "error"
             job["error"] = str(e)

@@ -5,6 +5,8 @@
 - Chrome : les adresses *.challenges.cloudflare.com sont redirigées vers IPv4 (le serveur n'a pas d'IPv6 et `brunhild.challenges.cloudflare.com` n'existe qu'en IPv6) ; avec Camoufox, la même redirection est écrite dans /etc/hosts si le serveur en a le droit
 - Après la vérification, l'appli attend la vraie fiche série (page « Loading… ») avant de chercher les chapitres
 - Rapport : historique des échecs réseau du défi, empreinte du navigateur, test DNS et test IPv6
+- Téléchargement : l'onglet « ⏳ En cours » fonctionne enfin (liste des téléchargements, avancement, chapitre en cours, bouton Annuler) et reste à jour même après un rechargement de la page ou une vérification Cloudflare
+- Téléchargement : arrêt automatique après 3 chapitres de suite sans aucune page ; lecture des pages telles qu'affichées (canvas ou grandes images) en plus de la capture réseau ; le rapport décrit ce que contient la page du lecteur
 - Téléchargement : les boutons « Retour / Suivant » restent collés en bas de l'écran, même au milieu d'une longue liste ; la page recharge maintenant son code à chaque nouvelle version (le navigateur gardait l'ancien, d'où « Tout décocher » sans effet)
 - Téléchargement, étape 2 : le bouton « Suivant » restait grisé tant qu'on ne touchait pas une case ; ajout de « Tout cocher », « Tout décocher » et d'une plage « du chapitre … au … », avec le nombre de chapitres sélectionnés
 - Fiche série : le site cache la vraie liste sous des leurres (liens cachés, faux « Chapitre 000001 » invisibles) ; l'appli ne lit plus que les éléments réellement visibles de chaque ligne de chapitre

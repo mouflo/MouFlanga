@@ -307,16 +307,58 @@ function updateDownloadUI(job) {
 // Tab: Jobs en cours
 // ============================================================================
 
+const LIBELLES_JOB = {
+    running: "⏳ En cours", completed: "✅ Terminé", error: "❌ Arrêté",
+    annule: "⏹ Annulé",
+};
+
+function echapper(t) {
+    return String(t == null ? "" : t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+}
+
 async function loadJobs() {
     const list = $("jobs-list");
 
     try {
-        // En attente d'implémentation côté serveur
-        list.innerHTML = '<p style="color: var(--muted);">Aucun téléchargement en cours.</p>';
+        const resp = await fetch("/api/japscan/jobs");
+        const data = await resp.json();
+        const jobs = (data.jobs || []);
+
+        // Pastille sur l'onglet quand un téléchargement tourne
+        const nb = jobs.filter(j => j.status === "running").length;
+        const onglet = document.querySelector('.tab[data-tab="jobs"]');
+        if (onglet) onglet.textContent = nb ? `⏳ En cours (${nb})` : "⏳ En cours";
+
+        if (jobs.length === 0) {
+            list.innerHTML = '<p style="color: var(--muted);">Aucun téléchargement en cours.</p>';
+            return;
+        }
+        list.innerHTML = jobs.map(j => {
+            const pct = j.total > 0 ? Math.round(j.progress / j.total * 100) : 0;
+            const bouton = j.status === "running"
+                ? `<button class="mou-btn secondary" data-annuler="${echapper(j.id)}" type="button">Annuler</button>` : "";
+            const actuel = j.status === "running" && j.en_cours ? `<small>Chapitre en cours : ${echapper(j.en_cours)}</small><br>` : "";
+            const erreur = j.error ? `<small style="color: #ff6b6b;">${echapper(j.error)}</small><br>` : "";
+            return `
+            <div class="job-item" style="background: var(--card); border-radius: 8px; padding: 12px 16px; margin: 12px 0;">
+                <strong>${echapper(j.title)}</strong> — ${LIBELLES_JOB[j.status] || echapper(j.status)}
+                <div class="progress-bar" style="margin: 8px 0;"><div class="progress-fill" style="width: ${pct}%"></div></div>
+                <small>${j.progress} / ${j.total} chapitres · ${j.downloaded} fichier(s) créé(s) · ${j.failed} sans page</small><br>
+                ${actuel}${erreur}${bouton}
+            </div>`;
+        }).join("");
+        list.querySelectorAll("[data-annuler]").forEach(b => b.addEventListener("click", async () => {
+            b.disabled = true;
+            await fetch(`/api/japscan/job/${b.dataset.annuler}/annuler`, { method: "POST" });
+            loadJobs();
+        }));
     } catch (e) {
         list.innerHTML = `<p style="color: #ff6b6b;">Erreur: ${e.message}</p>`;
     }
 }
+
+// Mise à jour régulière : on garde l'état des téléchargements même si la page a été rechargée
+setInterval(loadJobs, 3000);
 
 // ============================================================================
 // Initialisation
@@ -324,6 +366,7 @@ async function loadJobs() {
 
 document.addEventListener("DOMContentLoaded", () => {
     loadMangas();
+    loadJobs();
 });
 
 // Bandeau « vérification Cloudflare en attente » (mis à jour toutes les 3 secondes)

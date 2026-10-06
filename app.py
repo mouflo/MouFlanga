@@ -404,6 +404,32 @@ def japscan_job(job_id: str):
     return jsonify({"ok": True, "job": job})
 
 
+@app.route("/api/japscan/jobs")
+def japscan_jobs():
+    """Liste des téléchargements (en cours et terminés depuis le démarrage de l'appli)."""
+    jobs = []
+    for j in list(japscan_scraper.download_jobs.values()):
+        jobs.append({
+            "id": j.get("id"), "title": j.get("title"), "status": j.get("status"),
+            "progress": j.get("progress", 0), "total": j.get("total", 0),
+            "downloaded": len(j.get("downloaded", [])), "failed": len(j.get("failed", [])),
+            "en_cours": j.get("en_cours"), "error": j.get("error"),
+            "started": j.get("started"), "ended": j.get("ended"),
+        })
+    jobs.sort(key=lambda j: j.get("started") or "", reverse=True)
+    return jsonify({"ok": True, "jobs": jobs})
+
+
+@app.route("/api/japscan/job/<job_id>/annuler", methods=["POST"])
+def japscan_job_annuler(job_id: str):
+    """Demande l'arrêt d'un téléchargement (il s'arrête à la fin du chapitre en cours)."""
+    job = japscan_scraper.download_jobs.get(job_id)
+    if not job:
+        return jsonify({"ok": False, "error": "Job introuvable"}), 404
+    job["annule"] = True
+    return jsonify({"ok": True})
+
+
 @app.route("/api/japscan/verif/etat")
 def japscan_verif_etat():
     """Une vérification Cloudflare attend-elle l'utilisateur ?"""
