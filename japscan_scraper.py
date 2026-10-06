@@ -551,7 +551,20 @@ class JapscanScraper:
 
                 title = await attendre_cloudflare(page, humain=True)
 
-                await asyncio.sleep(2)  # Laisse le JS injecter la liste
+                # Juste après la vérification, le site affiche « Loading … » puis recharge la vraie page :
+                # on attend (40 s au plus) que le titre change et que des liens de chapitres apparaissent
+                debut = time.time()
+                while time.time() - debut < 40:
+                    try:
+                        title = (await page.title()) or ""
+                        n_liens = await page.evaluate(
+                            "() => [...document.querySelectorAll('a[href]')].filter(a => /\\/(manga|manhua|manhwa)\\/[^/]+\\/[^/]*\\d[^/]*\\/?$/.test(a.getAttribute('href'))).length")
+                    except Exception:
+                        n_liens = 0   # la page est en train de se recharger
+                    if n_liens and not title.lower().startswith("loading") and not _titre_defi(title):
+                        break
+                    await asyncio.sleep(2)
+                await asyncio.sleep(1)
                 html = await page.content()
                 logger.info(f"Fiche série chargée : titre={title!r}, {len(html)} caractères")
 
