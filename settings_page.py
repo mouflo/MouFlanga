@@ -106,6 +106,11 @@ def init_app(app, base_dir, version_fn, get_dirs):
         if token_saisi and not notifier.token_valide(token_saisi):
             return jsonify({"ok": False, "error": "Ce jeton n'a pas la bonne forme (il ressemble à 123456789:ABC…, donné par @BotFather)."}), 400
 
+        if action == "lien":
+            ok, chat, sujet, erreur = notifier.lire_lien(str(body.get("lien", "")))
+            return jsonify({"ok": ok, "chat_id": chat, "thread_id": sujet, "error": erreur,
+                            "message": "Groupe et sujet lus dans le lien." if ok else ""}), (200 if ok else 400)
+
         if action == "detect_groupe":
             if not token:
                 return jsonify({"ok": False, "error": "Colle d'abord le jeton du bot."}), 400

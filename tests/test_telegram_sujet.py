@@ -56,3 +56,21 @@ class TestSujet(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LienEtWebhookTest(unittest.TestCase):
+    def test_lien_de_message(self):
+        self.assertEqual(notifier.lire_lien("https://t.me/c/1234567890/45/678"), (True, "-1001234567890", "45", ""))
+        self.assertEqual(notifier.lire_lien("t.me/c/1234567890/678"), (True, "-1001234567890", "", ""))
+        self.assertFalse(notifier.lire_lien("https://exemple.fr/x")[0])
+
+    def test_webhook_explique(self):
+        with mock.patch("notifier._appel", return_value=(False, "Conflict: can't use getUpdates method while webhook is active")):
+            ok, msg = notifier.detecter_chat("123456789:" + "A" * 35)
+        self.assertFalse(ok)
+        self.assertIn("Jeedom", msg)
+
+    def test_sujet_general_pas_precise(self):
+        with mock.patch("notifier._appel", return_value=(True, {})) as appel:
+            notifier.envoyer("x", "123456789:" + "A" * 35, "-1001", "1")
+        self.assertNotIn("message_thread_id", appel.call_args[0][2])

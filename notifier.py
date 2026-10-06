@@ -233,7 +233,7 @@ def envoyer(texte: str, token: str | None = None, chat_id: str | None = None,
     if not token:
         return False, "Aucun jeton Telegram : MouFlanga n'en a pas et n'en a trouvé chez aucune autre appli (voir le rapport, section Telegram)."
     donnees = {"chat_id": chat_id, "text": texte, "disable_web_page_preview": True}
-    if thread_valide(thread_id):
+    if thread_valide(thread_id) and int(thread_id) != 1:        # 1 = sujet « Général » : Telegram veut qu'on ne précise rien
         donnees["message_thread_id"] = int(thread_id)
     ok, rep = _appel(token, "sendMessage", donnees)
     if ok:
@@ -246,7 +246,7 @@ def detecter_chat(token: str) -> tuple[bool, str]:
     """Trouve ton identifiant à partir du dernier message que tu as envoyé au bot."""
     ok, rep = _appel(token, "getUpdates", {"limit": 20, "timeout": 0})
     if not ok:
-        return False, str(rep)
+        return False, _sans_webhook(rep)
     for m in reversed(rep.get("result", [])):
         msg = m.get("message") or m.get("my_chat_member") or {}
         chat = msg.get("chat") or {}
@@ -255,12 +255,34 @@ def detecter_chat(token: str) -> tuple[bool, str]:
     return False, "Aucun message reçu : ouvre ton bot dans Telegram, envoie-lui « bonjour », puis réessaie."
 
 
+WEBHOOK = ("Ce bot est déjà branché sur une autre application (par exemple Jeedom) : Telegram lui envoie directement "
+           "les messages, l'appli ne peut donc pas les lire pour détecter quoi que ce soit. Utilise plutôt « Lien d'un message » "
+           "(appui long sur un message du sujet → Copier le lien), ou crée un bot réservé à tes applis avec @BotFather.")
+
+
+def _sans_webhook(rep) -> str:
+    texte = str(rep)
+    return WEBHOOK if "webhook" in texte.lower() else texte
+
+
+def lire_lien(lien: str) -> tuple[bool, str, str, str]:
+    """Lien d'un message de groupe privé (appui long → « Copier le lien ») → (réussi, identifiant du groupe, sujet, erreur).
+    https://t.me/c/1234567890/45/678 : groupe -1001234567890, sujet 45 ; https://t.me/c/1234567890/678 : sujet « Général »."""
+    m = re.search(r"t\.me/c/(\d{5,})/(\d+)(?:/(\d+))?", lien or "")
+    if not m:
+        return False, "", "", ("Ce lien ne ressemble pas à un lien de message de groupe (https://t.me/c/…). "
+                               "Dans le sujet, appui long sur un message → « Copier le lien ».")
+    groupe = "-100" + m.group(1)
+    sujet = m.group(2) if m.group(3) else ""
+    return True, groupe, sujet, ""
+
+
 def detecter_groupe(token: str) -> tuple[bool, str, str, str]:
     """Cherche un groupe à sujets : écris un message dans le sujet de MouFlanga, puis clique sur « Détecter ».
     Renvoie (réussi, identifiant du groupe, numéro du sujet, message d'erreur)."""
     ok, rep = _appel(token, "getUpdates", {"limit": 50, "timeout": 0})
     if not ok:
-        return False, "", "", str(rep)
+        return False, "", "", _sans_webhook(rep)
     for m in reversed(rep.get("result", [])):
         msg = m.get("message") or m.get("channel_post") or {}
         chat = msg.get("chat") or {}
