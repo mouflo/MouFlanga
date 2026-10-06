@@ -40,6 +40,36 @@ def titre_serie(titre: str, url: str = "") -> str:
     return titre
 
 
+_ADRESSE_SERIE = re.compile(r"/(manga|manhua|manhwa)/([^/?#]+)/?")
+_TITRE_BIDON = re.compile(r"^(chap(itre|ter)?|ch\.?|volume|vol\.?|tome|officiel|nouveau|new|vf|vostfr)\b|^[\d\s.:\-–]*$", re.I)
+
+
+def regrouper_series(liens: list[dict]) -> list[dict]:
+    """La page d'accueil de Japscan liste les DERNIÈRES SORTIES : plusieurs liens par série, souvent intitulés
+    « Chapitre 196 : … » ou « OFFICIEL ». On garde une entrée par série, avec son vrai nom (ou un nom tiré de
+    son adresse « black-butler » → « Black Butler »), triée par ordre alphabétique."""
+    import unicodedata
+    from collections import Counter
+    series = {}
+    for m in liens:
+        url = m.get("url", "")
+        a = _ADRESSE_SERIE.search(url)
+        if not a:
+            continue
+        cle = (a.group(1), a.group(2))
+        s = series.setdefault(cle, {"titres": Counter()})
+        t = titre_serie(m.get("title", ""), url).strip()
+        if t and len(t) > 1 and not _TITRE_BIDON.search(t):
+            s["titres"][t] += 1
+    out = []
+    for (genre, slug), s in series.items():
+        titre = s["titres"].most_common(1)[0][0] if s["titres"] else " ".join(w[:1].upper() + w[1:] for w in slug.split("-"))
+        url = f"{JAPSCAN_URL}/{genre}/{slug}/"
+        out.append({"title": titre, "url": url, "type": genre, "id": hashlib.md5(url.encode()).hexdigest()[:12]})
+    cle_tri = lambda m: unicodedata.normalize("NFKD", m["title"]).encode("ascii", "ignore").decode().lower()
+    return sorted(out, key=cle_tri)
+
+
 def nom_sur(texte: str, defaut: str = "sans-titre") -> str:
     """Rend un texte utilisable comme nom de fichier/dossier (pas de / ni de ..)."""
     texte = re.sub(r'[\\/:*?"<>|\x00-\x1f]', " ", texte or "")

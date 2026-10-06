@@ -35,19 +35,15 @@
         <div id="browse-tab" class="tab-content active">
             <!-- Étape 1: Liste des mangas -->
             <div id="step-list" class="step">
-                <h2>Étape 1: Choisir les mangas</h2>
-                <p class="sub">Sélectionne les mangas que tu veux télécharger</p>
+                <h2>Étape 1: Choisir un manga</h2>
+                <p class="sub">Séries mises à jour récemment sur Japscan. Appuie sur un nom pour voir ses chapitres.</p>
+                <div class="recherche-manga"><input type="search" id="manga-search" placeholder="🔍 Chercher un manga…" autocomplete="off" spellcheck="false"></div>
+                <div class="lettres" id="manga-lettres"></div>
                 <p class="sub"><button class="mou-btn secondary" id="btn-refresh-list" type="button">🔄 Actualiser la liste</button>
                     <span id="liste-note"></span></p>
 
-                <div id="manga-list" class="manga-list">
+                <div id="manga-list" class="liste-series">
                     <div class="loading">Chargement des mangas...</div>
-                </div>
-
-                <div class="actions-collantes" style="text-align: right;">
-                    <button class="mou-btn" id="btn-next-chapters" disabled>
-                        Suivant →
-                    </button>
                 </div>
             </div>
 

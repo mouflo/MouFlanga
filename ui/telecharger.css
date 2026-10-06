@@ -352,3 +352,18 @@
 .chapter-item.deja .chapter-item-name { color: var(--muted, #999); }
 .badge-deja { display: inline-block; margin-left: 6px; font-size: .75rem; color: #52b54b; white-space: nowrap; }
 .chap-manquants { color: var(--muted, #999); font-size: .85rem; margin: 6px 0; }
+
+/* Étape 1 : liste alphabétique des séries */
+.recherche-manga { margin: 10px 0; }
+.recherche-manga input { width: 100%; box-sizing: border-box; font-size: 16px; }
+.lettres { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 10px; }
+.lettres button { min-width: 34px; padding: 6px 0; border: 0; border-radius: 6px; background: var(--field, #2a2a2a); color: var(--text, #eee); font: inherit; font-weight: 600; cursor: pointer; }
+.lettres button:hover { background: var(--accent, #52b54b); color: #fff; }
+.liste-series { border-top: 1px solid var(--line, #333); }
+.lettre-titre { position: sticky; top: 0; z-index: 1; padding: 8px 6px 4px; font-weight: 700; color: var(--accent, #52b54b); background: var(--bg, #121315); border-bottom: 1px solid var(--line, #333); scroll-margin-top: 8px; }
+.serie-ligne { display: flex; align-items: center; gap: 10px; width: 100%; padding: 13px 8px; border: 0; border-bottom: 1px solid var(--line, #333); background: none; color: var(--text, #eee); font: inherit; text-align: left; cursor: pointer; }
+body.mou-skin .serie-ligne { background: none; color: var(--text, #eee); font-weight: 400; padding: 13px 8px; border-radius: 0; }
+.serie-ligne:hover, body.mou-skin .serie-ligne:hover { background: var(--surface2, #1e1e1e); }
+.serie-nom { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.serie-type { font-size: .75rem; color: var(--muted, #999); border: 1px solid var(--line, #444); border-radius: 10px; padding: 1px 8px; flex: none; }
+.serie-fleche { color: var(--muted, #999); font-size: 1.3rem; flex: none; }

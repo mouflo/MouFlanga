@@ -61,40 +61,45 @@ async function loadMangas(forcer) {
     }
 }
 
+// Liste alphabétique avec une séparation par lettre, et une recherche (sans accents ni majuscules)
+const sansAccents = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const lettreDe = t => { const c = sansAccents(t).charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : "#"; };
+const TYPES = {manhwa: "manhwa", manhua: "manhua"};
+
 function renderMangas() {
+    const q = sansAccents($("manga-search").value.trim());
+    const liste = state.mangas.filter(m => !q || sansAccents(m.title).includes(q));
     const list = $("manga-list");
-    list.innerHTML = state.mangas.map(manga => `
-        <div class="manga-item">
-            <input type="checkbox" value="${manga.id}" class="manga-checkbox">
-            <div class="manga-item-cover">📚</div>
-            <div class="manga-item-info">
-                <div class="manga-item-title">${manga.title}</div>
-            </div>
-        </div>
-    `).join("");
-
-    $$(".manga-checkbox").forEach(cb => {
-        cb.addEventListener("change", updateMangaSelection);
-    });
-}
-
-function updateMangaSelection() {
-    const checked = $$(".manga-checkbox:checked");
-    $("btn-next-chapters").disabled = checked.length === 0;
-}
-
-$("btn-next-chapters").addEventListener("click", () => {
-    const checked = $$(".manga-checkbox:checked");
-    if (checked.length === 0) return;
-
-    if (checked.length > 1) {
-        alert("Pour l'instant, sélectionne un seul manga à la fois");
+    if (!liste.length) {
+        list.innerHTML = `<div class="loading">Aucun manga ne correspond à « ${echapper($("manga-search").value)} » parmi les séries récentes.</div>`;
+        $("manga-lettres").innerHTML = "";
         return;
     }
+    let lettre = null, html = "";
+    const lettres = [];
+    for (const m of liste) {
+        const l = lettreDe(m.title);
+        if (l !== lettre) { lettre = l; lettres.push(l); html += `<div class="lettre-titre" id="lettre-${l === "#" ? "num" : l}">${l}</div>`; }
+        html += `<button type="button" class="serie-ligne" data-id="${echapper(m.id)}"><span class="serie-nom">${echapper(m.title)}</span>`
+              + (TYPES[m.type] ? `<span class="serie-type">${TYPES[m.type]}</span>` : "") + `<span class="serie-fleche">›</span></button>`;
+    }
+    list.innerHTML = html;
+    // Index des lettres : un appui fait défiler jusqu'à la lettre
+    $("manga-lettres").innerHTML = q ? "" : lettres.map(l => `<button type="button" data-lettre="${l === "#" ? "num" : l}">${l}</button>`).join("");
+}
 
-    selectedManga = state.mangas.find(m => m.id === checked[0].value);
-    loadChapters();
+$("manga-search").addEventListener("input", renderMangas);
+$("manga-lettres").addEventListener("click", e => {
+    const b = e.target.closest("[data-lettre]");
+    if (b) { const t = $("lettre-" + b.dataset.lettre); if (t) t.scrollIntoView({behavior: "smooth", block: "start"}); }
 });
+$("manga-list").addEventListener("click", e => {
+    const ligne = e.target.closest(".serie-ligne");
+    if (!ligne) return;
+    selectedManga = state.mangas.find(m => m.id === ligne.dataset.id);
+    if (selectedManga) loadChapters();
+});
+
 
 // ============================================================================
 // Étape 2: Sélection des chapitres

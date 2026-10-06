@@ -1061,8 +1061,7 @@ def japscan_list():
                     cache = json.loads(LISTE_CACHE.read_text(encoding="utf-8"))
                     age = time.time() - cache.get("date", 0)
                     if cache.get("mangas") and age < LISTE_DUREE:
-                        mangas = [{**m, "title": japscan_scraper.titre_serie(m.get("title", ""), m.get("url", ""))}
-                                  for m in cache["mangas"]]
+                        mangas = japscan_scraper.regrouper_series(cache["mangas"])
                         return jsonify({"ok": True, "mangas": mangas, "cache_minutes": int(age // 60)})
                 except Exception:
                     pass
@@ -1074,7 +1073,7 @@ def japscan_list():
                                            encoding="utf-8")
                 except Exception as e:
                     logger.warning(f"Liste des mangas non gardée en mémoire : {e}")
-        return jsonify({"ok": True, "mangas": mangas, "cache_minutes": 0})
+        return jsonify({"ok": True, "mangas": japscan_scraper.regrouper_series(mangas), "cache_minutes": 0})
     except Exception as e:
         logger.error(f"Erreur liste Japscan: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
