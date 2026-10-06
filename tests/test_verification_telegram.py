@@ -88,6 +88,46 @@ class RepriseTest(unittest.TestCase):
         notifier.vider_cache()
         self.assertEqual(notifier.source_reprise(), "mouflopening")
 
+    def test_cle_au_nom_inhabituel(self):
+        """Le jeton est reconnu à sa forme, même si la clé s'appelle juste BOT_TOKEN."""
+        f = self.racine / "moufloster" / "data" / "secrets.env"
+        f.write_text(f'BOT_TOKEN="{TOKEN}"\nTG_CHAT="123456789"\n')
+        notifier.vider_cache()
+        self.assertEqual(notifier._token(), TOKEN)
+        self.assertEqual(notifier._chat(), "123456789")
+
+    def test_fichier_yaml(self):
+        d = self.racine / "mouflanimexer" / "config"
+        d.mkdir(parents=True)
+        (d / "app.yml").write_text(f"notifications:\n  telegram_token: {TOKEN}\n  telegram_chat_id: 424242424\n")
+        (self.racine / "moufloster" / "data" / "secrets.env").unlink()
+        notifier.vider_cache()
+        self.assertEqual(notifier.source_reprise(), "mouflanimexer")
+        self.assertEqual(notifier._chat(), "424242424")
+
+    def test_jeton_sans_identifiant(self):
+        (self.racine / "moufloster" / "data" / "secrets.env").write_text(f'BOT_TOKEN="{TOKEN}"\n')
+        notifier.vider_cache()
+        self.assertTrue(notifier.configure())
+        self.assertEqual(notifier._chat(), "")
+        with mock.patch("notifier.detecter_chat", return_value=(True, "777888999")), \
+             mock.patch("notifier._appel", return_value=(True, {"ok": True})) as appel:
+            ok, _ = notifier.envoyer("x")
+        self.assertTrue(ok)
+        self.assertEqual(appel.call_args[0][2]["chat_id"], "777888999")
+
+    def test_diagnostic_sans_valeur_secrete(self):
+        texte = "\n".join(notifier.diagnostic())
+        self.assertNotIn(TOKEN, texte)
+        self.assertIn("moufloster", texte)
+        self.assertIn("…" + TOKEN[-4:], texte)
+
+    def test_diagnostic_aucun_resultat(self):
+        (self.racine / "moufloster" / "data" / "secrets.env").write_text("AUTRE=1\n")
+        notifier.vider_cache()
+        texte = "\n".join(notifier.diagnostic())
+        self.assertIn("Aucun jeton Telegram trouvé", texte)
+
     def test_reglages_perso_prioritaires(self):
         with mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "1" * 9 + ":" + "B" * 35, "TELEGRAM_CHAT_ID": "111222333"}):
             self.assertEqual(notifier.source_reprise(), "")

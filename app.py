@@ -462,7 +462,14 @@ def _diag_extra():
     except Exception as e:
         return [f"Bibliothèque : analyse impossible ({e.__class__.__name__})"]
     rar = "oui" if archives.rar_available() else "NON (les vrais .cbr en RAR ne s'ouvriront pas)"
-    return [f"Bibliothèque : {n_series} série(s), {n_files} fichier(s)", f"Lecture des RAR possible : {rar}"]
+    lignes = [f"Bibliothèque : {n_series} série(s), {n_files} fichier(s)", f"Lecture des RAR possible : {rar}"]
+    try:
+        import notifier
+        lignes += ["", "--- Telegram ---"] + notifier.diagnostic()
+        lignes.append(f"Vérification Cloudflare en attente : {'OUI' if japscan_scraper.verif_etat()['actif'] else 'non'}")
+    except Exception as e:
+        lignes.append(f"Telegram : diagnostic impossible ({e.__class__.__name__})")
+    return lignes
 
 
 diag.init_app(app, APP_VERSION, lambda: MANGA_DIR, _diag_extra)

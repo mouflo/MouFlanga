@@ -37,18 +37,24 @@ def chat_valide(chat_id: str) -> bool:
 # ----------------------------------------------------------------------
 RACINE_APPLIS = Path("/opt")          # là où vivent MouFloster, MouFlanimeXer, MouFlopening…
 _DOSSIER_ICI = Path(__file__).resolve().parent
-_cache = {"quand": 0.0, "valeur": None}
-_CLE_TOKEN = re.compile(r"(TELEGRAM|(^|_)TG)[A-Z0-9_]*(TOKEN|BOT)", re.I)
-_CLE_CHAT = re.compile(r"(TELEGRAM|(^|_)TG)[A-Z0-9_]*(CHAT|USER|DEST|ID)", re.I)
+_cache = {"quand": 0.0, "resultat": None, "details": []}
+_IGNORER = {"venv", ".venv", "node_modules", ".git", "__pycache__", "site-packages", "icons", "docs", "ui",
+            "templates", "tests", "covers", "cache", "logs"}
+_SUFFIXES = {".env", ".json", ".ini", ".conf", ".cfg", ".yml", ".yaml", ".toml"}
+_CLE_TELEGRAM = re.compile(r"telegram|(^|_)tg(_|$)|chat|bot", re.I)
+_CLE_CHAT = re.compile(r"chat|((telegram|(^|_)tg)[a-z0-9_]*(id|user|dest))", re.I)
+_SEPARATEUR = re.compile(r"\s*[=:]\s*")
 
 
-def _paires_env(fichier: Path):
+def _paires_texte(fichier: Path):
+    """Paires clé/valeur d'un fichier de type .env, .ini ou .yml (une par ligne)."""
     for ligne in fichier.read_text(encoding="utf-8", errors="ignore").splitlines():
         ligne = ligne.strip()
-        if not ligne or ligne.startswith("#") or "=" not in ligne:
+        if not ligne or ligne.startswith(("#", ";", "//")):
             continue
-        cle, _, val = ligne.partition("=")
-        yield cle.replace("export ", "").strip(), val.strip().strip("\"'")
+        morceaux = _SEPARATEUR.split(ligne, maxsplit=1)
+        if len(morceaux) == 2:
+            yield morceaux[0].replace("export ", "").strip(" -\"'"), morceaux[1].strip().strip("\"',")
 
 
 def _paires_json(fichier: Path):
@@ -68,41 +74,79 @@ def _paires_json(fichier: Path):
                 yield nom, str(val)
 
 
-def _chercher_ailleurs():
-    """(jeton, identifiant, nom de l'appli) trouvés chez une autre appli du serveur, sinon None.
-
-    Lecture seule, sur les fichiers de réglages habituels ; seules les valeurs qui ont la bonne forme
-    d'un jeton / identifiant Telegram sont retenues. Rien n'est écrit ni journalisé.
-    """
-    if time.time() - _cache["quand"] < 60:
-        return _cache["valeur"]
-    trouve = None
-    try:
-        for appli in sorted(p for p in RACINE_APPLIS.glob("*") if p.is_dir() and p.resolve() != _DOSSIER_ICI):
-            candidats = [appli / "data" / "secrets.env", appli / ".env", appli / "data" / "settings.json",
-                         appli / "data" / "config.json", appli / "config.json", appli / "settings.json"]
-            for f in candidats:
-                if not f.is_file():
+def _fichiers_reglages(appli: Path):
+    """Fichiers de réglages probables d'une appli (3 niveaux de dossiers au plus, taille raisonnable)."""
+    n = 0
+    for racine, dossiers, fichiers in os.walk(appli):
+        profondeur = len(Path(racine).relative_to(appli).parts)
+        dossiers[:] = [d for d in dossiers if d not in _IGNORER] if profondeur < 3 else []
+        for nom in fichiers:
+            p = Path(racine) / nom
+            bas = nom.lower()
+            if p.suffix.lower() in _SUFFIXES or bas.startswith(".env") or "secret" in bas:
+                try:
+                    if p.suffix.lower() != ".py" and p.stat().st_size <= 262144:
+                        n += 1
+                        if n > 200:
+                            return
+                        yield p
+                except OSError:
                     continue
-                jeton = chat = ""
-                for cle, val in (_paires_json(f) if f.suffix == ".json" else _paires_env(f)):
-                    if not jeton and _CLE_TOKEN.search(cle) and token_valide(val):
-                        jeton = val
-                    elif not chat and _CLE_CHAT.search(cle) and chat_valide(val):
-                        chat = val
-                if jeton and chat:
-                    trouve = (jeton, chat, appli.name)
-                    break
-            if trouve:
-                break
+
+
+def _analyser():
+    """Cherche les réglages Telegram d'une autre appli. Renvoie (résultat, détails lisibles).
+
+    résultat = (jeton, identifiant ou "", nom de l'appli, fichier) ou None.
+    Un jeton est reconnu à sa FORME (123456789:ABC…), quel que soit le nom de la clé.
+    Les détails ne contiennent que des noms de fichiers et de clés, jamais de valeurs.
+    """
+    if time.time() - _cache["quand"] < 60 and _cache["details"]:
+        return _cache["resultat"], _cache["details"]
+    details, resultat = [], None
+    try:
+        applis = sorted(p for p in RACINE_APPLIS.glob("*") if p.is_dir() and p.resolve() != _DOSSIER_ICI)
     except OSError:
-        trouve = None
-    _cache.update(quand=time.time(), valeur=trouve)
-    return trouve
+        applis = []
+    details.append(f"Applis cherchées sous {RACINE_APPLIS} : " + (", ".join(a.name for a in applis) or "aucune"))
+    for appli in applis:
+        analyses, cles_vues = 0, set()
+        for f in _fichiers_reglages(appli):
+            try:
+                paires = list(_paires_json(f) if f.suffix.lower() == ".json" else _paires_texte(f))
+            except OSError:
+                continue
+            analyses += 1
+            jeton = next((v for _, v in paires if token_valide(v)), "")
+            chat = next((v for k, v in paires if _CLE_CHAT.search(k) and chat_valide(v) and not token_valide(v)), "")
+            cles_vues.update(k for k, _ in paires if _CLE_TELEGRAM.search(k))
+            if jeton and not resultat:
+                resultat = (jeton, chat, appli.name, str(f.relative_to(appli)))
+                details.append(f"  ✅ {appli.name}/{f.relative_to(appli)} : jeton trouvé ({'…' + jeton[-4:]}), "
+                               f"identifiant {'trouvé' if chat else 'NON trouvé (détection automatique à l’envoi)'}")
+        details.append(f"  {appli.name} : {analyses} fichier(s) de réglages lu(s)"
+                       + (f" ; clés évoquant Telegram : {', '.join(sorted(cles_vues)[:12])}" if cles_vues else " ; aucune clé évoquant Telegram"))
+    if not resultat:
+        details.append("  ❌ Aucun jeton Telegram trouvé dans les fichiers .env/.json/.ini/.yml des autres applis")
+    _cache.update(quand=time.time(), resultat=resultat, details=details)
+    return resultat, details
+
+
+def diagnostic() -> list[str]:
+    """Lignes pour le rapport de l'appli (aucune valeur secrète)."""
+    perso = bool(os.getenv("TELEGRAM_BOT_TOKEN", "").strip())
+    lignes = [f"Telegram : réglages propres à MouFlanga : {'oui' if perso else 'non'}"]
+    lignes += _analyser()[1]
+    return lignes
+
+
+def _chercher_ailleurs():
+    r = _analyser()[0]
+    return r[:3] if r else None
 
 
 def vider_cache():
-    _cache.update(quand=0.0, valeur=None)
+    _cache.update(quand=0.0, resultat=None, details=[])
 
 
 def source_reprise() -> str:
@@ -130,7 +174,8 @@ def _chat() -> str:
 
 
 def configure() -> bool:
-    return bool(_token() and _chat())
+    """Prêt à envoyer : un jeton suffit (l'identifiant se détecte tout seul s'il manque)."""
+    return bool(_token())
 
 
 def indice_token() -> str:
@@ -162,8 +207,16 @@ def envoyer(texte: str, token: str | None = None, chat_id: str | None = None) ->
     """Envoie un message. Renvoie (réussi, message lisible)."""
     token = token or _token()
     chat_id = chat_id or _chat()
-    if not token or not chat_id:
-        return False, "Telegram n'est pas réglé (jeton ou identifiant manquant)."
+    if token and not chat_id:
+        # Jeton connu mais pas d'identifiant : on le déduit du dernier message reçu par le bot
+        ok, trouve = detecter_chat(token)
+        if ok:
+            chat_id = trouve
+            logger.info("Identifiant Telegram détecté automatiquement")
+        else:
+            return False, "Identifiant Telegram introuvable : " + trouve
+    if not token:
+        return False, "Aucun jeton Telegram : MouFlanga n'en a pas et n'en a trouvé chez aucune autre appli (voir le rapport, section Telegram)."
     ok, rep = _appel(token, "sendMessage", {"chat_id": chat_id, "text": texte, "disable_web_page_preview": True})
     if ok:
         return True, "Message envoyé."

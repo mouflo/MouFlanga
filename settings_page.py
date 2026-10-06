@@ -62,6 +62,7 @@ def init_app(app, base_dir, version_fn, get_dirs):
             "chat_id": os.getenv("TELEGRAM_CHAT_ID", "") or notifier._chat(),
             "app_url": os.getenv("APP_URL", ""),
             "source": notifier.source_reprise(),     # nom de l'autre appli dont les réglages sont repris
+            "diagnostic": notifier.diagnostic(),     # où l'appli a cherché (noms seulement, aucune valeur secrète)
         })
 
     @app.route("/api/settings/telegram", methods=["POST"])
@@ -93,6 +94,7 @@ def init_app(app, base_dir, version_fn, get_dirs):
 
         if action == "test":
             ok, msg = notifier.envoyer("✅ MouFlanga : les alertes Telegram fonctionnent.", token or None, chat_id or None)
+            logger.info("Test Telegram : %s", "réussi" if ok else "échoué (%s)" % msg)
             return jsonify({"ok": ok, "message": "Message de test envoyé : regarde ton Telegram." if ok else "", "error": "" if ok else msg}), (200 if ok else 400)
 
         if token_saisi:
