@@ -1,0 +1,12 @@
+/* MouFlanga · page « Importer » */
+.container { max-width: 900px; margin: 0 auto; padding: 16px; }
+.back { display: inline-block; margin-bottom: 12px; color: var(--muted); text-decoration: none; }
+.groupes { border-top: 1px solid var(--line); }
+.groupe { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.groupe-tete { display: flex; gap: 8px; align-items: center; }
+.groupe-nom { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; }
+.groupe-info { color: var(--muted); font-size: .85rem; margin: 6px 0 2px; }
+.groupe-info .existe { color: var(--accent); }
+.groupe-archives { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+#fileFaits { font-size: .85rem; color: var(--muted); padding-left: 18px; }
+@media (max-width: 800px) { .container { padding: 10px; } }

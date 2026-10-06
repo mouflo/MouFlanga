@@ -6,6 +6,8 @@
 - ⚙️ Réglages → Alertes Telegram : champ « Sujet du groupe » (groupe Telegram à sujets) et bouton « 🔎 Détecter le groupe et le sujet » ; vide = comportement d'avant (`TELEGRAM_THREAD_ID` dans `data/secrets.env`, propre à MouFlanga)
 
 ## Tomes
+- Page « 📦 Importer » (bandeau dans la bibliothèque) : les archives .rar/.zip/.7z déposées directement dans le dossier des mangas sont proposées une série par ligne (nom modifiable, archives d'une même série regroupées, série existante complétée) ; « Tout importer » les traite une à une en arrière-plan, message Telegram à la fin
+- Import plus malin (appris de 72 vraies archives) : archives et PDF rangés dans l'archive ouverts aussi ; tomes sans le mot « tome » (« MAR.07 », « jojo13 », « volume-1 »), tome écrit dans le nom des images, one-shot, chapitres sans tome rangés ensuite d'après Internet ; suite ou artbook dans la même archive = série à part ; fichiers parasites ignorés ; outil de secours « unar » pour les RAR difficiles
 - Téléchargement : bouton « 🔎 Chercher … dans tout Japscan » (ou touche Entrée) pour trouver une série qui n'est pas dans les sorties récentes ; résultats gardés 1 heure
 - Téléchargement, étape 1 : une seule ligne par série (la page d'accueil de Japscan donnait plusieurs liens par série, souvent nommés « Chapitre … » ou « OFFICIEL »), en liste alphabétique avec une séparation par lettre, un index des lettres et une recherche (sans tenir compte des accents) ; un appui sur un nom ouvre ses chapitres
 - Import : l'extraction des archives échouait sur le NAS (il refuse de redonner aux fichiers leur propriétaire d'origine, simple avertissement pris pour une erreur) ; plus de tentative de couverture sur une archive pas encore importée

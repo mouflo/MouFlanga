@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Importer · MouFlanga</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mouflanga.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
+<link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+<link rel="stylesheet" href="/ui/mou-settings.css?v={{ version|urlencode }}">
+<link rel="stylesheet" href="/ui/importer.css?v={{ version|urlencode }}">
+<script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+<script src="/ui/mou-settings.js?v={{ version|urlencode }}"></script>
+</head>
+<body>
+<div class="container">
+    <div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}" data-sub="Importer des archives"></div>
+    <a class="back" href="/">← Retour à la bibliothèque</a>
+
+    <div class="panel" id="fileBox" hidden>
+        <h2>⏳ Import en cours</h2>
+        <div id="fileEtat"></div>
+        <details id="fileFaitsBox" style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted)">Séries déjà importées</summary><ul id="fileFaits"></ul></details>
+    </div>
+
+    <div class="panel">
+        <h2>📦 Archives déposées dans le dossier des mangas</h2>
+        <div class="sub">Chaque archive (.rar, .zip, .7z) devient une série : un dossier, un fichier par tome, les chapitres quand ils sont séparés. Vérifie les noms proposés (l'appli apprend de tes corrections), puis importe une série ou tout d'un coup. L'import se fait une série à la fois, en arrière-plan : tu peux fermer cette page, un message Telegram arrive à la fin. Les archives d'origine vont à la corbeille (30 jours) une fois importées.</div>
+        <div class="row" style="margin:10px 0"><button class="btn" id="toutImporter" hidden>📥 Tout importer</button></div>
+        <div id="importMsg"></div>
+        <div id="groupes" class="groupes"><div class="tabsinfo">Chargement…</div></div>
+    </div>
+</div>
+<script src="/ui/importer.js?v={{ version|urlencode }}"></script>
+</body>
+</html>

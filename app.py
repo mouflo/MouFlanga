@@ -142,7 +142,7 @@ def _scan():
                     files += [Path(dirpath) / n for n in filenames if _is_archive(Path(n)) or _a_importer(Path(dirpath) / n)]
                 if files:
                     series[entry.name] = sorted(files, key=lambda p: archives.natural_key(p.relative_to(entry)))
-            elif _is_archive(entry):
+            elif _is_archive(entry) and not importer.est_lot(entry):     # les .rar/.zip/.7z vont dans la page d'import
                 loose.append(entry)
         except OSError:
             continue
@@ -264,7 +264,11 @@ def api_library():
             "last_read": p.get("last", ""), "added": newest,
             "cover": f"/api/cover?id={_q(name)}&v={int(max(newest, _couverture_mtime(name)))}",
         })
-    return jsonify({"series": out})
+    try:
+        racine = sum(1 for f in MANGA_DIR.iterdir() if f.is_file() and importer.est_lot(f) and not f.name.startswith("."))
+    except OSError:
+        racine = 0
+    return jsonify({"series": out, "a_importer": racine, "import_en_cours": _FILE_IMPORT["en_cours"]})
 
 
 def _q(text):
@@ -969,12 +973,15 @@ def _noter_choix(dossier, propose, choisi):
     _write_json(CHOIX, choix[-200:])
 
 
-def _lancer_import(nouveau):
-    """En arrière-plan : archives de tomes et PDF convertis, puis chapitres regroupés en tomes."""
+def _lancer_import(nouveau, attendre=False, lots_forces=None):
+    """Archives de tomes et PDF convertis, puis chapitres regroupés en tomes : en arrière-plan,
+    ou tout de suite si « attendre » (file d'import). « lots_forces » : archives à extraire quelle que soit leur taille.
+    Renvoie le message de fin quand « attendre »."""
+    lots_forces = [Path(x) for x in (lots_forces or [])]
     files = _scan().get(nouveau) or []
-    chapitres = any(not _a_importer(f) and tomes_cbz.lire_info(f) is None and _numero_tome(f.stem) is None
+    lots = [f for f in files if _a_importer(f) or f in lots_forces]
+    chapitres = any(f not in lots and tomes_cbz.lire_info(f) is None and _numero_tome(f.stem) is None
                     and _numero_chapitre(f.stem) is not None for f in files)
-    lots = [f for f in files if _a_importer(f)]
     _RANGEMENTS[nouveau] = {"en_cours": True, "fait": 0, "total": len(lots), "erreur": None, "message": "Préparation…"}
 
     def travail():
@@ -1008,16 +1015,141 @@ def _lancer_import(nouveau):
         try:
             info = tomes.chercher(nouveau, forcer=True)
             msg = "✅ Série organisée" + (f" : {crees} tome(s) importé(s)" if lots else "")
-            if info and chapitres:
+            if info:                                  # chapitres séparés ou « hors tome » : rangés d'après Internet
                 n = _ranger_en_tomes(nouveau, info, garder_en_cours=True)
-                msg += f" ; {n} chapitre(s) rangé(s) en tomes"
+                if n:
+                    msg += f" ; {n} chapitre(s) rangé(s) en tomes"
             msg += f" (tomes d'après {info['source']})." if info else "."
         except Exception as e:
             msg = f"Série organisée, mais rangement des chapitres impossible : {e}"
         if erreurs:
             msg += " ⚠ Non importé : " + " · ".join(erreurs)
         etat.update(en_cours=False, message=msg)
+        return msg
+    if attendre:
+        return travail()
     threading.Thread(target=travail, daemon=True).start()
+
+
+# ---------------------------------------------------------------- Archives déposées à la racine
+
+_FILE_IMPORT = {"en_cours": None, "attente": [], "faits": [], "erreurs": [], "message": ""}
+_FILE_VERROU = threading.Lock()
+_NOMBRE_TOMES = re.compile(r"\b(?:int[ée]grale\s*)?\d+\s*tomes?\b|\b(?:tomes?|t)\s*\d+\s*(?:[-àa]|a)\s*\d+\b|\bfinal\b", re.I)
+
+
+def _cle_nom(nom):
+    import unicodedata
+    t = unicodedata.normalize("NFKD", nom).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "", t)
+
+
+def _nom_depuis_archive(nom_fichier, existantes):
+    """« jojo's bizarre adventure tome 13 a 28 » → « Jojo's Bizarre Adventure » ; une série déjà présente garde son nom."""
+    stem = Path(nom_fichier).stem
+    t = stem.replace("_", " ")
+    if re.search(r"[A-Za-z]\.[A-Za-z]", t) and t.count(" ") <= 1:     # « Docteur.Slump », « Magi.the.labyrinth.of.magic »
+        t = t.replace(".", " ")
+    t = _NOMBRE_TOMES.sub(" ", _CROCHETS.sub(" ", t))
+    t = _nettoyer_nom(t) or stem
+    if t == t.lower() or (t[:1].isupper() and t[1:] == t[1:].lower() and " " in t):
+        t = _majuscules(t.lower())
+    t = japscan_scraper.nom_sur(_appris(nom_fichier, t))
+    for e in existantes:                                   # série déjà dans la bibliothèque (ex. Gamaran)
+        if _cle_nom(e) == _cle_nom(t):
+            return e
+    return t
+
+
+def _archives_racine():
+    """Archives (.rar/.zip/.7z) posées directement dans le dossier des mangas, regroupées par série proposée."""
+    try:
+        fichiers = sorted((f for f in MANGA_DIR.iterdir() if f.is_file() and importer.est_lot(f) and not f.name.startswith(".")),
+                          key=lambda f: archives.natural_key(f.name))
+    except OSError:
+        return []
+    existantes = [d.name for d in MANGA_DIR.iterdir() if d.is_dir() and not d.name.startswith(".")]
+    groupes = {}
+    for f in fichiers:
+        nom = _nom_depuis_archive(f.name, existantes)
+        g = groupes.setdefault(nom, {"nom": nom, "existe": nom in existantes, "archives": []})
+        g["archives"].append({"nom": f.name, "taille_go": round(f.stat().st_size / 1e9, 2)})
+    return sorted(groupes.values(), key=lambda g: _cle_nom(g["nom"]))
+
+
+def _travail_file():
+    """Importe les séries de la file, une à la fois ; message Telegram à la fin."""
+    while True:
+        with _FILE_VERROU:
+            if not _FILE_IMPORT["attente"]:
+                _FILE_IMPORT["en_cours"] = None
+                break
+            g = _FILE_IMPORT["attente"].pop(0)
+            _FILE_IMPORT["en_cours"] = g["nom"]
+        nom = japscan_scraper.nom_sur(g["nom"])
+        try:
+            dossier = MANGA_DIR / nom
+            dossier.mkdir(exist_ok=True)
+            deplaces = []
+            for a in g["archives"]:
+                src = MANGA_DIR / Path(a).name
+                if not src.is_file():
+                    continue
+                cible = dossier / src.name
+                src.rename(cible)
+                deplaces.append(cible)
+                _noter_choix(src.name, g.get("propose", nom), nom)
+            msg = _lancer_import(nom, attendre=True, lots_forces=deplaces)
+            with _FILE_VERROU:
+                (_FILE_IMPORT["erreurs"] if "⚠" in msg else _FILE_IMPORT["faits"]).append(f"{nom} : {msg}")
+        except Exception as e:
+            logger.warning("Import de %s impossible : %s", nom, e)
+            with _FILE_VERROU:
+                _FILE_IMPORT["erreurs"].append(f"{nom} : {e}")
+    faits, erreurs = len(_FILE_IMPORT["faits"]), len(_FILE_IMPORT["erreurs"])
+    _FILE_IMPORT["message"] = f"Import terminé : {faits} série(s) importée(s)" + (f", {erreurs} avec un problème" if erreurs else "") + "."
+    logger.info(_FILE_IMPORT["message"])
+    try:
+        import notifier
+        notifier.envoyer("📚 MouFlanga : " + _FILE_IMPORT["message"] + ("\n⚠ " + "\n⚠ ".join(e[:150] for e in _FILE_IMPORT["erreurs"][-5:]) if erreurs else ""))
+    except Exception as e:
+        logger.warning("Message de fin d'import impossible : %s", e)
+
+
+@app.route("/api/import/racine", methods=["GET", "POST"])
+def api_import_racine():
+    """GET : archives à importer et état de la file. POST {groupes: [{nom, propose, archives: [noms]}]} : ajout à la file."""
+    if request.method == "POST":
+        groupes = (request.get_json(silent=True) or {}).get("groupes") or []
+        ajout = []
+        for g in groupes:
+            nom = japscan_scraper.nom_sur(str(g.get("nom", "")).strip())
+            arch = [Path(str(a)).name for a in g.get("archives") or [] if (MANGA_DIR / Path(str(a)).name).is_file()]
+            if nom and not nom.startswith(".") and arch:
+                ajout.append({"nom": nom, "propose": str(g.get("propose") or nom), "archives": arch})
+        if not ajout:
+            return jsonify({"ok": False, "error": "Rien à importer."}), 400
+        with _FILE_VERROU:
+            deja = {a for x in _FILE_IMPORT["attente"] for a in x["archives"]}
+            _FILE_IMPORT["attente"] += [g for g in ajout if not set(g["archives"]) & deja]
+            demarrer = _FILE_IMPORT["en_cours"] is None
+            if demarrer:
+                _FILE_IMPORT.update(faits=[], erreurs=[], message="", en_cours="(démarrage)")
+        if demarrer:
+            threading.Thread(target=_travail_file, daemon=True).start()
+        return jsonify({"ok": True, "message": f"{len(ajout)} série(s) ajoutée(s) à la file d'import."})
+    with _FILE_VERROU:
+        file = {"en_cours": _FILE_IMPORT["en_cours"], "attente": [g["nom"] for g in _FILE_IMPORT["attente"]],
+                "faits": _FILE_IMPORT["faits"][-50:], "erreurs": _FILE_IMPORT["erreurs"][-50:], "message": _FILE_IMPORT["message"]}
+    etat = _RANGEMENTS.get(file["en_cours"] or "", {}) if file["en_cours"] else {}
+    en_file = {a for g in _FILE_IMPORT["attente"] for a in g["archives"]}
+    groupes = [g for g in _archives_racine() if not {a["nom"] for a in g["archives"]} <= en_file]
+    return jsonify({"groupes": groupes, "file": file, "detail": etat.get("message", "")})
+
+
+@app.route("/importer")
+def page_importer():
+    return render_template("importer.html", version=APP_VERSION)
 
 
 @app.route("/api/tomes/ranger", methods=["POST"])

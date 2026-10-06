@@ -75,3 +75,5 @@ body.mou-skin .tome-titre, body.mou-skin .tome-titre:hover { background:none; co
 }
 #sCoverMfs { text-decoration:none; display:inline-flex; align-items:center; }
 #sCoverMfs[hidden] { display:none; }
+.bandeau-import { display:block; margin:0 0 16px; padding:12px 14px; border-radius:8px; background:rgba(82,181,75,.12); border:1px solid rgba(82,181,75,.45); color:var(--text); text-decoration:none; font-weight:600; }
+.bandeau-import[hidden] { display:none; }

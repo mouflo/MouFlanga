@@ -448,3 +448,86 @@ class ImportTest(BibliothequeTest):
             nom = next(n for n in self.A._RANGEMENTS)
             self._attendre(nom)
         self.assertIn(nom, ("Gamaran", "Nanatsu no Taizai"))
+
+
+class CasArchivesTest(unittest.TestCase):
+    """Formats rencontrés dans de vraies archives."""
+
+    def _archive(self, dossier, noms):
+        p = Path(dossier) / "x.zip"
+        with zipfile.ZipFile(p, "w") as z:
+            for n in noms:
+                z.writestr(n, _jpeg((len(n) % 255, 0, 0)))
+        return p
+
+    def test_suite_dans_la_meme_archive(self):
+        import importer
+        with tempfile.TemporaryDirectory() as t:
+            t = Path(t)
+            lot = self._archive(t, ["20th-century-boys/Tome.01/001.jpg", "20th-century-boys/Tome.01/002.jpg",
+                                    "20th-century-boys/Tome.02/001.jpg", "21st-century-boys/volume-1/001.jpg"])
+            serie = t / "20th Century Boys"
+            serie.mkdir()
+            crees = importer.importer_lot(lot, serie, "20th Century Boys", {})
+            self.assertEqual(sorted(str(c.relative_to(t)) for c in crees),
+                             ["20th Century Boys/Tome 01/20th Century Boys - Tome 01.cbz",
+                              "20th Century Boys/Tome 02/20th Century Boys - Tome 02.cbz",
+                              "21st Century Boys/Tome 01/21st Century Boys - Tome 01.cbz"])
+
+    def test_numero_sans_le_mot_tome_et_parentheses(self):
+        import importer
+        with tempfile.TemporaryDirectory() as t:
+            t = Path(t)
+            lot = self._archive(t, ["MAR/MAR.07/a.jpg", "MAR/MAR.08/a.jpg", "tome 01 (ch. 01 - 07)/b.jpg"])
+            importer.extraire(lot, t / "x")
+            series, _ = importer.repartir(t / "x")
+            # numéros à la suite (1 et 7-8) : une seule série
+            self.assertEqual({p: sorted(v) for p, v in series.items()}, {"": [1, 7, 8]})
+
+    def _repartir(self, noms, fichiers_en_plus=()):
+        import importer
+        t = Path(self.tmp.name) / "r"
+        if t.exists():
+            import shutil
+            shutil.rmtree(t)
+        t.mkdir(parents=True)
+        lot = self._archive(t.parent, noms)
+        importer.extraire(lot, t)
+        importer.deplier(t)
+        return importer.repartir(t)
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_one_shot_et_tome_dans_le_nom_des_images(self):
+        series, _ = self._repartir(["Jaco/Jaco.p001.jpg", "Jaco/Jaco.p002.jpg"])
+        self.assertEqual({k: sorted(v) for k, v in series.items()}, {"": [1]})
+        series, _ = self._repartir(["Side/Side story.Tome 02.P001.jpg"])
+        self.assertEqual({k: sorted(v) for k, v in series.items()}, {"": [2]})
+
+    def test_chapitres_sans_tome_et_plages(self):
+        series, _ = self._repartir(["green/001/1_01.jpg", "green/002/2_01.jpg"])
+        self.assertEqual(sorted(series[""][None]["chapitres"]), [1.0, 2.0])          # « Hors tome »
+        import importer
+        self.assertIsNone(importer._tome_souple("the breaker 01 à 10"))
+
+    def test_archives_et_pdf_interieurs(self):
+        import importer, pymupdf
+        t = Path(self.tmp.name)
+        interieur = t / "Slam Dunk - T02.zip"
+        with zipfile.ZipFile(interieur, "w") as z:
+            z.writestr("p1.jpg", _jpeg((1, 2, 3)))
+        doc = pymupdf.open(); page = doc.new_page(width=200, height=300); page.insert_image(page.rect, stream=_jpeg((9, 9, 9)))
+        pdf = t / "Slam.T03.FRENCH.pdf"; doc.save(pdf)
+        lot = t / "lot.zip"
+        with zipfile.ZipFile(lot, "w") as z:
+            z.write(interieur, "Slam Dunk/Slam Dunk - T02.zip")
+            z.write(pdf, "Slam Dunk/Slam.T03.FRENCH/Slam.T03.FRENCH.pdf")
+            z.writestr("Slam Dunk/Slam Dunk - T01/a.jpg", _jpeg((5, 5, 5)))
+        dest = t / "x"
+        importer.extraire(lot, dest); importer.deplier(dest)
+        series, _ = importer.repartir(dest)
+        self.assertEqual(sorted(series[""]), [1, 2, 3])

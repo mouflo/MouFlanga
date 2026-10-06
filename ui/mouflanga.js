@@ -47,6 +47,11 @@
   async function loadList() {
     var r = await api('/api/library');
     series = r.series || [];
+    // Archives déposées à la racine du dossier des mangas : lien vers la page d'import
+    var bi = $('bandeauImport');
+    bi.hidden = !(r.a_importer || r.import_en_cours);
+    bi.textContent = r.import_en_cours ? '⏳ Import en cours : ' + r.import_en_cours + ' — voir l\'avancement'
+      : '📦 ' + r.a_importer + ' archive' + (r.a_importer > 1 ? 's' : '') + ' à importer dans la bibliothèque — ouvrir';
     note('listMsg', r.error, 'warn');
     if (!r.error && !series.length) {
       $('grid').innerHTML = '<div class="empty">Aucun manga trouvé dans le dossier configuré.<br>Range des fichiers <b>.cbz</b> ou <b>.cbr</b> dans un sous-dossier par série, ou change le dossier dans ⚙️ Réglages.</div>';

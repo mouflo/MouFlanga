@@ -49,6 +49,10 @@ if ! command -v xvfb-run >/dev/null 2>&1; then
     log "📦 Installation de xvfb (écran virtuel pour le scraper)..."
     apt-get install -y -q xvfb >>"$LOG_FILE" 2>&1
 fi
+if ! command -v unar >/dev/null 2>&1; then
+    log "📦 Installation de unar (extraction de secours des archives RAR)..."
+    apt-get install -y -q unar >>"$LOG_FILE" 2>&1 || log "⚠️ unar non installé : certaines archives RAR ne pourront pas être importées"
+fi
 if ! command -v xdotool >/dev/null 2>&1; then
     log "📦 Installation de xdotool (vrai clic de souris pour la vérification Cloudflare)..."
     apt-get install -y -q xdotool >>"$LOG_FILE" 2>&1 || log "⚠️ xdotool non installé : clic par automatisation à la place"
