@@ -1194,6 +1194,9 @@ class JapscanScraper:
             if not await attendre_captcha(page, alerter):
                 return []
 
+            # Laisser au site le temps d'enregistrer le captcha résolu avant de continuer
+            await asyncio.sleep(5)
+
             # Juste après un captcha, le lecteur reste parfois vide (aucune page annoncée) : on recharge
             # le chapitre une fois, le site se souvient alors du captcha résolu
             if not await _pages_annoncees(page):
@@ -1208,6 +1211,7 @@ class JapscanScraper:
                     await asyncio.sleep(6)
                     if not await attendre_captcha(page, alerter):
                         return []
+                    await asyncio.sleep(5)   # même attente après un captcha résolu au rechargement
 
             # Défilement progressif vers le bas pour forcer le chargement de toutes les pages
             logger.info("Défilement de la page pour forcer le lazy-loading...")
@@ -1378,8 +1382,8 @@ class JapscanScraper:
                         base = 20.0
                     if base > 0:
                         import random
-                        job["en_cours"] = "(pause avant le chapitre suivant)"
-                        await asyncio.sleep(random.uniform(base * 0.75, base * 1.5))
+                        job["en_cours"] = "(pause temps de lecture avant le chapitre suivant)"
+                        await asyncio.sleep(random.uniform(base * 0.8, base * 1.5))
 
                 def trop_d_echecs():
                     if echecs["de_suite"] >= 3:
