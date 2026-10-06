@@ -22,6 +22,27 @@ class NomSurTest(unittest.TestCase):
         self.assertEqual(js.nom_sur("Dandadan 247"), "Dandadan 247")
 
 
+class EcranTest(unittest.TestCase):
+    def test_ecran_deja_present(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"DISPLAY": ":5"}):
+            js._assurer_ecran()          # ne doit rien lancer
+            self.assertEqual(os.environ["DISPLAY"], ":5")
+
+    def test_ecran_demarre_tout_seul(self):
+        import shutil
+        from unittest import mock
+        if not shutil.which("Xvfb"):
+            self.skipTest("Xvfb absent de cette machine de test")
+        env = {k: v for k, v in os.environ.items() if k != "DISPLAY"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            js._assurer_ecran()
+            self.assertTrue(os.environ["DISPLAY"].startswith(":"))
+            if js._XVFB["proc"]:
+                js._XVFB["proc"].terminate()
+                js._XVFB["proc"] = None
+
+
 class CbzTest(unittest.TestCase):
     def test_creation_et_extensions(self):
         with tempfile.TemporaryDirectory() as d:

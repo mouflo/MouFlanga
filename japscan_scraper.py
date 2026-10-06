@@ -197,6 +197,36 @@ def _installer_chrome() -> bool:
     return False
 
 
+_XVFB = {"proc": None}
+
+
+def _assurer_ecran() -> None:
+    """Sans écran (service lancé sans xvfb-run), démarre un écran virtuel Xvfb pour le navigateur."""
+    if os.environ.get("DISPLAY"):
+        return
+    import shutil
+    import subprocess
+    exe = shutil.which("Xvfb")
+    if not exe:
+        raise RuntimeError("Aucun écran disponible et Xvfb n'est pas installé (apt-get install xvfb)")
+    lecture, ecriture = os.pipe()
+    try:
+        proc = subprocess.Popen([exe, "-displayfd", str(ecriture), "-screen", "0", "1280x1024x24", "-nolisten", "tcp"],
+                                pass_fds=(ecriture,), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        os.close(ecriture)
+        ecriture = -1
+        numero = os.read(lecture, 16).decode().strip()   # Xvfb écrit son numéro d'écran quand il est prêt
+        if not numero.isdigit():
+            raise RuntimeError("Xvfb n'a pas démarré")
+        _XVFB["proc"] = proc
+        os.environ["DISPLAY"] = f":{numero}"
+        logger.info(f"Écran virtuel démarré (:{numero})")
+    finally:
+        os.close(lecture)
+        if ecriture != -1:
+            os.close(ecriture)
+
+
 class _Session:
     """Ferme le navigateur puis libère le verrou (appelé comme browser.close())."""
 
@@ -235,6 +265,7 @@ class JapscanScraper:
         """
         _VERROU.acquire()
         try:
+            _assurer_ecran()
             PROFIL.mkdir(parents=True, exist_ok=True)
             options = dict(
                 user_data_dir=str(PROFIL),
