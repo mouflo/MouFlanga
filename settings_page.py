@@ -54,6 +54,26 @@ def init_app(app, base_dir, version_fn, get_dirs):
         write_secret(secrets, nom, valeur)
         os.environ[nom] = valeur
 
+    # ------------------------------------------------------------------
+    # Navigateur du scraper : Chrome (par défaut) ou Camoufox (Firefox anti-détection)
+    # ------------------------------------------------------------------
+    @app.route("/api/settings/navigateur")
+    def navigateur_state():
+        import japscan_scraper
+        return jsonify(japscan_scraper.camoufox_etat())
+
+    @app.route("/api/settings/navigateur", methods=["POST"])
+    def navigateur_save():
+        import japscan_scraper
+        body = request.get_json(silent=True) or {}
+        if body.get("action") == "installer":
+            japscan_scraper.installer_camoufox_en_fond()
+            return jsonify({"ok": True, "message": "Installation lancée en arrière-plan (quelques minutes). Cette page se met à jour."})
+        choix = "camoufox" if body.get("moteur") == "camoufox" else "chrome"
+        _enregistrer("JAPSCAN_MOTEUR", choix)
+        logger.info("Navigateur du scraper : %s", choix)
+        return jsonify({"ok": True, "message": "Enregistré : pris en compte au prochain lancement du navigateur."})
+
     @app.route("/api/settings/telegram")
     def telegram_state():
         return jsonify({

@@ -147,7 +147,7 @@ class VerificationTest(unittest.TestCase):
         for i in range(40):
             js._noter(f"événement {i}")
         h = js.verif_historique()
-        self.assertEqual(len(h), 25)
+        self.assertEqual(len(h), 40)
         self.assertIn("événement 39", h[-1])
         js._HISTORIQUE.clear()
 

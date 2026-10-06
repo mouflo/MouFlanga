@@ -327,6 +327,71 @@ def _installer_chrome() -> bool:
     return False
 
 
+MARQUE_CAMOUFOX = PROFIL.parent / "camoufox-installe"
+PROFIL_FIREFOX = Path(os.environ.get("JAPSCAN_PROFIL_FIREFOX", PROFIL.parent / "navigateur-firefox"))
+_INSTALL_CAMOUFOX = {"etat": "", "en_cours": False}
+
+
+def moteur() -> str:
+    """Navigateur choisi dans ⚙ Réglages : « chrome » (par défaut) ou « camoufox » (Firefox anti-détection)."""
+    return "camoufox" if os.environ.get("JAPSCAN_MOTEUR", "").strip().lower() == "camoufox" else "chrome"
+
+
+def camoufox_etat() -> dict:
+    """État pour la page Réglages : module Python présent ? navigateur téléchargé ? installation en cours ?"""
+    try:
+        import importlib.util
+        module = importlib.util.find_spec("camoufox") is not None
+    except Exception:
+        module = False
+    return {"moteur": moteur(), "module": module, "navigateur": MARQUE_CAMOUFOX.exists(),
+            "en_cours": _INSTALL_CAMOUFOX["en_cours"], "message": _INSTALL_CAMOUFOX["etat"]}
+
+
+def _installer_camoufox() -> bool:
+    """Télécharge le navigateur de Camoufox (gros fichier, une seule fois). Renvoie True si c'est fait."""
+    import subprocess
+    import sys
+    if _INSTALL_CAMOUFOX["en_cours"]:
+        return False
+    _INSTALL_CAMOUFOX.update(en_cours=True, etat="Installation de Camoufox en cours (quelques minutes)…")
+    try:
+        logger.info("Installation de Camoufox (téléchargement du navigateur, une seule fois)...")
+        r = subprocess.run([sys.executable, "-m", "camoufox", "fetch"], capture_output=True, text=True, timeout=1500)
+        if r.returncode == 0:
+            MARQUE_CAMOUFOX.parent.mkdir(parents=True, exist_ok=True)
+            MARQUE_CAMOUFOX.write_text(datetime.now().isoformat())
+            _INSTALL_CAMOUFOX["etat"] = "✅ Camoufox installé."
+            logger.info("✓ Camoufox installé")
+            return True
+        _INSTALL_CAMOUFOX["etat"] = "❌ Installation échouée : " + (r.stderr or r.stdout or "").strip()[-200:]
+        logger.warning(_INSTALL_CAMOUFOX["etat"])
+    except Exception as e:
+        _INSTALL_CAMOUFOX["etat"] = f"❌ Installation impossible : {e.__class__.__name__} {e}"[:250]
+        logger.warning(_INSTALL_CAMOUFOX["etat"])
+    finally:
+        _INSTALL_CAMOUFOX["en_cours"] = False
+    return False
+
+
+def installer_camoufox_en_fond() -> None:
+    threading.Thread(target=_installer_camoufox, daemon=True).start()
+
+
+def _hosts_brunhild() -> None:
+    """Firefox n'a pas l'équivalent de la redirection de Chrome : on note brunhild.challenges.cloudflare.com
+    (qui n'existe qu'en IPv6) avec une adresse IPv4 de Cloudflare dans /etc/hosts, si le serveur y a droit."""
+    try:
+        ip4 = socket.getaddrinfo("challenges.cloudflare.com", 443, socket.AF_INET)[0][4][0]
+        marque = "# MouFlanga-cloudflare"
+        chemin = Path("/etc/hosts")
+        lignes = [l for l in chemin.read_text(encoding="utf-8").splitlines() if marque not in l]
+        lignes.append(f"{ip4} brunhild.challenges.cloudflare.com {marque}")
+        chemin.write_text("\n".join(lignes) + "\n", encoding="utf-8")
+    except Exception as e:
+        logger.info(f"Redirection IPv4 de brunhild impossible ({e.__class__.__name__}) : on continue sans")
+
+
 _XVFB = {"proc": None}
 
 
@@ -360,8 +425,9 @@ def _assurer_ecran() -> None:
 class _Session:
     """Ferme le navigateur puis libère le verrou (appelé comme browser.close())."""
 
-    def __init__(self, context):
+    def __init__(self, context, gestionnaire=None):
         self._context = context
+        self._gestionnaire = gestionnaire     # contexte Camoufox à refermer après le navigateur
         self._ferme = False
 
     async def close(self):
@@ -370,6 +436,11 @@ class _Session:
         self._ferme = True
         try:
             await self._context.close()
+        except Exception:
+            pass
+        try:
+            if self._gestionnaire is not None:
+                await self._gestionnaire.__aexit__(None, None, None)
         except Exception:
             pass
         finally:
@@ -397,6 +468,11 @@ class JapscanScraper:
         try:
             _assurer_ecran()
             PROFIL.mkdir(parents=True, exist_ok=True)
+            if moteur() == "camoufox":
+                ctx = await self._lancer_camoufox()
+                if ctx is not None:
+                    return ctx
+                logger.warning("Camoufox indisponible : retour à Google Chrome")
             args_cf = []
             try:
                 # brunhild.challenges.cloudflare.com n'existe qu'en IPv6 : sans IPv6 sur le serveur, le défi ne peut pas
@@ -440,6 +516,34 @@ class JapscanScraper:
         except Exception:
             _VERROU.release()
             raise
+
+    async def _lancer_camoufox(self):
+        """Lance Camoufox (Firefox anti-détection) avec un profil persistant. Renvoie (_Session, context) ou None."""
+        try:
+            from camoufox.async_api import AsyncCamoufox
+        except ImportError:
+            logger.warning("Le module Python « camoufox » n'est pas installé (il arrive avec le prochain déploiement)")
+            return None
+        _hosts_brunhild()
+        PROFIL_FIREFOX.mkdir(parents=True, exist_ok=True)
+        base = dict(headless=False, persistent_context=True, user_data_dir=str(PROFIL_FIREFOX),
+                    locale="fr-FR", os="linux", humanize=False, geoip=False)
+        for tentative in range(2):
+            for extra in ({"window": (1280, 960)}, {}):      # « window » n'existe que dans les versions récentes
+                gestionnaire = AsyncCamoufox(**base, **extra)
+                try:
+                    context = await gestionnaire.__aenter__()
+                    logger.info("Navigateur : Camoufox (Firefox)")
+                    return _Session(context, gestionnaire), context
+                except TypeError:
+                    continue
+                except Exception as e:
+                    logger.warning(f"Camoufox ne démarre pas : {e.__class__.__name__} {str(e).splitlines()[0][:120] if str(e) else ''}")
+                    break
+            if tentative == 0 and not MARQUE_CAMOUFOX.exists() and _installer_camoufox():
+                continue
+            break
+        return None      # le verrou reste tenu : _init_browser enchaîne sur Chrome
 
     async def _chauffer(self, page):
         """Passe d'abord par la page d'accueil (comme un vrai visiteur) pour obtenir le cookie Cloudflare."""

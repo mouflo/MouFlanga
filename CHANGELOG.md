@@ -1,5 +1,11 @@
 # Historique des versions
 
+## Choix du navigateur : Chrome ou Camoufox
+- Nouveau panneau « 🧭 Navigateur du scraper » dans ⚙️ Réglages : Google Chrome (par défaut) ou Camoufox (Firefox anti-détection, profil séparé), avec un bouton pour télécharger Camoufox ; si Camoufox ne démarre pas, retour automatique à Chrome
+- Chrome : les adresses *.challenges.cloudflare.com sont redirigées vers IPv4 (le serveur n'a pas d'IPv6 et `brunhild.challenges.cloudflare.com` n'existe qu'en IPv6) ; avec Camoufox, la même redirection est écrite dans /etc/hosts si le serveur en a le droit
+- Après la vérification, l'appli attend la vraie fiche série (page « Loading… ») avant de chercher les chapitres
+- Rapport : historique des échecs réseau du défi, empreinte du navigateur, test DNS et test IPv6
+
 ## Vérification Cloudflare à la main et alertes Telegram
 - Cloudflare impose une vérification interactive sur les fiches série que le robot ne peut pas passer seul : le téléchargement se met maintenant en pause (10 minutes maximum) et attend l'utilisateur
 - Nouvelle page « Vérification » : on voit le navigateur du serveur en direct et on clique dessus (ordinateur ou téléphone) ; le téléchargement reprend dès que c'est passé
