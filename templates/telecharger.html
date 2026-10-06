@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Télécharger · MouFlanga</title>
+    <link rel="stylesheet" href="/ui/mou-ui.css">
+    <link rel="stylesheet" href="/ui/mou-settings.css">
+    <link rel="stylesheet" href="/ui/telecharger.css">
+</head>
+<body>
+    <div class="container">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+            <a href="/" class="back">← Retour</a>
+            <h1 style="margin: 0;">📥 Télécharger des mangas</h1>
+        </div>
+
+        <!-- Onglets -->
+        <div class="tabs">
+            <button class="tab active" data-tab="browse">
+                📚 Parcourir
+            </button>
+            <button class="tab" data-tab="jobs">
+                ⏳ En cours
+            </button>
+        </div>
+
+        <!-- Tab: Parcourir -->
+        <div id="browse-tab" class="tab-content active">
+            <!-- Étape 1: Liste des mangas -->
+            <div id="step-list" class="step">
+                <h2>Étape 1: Choisir les mangas</h2>
+                <p class="sub">Sélectionne les mangas que tu veux télécharger</p>
+
+                <div id="manga-list" class="manga-list">
+                    <div class="loading">Chargement des mangas...</div>
+                </div>
+
+                <div style="margin-top: 20px; text-align: right;">
+                    <button class="mou-btn" id="btn-next-chapters" disabled>
+                        Suivant →
+                    </button>
+                </div>
+            </div>
+
+            <!-- Étape 2: Chapitres -->
+            <div id="step-chapters" class="step" style="display: none;">
+                <h2>Étape 2: Sélectionner les chapitres</h2>
+                <p class="sub" id="manga-title-display"></p>
+
+                <div id="chapters-list" class="chapters-list"></div>
+
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button class="mou-btn secondary" id="btn-back-manga">
+                        ← Retour
+                    </button>
+                    <button class="mou-btn" id="btn-next-metadata" disabled>
+                        Suivant →
+                    </button>
+                </div>
+            </div>
+
+            <!-- Étape 3: Métadonnées -->
+            <div id="step-metadata" class="step" style="display: none;">
+                <h2>Étape 3: Confirmer les tomes</h2>
+                <p class="sub">Les chapitres sont organisés en tomes. Confirme le nombre de chapitres par tome</p>
+
+                <div id="metadata-form" style="max-width: 600px;"></div>
+
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button class="mou-btn secondary" id="btn-back-chapters">
+                        ← Retour
+                    </button>
+                    <button class="mou-btn" id="btn-download">
+                        ✅ Télécharger
+                    </button>
+                </div>
+            </div>
+
+            <!-- Étape 4: Téléchargement -->
+            <div id="step-downloading" class="step" style="display: none;">
+                <h2>Étape 4: Téléchargement en cours</h2>
+
+                <div id="download-progress" class="progress-box">
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill"></div>
+                    </div>
+                    <div style="margin-top: 12px; font-size: 0.9rem; color: var(--text2);">
+                        <span id="progress-text">0 / 0</span>
+                    </div>
+                </div>
+
+                <div id="download-log" class="download-log"></div>
+            </div>
+        </div>
+
+        <!-- Tab: En cours -->
+        <div id="jobs-tab" class="tab-content">
+            <div id="jobs-list"></div>
+        </div>
+    </div>
+
+    <script src="/ui/mou-ui.js"></script>
+    <script src="/ui/telecharger.js"></script>
+</body>
+</html>
