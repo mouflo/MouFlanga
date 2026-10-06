@@ -1301,7 +1301,11 @@ def _marquer_deja(chapters, titre):
     if not titre:
         return chapters
     deja = _deja_telecharges(titre)
-    return [{**c, "deja": japscan_scraper._numero(c) in deja} for c in chapters]
+    nom = _dossier_serie(titre).name
+    tomes_la = {e.get("tome") for e in _entrees(_scan().get(nom) or []) if e.get("tome") is not None}
+    tomes_la |= {int(e["groupe"].split()[1]) for e in _entrees(_scan().get(nom) or []) if (e.get("groupe") or "").startswith("Tome ")}
+    return [{**c, "deja": (c["volume"] in tomes_la) if c.get("volume") is not None else japscan_scraper._numero(c) in deja}
+            for c in chapters]
 
 
 _RECHERCHES = {}                # texte -> (heure, résultats) : gardés 1 heure

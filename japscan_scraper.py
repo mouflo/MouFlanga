@@ -1096,8 +1096,18 @@ class JapscanScraper:
                 type_url = type_m.group(1) if type_m else "manga"
                 for z in zones_vues:
                     for el in z.get("items", []):
-                        txt = (el.get("text") or "").strip()
+                        txt = (el.get("text") or "").replace("\u200b", "").strip()      # caractère invisible du site
                         mm = re.search(r"chapitre\s+(\d+(?:\.\d+)?)", txt, re.I)
+                        mv = None if mm else re.search(r"volume\s+(\d+)", txt, re.I)
+                        if mv:
+                            # Série rangée par volumes (« Volume 22 : FIN », adresse …/volume-22/) : un volume = un tome
+                            cid = f"volume-{mv.group(1)}"
+                            full_url = urljoin(JAPSCAN_URL, f"/{type_url}/{slug}/{cid}/") if slug else ""
+                            if full_url and full_url not in seen_urls:
+                                seen_urls.add(full_url)
+                                chapters.append({"title": txt.split("\n")[0][:120], "url": full_url, "chapter_id": cid,
+                                                 "volume": int(mv.group(1))})
+                            break
                         if not mm:
                             continue
                         cid = mm.group(1)
@@ -1126,10 +1136,12 @@ class JapscanScraper:
 
                 # Ordre chronologique (le site liste du plus récent au plus ancien)
                 def _key(c):
+                    if c.get("volume") is not None:            # volumes d'abord, dans l'ordre
+                        return (0, c["volume"])
                     try:
-                        return float(c["chapter_id"])
+                        return (1, float(c["chapter_id"]))
                     except ValueError:
-                        return float("inf")
+                        return (2, 0)
                 chapters.sort(key=_key)
                 for i, c in enumerate(chapters, 1):
                     c["num"] = i
@@ -1464,7 +1476,17 @@ class JapscanScraper:
                         else:
                             echecs["de_suite"] = 0
                             n = _numero(chapter)
-                            if self.tomes_info is not None and n is not None:
+                            if chapter.get("volume") is not None:
+                                # Volume complet : un fichier de tome ordinaire (jamais par-dessus un tome déjà là)
+                                fichier = tomes_cbz.fichier_tome(self.output_dir, self.output_dir.name, int(chapter["volume"]))
+                                if fichier.exists():
+                                    logger.info(f"{fichier.name} existe déjà : volume non réécrit")
+                                    job["failed"].append(titre + " (tome déjà présent)")
+                                elif self.create_cbz(pages, fichier):
+                                    job["downloaded"].append(str(fichier))
+                                else:
+                                    job["failed"].append(titre)
+                            elif self.tomes_info is not None and n is not None:
                                 # Rangé dans le fichier de son tome (ou « Hors tome » s'il n'est pas encore sorti)
                                 propre = tomes_cbz.nettoyer_titre(titre) or self.tomes_info.get("titres", {}).get(n, "")
                                 t = tomes.tome_de(n, self.tomes_info)

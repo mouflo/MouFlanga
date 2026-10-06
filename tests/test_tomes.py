@@ -558,3 +558,35 @@ class EtatSerieTest(OrganiserTest):
     def test_en_cours(self):
         etat, texte = self._etat({"statut": "RELEASING", "volumes": None, "chapitres": None, "titre": "Gintama"})
         self.assertEqual((etat, texte), ("en_cours", "En cours de parution."))
+
+
+class VolumeTest(unittest.TestCase):
+    def test_volume_devient_un_tome(self):
+        import japscan_scraper as js
+        with tempfile.TemporaryDirectory() as t:
+            dossier = Path(t) / "Gamaran"
+            sc = js.JapscanScraper(dossier)
+
+            class Faux:
+                async def __aenter__(self):
+                    return object()
+
+                async def __aexit__(self, *a):
+                    return False
+
+            async def ouvrir(p):
+                return ("n", "c")
+
+            async def fermer(s):
+                pass
+
+            async def lire(url, **kw):
+                return _pages(4)
+            vols = [{"title": "Volume 21", "url": "u/volume-21/", "chapter_id": "volume-21", "volume": 21, "num": 1},
+                    {"title": "Volume 22: FIN", "url": "u/volume-22/", "chapter_id": "volume-22", "volume": 22, "num": 2}]
+            with mock.patch.object(sc, "_ouvrir_session", ouvrir), mock.patch.object(sc, "_fermer_session", fermer), \
+                    mock.patch.object(js, "async_playwright", lambda: Faux()), \
+                    mock.patch.object(sc, "download_chapter_pages", lire), mock.patch.dict(os.environ, {"JAPSCAN_PAUSE": "0"}):
+                sc.download_manga_sync("vv", "Gamaran", vols, preparer=lambda: {"source": "t", "tomes": {}, "titres": {}})
+            self.assertTrue((dossier / "Tome 21" / "Gamaran - Tome 21.cbz").is_file())
+            self.assertTrue((dossier / "Tome 22" / "Gamaran - Tome 22.cbz").is_file())
