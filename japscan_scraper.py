@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Scraper Japscan - Télécharge et assemble les mangas de japscan.st en fichiers CBR.
+Utilise Playwright pour contourner les protections anti-scraping (403 Forbidden).
 """
 import hashlib
 import io
@@ -23,26 +24,90 @@ except ImportError:
     requests = None
     BeautifulSoup = None
 
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    sync_playwright = None
+
 logger = logging.getLogger("japscan_scraper")
 
 JAPSCAN_URL = "https://www.japscan.foo"  # japscan.cc redirige vers japscan.foo
 TIMEOUT = 10
 MAX_RETRIES = 3
+PLAYWRIGHT_TIMEOUT = 30000  # 30 secondes pour Playwright
 
 # État global des téléchargements
 download_jobs = {}
 
 
 class JapscanScraper:
-    """Scrape les mangas de Japscan."""
+    """Scrape les mangas de Japscan avec support Playwright."""
 
     def __init__(self, output_dir: Path):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.session = requests.Session() if requests else None
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        })
+        if self.session:
+            self.session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            })
+        self.playwright = None
+        self.browser = None
+
+    def _get_browser(self):
+        """Obtient ou crée une instance du navigateur Playwright."""
+        if not sync_playwright:
+            logger.error("Playwright non installé - utilise requests comme fallback")
+            return None
+
+        if self.browser is None:
+            try:
+                if self.playwright is None:
+                    self.playwright = sync_playwright().start()
+                self.browser = self.playwright.chromium.launch(headless=True)
+                logger.info("Navigateur Playwright lancé")
+            except Exception as e:
+                logger.error(f"Erreur lancement Playwright: {e}")
+                return None
+
+        return self.browser
+
+    def close(self):
+        """Ferme le navigateur."""
+        if self.browser:
+            self.browser.close()
+            self.browser = None
+        if self.playwright:
+            self.playwright.stop()
+            self.playwright = None
+
+    def _fetch_with_browser(self, url: str) -> str | None:
+        """Utilise Playwright pour charger une page HTML (contourne 403)."""
+        browser = self._get_browser()
+        if not browser:
+            logger.warning(f"Playwright indisponible, utilise requests pour {url}")
+            return self._fetch(url)
+
+        try:
+            page = browser.new_page()
+            page.set_default_timeout(PLAYWRIGHT_TIMEOUT)
+
+            logger.info(f"Playwright: chargement {url}")
+            page.goto(url, wait_until="networkidle")
+
+            html = page.content()
+            page.close()
+
+            logger.info(f"Playwright: page chargée ({len(html)} chars)")
+            return html
+        except Exception as e:
+            logger.error(f"Erreur Playwright {url}: {e}")
+            try:
+                page.close()
+            except:
+                pass
+            # Fallback à requests
+            return self._fetch(url)
 
     def _fetch(self, url: str, **kwargs) -> str | None:
         """Récupère une URL avec retry."""
@@ -62,10 +127,22 @@ class JapscanScraper:
         return None
 
     def list_manga(self) -> list[dict]:
-        """Liste les mangas disponibles."""
+        """Liste les mangas disponibles avec Playwright."""
         logger.info("Scrape la liste des mangas...")
-        html = self._fetch(f"{JAPSCAN_URL}/listing")
+
+        # Essaie plusieurs endpoints possibles
+        endpoints = ["/mangas/", "/listing", "/series", "/"]
+        html = None
+
+        for endpoint in endpoints:
+            url = f"{JAPSCAN_URL}{endpoint}"
+            logger.info(f"Essai: {url}")
+            html = self._fetch_with_browser(url)
+            if html and len(html) > 1000:  # Page valide
+                break
+
         if not html:
+            logger.error("Impossible de charger la liste des mangas")
             return []
 
         soup = BeautifulSoup(html, "html.parser")
@@ -79,6 +156,8 @@ class JapscanScraper:
             "div.col a",  # Cards en colonnes
             "article",    # HTML5 semantic
             "div.card",   # Bootstrap cards
+            "a[href*='/manga/']",
+            "a[href*='/serie/']",
         ]
 
         seen_urls = set()
@@ -137,9 +216,9 @@ class JapscanScraper:
         return mangas
 
     def get_chapters(self, manga_url: str) -> list[dict]:
-        """Récupère les chapitres d'un manga."""
+        """Récupère les chapitres d'un manga avec Playwright."""
         logger.info(f"Récupère les chapitres: {manga_url}")
-        html = self._fetch(manga_url)
+        html = self._fetch_with_browser(manga_url)
         if not html:
             return []
 
@@ -155,6 +234,9 @@ class JapscanScraper:
             "div.chapter a",
             "tr a",  # Les mangas peuvent être en tableau
             "li a",  # Ou en liste
+            "a[href*='/chapitre/']",
+            "a[href*='/chapter/']",
+            "a[href*='/lecture/']",
         ]
 
         seen_urls = set()
@@ -191,9 +273,9 @@ class JapscanScraper:
         return list(reversed(chapters))  # Ordre chronologique
 
     def download_chapter_pages(self, chapter_url: str) -> list[bytes]:
-        """Télécharge les pages d'un chapitre."""
+        """Télécharge les pages d'un chapitre avec Playwright."""
         logger.info(f"Télécharge les pages: {chapter_url}")
-        html = self._fetch(chapter_url)
+        html = self._fetch_with_browser(chapter_url)
         if not html:
             return []
 
@@ -208,6 +290,8 @@ class JapscanScraper:
             "img[class*='page']",
             "img[class*='chapter']",
             "div.page img",
+            "img[src*='manga']",
+            "img[src*='chapitre']",
             "img",  # Fallback: toutes les images
         ]
 
@@ -346,6 +430,7 @@ def download_manga_background(job_id: str, manga_title: str, chapters: list[dict
 
         job["status"] = "completed"
         logger.info(f"Téléchargement terminé: {job_id}")
+        scraper.close()
 
     except Exception as e:
         job["status"] = "error"

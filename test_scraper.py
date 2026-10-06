@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Test script to verify Japscan scraper is working.
-Run this on your server to test manga list, chapters, and page downloads.
+Test script pour vérifier que le scraper Japscan fonctionne.
+Utilise maintenant Playwright pour contourner le blocage 403.
 """
 import sys
 import logging
@@ -9,14 +9,12 @@ from pathlib import Path
 
 logging.basicConfig(level=logging.DEBUG)
 
-# Add script dir to path so we can import japscan_scraper
 sys.path.insert(0, str(Path(__file__).parent))
 
 from japscan_scraper import JapscanScraper
-from pathlib import Path
 
 def test_scraper():
-    """Test the scraper step by step."""
+    """Test le scraper étape par étape."""
     output_dir = Path("/tmp/manga_test")
 
     print("\n" + "="*70)
@@ -28,8 +26,9 @@ def test_scraper():
 
     if not mangas:
         print("❌ ERREUR: Aucun manga trouvé!")
-        print("\nCela signifie que le sélecteur CSS ne correspond pas à la structure du site.")
+        print("\nCela signifie que les sélecteurs CSS ne correspondent pas.")
         print("Exécute d'abord: python3 probe_japscan.py")
+        scraper.close()
         return False
 
     print(f"✓ Trouvé {len(mangas)} mangas:")
@@ -52,6 +51,7 @@ def test_scraper():
         if not chapters:
             print(f"❌ ERREUR: Aucun chapitre trouvé pour {first_manga['title']}")
             print("Exécute probe_japscan.py et cherche le pattern des chapitres")
+            scraper.close()
             return False
 
         print(f"✓ Trouvé {len(chapters)} chapitres:")
@@ -73,6 +73,7 @@ def test_scraper():
         if not pages:
             print(f"❌ ERREUR: Aucune page trouvée pour {first_chapter['title']}")
             print("Exécute probe_japscan.py et cherche les sélecteurs pour les images")
+            scraper.close()
             return False
 
         print(f"✓ Téléchargé {len(pages)} pages")
@@ -85,8 +86,10 @@ def test_scraper():
     print("\n" + "="*70)
     print("✓ TOUS LES TESTS RÉUSSIS!")
     print("="*70)
-    print("\nLe scraper fonctionne correctement.")
+    print("\nLe scraper fonctionne correctement avec Playwright.")
     print("Tu peux maintenant utiliser l'interface web pour télécharger des mangas.")
+
+    scraper.close()
     return True
 
 if __name__ == "__main__":

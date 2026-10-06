@@ -4,3 +4,4 @@ python-dotenv
 rarfile
 requests
 beautifulsoup4
+playwright
