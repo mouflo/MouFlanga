@@ -1,64 +1,64 @@
-# Test: Cloudflare Challenge Resolution via Waiting
+# Test : Résolution du défi Cloudflare par attente
 
-## Hypothesis
-Cloudflare returns an initial "Just a moment..." challenge that resolves after waiting ~10 seconds and reloading the page.
+## Hypothèse
+Cloudflare renvoie un défi initial "Just a moment..." qui se résout après ~10 secondes d'attente et rechargement.
 
-## Prerequisites
-- Xvfb installed: `apt-get install xvfb`
-- playwright-stealth installed: `pip install --break-system-packages playwright-stealth`
-- Verify with: `playwright install chromium` (if needed)
+## Prérequis
+- Xvfb installé : `apt-get install xvfb`
+- playwright-stealth installé : `pip install --break-system-packages playwright-stealth`
+- Vérifier avec : `playwright install chromium` (si nécessaire)
 
-## Run the Test
+## Lancer le test
 
-On your Proxmox server:
+Sur ton serveur Proxmox :
 
 ```bash
 cd /opt/mouflanga
 xvfb-run -a python3 probe_wait_cloudflare.py
 ```
 
-## Expected Output
+## Résultat attendu
 
-### If SUCCESS ✓
+### Si SUCCÈS ✓
 ```
 ✓ SUCCÈS ! Page chargée sans Cloudflare !
 ✓ Titre: ...
 ✓ Images trouvées: N
 ```
 
-This means the wait-and-reload approach bypasses Cloudflare. Next step: integrate into `japscan_scraper.py`
+L'attente + rechargement contourne Cloudflare. Prochaine étape : intégrer dans `japscan_scraper.py`
 
-### If FAILURE ✗
+### Si ÉCHEC ✗
 ```
 ✗ Cloudflare toujours présent
 ```
 
-Cloudflare challenge persists even after waiting. Next step: try `undetected-chromium` or other approaches.
+Le défi Cloudflare persiste malgré l'attente. Prochaine étape : essayer `undetected-chromium` ou autres approches.
 
-## What This Test Does
+## Ce que fait ce test
 
-1. Launches Playwright with `headless=False` via Xvfb (simulates real browser)
-2. Adds anti-detection JavaScript to hide webdriver
-3. Loads chapter page: `https://www.japscan.foo/manga/dandadan/247/`
-4. Detects "just a moment" in HTML (Cloudflare challenge marker)
-5. Waits 10 seconds with countdown
-6. Calls `page.reload()` to fetch fresh response
-7. Checks if Cloudflare challenge is gone
-8. Lists found images if successful
+1. Lance Playwright avec `headless=False` via Xvfb (simule un vrai navigateur)
+2. Ajoute du JavaScript anti-détection pour masquer webdriver
+3. Charge la page chapitre : `https://www.japscan.foo/manga/dandadan/247/`
+4. Détecte "just a moment" dans le HTML (marqueur du défi Cloudflare)
+5. Attend 10 secondes avec compte à rebours
+6. Appelle `page.reload()` pour une nouvelle réponse
+7. Vérifie si le défi Cloudflare a disparu
+8. Liste les images trouvées en cas de succès
 
-## Files Involved
-- **probe_wait_cloudflare.py**: The diagnostic probe
-- **setup-xvfb.sh**: Installation script (already run)
-- **japscan_scraper.py**: Main scraper (will integrate solution here after validation)
+## Fichiers concernés
+- **probe_wait_cloudflare.py** : La sonde de diagnostic
+- **setup-xvfb.sh** : Script d'installation (déjà exécuté)
+- **japscan_scraper.py** : Scraper principal (solution sera intégrée ici après validation)
 
-## Next Steps After Test
+## Prochaines étapes après le test
 
-- **If SUCCESS**: 
-  1. Update `japscan_scraper.py` to use wait-and-reload approach in `_fetch_with_browser()`
-  2. Test full pipeline: manga list → chapters → pages
-  3. Update Flask web interface to support xvfb-run wrapper
+- **Si SUCCÈS** : 
+  1. Mettre à jour `japscan_scraper.py` pour utiliser attente + rechargement dans `_fetch_with_browser()`
+  2. Tester le pipeline complet : liste mangas → chapitres → pages
+  3. Mettre à jour l'interface Flask pour supporter le wrapper xvfb-run
 
-- **If FAILURE**:
-  1. Install undetected-chromium: `pip install undetected-chromedriver`
-  2. Create `probe_undetected.py` to test specialized approach
-  3. Evaluate other solutions (proxy services, API discovery)
+- **Si ÉCHEC** :
+  1. Installer undetected-chromium : `pip install undetected-chromedriver`
+  2. Créer `probe_undetected.py` pour tester l'approche spécialisée
+  3. Évaluer d'autres solutions (services proxy, découverte API)

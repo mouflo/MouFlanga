@@ -1,149 +1,149 @@
-# Cloudflare Bypass Solution - Current Status
+# Solution Cloudflare - État actuel
 
-## Overview
-The Japscan scraper is blocked by Cloudflare's "Just a moment..." challenge on individual chapter pages (URLs like `/manga/dandadan/247/`). We're testing a wait-and-reload approach to bypass it.
+## Vue d'ensemble
+Le scraper Japscan est bloqué par le défi "Just a moment..." de Cloudflare sur les pages de chapitres individuelles (URLs comme `/manga/dandadan/247/`). On teste une approche attente + rechargement pour le contourner.
 
-## Current Architecture
+## Architecture actuelle
 
 ```
-Request Flow (Current):
-├─ Manga list (/) → ✓ Works (543 found)
-├─ Chapter list (/manga/x) → ✗ 403 Blocked by Cloudflare
-└─ Chapter pages (/manga/x/chapters/y) → ✗ 403 Blocked by Cloudflare
+Flux des requêtes (Actuel) :
+├─ Liste mangas (/) → ✓ Fonctionne (543 trouvés)
+├─ Liste chapitres (/manga/x) → ✗ 403 Bloqué par Cloudflare
+└─ Pages chapitres (/manga/x/chapitres/y) → ✗ 403 Bloqué par Cloudflare
 
-Cloudflare Protection Stack:
-├─ headless=True detection → 403 Forbidden
-├─ Playwright webdriver detection → 403 Forbidden
-└─ "Just a moment..." challenge → temporary block
+Pile de protection Cloudflare :
+├─ Détection headless=True → 403 Forbidden
+├─ Détection webdriver Playwright → 403 Forbidden
+└─ Défi "Just a moment..." → blocage temporaire
 ```
 
-## Solution Approach: Wait & Reload
+## Approche de solution : Attendre & Recharger
 
-**Hypothesis**: Cloudflare returns initial challenge that resolves after waiting and reloading.
+**Hypothèse** : Cloudflare renvoie un défi initial qui se résout après attente et rechargement.
 
-**Implementation**: Three phases
+**Implémentation** : Trois phases
 
-### Phase 1: Diagnostic Test (In Progress)
-- **File**: `probe_wait_cloudflare.py` ✓ Created & Pushed
-- **Status**: Awaiting server auto-deployment and execution
-- **Location on server**: `/opt/mouflanga/probe_wait_cloudflare.py`
-- **How to run**: 
+### Phase 1 : Test de diagnostic (En cours)
+- **Fichier** : `probe_wait_cloudflare.py` ✓ Créé et poussé
+- **État** : En attente du déploiement auto et exécution
+- **Localisation serveur** : `/opt/mouflanga/probe_wait_cloudflare.py`
+- **Comment le lancer** : 
   ```bash
   cd /opt/mouflanga && xvfb-run -a python3 probe_wait_cloudflare.py
   ```
-- **What it does**:
-  1. Launches browser with `headless=False` via Xvfb
-  2. Adds anti-detection JavaScript
-  3. Loads chapter page
-  4. Detects "just a moment" challenge
-  5. Waits 10 seconds
-  6. Reloads page
-  7. Checks if challenge is gone
-  8. Lists images if successful
+- **Ce qu'il fait** :
+  1. Lance le navigateur avec `headless=False` via Xvfb
+  2. Ajoute du JavaScript anti-détection
+  3. Charge la page chapitre
+  4. Détecte le défi "just a moment"
+  5. Attend 10 secondes
+  6. Recharge la page
+  7. Vérifie si le défi a disparu
+  8. Liste les images en cas de succès
 
-### Phase 2: Integration (Ready to Deploy)
-- **File**: `japscan_scraper_cloudflare_handler.py` ✓ Created & Pushed
-- **Status**: Waiting for Phase 1 success to activate
-- **What to do**: Once `probe_wait_cloudflare.py` succeeds:
-  1. Copy the enhanced `_fetch_with_browser()` method from this file
-  2. Replace the method in `japscan_scraper.py`
-  3. Update browser launch to use `headless=False + Xvfb`
-  4. Re-test full pipeline
+### Phase 2 : Intégration (Prête à déployer)
+- **Fichier** : `japscan_scraper_cloudflare_handler.py` ✓ Créé et poussé
+- **État** : En attente du succès de la Phase 1 pour activation
+- **À faire** : Une fois que `probe_wait_cloudflare.py` réussit :
+  1. Copier la méthode améliorée `_fetch_with_browser()` de ce fichier
+  2. Remplacer la méthode dans `japscan_scraper.py`
+  3. Mettre à jour le lancement du navigateur pour utiliser `headless=False + Xvfb`
+  4. Re-tester le pipeline complet
 
-### Phase 3: Production Deployment
-- Update Flask web interface to wrap calls with `xvfb-run`
-- Test complete workflow: list mangas → get chapters → download pages
-- Create CBR files successfully
+### Phase 3 : Déploiement en production
+- Mettre à jour l'interface Flask pour wrapper les appels avec `xvfb-run`
+- Tester le flux complet : liste mangas → obtenir chapitres → télécharger pages
+- Créer les fichiers CBR avec succès
 
-## Files Committed
+## Fichiers engagés
 
-| File | Status | Purpose |
-|------|--------|---------|
-| `probe_wait_cloudflare.py` | Pushed | Diagnostic test for wait-and-reload approach |
-| `TEST_CLOUDFLARE_WAIT.md` | Pushed | Testing guide with expected outputs |
-| `japscan_scraper_cloudflare_handler.py` | Pushed | Enhanced method ready for integration |
-| `setup-xvfb.sh` | Already on server | Xvfb + dependencies installer |
+| Fichier | État | Objectif |
+|---------|------|---------|
+| `probe_wait_cloudflare.py` | Poussé | Test de diagnostic pour l'approche attente + rechargement |
+| `TEST_CLOUDFLARE_WAIT.md` | Poussé | Guide de test avec résultats attendus |
+| `japscan_scraper_cloudflare_handler.py` | Poussé | Méthode améliorée prête pour intégration |
+| `setup-xvfb.sh` | Déjà sur serveur | Installeur Xvfb + dépendances |
 
-## Infrastructure Status
+## État de l'infrastructure
 
-- ✓ Xvfb installed on server
-- ✓ playwright-stealth installed
-- ✓ Chromium binaries present
-- ✓ All dependencies satisfied
-- ⏳ Waiting for `probe_wait_cloudflare.py` test results
+- ✓ Xvfb installé sur serveur
+- ✓ playwright-stealth installé
+- ✓ Binaires Chromium présents
+- ✓ Toutes dépendances satisfaites
+- ⏳ En attente des résultats du test `probe_wait_cloudflare.py`
 
-## What Happens Next
+## Ce qui se passe ensuite
 
-### If Test SUCCEEDS ✓
-1. We have the solution!
-2. Integrate `japscan_scraper_cloudflare_handler.py` into main scraper
-3. Update browser launch strategy in `_get_browser()` to use headless=False + Xvfb
-4. Re-run `test_scraper.py` to validate full pipeline
-5. Update Flask interface if needed
-6. Mark as solved
+### Si le test RÉUSSIT ✓
+1. On a la solution !
+2. Intégrer `japscan_scraper_cloudflare_handler.py` dans le scraper principal
+3. Mettre à jour la stratégie de lancement dans `_get_browser()` pour utiliser headless=False + Xvfb
+4. Relancer `test_scraper.py` pour valider le pipeline complet
+5. Mettre à jour l'interface Flask si nécessaire
+6. Marquer comme résolu
 
-### If Test FAILS ✗
-1. Wait-and-reload doesn't work
-2. Try alternative: `undetected-chromium`
-3. Create `probe_undetected.py` for testing
-4. Consider: proxy services, API discovery, or manual approaches
+### Si le test ÉCHOUE ✗
+1. L'attente + rechargement ne fonctionne pas
+2. Essayer l'alternative : `undetected-chromium`
+3. Créer `probe_undetected.py` pour tester
+4. Considérer : services proxy, découverte d'API, ou approches manuelles
 
-## Testing Timeline
+## Calendrier des tests
 
-- **T+0**: Server auto-deploys `probe_wait_cloudflare.py` (within ~5 minutes)
-- **T+5m**: You can run the test manually or wait for cron
-- **T+15m**: Results should be available
+- **T+0** : Déploiement auto du serveur `probe_wait_cloudflare.py` (dans ~5 minutes)
+- **T+5m** : Tu peux lancer le test manuellement ou attendre cron
+- **T+15m** : Les résultats doivent être disponibles
 
-## How to Monitor Server Auto-Deployment
+## Comment surveiller le déploiement auto
 
-The server checks GitHub every few minutes via cron. You can:
-1. Wait for auto-deployment (passive)
-2. Manually pull: `cd /opt/mouflanga && git pull origin main`
-3. Run tests immediately after pull
+Le serveur vérifie GitHub toutes les quelques minutes via cron. Tu peux :
+1. Attendre le déploiement auto (passif)
+2. Pull manuel : `cd /opt/mouflanga && git pull origin main`
+3. Lancer les tests immédiatement après le pull
 
-## Current Blockers
+## Blocages actuels
 
-None - all diagnostic infrastructure is in place. Just need to execute the test.
+Aucun - toute l'infrastructure de diagnostic est en place. Juste besoin d'exécuter le test.
 
 ## Notes
 
-- All probe files use `xvfb-run -a python3 <script>` to provide virtual X display
-- The wait-and-reload logic is non-blocking (simple `time.sleep(10)`)
-- Fallback to `requests` if Playwright fails (maintains robustness)
-- Browser launch options tuned for headless Linux environment
+- Tous les fichiers sonde utilisent `xvfb-run -a python3 <script>` pour fournir un affichage X virtuel
+- La logique attente + rechargement est non-bloquante (simple `time.sleep(10)`)
+- Fallback vers `requests` en cas d'échec Playwright (maintient la robustesse)
+- Options de lancement du navigateur adaptées à l'environnement Linux headless
 
-## Commands for Server Execution
+## Commandes pour l'exécution serveur
 
 ```bash
-# Monitor auto-deployment
+# Surveiller le déploiement auto
 watch -n 5 'ls -la /opt/mouflanga/ | grep probe_wait'
 
 # Pull latest
 cd /opt/mouflanga && git pull origin main
 
-# Run diagnostic test
+# Lancer le test de diagnostic
 xvfb-run -a python3 probe_wait_cloudflare.py
 
-# View test logs
-cat /opt/mouflanga/logs/*.log  # if logging configured
+# Voir les logs du test
+cat /opt/mouflanga/logs/*.log  # si logging configuré
 
-# Full pipeline test (after integration)
+# Test pipeline complet (après intégration)
 xvfb-run -a python3 test_scraper.py
 ```
 
-## Decision Tree
+## Arbre de décision
 
 ```
-Test Result?
-├─ SUCCESS (images found, no CF challenge)
-│  └─ Integrate cloudflare_handler into scraper
-│     └─ Update _get_browser() for headless=False + Xvfb
-│        └─ Re-test full pipeline
-│           └─ READY FOR PRODUCTION ✓
+Résultat du test ?
+├─ SUCCÈS (images trouvées, pas de défi CF)
+│  └─ Intégrer cloudflare_handler dans le scraper
+│     └─ Mettre à jour _get_browser() pour headless=False + Xvfb
+│        └─ Re-tester le pipeline complet
+│           └─ PRÊT POUR LA PRODUCTION ✓
 │
-└─ FAILURE (CF challenge persists)
-   └─ Try undetected-chromium approach
-      ├─ Create probe_undetected.py
-      ├─ Test: pip install undetected-chromedriver
-      └─ If works: integrate, else seek alternatives
+└─ ÉCHEC (défi CF persiste)
+   └─ Essayer l'approche undetected-chromium
+      ├─ Créer probe_undetected.py
+      ├─ Test : pip install undetected-chromedriver
+      └─ Si ça marche : intégrer, sinon chercher alternatives
 ```

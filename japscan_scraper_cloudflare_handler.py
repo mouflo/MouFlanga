@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
 """
-Enhanced _fetch_with_browser() method with Cloudflare challenge handling.
+Méthode _fetch_with_browser() améliorée avec gestion du défi Cloudflare.
 
-This module provides an improved version of the _fetch_with_browser() method
-that detects and bypasses Cloudflare's "Just a moment..." challenge by:
-1. Loading the page
-2. Detecting Cloudflare challenge in HTML
-3. Waiting 10 seconds
-4. Reloading the page to allow Cloudflare to verify the connection
-5. Returning the final HTML
+Ce module fournit une version améliorée de la méthode _fetch_with_browser()
+qui détecte et contourne le défi "Just a moment..." de Cloudflare en :
+1. Chargeant la page
+2. Détectant le défi Cloudflare dans le HTML
+3. Attendant 10 secondes
+4. Rechargeant la page pour permettre à Cloudflare de vérifier la connexion
+5. Retournant le HTML final
 
-USAGE:
-------
-Once probe_wait_cloudflare.py confirms this approach works, replace the
-_fetch_with_browser() method in JapscanScraper class with the enhanced
-version from this module.
+UTILISATION :
+-------------
+Une fois que probe_wait_cloudflare.py confirme que cette approche fonctionne,
+remplace la méthode _fetch_with_browser() dans la classe JapscanScraper par
+la version améliorée de ce module.
 
-The change is minimal - just update the method in japscan_scraper.py:
+Le changement est minimal - juste mettre à jour la méthode dans japscan_scraper.py :
 
     def _fetch_with_browser(self, url: str) -> str | None:
         \"\"\"Utilise Playwright pour charger une page HTML (contourne Cloudflare).\"\"\"
-        browser = self._get_browser()
-        if not browser:
+        navigateur = self._get_browser()
+        if not navigateur:
             logger.warning(f"Playwright indisponible, utilise requests pour {url}")
             return self._fetch(url)
 
         try:
-            page = browser.new_page()
+            page = navigateur.new_page()
             page.set_default_timeout(PLAYWRIGHT_TIMEOUT)
 
             # Masquer la présence de Playwright (anti-détection)
@@ -36,40 +36,40 @@ The change is minimal - just update the method in japscan_scraper.py:
                 });
             \"\"\")
 
-            logger.info(f"Playwright: chargement {url}")
+            logger.info(f"Playwright : chargement {url}")
             response = page.goto(url, wait_until="networkidle")
-            status = response.status if response else "Unknown"
+            statut = response.status if response else "Inconnu"
 
             html = page.content()
 
-            # Détecte et gère le challenge Cloudflare
+            # Détecte et gère le défi Cloudflare
             if "just a moment" in html.lower():
-                logger.info(f"Challenge Cloudflare détecté sur {url}")
+                logger.info(f"Défi Cloudflare détecté sur {url}")
                 logger.info("Attente de 10 secondes pour résolution...")
                 import time
                 time.sleep(10)
 
                 logger.info("Rechargement de la page...")
                 response = page.reload(wait_until="networkidle")
-                status = response.status if response else "Unknown"
+                statut = response.status if response else "Inconnu"
                 html = page.content()
 
                 if "just a moment" in html.lower():
-                    logger.warning(f"Challenge Cloudflare toujours présent après attente")
+                    logger.warning(f"Défi Cloudflare toujours présent après attente")
                 else:
-                    logger.info(f"✓ Challenge Cloudflare résolu ({len(html)} chars)")
+                    logger.info(f"✓ Défi Cloudflare résolu ({len(html)} caractères)")
             else:
-                logger.info(f"Playwright: page chargée ({len(html)} chars)")
+                logger.info(f"Playwright : page chargée ({len(html)} caractères)")
 
             page.close()
             return html
 
         except Exception as e:
-            logger.error(f"Erreur Playwright {url}: {e}")
+            logger.error(f"Erreur Playwright {url} : {e}")
             try:
                 page.close()
             except:
                 pass
-            # Fallback à requests
+            # Fallback vers requests
             return self._fetch(url)
 """
