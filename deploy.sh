@@ -68,6 +68,11 @@ if [ -x "./venv/bin/python" ]; then
     fi
 fi
 
+# Mémo commun pour Claude Code : copie à jour dans /opt/CLAUDE.md (source : docs/claude-opt.md)
+if [ -f "$REPO_DIR/docs/claude-opt.md" ]; then
+    cp -f "$REPO_DIR/docs/claude-opt.md" /opt/CLAUDE.md 2>/dev/null && log "📝 Mémo /opt/CLAUDE.md mis à jour"
+fi
+
 log "🔄 Redémarrage du service..."
 if systemctl is-active --quiet "$SERVICE_NAME"; then
     systemctl restart "$SERVICE_NAME"

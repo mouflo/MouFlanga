@@ -19,11 +19,11 @@ if ! grep -q '.local/bin' "$HOME/.bashrc" 2>/dev/null; then
 fi
 export PATH="$HOME/.local/bin:$PATH"
 
-# Mémo commun à toutes les applis, lu par Claude Code quand on le lance depuis /opt
+# Mémo commun à toutes les applis, lu par Claude Code quand on le lance depuis /opt (recopié aussi à chaque déploiement)
 SRC="$(dirname "$0")/../docs/claude-opt.md"
-if [ -f "$SRC" ] && [ ! -f /opt/CLAUDE.md ]; then
-    cp "$SRC" /opt/CLAUDE.md
-    echo "Mémo copié dans /opt/CLAUDE.md"
+if [ -f "$SRC" ]; then
+    cp -f "$SRC" /opt/CLAUDE.md
+    echo "Mémo à jour copié dans /opt/CLAUDE.md"
 fi
 
 echo
