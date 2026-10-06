@@ -83,6 +83,7 @@ def init_app(app, base_dir, version_fn, get_dirs):
             "token_hint": notifier.indice_token(),      # jamais le jeton complet
             "chat_id": os.getenv("TELEGRAM_CHAT_ID", "") or notifier._chat(),
             "app_url": os.getenv("APP_URL", ""),
+            "app_url_local": os.getenv("APP_URL_LOCAL", ""),
             "source": notifier.source_reprise(),     # nom de l'autre appli dont les réglages sont repris
             "diagnostic": notifier.diagnostic(),     # où l'appli a cherché (noms seulement, aucune valeur secrète)
         })
@@ -94,9 +95,10 @@ def init_app(app, base_dir, version_fn, get_dirs):
         token_saisi = str(body.get("token", "")).strip()
         chat_id = str(body.get("chat_id", "")).strip()
         app_url = str(body.get("app_url", "")).strip().rstrip("/")
+        app_url_local = str(body.get("app_url_local", "")).strip().rstrip("/")
         token = token_saisi or notifier._token()
 
-        for valeur in (token_saisi, chat_id, app_url):
+        for valeur in (token_saisi, chat_id, app_url, app_url_local):
             if _BAD_CHARS & set(valeur) or " " in valeur:
                 return jsonify({"ok": False, "error": "Caractère interdit (espace, guillemet, $ ou \\) dans un champ."}), 400
         if token_saisi and not notifier.token_valide(token_saisi):
@@ -111,7 +113,7 @@ def init_app(app, base_dir, version_fn, get_dirs):
 
         if chat_id and not notifier.chat_valide(chat_id):
             return jsonify({"ok": False, "error": "L'identifiant Telegram est un nombre (ex. 123456789)."}), 400
-        if app_url and not app_url.startswith(("http://", "https://")):
+        if any(u and not u.startswith(("http://", "https://")) for u in (app_url, app_url_local)):
             return jsonify({"ok": False, "error": "L'adresse de l'appli doit commencer par http:// ou https://"}), 400
 
         if action == "test":
@@ -124,6 +126,7 @@ def init_app(app, base_dir, version_fn, get_dirs):
         if chat_id:
             _enregistrer("TELEGRAM_CHAT_ID", chat_id)
         _enregistrer("APP_URL", app_url)
+        _enregistrer("APP_URL_LOCAL", app_url_local)
         notifier.vider_cache()
         logger.info("Réglages Telegram mis à jour depuis la page web")
         return jsonify({"ok": True, "message": "Enregistré. Les alertes sont actives tout de suite."})

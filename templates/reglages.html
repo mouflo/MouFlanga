@@ -60,8 +60,9 @@
             <input type="password" id="tgToken" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="123456789:ABC…"><div class="tabsinfo" id="tgTokenState"></div></div>
         <div class="field"><label for="tgChat">Ton identifiant Telegram</label>
             <div class="row nowrap"><input type="text" id="tgChat" inputmode="numeric" autocomplete="off" placeholder="123456789"><button class="btn ghost" id="tgDetect">🔎 Détecter mon identifiant</button></div></div>
-        <div class="field"><label for="tgUrl">Adresse de MouFlanga (pour le lien dans le message)</label>
-            <input type="text" id="tgUrl" autocapitalize="off" spellcheck="false" placeholder="http://192.168.3.x:5002"></div>
+        <div class="field"><label for="tgUrl">Adresse de MouFlanga pour le lien du message (ton adresse perso si tu en as une)</label>
+            <input type="text" id="tgUrl" autocapitalize="off" spellcheck="false" placeholder="https://mouflanga.mondomaine.fr"></div>
+        <div class="field"><label for="tgUrlLocal">Adresse de l'appli sur le réseau local (facultatif)</label><input type="text" id="tgUrlLocal" placeholder="http://192.168.1.141:5002" autocapitalize="off" spellcheck="false"></div>
         <div class="row" style="margin-top:12px"><button class="btn" id="tgSave">Enregistrer</button><button class="btn ghost" id="tgTest">📨 Envoyer un message de test</button></div>
         <div id="tgMsg"></div>
     </div>
@@ -114,11 +115,12 @@ async function loadTelegram() {
     const t = await api('/api/settings/telegram');
     $('tgChat').value = t.chat_id || '';
     $('tgUrl').value = t.app_url || '';
+    $('tgUrlLocal').value = t.app_url_local || '';
     $('tgTokenState').textContent = t.token_hint ? 'Jeton actuel : ' + t.token_hint : 'Aucun jeton défini';
     $('tgDiag').textContent = (t.diagnostic || []).join('\n');
     $('tgSource').textContent = t.source ? '✅ Réglages Telegram repris de « ' + t.source + ' » : tu peux simplement envoyer un message de test.' : '';
 }
-const tgCorps = action => ({action, token: $('tgToken').value, chat_id: $('tgChat').value, app_url: $('tgUrl').value});
+const tgCorps = action => ({action, token: $('tgToken').value, chat_id: $('tgChat').value, app_url: $('tgUrl').value, app_url_local: $('tgUrlLocal').value});
 $('tgDetect').addEventListener('click', async () => {
     say('tgMsg', 'Recherche de ton message…', true);
     const r = await post('/api/settings/telegram', tgCorps('detect'));

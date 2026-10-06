@@ -440,8 +440,15 @@ def _alerter_telegram(url_page: str, raison: str = "cloudflare", texte_libre: st
         _VERIF["alertes"][cle] = time.time()
     try:
         import notifier
+        # Adresse perso (de l'extérieur) et adresse locale (chez soi) : les deux liens si les deux sont réglées
         base = os.getenv("APP_URL", "").strip().rstrip("/")
-        lien = f"\n\n👉 {base}/verification" if base else "\n\nOuvre MouFlanga → Télécharger : la vérification t'attend."
+        locale = os.getenv("APP_URL_LOCAL", "").strip().rstrip("/")
+        if base and locale and locale != base:
+            lien = f"\n\n👉 {base}/verification\n🏠 Chez toi : {locale}/verification"
+        elif base or locale:
+            lien = f"\n\n👉 {base or locale}/verification"
+        else:
+            lien = "\n\nOuvre MouFlanga → Télécharger : la vérification t'attend."
         if texte_libre:
             texte = texte_libre
         elif raison == "captcha":

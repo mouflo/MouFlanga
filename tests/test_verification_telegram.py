@@ -167,6 +167,16 @@ class VerificationTest(unittest.TestCase):
         self.assertEqual(envoi.call_count, 1)
         js._VERIF["alertes"].clear()
 
+    def test_lien_perso_et_lien_local(self):
+        js._VERIF["alertes"].clear()
+        with mock.patch.dict(os.environ, {"APP_URL": "https://mouflanga.exemple.fr", "APP_URL_LOCAL": "http://192.168.1.2:5002"}), \
+                mock.patch("notifier.envoyer", return_value=(True, "ok")) as envoi:
+            js._alerter_telegram("https://x/1/", "captcha")
+        texte = envoi.call_args[0][0]
+        self.assertIn("https://mouflanga.exemple.fr/verification", texte)
+        self.assertIn("Chez toi : http://192.168.1.2:5002/verification", texte)
+        js._VERIF["alertes"].clear()
+
     def test_alerte_pour_chaque_nouveau_captcha(self):
         # Une alerte Cloudflare ne doit pas faire taire les captchas des chapitres suivants
         js._VERIF["alertes"].clear()
