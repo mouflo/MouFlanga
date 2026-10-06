@@ -6,6 +6,8 @@
 - Après la vérification, l'appli attend la vraie fiche série (page « Loading… ») avant de chercher les chapitres
 - Rapport : historique des échecs réseau du défi, empreinte du navigateur, test DNS et test IPv6
 - Téléchargement : l'onglet « ⏳ En cours » fonctionne enfin (liste des téléchargements, avancement, chapitre en cours, bouton Annuler) et reste à jour même après un rechargement de la page ou une vérification Cloudflare
+- Page « Vérification » : on peut maintenant glisser le doigt sur l'image du navigateur du serveur (glisser-déposer), pour remettre en ordre les tranches d'un captcha
+- La liste des mangas est gardée 6 heures en mémoire (bouton « 🔄 Actualiser la liste ») et les chapitres d'une série 1 heure : après une vérification, le retour sur la page Télécharger est instantané au lieu de relancer la lecture du site
 - Captcha : détection corrigée (Camoufox ne laisse pas lire les variables de la page : on lit maintenant son contenu), ce qui déclenche enfin l'alerte et la page « Vérification »
 - Lecteur de chapitres : le site affiche un captcha d'images avant les pages ; l'appli le détecte, met le téléchargement en pause, t'alerte sur Telegram et te laisse le résoudre depuis la page « Vérification » (qui a maintenant des boutons pour faire défiler la page)
 - Rapport : description détaillée du lecteur de chapitres (sélecteur de page, boutons, zones de dessin) et essai de passage à la page suivante, pour comprendre comment le site affiche les pages

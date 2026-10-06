@@ -100,6 +100,40 @@ async def _clic_reel(page, x: float, y: float) -> bool:
         return False
 
 
+async def _glisser_reel(page, points: list) -> bool:
+    """Glisser-déposer comme une vraie souris (xdotool) le long d'un trajet de points de la page."""
+    if not os.environ.get("DISPLAY"):
+        return False
+    exe = await asyncio.to_thread(_installer_xdotool)
+    if not exe:
+        return False
+    try:
+        geo = await page.evaluate("""() => ({sx: window.screenX, sy: window.screenY,
+            dw: window.outerWidth - window.innerWidth, dh: window.outerHeight - window.innerHeight})""")
+
+        async def xdo(*args):
+            proc = await asyncio.create_subprocess_exec(exe, *args, stdout=asyncio.subprocess.DEVNULL,
+                                                        stderr=asyncio.subprocess.DEVNULL)
+            await asyncio.wait_for(proc.wait(), 10)
+            return proc.returncode
+
+        ecran = [coord_ecran(geo, x, y) for x, y in points]
+        if await xdo("mousemove", str(max(0, ecran[0][0])), str(max(0, ecran[0][1]))) != 0:
+            return False
+        await asyncio.sleep(0.15)
+        await xdo("mousedown", "1")
+        await asyncio.sleep(0.15)
+        for cx, cy in ecran[1:]:
+            await xdo("mousemove", str(max(0, cx)), str(max(0, cy)))
+            await asyncio.sleep(0.03)
+        await asyncio.sleep(0.15)
+        await xdo("mouseup", "1")
+        return True
+    except Exception as e:
+        logger.debug(f"Glisser réel impossible : {e}")
+        return False
+
+
 async def _cliquer_case_cloudflare(page) -> bool:
     """Tente de cocher la case « Vérifiez que vous êtes humain » (Turnstile)."""
     try:
@@ -279,6 +313,24 @@ def verif_defiler(dy: float) -> None:
         await page.mouse.move(640, 400)
         await page.mouse.wheel(0, dy)
     _sur_la_boucle(f)
+
+
+def verif_glisser(points: list) -> dict:
+    """Glisse le doigt de l'utilisateur dans le navigateur du serveur (captcha à remettre en ordre)."""
+    async def f(page):
+        reel = await _glisser_reel(page, points)
+        if not reel:
+            await page.mouse.move(points[0][0], points[0][1])
+            await page.mouse.down()
+            for x, y in points[1:]:
+                await page.mouse.move(x, y, steps=2)
+                await asyncio.sleep(0.02)
+            await page.mouse.up()
+        await asyncio.sleep(2)
+        return {"mode": "souris écran" if reel else "automatisation", "captcha": await _captcha_present(page)}
+    info = _sur_la_boucle(f, timeout=40)
+    _noter(f"glissement ({len(points)} points) → mode {info['mode']}, captcha encore présent : {'oui' if info['captcha'] else 'non'}")
+    return info
 
 
 def verif_clic(x: float, y: float) -> dict:

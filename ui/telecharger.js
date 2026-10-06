@@ -40,12 +40,12 @@ $$(".tab").forEach(tab => {
 // Étape 1: Liste des mangas
 // ============================================================================
 
-async function loadMangas() {
+async function loadMangas(forcer) {
     const list = $("manga-list");
     list.innerHTML = '<div class="loading">Chargement des mangas...</div>';
 
     try {
-        const resp = await fetch("/api/japscan/list");
+        const resp = await fetch("/api/japscan/list" + (forcer ? "?rafraichir=1" : ""));
         const data = await resp.json();
 
         if (!data.ok) {
@@ -55,6 +55,8 @@ async function loadMangas() {
 
         state.mangas = data.mangas;
         renderMangas();
+        const note = $("liste-note");
+        if (note) note.textContent = data.cache_minutes ? `Liste gardée en mémoire (il y a ${data.cache_minutes} min).` : "";
     } catch (e) {
         list.innerHTML = `<div class="loading" style="color: #ff6b6b;">Erreur: ${e.message}</div>`;
     }
@@ -366,6 +368,8 @@ setInterval(loadJobs, 3000);
 
 document.addEventListener("DOMContentLoaded", () => {
     loadMangas();
+    const bouton = $("btn-refresh-list");
+    if (bouton) bouton.addEventListener("click", () => loadMangas(true));
     loadJobs();
 });
 

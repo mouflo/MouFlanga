@@ -335,13 +335,37 @@ def api_mark():
 # Japscan - Scraper et téléchargement
 # ============================================================================
 
+LISTE_CACHE = DATA_DIR / "mangas-japscan.json"
+LISTE_DUREE = 6 * 3600          # la liste des mangas change peu : on la garde 6 heures
+CHAPITRES_DUREE = 3600          # les chapitres d'une série : 1 heure
+_LISTE_VERROU = threading.Lock()
+_CHAPITRES_VERROU = threading.Lock()
+_CHAPITRES_CACHE = {}
+
+
 @app.route("/api/japscan/list")
 def japscan_list():
-    """Liste les mangas disponibles sur Japscan."""
+    """Liste les mangas disponibles sur Japscan (gardée en mémoire : un rechargement de la page est instantané)."""
+    forcer = request.args.get("rafraichir") == "1"
     try:
-        scraper = japscan_scraper.JapscanScraper(MANGA_DIR)
-        mangas = scraper.list_manga_sync()
-        return jsonify({"ok": True, "mangas": mangas})
+        with _LISTE_VERROU:
+            if not forcer:
+                try:
+                    cache = json.loads(LISTE_CACHE.read_text(encoding="utf-8"))
+                    age = time.time() - cache.get("date", 0)
+                    if cache.get("mangas") and age < LISTE_DUREE:
+                        return jsonify({"ok": True, "mangas": cache["mangas"], "cache_minutes": int(age // 60)})
+                except Exception:
+                    pass
+            scraper = japscan_scraper.JapscanScraper(MANGA_DIR)
+            mangas = scraper.list_manga_sync()
+            if mangas:
+                try:
+                    LISTE_CACHE.write_text(json.dumps({"date": time.time(), "mangas": mangas}, ensure_ascii=False),
+                                           encoding="utf-8")
+                except Exception as e:
+                    logger.warning(f"Liste des mangas non gardée en mémoire : {e}")
+        return jsonify({"ok": True, "mangas": mangas, "cache_minutes": 0})
     except Exception as e:
         logger.error(f"Erreur liste Japscan: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -349,16 +373,21 @@ def japscan_list():
 
 @app.route("/api/japscan/chapters/<manga_id>", methods=["POST"])
 def japscan_chapters(manga_id: str):
-    """Récupère les chapitres d'un manga."""
+    """Récupère les chapitres d'un manga (gardés 1 heure en mémoire)."""
     try:
-        # Body contient l'URL du manga
         body = request.get_json() or {}
         manga_url = body.get("url")
         if not manga_url:
             return jsonify({"ok": False, "error": "URL manquante"}), 400
 
-        scraper = japscan_scraper.JapscanScraper(MANGA_DIR)
-        chapters = scraper.get_chapters_sync(manga_url)
+        with _CHAPITRES_VERROU:
+            ancien = _CHAPITRES_CACHE.get(manga_url)
+            if ancien and time.time() - ancien[0] < CHAPITRES_DUREE and not body.get("rafraichir"):
+                return jsonify({"ok": True, "chapters": ancien[1]})
+            scraper = japscan_scraper.JapscanScraper(MANGA_DIR)
+            chapters = scraper.get_chapters_sync(manga_url)
+            if chapters:
+                _CHAPITRES_CACHE[manga_url] = (time.time(), chapters)
         return jsonify({"ok": True, "chapters": chapters})
     except Exception as e:
         logger.error(f"Erreur chapitres Japscan: {e}")
@@ -461,6 +490,23 @@ def japscan_verif_defiler():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e) or "Défilement impossible"}), 409
     return jsonify({"ok": True})
+
+
+@app.route("/api/japscan/verif/glisser", methods=["POST"])
+def japscan_verif_glisser():
+    """Relaie un glissement du doigt (captcha à remettre en ordre) dans le navigateur du serveur."""
+    body = request.get_json(silent=True) or {}
+    try:
+        points = [(float(x), float(y)) for x, y in (body.get("points") or [])]
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Trajet invalide"}), 400
+    if not (2 <= len(points) <= 120) or any(not (0 <= x <= 5000 and 0 <= y <= 5000) for x, y in points):
+        return jsonify({"ok": False, "error": "Trajet invalide"}), 400
+    try:
+        info = japscan_scraper.verif_glisser(points)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e) or "Glissement impossible"}), 409
+    return jsonify({"ok": True, "info": info})
 
 
 @app.route("/api/japscan/verif/clic", methods=["POST"])
