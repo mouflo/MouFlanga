@@ -177,9 +177,23 @@ def verif_clic(x: float, y: float) -> dict:
             await page.mouse.move(x, y, steps=3)
             await asyncio.sleep(0.12)
             await page.mouse.click(x, y, delay=80)
-        await asyncio.sleep(2.5)           # laisse Cloudflare réagir
-        info = {"titre": "", "cookie": False, "texte": "", "cadres": 0, "mode": "souris écran" if reel else "automatisation"}
+        # Laisse Cloudflare réagir : jusqu'à 25 s, on s'arrête dès que le titre n'est plus celui du défi
+        debut = time.time()
+        await asyncio.sleep(2.5)
+        while time.time() - debut < 25:
+            try:
+                if not _titre_defi((await page.title()) or ""):
+                    break
+            except Exception:
+                break
+            await asyncio.sleep(1)
+        info = {"titre": "", "cookie": False, "texte": "", "cadres": 0, "mode": "souris écran" if reel else "automatisation",
+                "attente": round(time.time() - debut), "empreinte": ""}
         try:
+            info["empreinte"] = await page.evaluate("""() => JSON.stringify({
+                webdriver: navigator.webdriver, langues: navigator.languages, fuseau: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                plateforme: navigator.platform, ua: navigator.userAgent.slice(0, 90), focus: document.hasFocus(),
+                ecran: [screen.width, screen.height, devicePixelRatio]})""")
             info["titre"] = (await page.title()) or ""
             info["cookie"] = any(c["name"] == "cf_clearance" for c in await page.context.cookies())
             info["cadres"] = len(page.frames)
@@ -188,9 +202,10 @@ def verif_clic(x: float, y: float) -> dict:
         except Exception as e:
             info["texte"] = f"(lecture impossible : {e.__class__.__name__})"
         return info
-    info = _sur_la_boucle(f, timeout=25)
+    info = _sur_la_boucle(f, timeout=40)
     _noter(f"clic {info['mode']} ({x:.0f},{y:.0f}) → titre « {info['titre']} », cf_clearance {'présent' if info['cookie'] else 'absent'}, "
-           f"{info['cadres']} cadre(s), texte : {info['texte']}")
+           f"{info['cadres']} cadre(s), après {info['attente']} s, texte : {info['texte']}")
+    _noter("empreinte du navigateur : " + info["empreinte"])
     return info
 
 
