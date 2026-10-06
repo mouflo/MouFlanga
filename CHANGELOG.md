@@ -5,6 +5,7 @@
 - Il est recopié dans `/opt/CLAUDE.md` à chaque déploiement de MouFlanga et par `scripts/installer-claude-code.sh`, pour que Claude Code lancé sur le serveur connaisse tout dès le départ
 
 ## Suppression de mangas
+- Alertes Telegram : une alerte part maintenant pour chaque captcha (avant, une alerte Cloudflare faisait taire toutes les suivantes pendant 15 minutes) ; seul le rappel pour une même page reste limité à un par quart d'heure
 - Bibliothèque : bouton 🗑 sur chaque chapitre et bouton « Supprimer la série », avec confirmation
 - Les fichiers supprimés vont dans un dossier caché `.corbeille` du dossier des mangas (rangés par jour) et sont effacés pour de bon au bout de 30 jours : on peut encore les récupérer en cas d'erreur
 - Impossible de supprimer une série pendant son téléchargement ; la progression de lecture des chapitres supprimés est effacée

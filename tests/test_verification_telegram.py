@@ -160,12 +160,23 @@ class VerificationTest(unittest.TestCase):
         self.assertFalse(js._titre_defi("Dandadan - Lecture en ligne | Japscan"))
 
     def test_alerte_une_seule_fois(self):
-        js._VERIF["alerte"] = 0.0
+        js._VERIF["alertes"].clear()
         with mock.patch("notifier.envoyer", return_value=(True, "ok")) as envoi:
             js._alerter_telegram("https://x/")
             js._alerter_telegram("https://x/")
         self.assertEqual(envoi.call_count, 1)
-        js._VERIF["alerte"] = 0.0
+        js._VERIF["alertes"].clear()
+
+    def test_alerte_pour_chaque_nouveau_captcha(self):
+        # Une alerte Cloudflare ne doit pas faire taire les captchas des chapitres suivants
+        js._VERIF["alertes"].clear()
+        with mock.patch("notifier.envoyer", return_value=(True, "ok")) as envoi:
+            js._alerter_telegram("https://x/serie/", "cloudflare")
+            js._alerter_telegram("https://x/serie/1/", "captcha")
+            js._alerter_telegram("https://x/serie/3/", "captcha")
+            js._alerter_telegram("https://x/serie/3/", "captcha")
+        self.assertEqual(envoi.call_count, 3)
+        js._VERIF["alertes"].clear()
 
 
 class RoutesTest(unittest.TestCase):

@@ -158,10 +158,10 @@ async def _cliquer_case_cloudflare(page) -> bool:
 # ----------------------------------------------------------------------
 # Vérification Cloudflare faite à la main (page « Vérification » de l'appli)
 # ----------------------------------------------------------------------
-_VERIF = {"actif": False, "loop": None, "page": None, "depuis": 0.0, "url": "", "alerte": 0.0}
+_VERIF = {"actif": False, "loop": None, "page": None, "depuis": 0.0, "url": "", "alertes": {}}
 _VERIF_VERROU = threading.Lock()
 PATIENCE_HUMAIN = 600          # secondes laissées à l'utilisateur pour intervenir
-RAPPEL_ALERTE = 900            # pas deux alertes Telegram à moins de 15 minutes
+RAPPEL_ALERTE = 900            # pas deux alertes Telegram à moins de 15 minutes pour la même page
 
 
 # Lit, dans la page, uniquement les éléments VISIBLES de chaque ligne de chapitre
@@ -418,11 +418,13 @@ def verif_clic(x: float, y: float) -> dict:
 
 
 def _alerter_telegram(url_page: str, raison: str = "cloudflare"):
-    """Prévient sur Telegram (au plus une fois par RAPPEL_ALERTE)."""
+    """Prévient sur Telegram à chaque nouvelle demande (nouvelle page ou autre raison) ;
+    pour la même page et la même raison, au plus une fois par RAPPEL_ALERTE."""
+    cle = (raison, url_page)
     with _VERIF_VERROU:
-        if time.time() - _VERIF["alerte"] < RAPPEL_ALERTE:
+        if time.time() - _VERIF["alertes"].get(cle, 0.0) < RAPPEL_ALERTE:
             return
-        _VERIF["alerte"] = time.time()
+        _VERIF["alertes"][cle] = time.time()
     try:
         import notifier
         base = os.getenv("APP_URL", "").strip().rstrip("/")
