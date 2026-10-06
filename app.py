@@ -472,6 +472,26 @@ def _diag_extra():
             lignes += ["", "--- Vérification Cloudflare (derniers événements) ---"] + ["  " + h for h in hist]
     except Exception as e:
         lignes.append(f"Telegram : diagnostic impossible ({e.__class__.__name__})")
+    lignes += ["", "--- Noms de domaine (DNS du serveur) ---"] + _diag_dns()
+    return lignes
+
+
+def _diag_dns():
+    """Vérifie que le serveur sait joindre les adresses dont Cloudflare a besoin pour valider la vérification."""
+    import socket
+    lignes = []
+    try:
+        serveurs = [l.split()[1] for l in open("/etc/resolv.conf", encoding="utf-8") if l.startswith("nameserver")]
+        lignes.append("Serveur(s) DNS utilisé(s) : " + (", ".join(serveurs) or "aucun"))
+    except OSError:
+        pass
+    for nom in ("www.japscan.foo", "challenges.cloudflare.com", "brunhild.challenges.cloudflare.com",
+                "turnstile.cloudflare.com", "cloudflare.com"):
+        try:
+            ip = socket.getaddrinfo(nom, 443)[0][4][0]
+            lignes.append(f"  ✅ {nom} → {ip}")
+        except OSError as e:
+            lignes.append(f"  ❌ {nom} : introuvable ({e.__class__.__name__})")
     return lignes
 
 
