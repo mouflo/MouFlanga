@@ -1441,6 +1441,40 @@ class JapscanScraper:
         logger.info(f"Recherche {texte!r} : {len(out)} résultat(s)")
         return out
 
+    async def catalogue(self, progression: dict) -> list[dict]:
+        """Tout le catalogue de Japscan (« /mangas/?p=1 » à « ?p=279 » : environ 17 000 séries), page par page,
+        posément (2 à 4 s entre deux pages). progression : {"page", "pages", "series"} mis à jour au fil de l'eau."""
+        import random
+        trouves = []
+        js = """() => [...document.querySelectorAll('a')].map(a => [a.getAttribute('href') || '',
+                   (a.innerText || a.title || (a.querySelector('img') || {}).alt || '').trim()])
+                   .filter(x => /^\\/(manga|manhua|manhwa)\\/[^/]+\\/$/.test(x[0]) && x[1])"""
+        async with async_playwright() as p:
+            browser, context = await self._init_browser(p)
+            try:
+                page = await context.new_page()
+                _surveiller(page)
+                await self._chauffer(page)
+                n, total = 1, 1
+                while n <= total and not progression.get("annule"):
+                    await page.goto(f"{JAPSCAN_URL}/mangas/?p={n}", wait_until="domcontentloaded", timeout=30000)
+                    await attendre_cloudflare(page, humain=True)
+                    await asyncio.sleep(1.5)
+                    if n == 1:
+                        total = await page.evaluate("""() => Math.max(1, ...[...document.querySelectorAll('a')]
+                            .map(a => (a.getAttribute('href') || '').match(/[?&]p=(\\d+)/)).filter(Boolean).map(m => +m[1]))""")
+                    for href, nom in await page.evaluate(js):
+                        trouves.append({"title": nom.split("\n")[0][:150], "url": urljoin(JAPSCAN_URL, href)})
+                    progression.update(page=n, pages=total, series=len({t["url"] for t in trouves}))
+                    n += 1
+                    await asyncio.sleep(random.uniform(2, 4))
+            finally:
+                await browser.close()
+        return trouves
+
+    def catalogue_sync(self, progression: dict) -> list[dict]:
+        return asyncio.run(self.catalogue(progression))
+
     def rechercher_sync(self, texte: str) -> list[dict]:
         return asyncio.run(self.rechercher(texte))
 

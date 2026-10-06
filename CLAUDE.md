@@ -19,6 +19,9 @@ Appli Flask (bibliothèque et lecteur de mangas) + scraper Japscan. Dossier `/op
 
 - Accès des autres applis (`api_externe.py`) : `/api/externe/series`, `/api/externe/couverture` (GET/POST), en-tête `X-Cle-API` ; clé générée dans ⚙️ Réglages (`MOUFLANGA_CLE_API_SHA256` + 4 derniers caractères) ; ces routes passent hors de l'écran de connexion (`auth.py`). Bouton « Créer avec MouFloster » : `MOUFLOSTER_URL` → `<moufloster>/?mouflanga=<série>&q=…&retour=…`.
 
+## Liste Japscan
+- `/api/japscan/list` = dernières sorties (accueil, 6 h) + `data/mangas-trouves.json` (recherches) + `data/catalogue-japscan.json` (catalogue `/mangas/?p=1..279`, chargé par `/api/japscan/catalogue`), regroupés par `regrouper_series()`. Recherche du site : réponse JSON de `/ls/` lue en tapant dans `#searchInput`.
+
 ## Tomes (`tomes.py`, `tomes_cbz.py`)
 - `tomes.chercher(série)` : Wikipédia (« List of … chapters », formats Numbered list / « *12. » / « * Chapter: 1–7 » / « # », commentaires retirés, section « Chapters not yet in tankōbon ») puis MangaDex ; cache 3 jours `data/tomes/`. Wikipédia limite les requêtes (429) : rester sobre.
 - Fichier de tome : `Tome NN/<Série> - Tome NN.cbz` (ou `Hors tome/`), pages `c0012.00-p003.jpg`, `chapitres.json` (titres), `ComicInfo.xml`. Réécriture complète à chaque ajout (fichier .tmp puis remplacement).

@@ -55,7 +55,10 @@ async function loadMangas(forcer) {
         state.mangas = data.mangas;
         renderMangas();
         const note = $("liste-note");
-        if (note) note.textContent = data.cache_minutes ? `Liste gardée en mémoire (il y a ${data.cache_minutes} min).` : "";
+        const cat = data.catalogue;
+        if (note) note.textContent = `${data.mangas.length} séries : dernières sorties${data.cache_minutes ? ` (il y a ${data.cache_minutes} min)` : ""}, tes recherches`
+            + (cat ? ` et le catalogue complet (chargé le ${new Date(cat.date * 1000).toLocaleDateString("fr-FR")})` : "") + ".";
+        suivreCatalogue(data.chargement_catalogue);
     } catch (e) {
         list.innerHTML = `<div class="loading" style="color: #ff6b6b;">Erreur: ${e.message}</div>`;
     }
@@ -107,24 +110,57 @@ function renderMangas() {
         $("manga-lettres").innerHTML = "";
         return;
     }
+    // Liste très longue (catalogue complet) sans recherche : une lettre à la fois
+    const parLettre = !q && liste.length > 600;
+    const toutes = [...new Set(liste.map(m => lettreDe(m.title)))];
+    if (parLettre && !toutes.includes(state.lettre)) state.lettre = toutes.includes("A") ? "A" : toutes[0];
+    const visibles = parLettre ? liste.filter(m => lettreDe(m.title) === state.lettre) : liste;
     let lettre = null, html = "";
     const lettres = [];
-    for (const m of liste) {
+    for (const m of visibles) {
         const l = lettreDe(m.title);
         if (l !== lettre) { lettre = l; lettres.push(l); html += `<div class="lettre-titre" id="lettre-${l === "#" ? "num" : l}">${l}</div>`; }
         html += ligneSerie(m);
     }
     list.innerHTML = html;
-    // Index des lettres : un appui fait défiler jusqu'à la lettre
-    $("manga-lettres").innerHTML = q ? "" : lettres.map(l => `<button type="button" data-lettre="${l === "#" ? "num" : l}">${l}</button>`).join("");
+    // Index des lettres : un appui fait défiler jusqu'à la lettre (ou l'affiche, quand la liste est très longue)
+    $("manga-lettres").innerHTML = q ? "" : (parLettre ? toutes : lettres).map(l => `<button type="button" data-lettre="${l === "#" ? "num" : l}"${parLettre && l === state.lettre ? ' class="actif"' : ""}>${l}</button>`).join("");
+    if (parLettre) list.insertAdjacentHTML("afterbegin", `<div class="tabsinfo" style="padding:6px">${visibles.length} série(s) en « ${state.lettre} » sur ${liste.length} — choisis une lettre ou tape un nom.</div>`);
 }
 
 $("manga-search").addEventListener("input", () => { boutonRecherche(); renderMangas(); });
+
+// Catalogue complet : chargement en arrière-plan (20 à 30 minutes), avec sa progression
+let suiviCatalogue = null;
+function suivreCatalogue(e) {
+    const zone = $("catalogue-etat"), b = $("btn-catalogue");
+    clearTimeout(suiviCatalogue);
+    if (e && e.en_cours) {
+        b.hidden = true;
+        zone.textContent = e.pages ? `⏳ Catalogue : page ${e.page} sur ${e.pages} · ${e.series} séries lues` : `⏳ ${e.message || "Chargement du catalogue…"}`;
+        suiviCatalogue = setTimeout(async () => {
+            const r = await (await fetch("/api/japscan/catalogue")).json();
+            if (r.en_cours) suivreCatalogue(r); else { zone.textContent = r.message || ""; b.hidden = false; loadMangas(); }
+        }, 5000);
+    } else {
+        b.hidden = false;
+        zone.textContent = (e && e.message) || "";
+    }
+}
+$("btn-catalogue").addEventListener("click", async () => {
+    if (!confirm("Charger tout le catalogue de Japscan (environ 17 000 séries) ?\n\nÇa prend 20 à 30 minutes en arrière-plan ; pendant ce temps, pas de téléchargement. Tu recevras un message Telegram à la fin.")) return;
+    const r = await (await fetch("/api/japscan/catalogue", {method: "POST"})).json();
+    if (!r.ok) { $("catalogue-etat").textContent = r.error || "Impossible"; return; }
+    suivreCatalogue({en_cours: true, message: r.message});
+});
 $("manga-search").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); rechercherJapscan(); } });
 $("btn-recherche-japscan").addEventListener("click", rechercherJapscan);
 $("manga-lettres").addEventListener("click", e => {
     const b = e.target.closest("[data-lettre]");
-    if (b) { const t = $("lettre-" + b.dataset.lettre); if (t) t.scrollIntoView({behavior: "smooth", block: "start"}); }
+    if (!b) return;
+    const l = b.dataset.lettre === "num" ? "#" : b.dataset.lettre;
+    if (state.mangas.length > 600) { state.lettre = l; renderMangas(); return; }
+    const t = $("lettre-" + b.dataset.lettre); if (t) t.scrollIntoView({behavior: "smooth", block: "start"});
 });
 $("manga-list").addEventListener("click", e => {
     const ligne = e.target.closest(".serie-ligne");

@@ -6,6 +6,7 @@
 - ⚙️ Réglages → Alertes Telegram : champ « Sujet du groupe » (groupe Telegram à sujets) et bouton « 🔎 Détecter le groupe et le sujet » ; vide = comportement d'avant (`TELEGRAM_THREAD_ID` dans `data/secrets.env`, propre à MouFlanga)
 
 ## Tomes
+- Télécharger : les séries trouvées par recherche restent dans la liste ; bouton « 📚 Charger tout le catalogue » (≈ 17 000 séries, 279 pages lues posément en 20 à 30 min, en arrière-plan, gardé un mois, progression et message Telegram) ; liste très longue affichée lettre par lettre
 - Import et rangement : progression détaillée sur la page de la série (étape en cours, archive n sur m, tomes écrits, barre de progression)
 - Mises à jour : le déploiement automatique attend la fin d'un import, d'un rangement ou d'un téléchargement avant de redémarrer l'appli (adresse interne /api/occupe, réservée au serveur)
 - Japscan : séries rangées par volumes (« Volume 22 : FIN », adresse …/volume-22/) reconnues ; un volume téléchargé devient un fichier de tome complet, marqué « déjà téléchargé » si le tome est déjà là (avant, un faux lien piégé « Chapitre 755222 » apparaissait)

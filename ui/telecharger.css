@@ -369,3 +369,5 @@ body.mou-skin .serie-ligne { background: none; color: var(--text, #eee); font-we
 .serie-nom { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .serie-type { font-size: .75rem; color: var(--muted, #999); border: 1px solid var(--line, #444); border-radius: 10px; padding: 1px 8px; flex: none; }
 .serie-fleche { color: var(--muted, #999); font-size: 1.3rem; flex: none; }
+.lettres button.actif { background: var(--accent, #52b54b); color: #fff; }
+#btn-catalogue[hidden] { display: none; }

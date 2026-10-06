@@ -1242,6 +1242,8 @@ def api_occupe():
         raisons.append("téléchargement")
     if _FILE_IMPORT["en_cours"] or _FILE_IMPORT["attente"]:
         raisons.append("import d'archives")
+    if _CATALOGUE_ETAT["en_cours"]:
+        raisons.append("chargement du catalogue")
     raisons += [f"rangement de {n}" for n, e in _RANGEMENTS.items() if e.get("en_cours")]
     return jsonify({"occupe": bool(raisons), "raisons": raisons})
 
@@ -1281,10 +1283,72 @@ def api_tomes_ranger():
     return jsonify({"ok": True, "message": "Recherche des tomes…"})
 
 
+TROUVES = DATA_DIR / "mangas-trouves.json"        # séries trouvées par recherche : restent dans la liste
+CATALOGUE = DATA_DIR / "catalogue-japscan.json"    # tout le catalogue, chargé sur demande (gardé un mois)
+_CATALOGUE_ETAT = {"en_cours": False, "page": 0, "pages": 0, "series": 0, "message": ""}
+
+
+@app.route("/api/japscan/catalogue", methods=["POST"])
+def japscan_catalogue():
+    """Charge tout le catalogue de Japscan en arrière-plan (20 à 30 minutes)."""
+    if _CATALOGUE_ETAT["en_cours"]:
+        return jsonify({"ok": True, "message": "Chargement déjà en cours."})
+    if any(j.get("status") == "running" for j in japscan_scraper.download_jobs.values()):
+        return jsonify({"ok": False, "error": "Un téléchargement est en cours : attends sa fin (le navigateur du serveur est pris)."}), 409
+    _CATALOGUE_ETAT.update(en_cours=True, page=0, pages=0, series=0, message="Ouverture de Japscan…")
+
+    def travail():
+        try:
+            liste = japscan_scraper.JapscanScraper(MANGA_DIR).catalogue_sync(_CATALOGUE_ETAT)
+            if liste:
+                CATALOGUE.write_text(json.dumps({"date": time.time(), "mangas": liste}, ensure_ascii=False), encoding="utf-8")
+            n = len({m["url"] for m in liste})
+            _CATALOGUE_ETAT["message"] = f"✅ Catalogue chargé : {n} séries."
+            logger.info("Catalogue Japscan chargé : %d séries", n)
+            try:
+                import notifier
+                notifier.envoyer(f"📚 MouFlanga : catalogue Japscan chargé ({n} séries).")
+            except Exception:
+                pass
+        except Exception as e:
+            _CATALOGUE_ETAT["message"] = f"Chargement du catalogue interrompu : {e}"
+            logger.warning(_CATALOGUE_ETAT["message"])
+        finally:
+            _CATALOGUE_ETAT["en_cours"] = False
+    threading.Thread(target=travail, daemon=True).start()
+    return jsonify({"ok": True, "message": "Chargement du catalogue lancé (20 à 30 minutes)."})
+
+
+@app.route("/api/japscan/catalogue")
+def japscan_catalogue_etat():
+    return jsonify({**_CATALOGUE_ETAT, "catalogue": _info_catalogue()})
+
+
+def _sources_en_plus():
+    """Séries trouvées par recherche (gardées pour toujours) et catalogue complet (s'il a été chargé)."""
+    en_plus = []
+    for f in (TROUVES, CATALOGUE):
+        try:
+            en_plus += json.loads(f.read_text(encoding="utf-8")).get("mangas", [])
+        except (OSError, ValueError):
+            pass
+    return en_plus
+
+
+def _info_catalogue():
+    try:
+        c = json.loads(CATALOGUE.read_text(encoding="utf-8"))
+        return {"date": c.get("date"), "nombre": len(c.get("mangas", []))}
+    except (OSError, ValueError):
+        return None
+
+
 @app.route("/api/japscan/list")
 def japscan_list():
-    """Liste les mangas disponibles sur Japscan (gardée en mémoire : un rechargement de la page est instantané)."""
+    """Liste les mangas : dernières sorties (gardées 6 h) + séries trouvées par recherche + catalogue complet si chargé."""
     forcer = request.args.get("rafraichir") == "1"
+    en_plus = _sources_en_plus()
+    infos = {"catalogue": _info_catalogue(), "chargement_catalogue": _CATALOGUE_ETAT}
     try:
         with _LISTE_VERROU:
             if not forcer:
@@ -1292,8 +1356,8 @@ def japscan_list():
                     cache = json.loads(LISTE_CACHE.read_text(encoding="utf-8"))
                     age = time.time() - cache.get("date", 0)
                     if cache.get("mangas") and age < LISTE_DUREE:
-                        mangas = japscan_scraper.regrouper_series(cache["mangas"])
-                        return jsonify({"ok": True, "mangas": mangas, "cache_minutes": int(age // 60)})
+                        mangas = japscan_scraper.regrouper_series(cache["mangas"] + en_plus)
+                        return jsonify({"ok": True, "mangas": mangas, "cache_minutes": int(age // 60), **infos})
                 except Exception:
                     pass
             scraper = japscan_scraper.JapscanScraper(MANGA_DIR)
@@ -1304,7 +1368,7 @@ def japscan_list():
                                            encoding="utf-8")
                 except Exception as e:
                     logger.warning(f"Liste des mangas non gardée en mémoire : {e}")
-        return jsonify({"ok": True, "mangas": japscan_scraper.regrouper_series(mangas), "cache_minutes": 0})
+        return jsonify({"ok": True, "mangas": japscan_scraper.regrouper_series(mangas + en_plus), "cache_minutes": 0, **infos})
     except Exception as e:
         logger.error(f"Erreur liste Japscan: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -1341,6 +1405,14 @@ def japscan_recherche():
         logger.error(f"Recherche Japscan impossible : {e}")
         return jsonify({"ok": False, "error": f"Recherche impossible : {e}"}), 500
     _RECHERCHES[cle] = (time.time(), resultats)
+    if resultats:                                          # elles restent ensuite dans la liste
+        try:
+            gardees = json.loads(TROUVES.read_text(encoding="utf-8")).get("mangas", []) if TROUVES.exists() else []
+        except (OSError, ValueError):
+            gardees = []
+        connues = {m["url"] for m in gardees}
+        gardees += [{"title": m["title"], "url": m["url"]} for m in resultats if m["url"] not in connues]
+        TROUVES.write_text(json.dumps({"mangas": gardees}, ensure_ascii=False), encoding="utf-8")
     return jsonify({"ok": True, "mangas": resultats})
 
 
