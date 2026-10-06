@@ -27,6 +27,16 @@ def async_playwright():
     return _ap()
 
 
+def titre_serie(titre: str, url: str = "") -> str:
+    """La liste du site pointe vers le dernier chapitre : « Dandadan 247 » (…/manga/dandadan/247/).
+    On garde le nom de la série seul (« Dandadan »), sinon le dossier changerait à chaque nouveau chapitre."""
+    titre = (titre or "").strip()
+    m = re.search(r"/manga/[^/]+/([\d.]+)/?$", url or "")
+    if m and titre.endswith(" " + m.group(1)):
+        return titre[: -len(m.group(1)) - 1].strip() or titre
+    return titre
+
+
 def nom_sur(texte: str, defaut: str = "sans-titre") -> str:
     """Rend un texte utilisable comme nom de fichier/dossier (pas de / ni de ..)."""
     texte = re.sub(r'[\\/:*?"<>|\x00-\x1f]', " ", texte or "")
@@ -889,7 +899,7 @@ class JapscanScraper:
 
                                 seen_urls.add(url)
                                 mangas.append({
-                                    "title": title,
+                                    "title": titre_serie(title, url),
                                     "url": url,
                                     "id": hashlib.md5(url.encode()).hexdigest()[:12]
                                 })

@@ -12,6 +12,7 @@ import io
 import json
 import logging
 import os
+import re
 import socket
 import sys
 import threading
@@ -181,7 +182,7 @@ def api_library():
             "read": len([f for f in files if _rel(f) in read]),
             "size_mb": round(total_size / 1048576, 1),
             "last_read": p.get("last", ""), "added": newest,
-            "cover": f"/api/cover?id={_q(name)}&v={int(newest)}",
+            "cover": f"/api/cover?id={_q(name)}&v={int(max(newest, _couverture_mtime(name)))}",
         })
     return jsonify({"series": out})
 
@@ -189,6 +190,52 @@ def api_library():
 def _q(text):
     from urllib.parse import quote
     return quote(text, safe="")
+
+
+COUVERTURES = ("cover.jpg", "folder.jpg", "poster.jpg", "cover.png", "folder.png", "poster.png")
+COUVERTURE_PERSO = "cover.jpg"      # celle que l'utilisateur choisit depuis la page de la série
+
+
+def _couverture_mtime(name):
+    if name == "(Sans série)":
+        return 0
+    for cand in COUVERTURES:
+        try:
+            return (MANGA_DIR / name / cand).stat().st_mtime
+        except OSError:
+            continue
+    return 0
+
+
+_NUM_CHAPITRE = re.compile(r"chap(?:itre|ter)?\.?\s*(\d+(?:[.,]\d+)?)", re.I)
+_NUM_DEBUT = re.compile(r"^\s*(\d+(?:[.,]\d+)?)")
+
+
+def _numero_chapitre(titre):
+    """Numéro d'un chapitre d'après son nom (« 012 - Chapitre 12 … », « Chap. 12 », « 12 - … ») ou None."""
+    m = _NUM_CHAPITRE.search(titre) or _NUM_DEBUT.search(titre)
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _manquants(titres):
+    """Trous dans la numérotation (chapitres entiers absents entre le premier et le dernier) : « 7 », « 12–14 »."""
+    nums = {int(n) for n in (_numero_chapitre(t) for t in titres) if n is not None and n == int(n)}
+    if len(nums) < 2:
+        return [], (min(nums) if nums else None), (max(nums) if nums else None)
+    trous = [n for n in range(min(nums), max(nums) + 1) if n not in nums]
+    plages, debut = [], None
+    for i, n in enumerate(trous):
+        if debut is None:
+            debut = n
+        if i == len(trous) - 1 or trous[i + 1] != n + 1:
+            plages.append(str(debut) if debut == n else f"{debut}–{n}")
+            debut = None
+    return plages, min(nums), max(nums)
 
 
 @app.route("/api/series")
@@ -206,9 +253,13 @@ def api_series():
         except OSError:
             size = 0
         chapters.append({"path": _rel(f), "title": _title_of(f), "size_mb": size, "read": _rel(f) in read})
+    trous, premier, dernier = _manquants([c["title"] for c in chapters])
     return jsonify({"id": name, "title": name, "chapters": chapters,
                     "current": p.get("current", ""), "page": p.get("page", 0),
-                    "rar": archives.rar_available()})
+                    "rar": archives.rar_available(),
+                    "manquants": trous, "premier": premier, "dernier": dernier,
+                    "cover_perso": name != "(Sans série)" and (MANGA_DIR / name / COUVERTURE_PERSO).is_file(),
+                    "cover_v": int(_couverture_mtime(name))})
 
 
 @app.route("/api/cover")
@@ -219,8 +270,8 @@ def api_cover():
         return Response(status=404)
     # image « cover.jpg » / « folder.jpg » posée dans le dossier de la série : prioritaire
     sub = MANGA_DIR / name
-    for cand in ("cover.jpg", "folder.jpg", "poster.jpg", "cover.png", "folder.png", "poster.png"):
-        if (sub / cand).is_file():
+    for cand in COUVERTURES:
+        if name != "(Sans série)" and (sub / cand).is_file():
             return send_file(sub / cand, max_age=3600)
     first = files[0]
     try:
@@ -245,6 +296,55 @@ def api_cover():
     except Exception as e:  # image abîmée, format exotique...
         logger.warning("Couverture impossible pour %s : %s: %s", name, e.__class__.__name__, e)
     return Response(status=404)
+
+
+@app.route("/api/cover/choisir", methods=["POST"])
+def api_cover_choisir():
+    """Couverture choisie par l'utilisateur : image envoyée depuis le téléphone, enregistrée en cover.jpg
+    dans le dossier de la série (l'ancienne cover.jpg va à la corbeille)."""
+    name = request.form.get("id", "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    envoi = request.files.get("image")
+    if envoi is None:
+        return jsonify({"ok": False, "error": "Aucune image reçue"}), 400
+    donnees = envoi.read(25 * 1048576 + 1)
+    if len(donnees) > 25 * 1048576:
+        return jsonify({"ok": False, "error": "Image trop lourde (25 Mo au plus)"}), 400
+    try:
+        from PIL import Image, ImageOps
+        img = ImageOps.exif_transpose(Image.open(io.BytesIO(donnees))).convert("RGB")
+        img.thumbnail((1200, 1800))
+    except Exception:
+        return jsonify({"ok": False, "error": "Ce fichier n'est pas une image lisible (JPEG, PNG, WebP…)"}), 400
+    cible = MANGA_DIR / name / COUVERTURE_PERSO
+    try:
+        if cible.exists():
+            _vers_corbeille(cible)
+        tmp = cible.with_suffix(".tmp")
+        img.save(tmp, format="JPEG", quality=88)
+        os.replace(tmp, cible)
+    except OSError as e:
+        logger.warning("Couverture impossible à enregistrer pour %s : %s", name, e)
+        return jsonify({"ok": False, "error": f"Enregistrement impossible : {e.strerror or e}"}), 500
+    logger.info("Nouvelle couverture pour %s", name)
+    return jsonify({"ok": True, "v": int(cible.stat().st_mtime)})
+
+
+@app.route("/api/cover/automatique", methods=["POST"])
+def api_cover_automatique():
+    """Revenir à la couverture automatique (1re page du 1er chapitre) : cover.jpg va à la corbeille."""
+    name = str((request.get_json(silent=True) or {}).get("id", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    cible = MANGA_DIR / name / COUVERTURE_PERSO
+    if cible.exists():
+        try:
+            _vers_corbeille(cible)
+        except OSError as e:
+            return jsonify({"ok": False, "error": f"Impossible : {e.strerror or e}"}), 500
+        logger.info("Couverture automatique rétablie pour %s", name)
+    return jsonify({"ok": True})
 
 
 # ----------------------------------------------------------------------------
@@ -370,7 +470,7 @@ def api_delete():
     if files is None:
         return jsonify({"ok": False, "error": "Série introuvable"}), 404
     for j in list(japscan_scraper.download_jobs.values()):
-        if j.get("status") == "running" and japscan_scraper.nom_sur(j.get("title") or "") == series:
+        if j.get("status") == "running" and japscan_scraper.nom_sur(japscan_scraper.titre_serie(j.get("title") or "")) == series:
             return jsonify({"ok": False, "error": "Cette série est en cours de téléchargement : annule-le d'abord (onglet « En cours »)."}), 409
     if body.get("all"):
         cibles = files if series == "(Sans série)" else [MANGA_DIR / series]
@@ -417,6 +517,48 @@ _CHAPITRES_VERROU = threading.Lock()
 _CHAPITRES_CACHE = {}
 
 
+def _dossier_serie(titre):
+    """Dossier d'une série téléchargée. Un ancien dossier « Titre 247 » (nommé d'après le dernier chapitre,
+    ancien fonctionnement) est renommé « Titre », avec la progression de lecture."""
+    nom = japscan_scraper.nom_sur(japscan_scraper.titre_serie(titre))
+    cible = MANGA_DIR / nom
+    if cible.exists() or not MANGA_DIR.is_dir():
+        return cible
+    try:
+        anciens = [d for d in MANGA_DIR.iterdir()
+                   if d.is_dir() and re.fullmatch(re.escape(nom) + r" \d+(\.\d+)?", d.name)]
+    except OSError:
+        return cible
+    if len(anciens) != 1:
+        return cible
+    try:
+        anciens[0].rename(cible)
+    except OSError as e:
+        logger.warning("Renommage de %s impossible : %s", anciens[0].name, e)
+        return anciens[0]
+    logger.info("Dossier « %s » renommé « %s »", anciens[0].name, nom)
+    with _progress_lock:
+        data = _read_json(PROGRESS_FILE, {})
+        if anciens[0].name in data:
+            p = data.pop(anciens[0].name)
+            avant = anciens[0].name + "/"
+            p["read"] = [nom + "/" + r[len(avant):] if r.startswith(avant) else r for r in p.get("read", [])]
+            if str(p.get("current", "")).startswith(avant):
+                p["current"] = nom + "/" + p["current"][len(avant):]
+            data[nom] = p
+            _write_json(PROGRESS_FILE, data)
+    return cible
+
+
+def _deja_telecharges(titre):
+    """Noms (sans le numéro de rang) des chapitres déjà présents dans le dossier de la série."""
+    dossier = _dossier_serie(titre)
+    try:
+        return {f.stem.split(" - ", 1)[-1] for f in dossier.iterdir() if _is_archive(f)}
+    except OSError:
+        return set()
+
+
 @app.route("/api/japscan/list")
 def japscan_list():
     """Liste les mangas disponibles sur Japscan (gardée en mémoire : un rechargement de la page est instantané)."""
@@ -428,7 +570,9 @@ def japscan_list():
                     cache = json.loads(LISTE_CACHE.read_text(encoding="utf-8"))
                     age = time.time() - cache.get("date", 0)
                     if cache.get("mangas") and age < LISTE_DUREE:
-                        return jsonify({"ok": True, "mangas": cache["mangas"], "cache_minutes": int(age // 60)})
+                        mangas = [{**m, "title": japscan_scraper.titre_serie(m.get("title", ""), m.get("url", ""))}
+                                  for m in cache["mangas"]]
+                        return jsonify({"ok": True, "mangas": mangas, "cache_minutes": int(age // 60)})
                 except Exception:
                     pass
             scraper = japscan_scraper.JapscanScraper(MANGA_DIR)
@@ -445,6 +589,14 @@ def japscan_list():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def _marquer_deja(chapters, titre):
+    """Ajoute « deja » (déjà dans la bibliothèque) à chaque chapitre, d'après les fichiers du dossier de la série."""
+    if not titre:
+        return chapters
+    deja = _deja_telecharges(titre)
+    return [{**c, "deja": japscan_scraper.nom_sur(c.get("title") or "") in deja} for c in chapters]
+
+
 @app.route("/api/japscan/chapters/<manga_id>", methods=["POST"])
 def japscan_chapters(manga_id: str):
     """Récupère les chapitres d'un manga (gardés 1 heure en mémoire)."""
@@ -457,12 +609,12 @@ def japscan_chapters(manga_id: str):
         with _CHAPITRES_VERROU:
             ancien = _CHAPITRES_CACHE.get(manga_url)
             if ancien and time.time() - ancien[0] < CHAPITRES_DUREE and not body.get("rafraichir"):
-                return jsonify({"ok": True, "chapters": ancien[1]})
+                return jsonify({"ok": True, "chapters": _marquer_deja(ancien[1], body.get("title"))})
             scraper = japscan_scraper.JapscanScraper(MANGA_DIR)
             chapters = scraper.get_chapters_sync(manga_url)
             if chapters:
                 _CHAPITRES_CACHE[manga_url] = (time.time(), chapters)
-        return jsonify({"ok": True, "chapters": chapters})
+        return jsonify({"ok": True, "chapters": _marquer_deja(chapters, body.get("title"))})
     except Exception as e:
         logger.error(f"Erreur chapitres Japscan: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -482,7 +634,7 @@ def japscan_download():
         import uuid
 
         job_id = str(uuid.uuid4())[:12]
-        output_dir = MANGA_DIR / japscan_scraper.nom_sur(manga_title)
+        output_dir = _dossier_serie(manga_title)
 
         # Lance le téléchargement en arrière-plan
         thread = threading.Thread(

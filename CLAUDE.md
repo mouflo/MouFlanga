@@ -11,6 +11,9 @@ Appli Flask (bibliothèque et lecteur de mangas) + scraper Japscan. Dossier `/op
 ## Bibliothèque
 - Suppression (`/api/delete`) : chapitre ou série déplacés dans `<dossier des mangas>/.corbeille/<AAAA-MM-JJ>/`, vidée après 30 jours (`CORBEILLE_JOURS`) ; refusée pendant le téléchargement de la série.
 
+- Couverture : `cover.jpg` dans le dossier de la série (prioritaire), choisie par `/api/cover/choisir`, retirée par `/api/cover/automatique`. Chapitres manquants : trous dans les numéros lus dans les noms de fichiers (`_numero_chapitre`).
+- Séries Japscan : la liste du site pointe vers le dernier chapitre (« Dandadan 247 ») → `titre_serie()` retire ce numéro ; `_dossier_serie()` renomme l'ancien dossier « Titre N ». Page Télécharger : `deja` = chapitre déjà présent (même nom de fichier après « NNN - »).
+
 ## Le scraper Japscan (`japscan_scraper.py`)
 - Navigateur au choix dans ⚙ Réglages : Chrome (Patchright, profil `data/navigateur`) ou Camoufox (Firefox, profil `data/navigateur-firefox`), sous écran virtuel Xvfb ; clics réels avec xdotool.
 - Cloudflare impose une vérification interactive : la page `/verification` montre le navigateur du serveur (capture) et relaie clics, défilement et glisser du doigt ; alerte Telegram.

@@ -48,6 +48,13 @@
                         <button class="ghost" id="sAllUnread">↺ Tout marquer non lu</button>
                         <button class="ghost danger" id="sDelete">🗑 Supprimer la série</button>
                     </div>
+                    <div class="row" style="margin-top:8px">
+                        <button class="ghost" id="sCoverPick">🖼 Changer la couverture</button>
+                        <button class="ghost" id="sCoverAuto" hidden>↺ Couverture automatique</button>
+                        <button class="ghost" id="sMissing">🔍 Chapitres manquants</button>
+                        <input type="file" id="sCoverFile" accept="image/*" hidden>
+                    </div>
+                    <div class="missing" id="sMissingBox" hidden></div>
                 </div>
             </div>
             <div id="sMsg"></div>

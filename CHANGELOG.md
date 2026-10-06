@@ -1,5 +1,11 @@
 # Historique des versions
 
+## Couverture au choix et chapitres manquants
+- Page d'une série : bouton « 🖼 Changer la couverture » (choisir une image ou une photo du téléphone, enregistrée en `cover.jpg` dans le dossier de la série) et « ↺ Couverture automatique » pour revenir à la 1re page du 1er chapitre ; l'ancienne couverture va à la corbeille
+- Page d'une série : bouton « 🔍 Chapitres manquants » (trous dans la numérotation, ex. « 4–5, 8–9 »)
+- Téléchargement : les chapitres déjà dans la bibliothèque sont marqués « ✓ déjà téléchargé » et décochés ; bouton « Cocher les manquants »
+- Japscan : le nom de la série ne contient plus le numéro du dernier chapitre (« Dandadan » au lieu de « Dandadan 247 ») ; l'ancien dossier est renommé tout seul au prochain téléchargement, avec la progression de lecture
+
 ## Captchas groupés (essai)
 - Page « Vérification » : pendant la première passe, elle indique combien de chapitres sont mis de côté et que leurs captchas arriveront à la fin (au lieu de « aucune vérification en attente »)
 - Le compteur de captchas ne compte plus que ceux qu'il faut vraiment résoudre (un chapitre mis de côté puis résolu était compté deux fois)

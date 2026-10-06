@@ -23,6 +23,7 @@
 .series-info h2 { font-size:1.4rem; overflow-wrap:anywhere; }
 .meta { color:var(--muted); font-size:.9rem; margin-bottom:12px; }
 .row { display:flex; gap:8px; flex-wrap:wrap; }
+.missing { margin-top:10px; padding:8px 10px; border-radius:6px; background:var(--surface2); font-size:.9rem; line-height:1.5; }
 .chapters { margin-top:16px; border-top:1px solid var(--line); }
 .chap { display:flex; align-items:center; gap:10px; padding:10px 6px; border-bottom:1px solid var(--line); cursor:pointer; }
 .chap:hover { background:var(--surface2); }

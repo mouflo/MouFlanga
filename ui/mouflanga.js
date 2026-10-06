@@ -66,7 +66,11 @@
   function drawSeries() {
     var s = current, read = s.chapters.filter(function (c) { return c.read; }).length;
     $('sTitle').textContent = s.title;
-    $('sCover').src = '/api/cover?id=' + encodeURIComponent(s.id);
+    $('sCover').src = '/api/cover?id=' + encodeURIComponent(s.id) + '&v=' + (s.cover_v || 0);
+    var perso = s.id !== '(Sans série)';
+    $('sCoverPick').hidden = !perso;
+    $('sCoverAuto').hidden = !s.cover_perso;
+    $('sMissingBox').hidden = true;
     $('sMeta').textContent = s.chapters.length + ' fichier' + (s.chapters.length > 1 ? 's' : '') + ' · ' + read + ' lu' + (read > 1 ? 's' : '');
     var next = s.current || (s.chapters.find(function (c) { return !c.read; }) || s.chapters[0] || {}).path;
     $('sResume').textContent = (s.current ? '▶ Reprendre' : read ? '▶ Continuer' : '▶ Commencer');
@@ -116,6 +120,30 @@
     });
     async function markAll(v) { await post('/api/mark', {series: current.id, all: true, read: v}); await openSeries(current.id, false); }
     $('sAllRead').addEventListener('click', function () { markAll(true); });
+    $('sCoverPick').addEventListener('click', function () { $('sCoverFile').value = ''; $('sCoverFile').click(); });
+    $('sCoverFile').addEventListener('change', async function () {
+      var f = $('sCoverFile').files[0]; if (!f) return;
+      note('sMsg', 'Envoi de la couverture…', 'warn');
+      var fd = new FormData(); fd.append('id', current.id); fd.append('image', f);
+      var r = await api('/api/cover/choisir', {method: 'POST', body: fd});
+      if (!r.ok) { note('sMsg', r.error); return; }
+      note('sMsg', 'Couverture changée.', 'ok');
+      await openSeries(current.id, false);
+    });
+    $('sCoverAuto').addEventListener('click', async function () {
+      if (!confirm('Revenir à la couverture automatique (1re page du 1er chapitre) ?\n\nTa couverture va dans la corbeille.')) return;
+      var r = await post('/api/cover/automatique', {id: current.id});
+      if (!r.ok) { note('sMsg', r.error); return; }
+      await openSeries(current.id, false);
+    });
+    $('sMissing').addEventListener('click', function () {
+      var b = $('sMissingBox'), s = current;
+      if (!b.hidden) { b.hidden = true; return; }
+      if (s.premier == null) b.textContent = 'Impossible de trouver les numéros de chapitres dans les noms de fichiers.';
+      else if (!s.manquants.length) b.textContent = '✅ Aucun chapitre manquant entre le ' + s.premier + ' et le ' + s.dernier + '.';
+      else b.textContent = '⚠ Chapitres manquants entre le ' + s.premier + ' et le ' + s.dernier + ' : ' + s.manquants.join(', ') + '.';
+      b.hidden = false;
+    });
     $('sDelete').addEventListener('click', async function () {
       var n = current.chapters.length;
       if (!confirm('Supprimer toute la série « ' + current.title + ' » (' + n + ' fichier' + (n > 1 ? 's' : '') + ') ?\n\nLes fichiers vont dans la corbeille du dossier des mangas (effacés pour de bon après 30 jours).')) return;

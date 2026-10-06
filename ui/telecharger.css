@@ -347,3 +347,8 @@
     background: var(--bg);
     border-top: 1px solid var(--line);
 }
+
+/* Chapitres déjà présents dans la bibliothèque */
+.chapter-item.deja .chapter-item-name { color: var(--muted, #999); }
+.badge-deja { display: inline-block; margin-left: 6px; font-size: .75rem; color: #52b54b; white-space: nowrap; }
+.chap-manquants { color: var(--muted, #999); font-size: .85rem; margin: 6px 0; }

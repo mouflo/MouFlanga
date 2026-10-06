@@ -113,7 +113,7 @@ async function loadChapters() {
         const resp = await fetch(`/api/japscan/chapters/${selectedManga.id}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: selectedManga.url })
+            body: JSON.stringify({ url: selectedManga.url, title: selectedManga.title })
         });
 
         const data = await resp.json();
@@ -131,14 +131,19 @@ async function loadChapters() {
 
 function renderChapters() {
     const list = $("chapters-list");
+    // Les chapitres déjà dans la bibliothèque sont marqués et décochés : seuls les manquants sont cochés
     list.innerHTML = state.chapters.map((ch, i) => `
-        <div class="chapter-item">
-            <input type="checkbox" value="${i}" class="chapter-checkbox" checked>
+        <div class="chapter-item${ch.deja ? " deja" : ""}">
+            <input type="checkbox" value="${i}" class="chapter-checkbox"${ch.deja ? "" : " checked"}>
             <div class="chapter-item-label">
-                <div class="chapter-item-name">${ch.title}</div>
+                <div class="chapter-item-name">${echapper(ch.title)}${ch.deja ? ' <span class="badge-deja">✓ déjà téléchargé</span>' : ""}</div>
             </div>
         </div>
     `).join("");
+    const deja = state.chapters.filter(ch => ch.deja).length;
+    $("chap-manquants").textContent = deja
+        ? `${deja} chapitre(s) déjà dans ta bibliothèque, ${state.chapters.length - deja} manquant(s) : seuls les manquants sont cochés.`
+        : "";
 
     $$(".chapter-checkbox").forEach(cb => {
         cb.addEventListener("change", updateChapterSelection);
@@ -167,6 +172,7 @@ function cocherChapitres(test) {
 
 $("btn-chap-all").addEventListener("click", () => cocherChapitres(() => true));
 $("btn-chap-none").addEventListener("click", () => cocherChapitres(() => false));
+$("btn-chap-manquants").addEventListener("click", () => cocherChapitres(ch => !ch.deja));
 $("btn-chap-range").addEventListener("click", () => {
     const de = parseFloat($("chap-from").value);
     const a = parseFloat($("chap-to").value);
