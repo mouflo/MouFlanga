@@ -335,7 +335,6 @@ def api_mark():
 # ============================================================================
 
 @app.route("/api/japscan/list")
-@auth.require_login
 def japscan_list():
     """Liste les mangas disponibles sur Japscan."""
     try:
@@ -348,7 +347,6 @@ def japscan_list():
 
 
 @app.route("/api/japscan/chapters/<manga_id>")
-@auth.require_login
 def japscan_chapters(manga_id: str):
     """Récupère les chapitres d'un manga."""
     try:
@@ -367,7 +365,6 @@ def japscan_chapters(manga_id: str):
 
 
 @app.route("/api/japscan/download", methods=["POST"])
-@auth.require_login
 def japscan_download():
     """Lance le téléchargement d'un manga."""
     try:
@@ -398,7 +395,6 @@ def japscan_download():
 
 
 @app.route("/api/japscan/job/<job_id>")
-@auth.require_login
 def japscan_job(job_id: str):
     """Récupère l'état d'un job de téléchargement."""
     job = japscan_scraper.download_jobs.get(job_id)
@@ -408,7 +404,6 @@ def japscan_job(job_id: str):
 
 
 @app.route("/telecharger")
-@auth.require_login
 def telecharger():
     """Page de téléchargement de mangas depuis Japscan."""
     return render_template("telecharger.html")
