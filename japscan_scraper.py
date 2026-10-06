@@ -1,433 +1,318 @@
 #!/usr/bin/env python3
 """
-Scraper Japscan - Télécharge et assemble les mangas de japscan.st en fichiers CBR.
-Utilise Playwright pour contourner les protections anti-scraping (403 Forbidden).
+Scraper Japscan v2.0 - MouFlanga
+Capture les flux réseau déchiffrés par Chromium sous Xvfb et génère des archives CBZ.
+Utilise Patchright (fork de Playwright) pour meilleur contournement Cloudflare.
 """
+import asyncio
 import hashlib
-import io
-import json
 import logging
 import os
 import re
 import shutil
 import time
 import zipfile
-from datetime import datetime
 from pathlib import Path
-from threading import Thread
-from urllib.parse import urljoin, quote
+from urllib.parse import urljoin
+from datetime import datetime
 
-try:
-    import requests
-    from bs4 import BeautifulSoup
-except ImportError:
-    requests = None
-    BeautifulSoup = None
-
-try:
-    from playwright.sync_api import sync_playwright
-except ImportError:
-    sync_playwright = None
+from bs4 import BeautifulSoup
+from patchright.async_api import async_playwright
 
 logger = logging.getLogger("japscan_scraper")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-JAPSCAN_URL = "https://www.japscan.foo"  # japscan.cc redirige vers japscan.foo
-TIMEOUT = 10
-MAX_RETRIES = 3
-PLAYWRIGHT_TIMEOUT = 30000  # 30 secondes pour Playwright
+JAPSCAN_URL = "https://www.japscan.foo"
 
-# État global des téléchargements
+# État global des téléchargements (pour Flask)
 download_jobs = {}
 
 
 class JapscanScraper:
-    """Scrape les mangas de Japscan avec support Playwright."""
+    """Scraper Japscan v2.0 avec interception réseau pour contourner Cloudflare."""
 
     def __init__(self, output_dir: Path):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.session = requests.Session() if requests else None
-        if self.session:
-            self.session.headers.update({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            })
-        self.playwright = None
-        self.browser = None
 
-    def _get_browser(self):
-        """Obtient ou crée une instance du navigateur Playwright."""
-        if not sync_playwright:
-            logger.error("Playwright non installé - utilise requests comme fallback")
-            return None
+    async def _init_browser(self, p):
+        """Lance Chromium sous Xvfb avec les arguments anti-détection."""
+        browser = await p.chromium.launch(
+            headless=False,  # Lancé via xvfb-run sur serveur
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-infobars",
+                "--window-size=1920,1080",
+            ]
+        )
+        context = await browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            locale="fr-FR",
+            timezone_id="Europe/Paris"
+        )
+        return browser, context
 
-        if self.browser is None:
-            try:
-                if self.playwright is None:
-                    self.playwright = sync_playwright().start()
-                self.browser = self.playwright.chromium.launch(headless=True)
-                logger.info("Navigateur Playwright lancé")
-            except Exception as e:
-                logger.error(f"Erreur lancement Playwright: {e}")
-                return None
+    def extract_manga_root_url(self, url: str) -> str:
+        """Nettoie une URL de chapitre pour obtenir l'URL racine de la série."""
+        match = re.match(r"^(https?://[^/]+/(?:manga|manhua|manhwa)/[^/]+/).*", url)
+        if match:
+            return match.group(1)
+        return url
 
-        return self.browser
-
-    def close(self):
-        """Ferme le navigateur."""
-        if self.browser:
-            self.browser.close()
-            self.browser = None
-        if self.playwright:
-            self.playwright.stop()
-            self.playwright = None
-
-    def _fetch_with_browser(self, url: str) -> str | None:
-        """Utilise Playwright pour charger une page HTML (contourne 403)."""
-        browser = self._get_browser()
-        if not browser:
-            logger.warning(f"Playwright indisponible, utilise requests pour {url}")
-            return self._fetch(url)
-
-        try:
-            page = browser.new_page()
-            page.set_default_timeout(PLAYWRIGHT_TIMEOUT)
-
-            logger.info(f"Playwright: chargement {url}")
-            page.goto(url, wait_until="networkidle")
-
-            html = page.content()
-            page.close()
-
-            logger.info(f"Playwright: page chargée ({len(html)} chars)")
-            return html
-        except Exception as e:
-            logger.error(f"Erreur Playwright {url}: {e}")
-            try:
-                page.close()
-            except:
-                pass
-            # Fallback à requests
-            return self._fetch(url)
-
-    def _fetch(self, url: str, **kwargs) -> str | None:
-        """Récupère une URL avec retry."""
-        if not self.session:
-            logger.error("requests non installé")
-            return None
-
-        for attempt in range(MAX_RETRIES):
-            try:
-                resp = self.session.get(url, timeout=TIMEOUT, **kwargs)
-                resp.raise_for_status()
-                return resp.text
-            except Exception as e:
-                logger.warning(f"Tentative {attempt + 1}/{MAX_RETRIES} échouée pour {url}: {e}")
-                if attempt < MAX_RETRIES - 1:
-                    time.sleep(2 ** attempt)
-        return None
-
-    def list_manga(self) -> list[dict]:
-        """Liste les mangas disponibles avec Playwright."""
-        logger.info("Scrape la liste des mangas...")
-
-        # Essaie plusieurs endpoints - / fonctionne, /mangas/ timeout, /listing et /series sont 404
-        endpoints = ["/", "/mangas/", "/listing", "/series"]
-        html = None
-
-        for endpoint in endpoints:
-            url = f"{JAPSCAN_URL}{endpoint}"
-            logger.info(f"Essai: {url}")
-            try:
-                html = self._fetch_with_browser(url)
-                if html and len(html) > 1000:  # Page valide
-                    logger.info(f"✓ Endpoint {endpoint} chargé")
-                    break
-            except Exception as e:
-                logger.warning(f"Erreur endpoint {endpoint}: {e}")
-                continue
-
-        if not html:
-            logger.error("Impossible de charger la liste des mangas")
-            return []
-
-        soup = BeautifulSoup(html, "html.parser")
+    async def list_manga(self) -> list[dict]:
+        """Liste les mangas disponibles."""
+        logger.info("Récupération de la liste des mangas...")
         mangas = []
 
-        # Sélecteurs éprouvés via probe_japscan.py
-        selectors = [
-            "a[href*='/manga/']",      # Liens manga directs (673 matches testés)
-            "a[href*='/manhua/']",     # Liens manhua
-            "a[href*='/manhwa/']",     # Liens manhwa
-            "a.image-box",             # Classe des vignettes
-            "a[class*='manga']",       # Classes contenant 'manga'
-        ]
+        async with async_playwright() as p:
+            browser, context = await self._init_browser(p)
+            page = await context.new_page()
 
-        seen_urls = set()
-
-        for selector in selectors:
-            logger.info(f"Teste sélecteur: {selector}")
             try:
-                matches = soup.select(selector)
-                logger.info(f"  → {len(matches)} matches trouvés")
+                # Essaie plusieurs endpoints - / fonctionne le mieux
+                endpoints = ["/", "/mangas/", "/listing", "/series"]
+                html = None
 
-                for item in matches:
+                for endpoint in endpoints:
+                    url = f"{JAPSCAN_URL}{endpoint}"
+                    logger.info(f"Essai endpoint : {url}")
                     try:
-                        title = item.get_text(strip=True)
-                        link_href = item.get("href", "")
-
-                        if not title or not link_href:
-                            continue
-
-                        # Filtre les liens qui ne sont pas des mangas
-                        if not any(x in link_href.lower() for x in ["manga", "manhua", "manhwa"]):
-                            continue
-
-                        url = urljoin(JAPSCAN_URL, link_href)
-
-                        # Évite les doublons et la page principale
-                        if url in seen_urls or url == JAPSCAN_URL:
-                            continue
-
-                        seen_urls.add(url)
-
-                        mangas.append({
-                            "title": title,
-                            "url": url,
-                            "id": hashlib.md5(url.encode()).hexdigest()[:12]
-                        })
+                        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                        await asyncio.sleep(2)
+                        html = await page.content()
+                        if html and len(html) > 1000:
+                            logger.info(f"✓ Endpoint {endpoint} chargé ({len(html)} caractères)")
+                            break
                     except Exception as e:
-                        logger.debug(f"Erreur parsing item: {e}")
+                        logger.warning(f"Erreur endpoint {endpoint}: {e}")
                         continue
 
-                if mangas:  # Si on a trouvé des mangas, on continue avec les autres sélecteurs aussi
-                    logger.info(f"Trouvé {len(mangas)} mangas avec ce sélecteur")
-            except Exception as e:
-                logger.debug(f"Erreur avec sélecteur '{selector}': {e}")
-                continue
+                if not html:
+                    logger.error("Impossible de charger la liste des mangas")
+                    await browser.close()
+                    return []
 
-        logger.info(f"Trouvé {len(mangas)} mangas au total")
-        return mangas
+                soup = BeautifulSoup(html, "html.parser")
+                seen_urls = set()
 
-    def get_chapters(self, manga_url: str) -> list[dict]:
-        """Récupère les chapitres d'un manga avec Playwright."""
-        logger.info(f"Récupère les chapitres: {manga_url}")
-        html = self._fetch_with_browser(manga_url)
-        if not html:
-            return []
+                # Sélecteurs pour trouver les mangas
+                selectors = [
+                    "a[href*='/manga/']",
+                    "a[href*='/manhua/']",
+                    "a[href*='/manhwa/']",
+                    "a.image-box",
+                ]
 
-        soup = BeautifulSoup(html, "html.parser")
-        chapters = []
-
-        # Essaie plusieurs patterns de sélecteurs
-        selectors = [
-            "a.chapter-link",
-            ".chapter-item a",
-            "a[class*='chapter']",
-            "div.chapitre a",
-            "div.chapter a",
-            "tr a",  # Les mangas peuvent être en tableau
-            "li a",  # Ou en liste
-            "a[href*='/chapitre/']",
-            "a[href*='/chapter/']",
-            "a[href*='/lecture/']",
-        ]
-
-        seen_urls = set()
-
-        for selector in selectors:
-            try:
-                for item in soup.select(selector):
+                for selector in selectors:
                     try:
-                        title = item.get_text(strip=True)
-                        url = urljoin(JAPSCAN_URL, item.get("href", ""))
+                        matches = soup.select(selector)
+                        logger.info(f"Sélecteur '{selector}' : {len(matches)} matches")
 
-                        if not title or url == JAPSCAN_URL or url in seen_urls:
-                            continue
-
-                        # Filtre les URLs qui ne semblent pas être des chapitres
-                        if not any(x in url.lower() for x in ["chapitre", "chapter", "lecture", "read", "/ch"]):
-                            continue
-
-                        seen_urls.add(url)
-                        chapters.append({
-                            "title": title,
-                            "url": url,
-                            "num": len(chapters) + 1
-                        })
-                    except Exception as e:
-                        logger.debug(f"Erreur parsing chapitre: {e}")
-
-                if chapters:  # Si on a trouvé des chapitres, on arrête
-                    break
-            except Exception as e:
-                logger.debug(f"Erreur avec sélecteur '{selector}': {e}")
-
-        logger.info(f"Trouvé {len(chapters)} chapitres")
-        return list(reversed(chapters))  # Ordre chronologique
-
-    def download_chapter_pages(self, chapter_url: str) -> list[bytes]:
-        """Télécharge les pages d'un chapitre avec Playwright."""
-        logger.info(f"Télécharge les pages: {chapter_url}")
-        html = self._fetch_with_browser(chapter_url)
-        if not html:
-            return []
-
-        soup = BeautifulSoup(html, "html.parser")
-        pages = []
-
-        # Essaie plusieurs patterns d'images
-        img_selectors = [
-            "img.page",
-            "img[data-src]",
-            "img[data-lazy-src]",
-            "img[class*='page']",
-            "img[class*='chapter']",
-            "div.page img",
-            "img[src*='manga']",
-            "img[src*='chapitre']",
-            "img",  # Fallback: toutes les images
-        ]
-
-        for selector in img_selectors:
-            try:
-                for img in soup.select(selector):
-                    try:
-                        # Essaie plusieurs attributs pour l'URL
-                        src = img.get("data-src") or img.get("data-lazy-src") or img.get("src")
-
-                        if not src or "blank" in src.lower() or "placeholder" in src.lower():
-                            continue
-
-                        # Filtre les images trop petites (logos, etc.)
-                        width = img.get("width")
-                        height = img.get("height")
-                        if width and height:
+                        for item in matches:
                             try:
-                                if int(width) < 300 or int(height) < 400:
+                                title = item.get_text(strip=True)
+                                href = item.get("href", "")
+
+                                if not title or not href:
                                     continue
-                            except (ValueError, TypeError):
-                                pass
 
-                        page_url = urljoin(chapter_url, src)  # Relative to chapter page
-                        logger.debug(f"Télécharge page: {page_url}")
+                                if not any(x in href.lower() for x in ["manga", "manhua", "manhwa"]):
+                                    continue
 
-                        # Télécharge l'image
-                        img_data = self._fetch_binary(page_url)
-                        if img_data:
-                            pages.append(img_data)
-                            time.sleep(0.3)  # Rate limiting
+                                url = urljoin(JAPSCAN_URL, href)
+                                if url in seen_urls or url == JAPSCAN_URL:
+                                    continue
+
+                                seen_urls.add(url)
+                                mangas.append({
+                                    "title": title,
+                                    "url": url,
+                                    "id": hashlib.md5(url.encode()).hexdigest()[:12]
+                                })
+                            except Exception as e:
+                                logger.debug(f"Erreur parsing item: {e}")
+                                continue
                     except Exception as e:
-                        logger.debug(f"Erreur téléchargement page: {e}")
+                        logger.debug(f"Erreur sélecteur '{selector}': {e}")
+                        continue
 
-                if pages:  # Si on a trouvé des pages, on arrête
-                    break
+                await browser.close()
+                logger.info(f"✓ {len(mangas)} mangas trouvés au total")
+                return mangas
+
             except Exception as e:
-                logger.debug(f"Erreur avec sélecteur '{selector}': {e}")
+                logger.error(f"Erreur liste mangas: {e}")
+                await browser.close()
+                return []
 
-        logger.info(f"Téléchargé {len(pages)} pages")
-        return pages
+    async def get_chapters(self, manga_url: str) -> list[dict]:
+        """Récupère la liste des chapitres d'un manga."""
+        manga_url = self.extract_manga_root_url(manga_url)
+        logger.info(f"Chargement de la fiche série : {manga_url}")
 
-    def _fetch_binary(self, url: str) -> bytes | None:
-        """Télécharge un fichier binaire."""
-        if not self.session:
-            return None
+        async with async_playwright() as p:
+            browser, context = await self._init_browser(p)
+            page = await context.new_page()
 
-        for attempt in range(MAX_RETRIES):
             try:
-                resp = self.session.get(url, timeout=TIMEOUT)
-                resp.raise_for_status()
-                return resp.content
+                # domcontentloaded au lieu de networkidle pour éviter les timeouts
+                await page.goto(manga_url, wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(3)  # Pause pour laisser tourner le JS initial
+
+                html = await page.content()
+                soup = BeautifulSoup(html, "html.parser")
+                chapters = []
+                seen_urls = set()
+
+                # Sélecteurs pour repérer la liste des chapitres
+                links = soup.select("div#chapters_list a, div.chapter-container a, a[href*='/manga/'], a[href*='/manhua/'], a[href*='/manhwa/']")
+
+                for item in links:
+                    href = item.get("href", "")
+                    title = item.get_text(strip=True)
+
+                    # On ne garde que les URLs qui pointent vers un chapitre numérique
+                    if href and re.search(r"/\d+/?$", href):
+                        full_url = urljoin(JAPSCAN_URL, href)
+                        if full_url not in seen_urls:
+                            seen_urls.add(full_url)
+                            chapters.append({
+                                "title": title or full_url.split("/")[-2],
+                                "url": full_url,
+                                "num": len(chapters) + 1
+                            })
+
+                await browser.close()
+                logger.info(f"✓ {len(chapters)} chapitres trouvés.")
+                return chapters
+
             except Exception as e:
-                logger.warning(f"Tentative {attempt + 1} échouée pour {url}: {e}")
-                if attempt < MAX_RETRIES - 1:
-                    time.sleep(2 ** attempt)
-        return None
+                logger.error(f"Erreur lors de la récupération des chapitres : {e}")
+                await browser.close()
+                return []
 
-    def create_cbr(self, pages: list[bytes], output_path: Path) -> bool:
-        """Crée un fichier CBR (ZIP avec images)."""
-        logger.info(f"Crée CBR: {output_path}")
-        try:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+    async def download_chapter_pages(self, chapter_url: str) -> list[bytes]:
+        """Télécharge les pages en interceptant le flux réseau déchiffré."""
+        logger.info(f"Début de l'aspiration du chapitre : {chapter_url}")
+        captured_images = {}
 
-            with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                for idx, page_data in enumerate(pages, 1):
-                    # Détermine l'extension (jpg ou png)
-                    if page_data.startswith(b'\xff\xd8\xff'):
-                        ext = "jpg"
-                    elif page_data.startswith(b'\x89PNG'):
-                        ext = "png"
-                    else:
-                        ext = "jpg"
+        async with async_playwright() as p:
+            browser, context = await self._init_browser(p)
+            page = await context.new_page()
 
-                    filename = f"{idx:04d}.{ext}"
-                    zf.writestr(filename, page_data)
+            # Listener d'interception des requêtes d'images
+            async def on_response(response):
+                try:
+                    content_type = response.headers.get("content-type", "")
+                    if "image" in content_type and response.status == 200:
+                        url = response.url
+                        # Exclure les éléments d'interface (logos, pubs, avatars, favicons)
+                        if not any(k in url for k in ["logo", "avatar", "banner", "pub", "icon", "theme"]):
+                            body = await response.body()
+                            if len(body) > 15000:  # Exclure les petites images/icônes (< 15 Ko)
+                                captured_images[url] = body
+                except Exception:
+                    pass
 
-            logger.info(f"CBR créé: {output_path} ({len(pages)} pages)")
-            return True
-        except Exception as e:
-            logger.error(f"Erreur création CBR: {e}")
+            page.on("response", on_response)
+
+            try:
+                await page.goto(chapter_url, wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(4)  # Laisser passer Cloudflare et charger le lecteur JS
+
+                # Simuler un défilement progressif vers le bas pour forcer le chargement de toutes les pages
+                logger.info("Défilement de la page pour forcer le lazy-loading...")
+                for _ in range(15):
+                    await page.mouse.wheel(0, 1200)
+                    await asyncio.sleep(0.6)
+
+                await asyncio.sleep(2)
+                await browser.close()
+
+            except Exception as e:
+                logger.error(f"Erreur lors du chargement du chapitre {chapter_url} : {e}")
+                await browser.close()
+
+        # Tri des images par URL/ordre de capture
+        sorted_urls = sorted(captured_images.keys())
+        images_bytes = [captured_images[u] for u in sorted_urls]
+        logger.info(f"✓ {len(images_bytes)} pages capturées sur le réseau.")
+        return images_bytes
+
+    def create_cbz(self, pages: list[bytes], output_path: Path) -> bool:
+        """Combine les pages capturées dans un fichier .cbz (Archive Zip)."""
+        if not pages:
             return False
 
+        logger.info(f"Création de l'archive CBZ : {output_path}")
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for idx, page_data in enumerate(pages, 1):
+                    # Déduction de l'extension selon le magic byte
+                    ext = "jpg"
+                    if page_data.startswith(b"\x89PNG"):
+                        ext = "png"
+                    elif page_data.startswith(b"RIFF") and page_data[8:12] == b"WEBP":
+                        ext = "webp"
 
-def search_metadata(manga_title: str) -> dict:
-    """Cherche les métadonnées du manga (nombre de chapitres par tome)."""
-    logger.info(f"Cherche métadonnées: {manga_title}")
-    # Implémentation simple - tu peux l'étendre avec TMDb, MyAnimeList, etc.
-    return {
-        "title": manga_title,
-        "chapters_per_tome": [],  # À remplir manuellement
-        "total_chapters": 0,
-        "source": "manual"
-    }
+                    filename = f"page_{idx:03d}.{ext}"
+                    zf.writestr(filename, page_data)
 
+            logger.info(f"✓ CBZ créé avec succès ({len(pages)} pages) -> {output_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Erreur création CBZ : {e}")
+            return False
 
-def download_manga_background(job_id: str, manga_title: str, chapters: list[dict],
-                              output_dir: Path, progress_callback=None):
-    """Télécharge un manga en arrière-plan."""
-    job = {
-        "id": job_id,
-        "title": manga_title,
-        "status": "running",
-        "progress": 0,
-        "total": len(chapters),
-        "downloaded": [],
-        "error": None,
-        "started": datetime.now().isoformat()
-    }
-    download_jobs[job_id] = job
+    # Wrapper synchrone pour compatibilité avec le code existant
+    def download_manga_sync(self, job_id: str, manga_title: str, chapters: list[dict],
+                            progress_callback=None):
+        """Télécharge un manga en arrière-plan (wrapper sync pour asyncio)."""
+        job = {
+            "id": job_id,
+            "title": manga_title,
+            "status": "running",
+            "progress": 0,
+            "total": len(chapters),
+            "downloaded": [],
+            "error": None,
+            "started": datetime.now().isoformat()
+        }
+        download_jobs[job_id] = job
 
-    try:
-        scraper = JapscanScraper(output_dir)
+        try:
+            for idx, chapter in enumerate(chapters):
+                try:
+                    # Télécharge les pages en async
+                    pages = asyncio.run(self.download_chapter_pages(chapter["url"]))
+                    if not pages:
+                        logger.warning(f"Aucune page pour {chapter['title']}")
+                        continue
 
-        for idx, chapter in enumerate(chapters):
-            try:
-                # Télécharge les pages
-                pages = scraper.download_chapter_pages(chapter["url"])
-                if not pages:
-                    logger.warning(f"Aucune page pour {chapter['title']}")
-                    continue
+                    # Crée le CBZ
+                    chapter_file = self.output_dir / f"{chapter['num']:03d} - {chapter['title']}.cbz"
+                    if self.create_cbz(pages, chapter_file):
+                        job["downloaded"].append(str(chapter_file))
 
-                # Crée le CBR
-                chapter_file = output_dir / f"{chapter['num']:03d} - {chapter['title']}.cbr"
-                if scraper.create_cbr(pages, chapter_file):
-                    job["downloaded"].append(str(chapter_file))
+                    # Mise à jour progression
+                    job["progress"] = idx + 1
+                    if progress_callback:
+                        progress_callback(job)
 
-                # Mise à jour progression
-                job["progress"] = idx + 1
-                if progress_callback:
-                    progress_callback(job)
+                except Exception as e:
+                    logger.error(f"Erreur chapitre {chapter['title']}: {e}")
+                    job["error"] = str(e)
 
-            except Exception as e:
-                logger.error(f"Erreur chapitre {chapter['title']}: {e}")
-                job["error"] = str(e)
+            job["status"] = "completed"
+            logger.info(f"Téléchargement terminé: {job_id}")
 
-        job["status"] = "completed"
-        logger.info(f"Téléchargement terminé: {job_id}")
-        scraper.close()
+        except Exception as e:
+            job["status"] = "error"
+            job["error"] = str(e)
+            logger.error(f"Erreur téléchargement: {e}")
 
-    except Exception as e:
-        job["status"] = "error"
-        job["error"] = str(e)
-        logger.error(f"Erreur téléchargement: {e}")
-
-    job["ended"] = datetime.now().isoformat()
+        job["ended"] = datetime.now().isoformat()
