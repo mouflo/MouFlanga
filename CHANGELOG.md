@@ -5,6 +5,7 @@
 - Chrome : les adresses *.challenges.cloudflare.com sont redirigées vers IPv4 (le serveur n'a pas d'IPv6 et `brunhild.challenges.cloudflare.com` n'existe qu'en IPv6) ; avec Camoufox, la même redirection est écrite dans /etc/hosts si le serveur en a le droit
 - Après la vérification, l'appli attend la vraie fiche série (page « Loading… ») avant de chercher les chapitres
 - Rapport : historique des échecs réseau du défi, empreinte du navigateur, test DNS et test IPv6
+- Fiche série : le site cache la vraie liste sous des leurres (liens cachés, faux « Chapitre 000001 » invisibles) ; l'appli ne lit plus que les éléments réellement visibles de chaque ligne de chapitre
 - Fiche série : défilement de la page avant la lecture, et rapport enrichi (familles de liens, première zone « list_chapters », requêtes de données de la page) pour trouver où se cache la liste complète des chapitres
 
 ## Vérification Cloudflare à la main et alertes Telegram

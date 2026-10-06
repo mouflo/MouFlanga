@@ -132,6 +132,26 @@ PATIENCE_HUMAIN = 600          # secondes laissées à l'utilisateur pour interv
 RAPPEL_ALERTE = 900            # pas deux alertes Telegram à moins de 15 minutes
 
 
+# Lit, dans la page, uniquement les éléments VISIBLES de chaque ligne de chapitre
+_JS_ZONES_VISIBLES = r"""() => [...document.querySelectorAll('.list_chapters')].map(z => {
+  const visible = e => {
+    for (let n = e; n && n !== z.parentElement; n = n.parentElement) {
+      const cs = getComputedStyle(n);
+      if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) return false;
+      if (cs.clipPath && cs.clipPath !== 'none') return false;
+    }
+    const r = e.getBoundingClientRect();
+    return r.width > 1 && r.height > 1;
+  };
+  const items = [...z.querySelectorAll('*')].filter(visible).map(e => ({
+    tag: e.tagName.toLowerCase(),
+    text: ((e.innerText || e.textContent) || '').trim().slice(0, 80),
+    href: e.getAttribute('href'),
+    attrs: Object.fromEntries([...e.attributes].filter(a => !['class', 'style', 'href'].includes(a.name)).map(a => [a.name, a.value.slice(0, 60)])),
+  }));
+  return {items};
+})"""
+
 _HISTORIQUE = []     # derniers événements de vérification (pour le rapport de l'appli)
 
 
@@ -765,7 +785,39 @@ class JapscanScraper:
                         _noter(f"  requête de données {st} : {u[:90]}")
                 except Exception as e:
                     _noter(f"  diagnostic des liens impossible : {e.__class__.__name__}")
-                for item in soup.find_all("a", href=True):
+                # Le site noie la vraie liste sous des leurres : liens cachés (d-none) aux numéros en « 222 »,
+                # éléments « Chapitre 000001… » rendus invisibles (clip-path, position absolue).
+                # On ne garde donc que ce qu'un humain voit réellement à l'écran.
+                try:
+                    zones_vues = await page.evaluate(_JS_ZONES_VISIBLES)
+                except Exception as e:
+                    zones_vues = []
+                    _noter(f"  lecture des zones visibles impossible : {e.__class__.__name__}")
+                try:
+                    _noter(f"  zones visibles : {len(zones_vues)}")
+                    for k in (0, 1, 40):
+                        if len(zones_vues) > k:
+                            _noter(f"  zone visible n°{k + 1} : {str(zones_vues[k])[:500]}")
+                except Exception:
+                    pass
+                type_m = re.search(r"/(manga|manhua|manhwa)/", manga_url)
+                type_url = type_m.group(1) if type_m else "manga"
+                for z in zones_vues:
+                    for el in z.get("items", []):
+                        txt = (el.get("text") or "").strip()
+                        mm = re.search(r"chapitre\s+(\d+(?:\.\d+)?)", txt, re.I)
+                        if not mm:
+                            continue
+                        cid = mm.group(1)
+                        full_url = urljoin(JAPSCAN_URL, f"/{type_url}/{slug}/{cid}/") if slug else ""
+                        if not full_url or full_url in seen_urls:
+                            continue
+                        seen_urls.add(full_url)
+                        chapters.append({"title": txt.split("\n")[0][:120], "url": full_url, "chapter_id": cid})
+                        break
+                if chapters:
+                    logger.info(f"Chapitres lus depuis les zones visibles : {len(chapters)}")
+                for item in ([] if chapters else soup.find_all("a", href=True)):
                     href = item["href"]
                     m = pattern.search(href)
                     if not m or not re.search(r"\d", m.group(1)):
