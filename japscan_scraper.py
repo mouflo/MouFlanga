@@ -523,7 +523,7 @@ def captchas_groupes() -> bool:
     return os.environ.get("JAPSCAN_CAPTCHAS_GROUPES", "").strip() == "1"
 
 
-COMPTE_CAPTCHAS = {"n": 0}     # captchas affichés depuis le démarrage (pour comparer les deux modes)
+COMPTE_CAPTCHAS = {"n": 0}     # captchas présentés à l'utilisateur depuis le démarrage (pour comparer les deux modes)
 
 
 async def attendre_captcha(page, alerter: bool = True) -> bool:
@@ -1189,7 +1189,6 @@ class JapscanScraper:
 
             # Le lecteur peut exiger un captcha : l'utilisateur le résout depuis la page « Vérification »
             if reporter_captcha and await _captcha_present(page):
-                COMPTE_CAPTCHAS["n"] += 1
                 _noter(f"captcha gardé pour la fin : {chapter_url}")
                 raise CaptchaReporte(chapter_url)
             if not await attendre_captcha(page, alerter):
@@ -1428,7 +1427,7 @@ class JapscanScraper:
                     job["en_attente_captcha"] = 0
 
                 job["captchas"] = COMPTE_CAPTCHAS["n"] - captchas_avant
-                _noter(f"captchas : {job['captchas']} pour {len(chapters)} chapitre(s) · mode "
+                _noter(f"captchas à résoudre : {job['captchas']} pour {len(chapters)} chapitre(s) · {len(reportes)} gardé(s) pour la fin · mode "
                        f"{'groupé (gardés pour la fin)' if groupes else 'normal (au fur et à mesure)'}")
                 if job.get("annule") and job["status"] == "running":
                     job["status"] = "annule"
