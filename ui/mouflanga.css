@@ -94,3 +94,4 @@ body.mou-skin .tome-titre, body.mou-skin .tome-titre:hover { background:none; co
 .pg-barre i { display:block; height:100%; background:var(--accent); transition:width .4s; }
 .pg-barre.indet i { width:30%; position:absolute; animation:pgIndet 1.4s ease-in-out infinite; }
 @keyframes pgIndet { from { left:-30%; } to { left:100%; } }
+.chap .ct2 { display:block; font-size:.8rem; color:var(--muted); margin-top:2px; }

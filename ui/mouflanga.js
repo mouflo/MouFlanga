@@ -132,7 +132,7 @@
     // Au départ, seul le tome en cours de lecture (ou le premier avec des chapitres à lire) est ouvert.
     function ligne(c) {
       return '<div class="chap' + (c.read ? ' read' : '') + (c.key === s.current ? ' cur' : '') + '" data-path="' + esc(c.key) + '">' +
-        '<span class="dot"></span><span class="ct">' + esc(c.title) + '</span><span class="cs">' + c.size_mb + ' Mo</span>' +
+        '<span class="dot"></span><span class="ct">' + esc(c.title) + (c.sous ? '<small class="ct2">' + esc(c.sous) + '</small>' : '') + '</span><span class="cs">' + c.size_mb + ' Mo</span>' +
         '<button class="tog" data-tog="' + esc(c.key) + '" title="Marquer ' + (c.read ? 'non lu' : 'lu') + '">' + (c.read ? '↺' : '✔') + '</button>' +
         '<button class="tog del" data-del="' + esc(c.key) + '" title="Supprimer ce chapitre">🗑</button></div>';
     }

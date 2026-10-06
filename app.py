@@ -195,8 +195,8 @@ def _entrees(files):
             if tome is not None:
                 # Tome complet (un fichier = un tome) : affiché « Tome 03 · chapitres 17 à 25 »
                 couverts, plage = _plage_chapitres(f.relative_to(MANGA_DIR).parts[0], tome)
-                entree.update(num=None, tome=tome, couverts=couverts,
-                              title=tomes_cbz.dossier_tome(tome) + (f" · {plage}" if plage else ""))
+                entree.update(num=None, tome=tome, couverts=couverts, title=tomes_cbz.dossier_tome(tome),
+                              sous=plage[:1].upper() + plage[1:] if plage else "")   # « Chapitres 71 à 79 », sur une 2e ligne
             out.append(entree)
             continue
         try:

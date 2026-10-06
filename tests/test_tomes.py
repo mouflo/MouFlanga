@@ -368,7 +368,7 @@ class OrganiserTest(BibliothequeTest):
             self.client.post("/api/organiser", json={"series": self.vrac.name, "nom": "Gintama"})
         with mock.patch.object(tomes, "_charger", return_value={"tomes": {1.0: 1, 2.0: 1, 3.0: 2, 9.0: 5}}):
             s = self.client.get("/api/series?id=Gintama").json
-            self.assertEqual(s["chapters"][0]["title"], "Tome 01 · chapitres 1 à 2")
+            self.assertEqual((s["chapters"][0]["title"], s["chapters"][0]["sous"]), ("Tome 01", "Chapitres 1 à 2"))
             marques = self.A._marquer_deja([{"chapter_id": "2"}, {"chapter_id": "9"}], "Gintama")
         self.assertEqual([c["deja"] for c in marques], [True, False])
 
