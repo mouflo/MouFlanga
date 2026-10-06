@@ -61,7 +61,7 @@ if __name__ == "__main__":
 class LienEtWebhookTest(unittest.TestCase):
     def test_lien_de_message(self):
         self.assertEqual(notifier.lire_lien("https://t.me/c/1234567890/45/678"), (True, "-1001234567890", "45", ""))
-        self.assertEqual(notifier.lire_lien("t.me/c/1234567890/678"), (True, "-1001234567890", "", ""))
+        self.assertEqual(notifier.lire_lien("t.me/c/1234567890/678"), (True, "-1001234567890", "678", ""))
         self.assertFalse(notifier.lire_lien("https://exemple.fr/x")[0])
 
     def test_webhook_explique(self):

@@ -267,13 +267,13 @@ def _sans_webhook(rep) -> str:
 
 def lire_lien(lien: str) -> tuple[bool, str, str, str]:
     """Lien d'un message de groupe privé (appui long → « Copier le lien ») → (réussi, identifiant du groupe, sujet, erreur).
-    https://t.me/c/1234567890/45/678 : groupe -1001234567890, sujet 45 ; https://t.me/c/1234567890/678 : sujet « Général »."""
+    https://t.me/c/1234567890/45/678 : groupe -1001234567890, sujet 45 ; https://t.me/c/1234567890/5 : lien du sujet 5 (1 = « Général »)."""
     m = re.search(r"t\.me/c/(\d{5,})/(\d+)(?:/(\d+))?", lien or "")
     if not m:
         return False, "", "", ("Ce lien ne ressemble pas à un lien de message de groupe (https://t.me/c/…). "
                                "Dans le sujet, appui long sur un message → « Copier le lien ».")
     groupe = "-100" + m.group(1)
-    sujet = m.group(2) if m.group(3) else ""
+    sujet = m.group(2)                 # …/<groupe>/<sujet> (lien du sujet) ou …/<groupe>/<sujet>/<message>
     return True, groupe, sujet, ""
 
 
