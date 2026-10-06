@@ -40,6 +40,7 @@ Pour installer l'appli sur le serveur et la remettre en route après une panne, 
 - 📚 **Bibliothèque automatique** : chaque sous-dossier du dossier des mangas est une série, chaque fichier `.cbz` / `.cbr` (ou `.zip` / `.rar`) est un chapitre ou un tome
 - 🖼️ **Couvertures** : première page du premier chapitre, ou une couverture choisie depuis la page de la série (image ou photo du téléphone, enregistrée en `cover.jpg` dans le dossier de la série)
 - 🎨 **Couverture créée avec MouFloster** : bouton « Créer avec MouFloster » sur la page d'une série ; MouFloster s'ouvre avec la recherche faite et renvoie le poster ici (connexion par clé API générée dans ⚙️ Réglages, voir plus bas)
+- 📚 **Tomes automatiques** : la répartition des chapitres en tomes est trouvée sur Internet (Wikipédia, MangaDex) ; un dossier et un seul fichier par tome, complété à chaque chapitre, les chapitres récents dans « Hors tome » ; la lecture enchaîne chapitres et tomes et retient la position par chapitre
 - 🔍 **Chapitres manquants** : trous dans la numérotation d'une série ; au téléchargement, les chapitres déjà présents sont marqués et décochés
 - 🗑️ **Suppression** d'un chapitre ou d'une série (corbeille gardée 30 jours)
 - 🔍 **Recherche et tri** : par titre, lecture récente, ajout récent, nombre de chapitres restant à lire

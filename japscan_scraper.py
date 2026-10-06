@@ -20,6 +20,9 @@ from datetime import datetime
 
 from bs4 import BeautifulSoup
 
+import tomes
+import tomes_cbz
+
 
 def async_playwright():
     """Import paresseux : l'appli démarre même si Patchright n'est pas installé."""
@@ -1380,12 +1383,22 @@ class JapscanScraper:
                             echecs["de_suite"] += 1
                         else:
                             echecs["de_suite"] = 0
-                            num = int(chapter.get("num") or idx + 1)
-                            fichier = self.output_dir / f"{num:03d} - {nom_sur(titre)}.cbz"
-                            if self.create_cbz(pages, fichier):
+                            n = _numero(chapter)
+                            if self.tomes_info is not None and n is not None:
+                                # Rangé dans le fichier de son tome (ou « Hors tome » s'il n'est pas encore sorti)
+                                propre = tomes_cbz.nettoyer_titre(titre) or self.tomes_info.get("titres", {}).get(n, "")
+                                t = tomes.tome_de(n, self.tomes_info)
+                                fichier = await asyncio.to_thread(tomes_cbz.ajouter, self.output_dir, self.output_dir.name,
+                                                                  t, n, propre, pages)
+                                logger.info(f"✓ Chapitre {n:g} rangé dans {tomes_cbz.dossier_tome(t)} ({len(pages)} pages)")
                                 job["downloaded"].append(str(fichier))
                             else:
-                                job["failed"].append(titre)
+                                num = int(chapter.get("num") or idx + 1)
+                                fichier = self.output_dir / f"{num:03d} - {nom_sur(titre)}.cbz"
+                                if self.create_cbz(pages, fichier):
+                                    job["downloaded"].append(str(fichier))
+                                else:
+                                    job["failed"].append(titre)
                     except CaptchaReporte:
                         return False
                     except Exception as e:
@@ -1462,9 +1475,13 @@ class JapscanScraper:
             finally:
                 await self._fermer_session(session)
 
+    tomes_info = None      # répartition en tomes (tomes.chercher) ; None : un fichier par chapitre
+
     def download_manga_sync(self, job_id: str, manga_title: str, chapters: list[dict],
-                            progress_callback=None):
-        """Télécharge les chapitres un par un et crée un .cbz par chapitre."""
+                            progress_callback=None, preparer=None):
+        """Télécharge les chapitres un par un. Si la répartition en tomes est connue, chaque chapitre est
+        ajouté au fichier de son tome ; sinon, un .cbz par chapitre. « preparer() » (fourni par l'appli)
+        cherche les tomes et range les chapitres déjà présents ; il renvoie la répartition ou None."""
         job = {
             "id": job_id,
             "title": manga_title,
@@ -1478,6 +1495,14 @@ class JapscanScraper:
         }
         download_jobs[job_id] = job
 
+        if preparer is not None:
+            job["en_cours"] = "(recherche des tomes)"
+            try:
+                self.tomes_info = preparer()
+            except Exception as e:
+                logger.warning(f"Tomes : préparation impossible ({e}) : un fichier par chapitre")
+                self.tomes_info = None
+            job["tomes"] = (self.tomes_info or {}).get("source")
         try:
             asyncio.run(self._telecharger_chapitres(job, chapters, progress_callback))
         except Exception as e:
@@ -1488,6 +1513,14 @@ class JapscanScraper:
         job["ended"] = datetime.now().isoformat()
 
 
-def download_manga_background(job_id: str, manga_title: str, chapters: list[dict], output_dir: Path):
+def download_manga_background(job_id: str, manga_title: str, chapters: list[dict], output_dir: Path, preparer=None):
     """Point d'entrée utilisé par l'appli (dans un thread)."""
-    JapscanScraper(output_dir).download_manga_sync(job_id, manga_title, chapters)
+    JapscanScraper(output_dir).download_manga_sync(job_id, manga_title, chapters, preparer=preparer)
+
+
+def _numero(chapter: dict):
+    """Numéro du chapitre sur le site (« 12 », « 12.5 ») ou None."""
+    try:
+        return float(str(chapter.get("chapter_id", "")).replace(",", "."))
+    except ValueError:
+        return None

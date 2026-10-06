@@ -15,7 +15,7 @@
   function pref(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
   function setPref(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 
-  var series = [], current = null;
+  var series = [], current = null, suiviRangement = null;
 
   function sorted(list) {
     var q = $('search').value.trim().toLowerCase(), how = $('sort').value;
@@ -39,7 +39,7 @@
         '<img class="cv" loading="lazy" alt="" src="' + esc(s.cover) + '">' +
         (left > 0 ? '<span class="badge">' + left + ' à lire</span>' : '<span class="badge done">lu ✔</span>') +
         '<div class="nm">' + esc(s.title) + '</div>' +
-        '<div class="st">' + s.chapters + ' fichier' + (s.chapters > 1 ? 's' : '') + ' · ' + s.size_mb + ' Mo</div>' +
+        '<div class="st">' + s.chapters + ' chapitre' + (s.chapters > 1 ? 's' : '') + ' · ' + s.size_mb + ' Mo</div>' +
         '<div class="bar"><i style="width:' + pct + '%"></i></div></div>';
     }).join('');
   }
@@ -76,17 +76,28 @@
     if (mfs) $('sCoverMfs').href = mfs.replace(/\/$/, '') + '/?mouflanga=' + encodeURIComponent(s.id) +
       '&q=' + encodeURIComponent(s.id) + '&retour=' + encodeURIComponent(location.origin + location.pathname + '#' + encodeURIComponent(s.id));
     $('sMissingBox').hidden = true;
-    $('sMeta').textContent = s.chapters.length + ' fichier' + (s.chapters.length > 1 ? 's' : '') + ' · ' + read + ' lu' + (read > 1 ? 's' : '');
-    var next = s.current || (s.chapters.find(function (c) { return !c.read; }) || s.chapters[0] || {}).path;
+    var rg = s.rangement || {};
+    $('sTomes').hidden = !(s.a_ranger || rg.en_cours);
+    $('sTomes').disabled = !!rg.en_cours;
+    $('sTomes').textContent = rg.en_cours ? '⏳ Rangement en tomes… ' + (rg.total ? rg.fait + ' / ' + rg.total : '') : '📚 Ranger en tomes';
+    if (rg.message && !rg.en_cours) note('sMsg', rg.message, 'ok');
+    clearTimeout(suiviRangement);
+    if (rg.en_cours) suiviRangement = setTimeout(function () { if (current && current.id === s.id) openSeries(s.id, false); }, 2500);
+    $('sMeta').textContent = s.chapters.length + ' chapitre' + (s.chapters.length > 1 ? 's' : '') + ' · ' + read + ' lu' + (read > 1 ? 's' : '');
+    var next = s.current || (s.chapters.find(function (c) { return !c.read; }) || s.chapters[0] || {}).key;
     $('sResume').textContent = (s.current ? '▶ Reprendre' : read ? '▶ Continuer' : '▶ Commencer');
     $('sResume').dataset.path = next || '';
+    // Chapitres groupés par tome (« Tome 02 », « Hors tome ») quand la série est rangée en tomes
+    var groupe = null;
     $('chapters').innerHTML = s.chapters.map(function (c) {
-      return '<div class="chap' + (c.read ? ' read' : '') + (c.path === s.current ? ' cur' : '') + '" data-path="' + esc(c.path) + '">' +
+      var titre = '';
+      if (c.groupe && c.groupe !== groupe) { groupe = c.groupe; titre = '<div class="tome-titre">📚 ' + esc(groupe) + '</div>'; }
+      return titre + '<div class="chap' + (c.read ? ' read' : '') + (c.key === s.current ? ' cur' : '') + '" data-path="' + esc(c.key) + '">' +
         '<span class="dot"></span><span class="ct">' + esc(c.title) + '</span><span class="cs">' + c.size_mb + ' Mo</span>' +
-        '<button class="tog" data-tog="' + esc(c.path) + '" title="Marquer ' + (c.read ? 'non lu' : 'lu') + '">' + (c.read ? '↺' : '✔') + '</button>' +
-        '<button class="tog del" data-del="' + esc(c.path) + '" title="Supprimer ce chapitre">🗑</button></div>';
+        '<button class="tog" data-tog="' + esc(c.key) + '" title="Marquer ' + (c.read ? 'non lu' : 'lu') + '">' + (c.read ? '↺' : '✔') + '</button>' +
+        '<button class="tog del" data-del="' + esc(c.key) + '" title="Supprimer ce chapitre">🗑</button></div>';
     }).join('');
-    note('sMsg', (!s.rar && s.chapters.some(function (c) { return /\.(cbr|rar)$/i.test(c.path); })) ? 'Les vrais fichiers RAR (.cbr) ne s\'ouvrent que si le serveur a « rarfile » et un outil de décompression : voir le Journal si une page refuse de s\'ouvrir.' : '', 'warn');
+    if (!(s.rangement && s.rangement.message)) note('sMsg', (!s.rar && s.chapters.some(function (c) { return /\.(cbr|rar)$/i.test(c.path); })) ? 'Les vrais fichiers RAR (.cbr) ne s\'ouvrent que si le serveur a « rarfile » et un outil de décompression : voir le Journal si une page refuse de s\'ouvrir.' : '', 'warn');
   }
 
   // Adresse de MouFloster : celle du réseau local si on est connecté à MouFlanga en local (192.168…),
@@ -114,16 +125,16 @@
       var t = e.target.closest('[data-tog]');
       if (t) {
         e.stopPropagation();
-        var c = current.chapters.find(function (x) { return x.path === t.dataset.tog; });
-        await post('/api/mark', {series: current.id, path: c.path, read: !c.read});
+        var c = current.chapters.find(function (x) { return x.key === t.dataset.tog; });
+        await post('/api/mark', {series: current.id, path: c.key, read: !c.read});
         c.read = !c.read; drawSeries(); return;
       }
       var d = e.target.closest('[data-del]');
       if (d) {
         e.stopPropagation();
-        var ch = current.chapters.find(function (x) { return x.path === d.dataset.del; });
+        var ch = current.chapters.find(function (x) { return x.key === d.dataset.del; });
         if (!confirm('Supprimer « ' + ch.title + ' » ?\n\nLe fichier va dans la corbeille du dossier des mangas (effacé pour de bon après 30 jours).')) return;
-        var r = await post('/api/delete', {series: current.id, path: ch.path});
+        var r = await post('/api/delete', {series: current.id, path: ch.key});
         if (!r.ok) { note('sMsg', r.error); return; }
         if (current.chapters.length <= 1) { history.pushState({}, '', location.pathname); showList(); }
         else await openSeries(current.id, false);
@@ -149,6 +160,12 @@
       if (!r.ok) { note('sMsg', r.error); return; }
       await openSeries(current.id, false);
     });
+    $('sTomes').addEventListener('click', async function () {
+      if (!confirm('Ranger « ' + current.title + ' » en tomes ?\n\nL\'appli cherche sur Internet (Wikipédia, MangaDex) quels chapitres vont dans quel tome, puis regroupe les chapitres : un fichier par tome, les chapitres pas encore sortis en tome dans « Hors tome ». Ta progression de lecture est gardée ; les anciens fichiers vont dans la corbeille.')) return;
+      var r = await post('/api/tomes/ranger', {series: current.id});
+      if (!r.ok) { note('sMsg', r.error); return; }
+      await openSeries(current.id, false);
+    });
     $('sMissing').addEventListener('click', function () {
       var b = $('sMissingBox'), s = current;
       if (!b.hidden) { b.hidden = true; return; }
@@ -159,7 +176,7 @@
     });
     $('sDelete').addEventListener('click', async function () {
       var n = current.chapters.length;
-      if (!confirm('Supprimer toute la série « ' + current.title + ' » (' + n + ' fichier' + (n > 1 ? 's' : '') + ') ?\n\nLes fichiers vont dans la corbeille du dossier des mangas (effacés pour de bon après 30 jours).')) return;
+      if (!confirm('Supprimer toute la série « ' + current.title + ' » (' + n + ' chapitre' + (n > 1 ? 's' : '') + ') ?\n\nLes fichiers vont dans la corbeille du dossier des mangas (effacés pour de bon après 30 jours).')) return;
       var r = await post('/api/delete', {series: current.id, all: true});
       if (!r.ok) { note('sMsg', r.error); return; }
       history.pushState({}, '', location.pathname); showList();

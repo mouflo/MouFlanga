@@ -16,6 +16,11 @@ Appli Flask (bibliothèque et lecteur de mangas) + scraper Japscan. Dossier `/op
 
 - Accès des autres applis (`api_externe.py`) : `/api/externe/series`, `/api/externe/couverture` (GET/POST), en-tête `X-Cle-API` ; clé générée dans ⚙️ Réglages (`MOUFLANGA_CLE_API_SHA256` + 4 derniers caractères) ; ces routes passent hors de l'écran de connexion (`auth.py`). Bouton « Créer avec MouFloster » : `MOUFLOSTER_URL` → `<moufloster>/?mouflanga=<série>&q=…&retour=…`.
 
+## Tomes (`tomes.py`, `tomes_cbz.py`)
+- `tomes.chercher(série)` : Wikipédia (« List of … chapters », formats Numbered list / « *12. » / « * Chapter: 1–7 » / « # », commentaires retirés, section « Chapters not yet in tankōbon ») puis MangaDex ; cache 3 jours `data/tomes/`. Wikipédia limite les requêtes (429) : rester sobre.
+- Fichier de tome : `Tome NN/<Série> - Tome NN.cbz` (ou `Hors tome/`), pages `c0012.00-p003.jpg`, `chapitres.json` (titres), `ComicInfo.xml`. Réécriture complète à chaque ajout (fichier .tmp puis remplacement).
+- Bibliothèque : `_entrees()` donne les chapitres (clé = chemin pour un fichier ordinaire, « #12 » pour un chapitre de tome, avec `debut`/`nb`) ; progression et « lu » par clé. `_ranger_en_tomes()` : anciens fichiers → tomes, hors tome → tome sorti ; lancé avant chaque téléchargement (`preparer`) et par le bouton « Ranger en tomes ».
+
 ## Le scraper Japscan (`japscan_scraper.py`)
 - Navigateur au choix dans ⚙ Réglages : Chrome (Patchright, profil `data/navigateur`) ou Camoufox (Firefox, profil `data/navigateur-firefox`), sous écran virtuel Xvfb ; clics réels avec xdotool.
 - Cloudflare impose une vérification interactive : la page `/verification` montre le navigateur du serveur (capture) et relaie clics, défilement et glisser du doigt ; alerte Telegram.

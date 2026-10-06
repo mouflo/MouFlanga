@@ -36,6 +36,8 @@ except ImportError:
     pass  # python-dotenv absent : variables d'environnement du système seulement
 
 import archives
+import tomes
+import tomes_cbz
 import diag
 import japscan_scraper
 
@@ -137,6 +139,38 @@ def _rel(p: Path):
     return str(p.relative_to(MANGA_DIR))
 
 
+def _entrees(files):
+    """Chapitres d'une série, dans l'ordre de lecture.
+    Fichier ordinaire = un chapitre (clé : son chemin). Fichier de tome = plusieurs chapitres (clé : « #12 »),
+    repérés par leur première page et leur nombre de pages dans le fichier."""
+    out = []
+    for f in files:
+        rel = _rel(f)
+        try:
+            taille = f.stat().st_size
+        except OSError:
+            taille = 0
+        info = tomes_cbz.lire_info(f) if f.suffix.lower() == ".cbz" else None
+        if info is None:
+            titre = _title_of(f)
+            out.append({"key": rel, "path": rel, "title": titre, "num": _numero_chapitre(titre), "groupe": None,
+                        "debut": 0, "nb": None, "size_mb": round(taille / 1048576, 1)})
+            continue
+        try:
+            chapitres = tomes_cbz.chapitres(f)
+        except archives.ArchiveError:
+            continue
+        total = sum(c["nb"] for c in chapitres) or 1
+        for c in chapitres:
+            out.append({"key": f"#{c['num']:g}", "path": rel, "num": c["num"],
+                        "title": f"Chapitre {c['num']:g}" + (f" : {c['titre']}" if c["titre"] else ""),
+                        "groupe": tomes_cbz.dossier_tome(info.get("tome")), "debut": c["debut"], "nb": c["nb"],
+                        "size_mb": round(taille * c["nb"] / total / 1048576, 1)})
+    if any(e["groupe"] for e in out):
+        out.sort(key=lambda e: (e["num"] is None, e["num"] or 0))
+    return out
+
+
 def _title_of(p: Path):
     return p.stem.replace("_", " ").strip()
 
@@ -177,9 +211,10 @@ def api_library():
                 newest = max(newest, st.st_mtime)
             except OSError:
                 pass
+        entrees = _entrees(files)
         out.append({
-            "id": name, "title": name, "chapters": len(files),
-            "read": len([f for f in files if _rel(f) in read]),
+            "id": name, "title": name, "chapters": len(entrees),
+            "read": len([e for e in entrees if e["key"] in read]),
             "size_mb": round(total_size / 1048576, 1),
             "last_read": p.get("last", ""), "added": newest,
             "cover": f"/api/cover?id={_q(name)}&v={int(max(newest, _couverture_mtime(name)))}",
@@ -246,17 +281,14 @@ def api_series():
         return jsonify({"error": "Série introuvable"}), 404
     p = _read_json(PROGRESS_FILE, {}).get(name, {})
     read = set(p.get("read", []))
-    chapters = []
-    for f in files:
-        try:
-            size = round(f.stat().st_size / 1048576, 1)
-        except OSError:
-            size = 0
-        chapters.append({"path": _rel(f), "title": _title_of(f), "size_mb": size, "read": _rel(f) in read})
+    chapters = [{**e, "read": e["key"] in read} for e in _entrees(files)]
     trous, premier, dernier = _manquants([c["title"] for c in chapters])
+    en_tomes = any(c["groupe"] for c in chapters)
+    a_ranger = name != "(Sans série)" and any(not c["groupe"] and c["num"] is not None for c in chapters)
     return jsonify({"id": name, "title": name, "chapters": chapters,
                     "current": p.get("current", ""), "page": p.get("page", 0),
                     "rar": archives.rar_available(),
+                    "en_tomes": en_tomes, "a_ranger": a_ranger, "rangement": _etat_rangement(name),
                     "manquants": trous, "premier": premier, "dernier": dernier,
                     "cover_perso": name != "(Sans série)" and (MANGA_DIR / name / COUVERTURE_PERSO).is_file(),
                     "cover_v": int(_couverture_mtime(name)),
@@ -275,17 +307,18 @@ def api_cover():
     for cand in COUVERTURES:
         if name != "(Sans série)" and (sub / cand).is_file():
             return send_file(sub / cand, max_age=3600)
-    first = files[0]
+    premiere = (_entrees(files) or [{"path": _rel(files[0]), "debut": 0}])[0]
+    first, debut = MANGA_DIR / premiere["path"], premiere["debut"]
     try:
         st = first.stat()
-        key = hashlib.sha1(f"{first}|{st.st_mtime_ns}|{st.st_size}".encode()).hexdigest()[:20]
+        key = hashlib.sha1(f"{first}|{st.st_mtime_ns}|{st.st_size}|{debut}".encode()).hexdigest()[:20]
         cached = COVER_DIR / f"{key}.jpg"
         if not cached.is_file():
             from PIL import Image
             names = archives.pages(first)
             if not names:
                 return Response(status=404)
-            data, _ = archives.read_page(first, 0)
+            data, _ = archives.read_page(first, debut)
             img = Image.open(io.BytesIO(data)).convert("RGB")
             img.thumbnail((360, 540))
             COVER_DIR.mkdir(parents=True, exist_ok=True)
@@ -393,7 +426,9 @@ def api_page():
 def api_progress():
     body = request.get_json(silent=True) or {}
     series, rel = str(body.get("series", "")), str(body.get("path", ""))
-    if not series or _safe_path(rel) is None:
+    # « #12 » : chapitre d'un fichier de tome (la position reste juste quand le tome est recomplété)
+    chapitre_tome = bool(re.fullmatch(r"#\d+(\.\d+)?", rel)) and (MANGA_DIR / series).is_dir() and "/" not in series
+    if not series or not (chapitre_tome or _safe_path(rel) is not None):
         return jsonify({"ok": False, "error": "Chapitre inconnu"}), 400
     try:
         page = max(0, int(body.get("page", 0)))
@@ -420,12 +455,12 @@ def api_mark():
     if files is None:
         return jsonify({"ok": False, "error": "Série introuvable"}), 404
     value = bool(body.get("read", True))
-    targets = [_rel(f) for f in files] if body.get("all") else [str(body.get("path", ""))]
+    valid = {e["key"] for e in _entrees(files)}
+    targets = list(valid) if body.get("all") else [str(body.get("path", ""))]
     with _progress_lock:
         data = _read_json(PROGRESS_FILE, {})
         p = data.setdefault(series, {})
         read = set(p.get("read", []))
-        valid = {_rel(f) for f in files}
         for t in targets:
             if t in valid:
                 (read.add if value else read.discard)(t)
@@ -483,10 +518,23 @@ def api_delete():
         retires = {_rel(f) for f in files}
     else:
         rel = str(body.get("path", ""))
-        cibles = [f for f in files if _rel(f) == rel]
-        if not cibles:
+        entree = next((e for e in _entrees(files) if e["key"] == rel), None)
+        if entree is None:
             return jsonify({"ok": False, "error": "Chapitre introuvable"}), 404
         retires = {rel}
+        if entree["groupe"]:
+            # Chapitre d'un fichier de tome : ses pages partent à la corbeille dans un .cbz à part
+            try:
+                fichier = MANGA_DIR / entree["path"]
+                pages = tomes_cbz.extraire(fichier, entree["num"])
+                copie = MANGA_DIR / series / f"Chapitre {entree['num']:g}.cbz"
+                japscan_scraper.JapscanScraper(MANGA_DIR).create_cbz(pages, copie)
+                _vers_corbeille(copie)
+                tomes_cbz.retirer(fichier, {entree["num"]})
+            except (OSError, archives.ArchiveError) as e:
+                logger.warning("Suppression impossible dans %s : %s", series, e)
+                return jsonify({"ok": False, "error": f"Suppression impossible : {e}"}), 500
+        cibles = [] if entree["groupe"] else [MANGA_DIR / entree["path"]]
     try:
         for c in cibles:
             _vers_corbeille(c)
@@ -557,12 +605,125 @@ def _dossier_serie(titre):
 
 
 def _deja_telecharges(titre):
-    """Noms (sans le numéro de rang) des chapitres déjà présents dans le dossier de la série."""
-    dossier = _dossier_serie(titre)
+    """Numéros des chapitres déjà présents dans la série (fichiers de tome ou un fichier par chapitre)."""
+    nom = _dossier_serie(titre).name
+    return {e["num"] for e in _entrees(_scan().get(nom) or []) if e["num"] is not None}
+
+
+# ---------------------------------------------------------------- Tomes
+
+_RANGEMENTS = {}               # série -> état du rangement en cours (pour la page de la série)
+_RANGEMENT_VERROU = threading.Lock()
+
+
+def _preparer_tomes(nom):
+    """Avant un téléchargement : cherche la répartition en tomes et range ce qui est déjà là."""
+    info = tomes.chercher(nom)
+    if info:
+        _ranger_en_tomes(nom, info)
+    return info
+
+
+def _ranger_en_tomes(name, info, garder_en_cours=False):
+    """Range une série en tomes : les anciens fichiers « un par chapitre » rejoignent le fichier de leur tome,
+    et les chapitres « Hors tome » passent dans leur tome quand il est sorti. Les originaux vont à la corbeille ;
+    la progression de lecture suit. Renvoie le nombre de chapitres rangés."""
+    dossier = MANGA_DIR / name
+    etat = _RANGEMENTS.setdefault(name, {})
+    etat.update(en_cours=True, fait=0, total=0, erreur=None)
     try:
-        return {f.stem.split(" - ", 1)[-1] for f in dossier.iterdir() if _is_archive(f)}
-    except OSError:
-        return set()
+        files = _scan().get(name) or []
+        par_tome, anciens, depuis_hors = {}, [], {}
+        for f in files:
+            info_f = tomes_cbz.lire_info(f) if f.suffix.lower() == ".cbz" else None
+            if info_f is None:
+                num = _numero_chapitre(_title_of(f))
+                if num is not None:
+                    par_tome.setdefault(tomes.tome_de(num, info), []).append((num, f))
+            elif info_f.get("tome") is None:
+                for c in tomes_cbz.chapitres(f):
+                    t = tomes.tome_de(c["num"], info)
+                    if t is not None:
+                        depuis_hors.setdefault(f, []).append((t, c))
+        etat["total"] = sum(len(v) for v in par_tome.values()) + sum(len(v) for v in depuis_hors.values())
+        renommes = {}
+        for t, liste in par_tome.items():          # un tome à la fois (mémoire raisonnable)
+            ajouts, titres = {}, {}
+            for num, f in liste:
+                ajouts[num] = [archives.read_page(f, i)[0] for i in range(len(archives.pages(f)))]
+                titres[num] = tomes_cbz.nettoyer_titre(_title_of(f)) or info.get("titres", {}).get(num, "")
+                renommes[_rel(f)] = f"#{num:g}"
+                anciens.append(f)
+            cible = tomes_cbz.fichier_tome(dossier, name, t)
+            tomes_cbz._reecrire(cible, name, t, set(), ajouts, titres)
+            etat["fait"] += len(liste)
+        for f in anciens:
+            _vers_corbeille(f)
+        for f, liste in depuis_hors.items():
+            for t, c in liste:
+                tomes_cbz.ajouter(dossier, name, t, c["num"], c["titre"], tomes_cbz.extraire(f, c["num"]))
+                etat["fait"] += 1
+            tomes_cbz.retirer(f, {c["num"] for _, c in liste})
+        if renommes:
+            with _progress_lock:
+                data = _read_json(PROGRESS_FILE, {})
+                p = data.get(name)
+                if p:
+                    p["read"] = sorted({renommes.get(r, r) for r in p.get("read", [])})
+                    if p.get("current") in renommes:
+                        p["current"], p["page"] = renommes[p["current"]], p.get("page", 0)
+                    _write_json(PROGRESS_FILE, data)
+        if etat["total"]:
+            logger.info("Série « %s » rangée en tomes : %d chapitre(s) (%s)", name, etat["total"], info.get("source"))
+        return etat["total"]
+    except Exception as e:
+        etat["erreur"] = str(e)
+        logger.warning("Rangement en tomes impossible pour %s : %s", name, e)
+        raise
+    finally:
+        if not garder_en_cours:
+            etat["en_cours"] = False
+
+
+def _etat_rangement(name):
+    """État du rangement pour la page ; le message de fin n'est montré qu'une fois."""
+    etat = _RANGEMENTS.get(name)
+    if not etat:
+        return None
+    copie = dict(etat)
+    if not etat.get("en_cours"):
+        etat.pop("message", None)
+    return copie
+
+
+@app.route("/api/tomes/ranger", methods=["POST"])
+def api_tomes_ranger():
+    """Bouton « Ranger en tomes » : cherche les tomes sur Internet puis range la série (en arrière-plan)."""
+    name = str((request.get_json(silent=True) or {}).get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    for j in list(japscan_scraper.download_jobs.values()):
+        if j.get("status") == "running" and japscan_scraper.nom_sur(japscan_scraper.titre_serie(j.get("title") or "")) == name:
+            return jsonify({"ok": False, "error": "Cette série est en cours de téléchargement : elle sera rangée à la fin."}), 409
+    with _RANGEMENT_VERROU:
+        if (_RANGEMENTS.get(name) or {}).get("en_cours"):
+            return jsonify({"ok": True, "message": "Rangement déjà en cours."})
+        _RANGEMENTS[name] = {"en_cours": True, "fait": 0, "total": 0, "erreur": None, "message": "Recherche des tomes…"}
+
+    def travail():
+        etat = _RANGEMENTS[name]
+        try:
+            info = tomes.chercher(name, forcer=True)
+            if not info:
+                etat.update(en_cours=False, message="Aucune source (Wikipédia, MangaDex) ne connaît les tomes de cette série : les chapitres restent un fichier chacun.")
+                return
+            n = _ranger_en_tomes(name, info, garder_en_cours=True)
+            etat.update(en_cours=False, message=f"✅ {n} chapitre(s) rangé(s) en tomes (d'après {info['source']})." if n
+                        else f"Déjà rangée (d'après {info['source']}).")
+        except Exception as e:
+            etat.update(en_cours=False, message=f"Rangement impossible : {e}")
+    threading.Thread(target=travail, daemon=True).start()
+    return jsonify({"ok": True, "message": "Recherche des tomes…"})
 
 
 @app.route("/api/japscan/list")
@@ -600,7 +761,7 @@ def _marquer_deja(chapters, titre):
     if not titre:
         return chapters
     deja = _deja_telecharges(titre)
-    return [{**c, "deja": japscan_scraper.nom_sur(c.get("title") or "") in deja} for c in chapters]
+    return [{**c, "deja": japscan_scraper._numero(c) in deja} for c in chapters]
 
 
 @app.route("/api/japscan/chapters/<manga_id>", methods=["POST"])
@@ -646,6 +807,7 @@ def japscan_download():
         thread = threading.Thread(
             target=japscan_scraper.download_manga_background,
             args=(job_id, manga_title, chapters, output_dir),
+            kwargs={"preparer": lambda: _preparer_tomes(output_dir.name)},
             daemon=True
         )
         thread.start()

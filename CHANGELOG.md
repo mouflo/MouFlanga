@@ -1,5 +1,13 @@
 # Historique des versions
 
+## Tomes
+- La répartition des chapitres en tomes est cherchée automatiquement sur Internet : Wikipédia (listes de chapitres, plusieurs mises en page reconnues) puis MangaDex en secours ; gardée 3 jours dans `data/tomes/`
+- Rangement : un dossier « Tome NN » par tome avec **un seul .cbz** qui se complète à chaque chapitre téléchargé ; les chapitres pas encore sortis en tome vont dans « Hors tome » et rejoignent leur tome dès qu'il sort ; `ComicInfo.xml` dans chaque tome (lu par Komga, Kavita…)
+- Titres : ceux de Japscan, ou ceux de Wikipédia quand Japscan n'en donne pas
+- Page d'une série : chapitres groupés par tome ; bouton « 📚 Ranger en tomes » pour les séries déjà téléchargées (les anciens fichiers vont à la corbeille, la progression est gardée)
+- Lecteur : passe d'un chapitre à l'autre, et d'un tome à l'autre, sans recharger ; en défilement, bouton « chapitre suivant » en bas ; la position est retenue par chapitre (elle ne bouge pas quand un tome est recomplété)
+- Téléchargement : l'étape des tomes n'avait aucun effet ; elle est remplacée par un récapitulatif
+
 ## Couverture créée avec MouFloster
 - Téléchargement : l'étape « Confirmer les tomes » (qui n'avait aucun effet) est remplacée par un récapitulatif : nombre de chapitres, lesquels, chapitres déjà présents, dossier de rangement
 - Alertes Telegram : adresse perso ET adresse locale de l'appli (deux liens dans le message : de l'extérieur et chez soi)
