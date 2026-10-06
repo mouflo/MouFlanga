@@ -144,11 +144,11 @@ class VerificationTest(unittest.TestCase):
 
     def test_historique_limite(self):
         js._HISTORIQUE.clear()
-        for i in range(40):
+        for i in range(80):
             js._noter(f"événement {i}")
         h = js.verif_historique()
         self.assertEqual(len(h), 60)
-        self.assertIn("événement 39", h[-1])
+        self.assertIn("événement 79", h[-1])
         js._HISTORIQUE.clear()
 
     def test_titre_defi(self):
