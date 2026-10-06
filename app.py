@@ -1232,6 +1232,20 @@ def api_import_racine():
     return jsonify({"groupes": groupes, "file": file, "detail": etat.get("message", "")})
 
 
+@app.route("/api/occupe")
+def api_occupe():
+    """L'appli fait-elle un travail long ? (lu par deploy.sh avant de redémarrer : seulement depuis le serveur lui-même)"""
+    if (request.remote_addr or "") not in ("127.0.0.1", "::1"):
+        return jsonify({"error": "réservé au serveur"}), 403
+    raisons = []
+    if any(j.get("status") == "running" for j in japscan_scraper.download_jobs.values()):
+        raisons.append("téléchargement")
+    if _FILE_IMPORT["en_cours"] or _FILE_IMPORT["attente"]:
+        raisons.append("import d'archives")
+    raisons += [f"rangement de {n}" for n, e in _RANGEMENTS.items() if e.get("en_cours")]
+    return jsonify({"occupe": bool(raisons), "raisons": raisons})
+
+
 @app.route("/importer")
 def page_importer():
     return render_template("importer.html", version=APP_VERSION)

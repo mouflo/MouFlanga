@@ -86,3 +86,11 @@ body.mou-skin .tome-titre, body.mou-skin .tome-titre:hover { background:none; co
 .etat-ligne.fini { color:#6fcf73; }
 .etat-ligne.incomplet { color:#e0b25c; }
 .etat-ligne.en_cours { color:#7fb2ec; }
+.progres { margin-top:14px; padding:12px; border-radius:8px; background:var(--surface2); border:1px solid var(--line); }
+.progres[hidden] { display:none; }
+.progres .pg-titre { font-weight:600; overflow-wrap:anywhere; }
+.progres .pg-detail { color:var(--muted); font-size:.85rem; margin:4px 0 8px; }
+.pg-barre { height:6px; border-radius:3px; background:#333; overflow:hidden; position:relative; }
+.pg-barre i { display:block; height:100%; background:var(--accent); transition:width .4s; }
+.pg-barre.indet i { width:30%; position:absolute; animation:pgIndet 1.4s ease-in-out infinite; }
+@keyframes pgIndet { from { left:-30%; } to { left:100%; } }

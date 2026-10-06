@@ -28,6 +28,13 @@ if [ "$OLD_COMMIT" = "$NEW_COMMIT" ]; then
     exit 0
 fi
 
+# Un import, un rangement ou un téléchargement est en cours : on attend (nouvel essai à la minute suivante)
+OCCUPE=$(curl -s -m 5 http://127.0.0.1:5002/api/occupe 2>/dev/null)
+if echo "$OCCUPE" | grep -q '"occupe": *true'; then
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] ⏸ Mise à jour reportée : $(echo "$OCCUPE" | sed -E 's/.*"raisons": *\[([^]]*)\].*/\1/')" >> "$LOG_FILE"
+    exit 0
+fi
+
 log "=== 🚀 Déploiement MouFlanga détecté ==="
 log "Ancien commit: $OLD_COMMIT"
 log "Nouveau commit: $NEW_COMMIT"

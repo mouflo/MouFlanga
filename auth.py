@@ -221,6 +221,8 @@ def init_app(app, version=""):
         # /api/externe/ : accès des autres applis, protégé par la clé API (api_externe.py)
         if request.path in ("/login", "/healthz", "/favicon.ico") or request.path.startswith(("/icons/", "/ui/", "/api/externe/")):
             return None
+        if request.path == "/api/occupe" and (request.remote_addr or "") in ("127.0.0.1", "::1"):
+            return None
         if is_logged_in():
             return None
         if request.path.startswith("/api/"):

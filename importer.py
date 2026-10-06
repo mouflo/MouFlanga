@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 import zipfile
 from pathlib import Path
 
@@ -316,11 +317,13 @@ def importer_lot(lot: Path, dossier_serie: Path, serie: str, etat: dict) -> list
     shutil.rmtree(temp, ignore_errors=True)
     crees = []
     try:
-        etat["message"] = f"Extraction de {lot.name}…"
+        taille = lot.stat().st_size / 1e9
+        etat.update(message=f"Extraction de {lot.name} ({taille:.1f} Go)…", etape_depuis=time.time(), sous_fait=0, sous_total=0)
         extraire(lot, temp)
-        etat["message"] = f"{lot.name} : ouverture des archives et PDF intérieurs…"
+        etat.update(message=f"{lot.name} : ouverture des archives et PDF intérieurs…", etape_depuis=time.time())
         deplier(temp)
         series, ecartes = repartir(temp, numero_tome(lot.stem))
+        etat.update(sous_fait=0, sous_total=sum(len(v) for v in series.values()), etape_depuis=time.time())
         for nom in sorted(series, key=lambda n: (n != "", n)):
             if nom == "":
                 cible_dossier, cible_nom = dossier_serie, serie
@@ -329,8 +332,9 @@ def importer_lot(lot: Path, dossier_serie: Path, serie: str, etat: dict) -> list
                 cible_dossier = dossier_serie.parent / cible_nom
                 logger.info("Import : « %s » trouvée dans %s, rangée comme série à part", cible_nom, lot.name)
             for t in sorted(series[nom], key=lambda x: (x is None, x or 0)):
-                etat["message"] = f"{lot.name} : {cible_nom} " + (f"tome {t}" if t is not None else "chapitres hors tome") + "…"
+                etat["message"] = f"{lot.name} : écriture de {cible_nom} " + (f"tome {t}" if t is not None else "chapitres hors tome") + "…"
                 f = ecrire_tome(cible_dossier, cible_nom, t, series[nom][t])
+                etat["sous_fait"] = etat.get("sous_fait", 0) + 1
                 if f:
                     crees.append(f)
         if ecartes:

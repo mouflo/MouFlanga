@@ -108,6 +108,19 @@
     $('sTomes').disabled = !!rg.en_cours;
     $('sTomes').textContent = rg.en_cours ? '⏳ Rangement en tomes… ' + (rg.total ? rg.fait + ' / ' + rg.total : '') : '📚 Ranger en tomes';
     if (rg.message && !rg.en_cours) note('sMsg', rg.message, 'ok');
+    // Import ou rangement en cours : ce qui se passe, depuis combien de temps, combien de tomes sont faits
+    $('sProgres').hidden = !rg.en_cours;
+    if (rg.en_cours) {
+      var duree = rg.etape_depuis ? Math.round(Date.now() / 1000 - rg.etape_depuis) : 0;
+      var fmt = duree >= 60 ? Math.floor(duree / 60) + ' min ' + (duree % 60) + ' s' : duree + ' s';
+      var archives = rg.total ? 'Archive ' + Math.min(rg.fait + 1, rg.total) + ' sur ' + rg.total + ' · ' : '';
+      var tomesTxt = rg.sous_total ? rg.sous_fait + ' tome(s) sur ' + rg.sous_total + ' écrit(s)' : '';
+      var pct = rg.sous_total ? Math.round(100 * rg.sous_fait / rg.sous_total) : null;
+      $('sProgres').innerHTML = '<div class="pg-titre">⏳ ' + esc(rg.message || 'Travail en cours…') + '</div>' +
+        '<div class="pg-detail">' + esc(archives + (tomesTxt || ('depuis ' + fmt))) + '</div>' +
+        (pct !== null ? '<div class="pg-barre"><i style="width:' + pct + '%"></i></div>' : '<div class="pg-barre indet"><i></i></div>');
+      if ($('sMsg').textContent.indexOf('Rangement des fichiers') >= 0) note('sMsg', '');
+    }
     clearTimeout(suiviRangement);
     if (rg.en_cours) suiviRangement = setTimeout(function () { if (current && current.id === s.id) openSeries(s.id, false); }, 2500);
     var unite = s.type_manquants === 'tomes' ? 'tome' : 'chapitre';

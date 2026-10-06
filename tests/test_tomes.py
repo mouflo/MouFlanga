@@ -590,3 +590,15 @@ class VolumeTest(unittest.TestCase):
                 sc.download_manga_sync("vv", "Gamaran", vols, preparer=lambda: {"source": "t", "tomes": {}, "titres": {}})
             self.assertTrue((dossier / "Tome 21" / "Gamaran - Tome 21.cbz").is_file())
             self.assertTrue((dossier / "Tome 22" / "Gamaran - Tome 22.cbz").is_file())
+
+
+class OccupeTest(BibliothequeTest):
+    def test_occupe(self):
+        c = self.A.app.test_client()                     # sans connexion, depuis le serveur lui-même
+        self.assertEqual(c.get("/api/occupe").json, {"occupe": False, "raisons": []})
+        self.A._RANGEMENTS["Serie"] = {"en_cours": True}
+        try:
+            self.assertEqual(c.get("/api/occupe").json["raisons"], ["rangement de Serie"])
+        finally:
+            self.A._RANGEMENTS.pop("Serie")
+        self.assertEqual(c.get("/api/occupe", environ_base={"REMOTE_ADDR": "192.168.1.50"}).status_code, 401)
