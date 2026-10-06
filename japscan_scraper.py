@@ -137,8 +137,24 @@ _HISTORIQUE = []     # derniers événements de vérification (pour le rapport d
 def _noter(texte: str) -> None:
     ligne = f"{datetime.now().strftime('%H:%M:%S')} {texte}"
     _HISTORIQUE.append(ligne)
-    del _HISTORIQUE[:-25]
+    del _HISTORIQUE[:-40]
     logger.info("Vérification : " + texte)
+
+
+def _surveiller(page) -> None:
+    """Note dans l'historique les échecs réseau et erreurs de la page (15 au plus), pour comprendre un blocage Cloudflare."""
+    n = {"v": 0}
+
+    def court(u):
+        return re.sub(r"\?.*", "", u)[:110]
+
+    def note(t):
+        if n["v"] < 15:
+            n["v"] += 1
+            _noter(t)
+    page.on("requestfailed", lambda r: note(f"réseau en échec : {court(r.url)} ({(r.failure or '')[:50]})"))
+    page.on("response", lambda r: note(f"réponse {r.status} : {court(r.url)}") if r.status >= 400 else None)
+    page.on("console", lambda m: note(f"console : {m.text[:110]}") if m.type == "error" else None)
 
 
 def verif_historique() -> list:
@@ -393,7 +409,6 @@ class JapscanScraper:
                     # sinon le navigateur annonce « WebGL indisponible », typique d'un robot
                     "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader",
                     "--ignore-gpu-blocklist", "--enable-webgl",
-                    "--disk-cache-size=1", "--media-cache-size=1",  # disque serveur limité : pas de cache
                 ],
             )
             try:
@@ -527,6 +542,7 @@ class JapscanScraper:
         async with async_playwright() as p:
             browser, context = await self._init_browser(p)
             page = await context.new_page()
+            _surveiller(page)
 
             try:
                 # domcontentloaded au lieu de networkidle pour éviter les timeouts
