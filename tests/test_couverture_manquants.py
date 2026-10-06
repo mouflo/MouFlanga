@@ -121,3 +121,61 @@ class AppliTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CleApiTest(AppliTest):
+    """Accès de MouFloster (ou d'une autre appli) avec la clé API générée dans les Réglages."""
+
+    def setUp(self):
+        super().setUp()
+        import api_externe
+        self.api = api_externe
+        self._cles = {k: os.environ.get(k) for k in ("MOUFLANGA_CLE_API_SHA256", "MOUFLANGA_CLE_API_FIN")}
+        api_externe._ECHECS.clear()
+        from unittest import mock
+        patcher = mock.patch("api_externe.write_secret")     # ne pas toucher au vrai data/secrets.env
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.cle = self.client.post("/api/settings/cle-api", json={"action": "generer"}).json["cle"]
+        self.externe = self.A.app.test_client()               # sans session : comme une autre appli
+
+    def tearDown(self):
+        for k, v in self._cles.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        super().tearDown()
+
+    def test_cle_jamais_redonnee(self):
+        etat = self.client.get("/api/settings/cle-api").json
+        self.assertTrue(etat["configured"])
+        self.assertEqual(etat["hint"], "…" + self.cle[-4:])
+        self.assertNotIn(self.cle, json.dumps(etat))
+        self.assertNotEqual(os.environ["MOUFLANGA_CLE_API_SHA256"], self.cle)
+
+    def test_liste_et_envoi_avec_la_cle(self):
+        r = self.externe.get("/api/externe/series", headers={"X-Cle-API": self.cle})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Serie", [s["name"] for s in r.json["series"]])
+        r = self.externe.post("/api/externe/couverture", headers={"X-Cle-API": self.cle},
+                              data={"id": "Serie", "image": (io.BytesIO(_image()), "p.png")}, content_type="multipart/form-data")
+        self.assertTrue(r.json["ok"], r.json)
+        self.assertTrue((self.root / "Serie" / "cover.jpg").is_file())
+        r = self.externe.get("/api/externe/couverture?id=Serie", headers={"X-Cle-API": self.cle})
+        self.assertEqual(r.data, (self.root / "Serie" / "cover.jpg").read_bytes())
+
+    def test_sans_cle_ou_mauvaise_cle(self):
+        self.assertEqual(self.externe.get("/api/externe/series").status_code, 401)
+        self.assertEqual(self.externe.get("/api/externe/series", headers={"X-Cle-API": "mauvaise"}).status_code, 401)
+        # Les autres routes restent derrière l'écran de connexion, même avec la clé
+        self.assertEqual(self.externe.get("/api/series?id=Serie", headers={"X-Cle-API": self.cle}).status_code, 401)
+
+    def test_blocage_apres_trop_d_essais(self):
+        for _ in range(10):
+            self.externe.get("/api/externe/series", headers={"X-Cle-API": "mauvaise"})
+        self.assertEqual(self.externe.get("/api/externe/series", headers={"X-Cle-API": self.cle}).status_code, 429)
+
+    def test_cle_supprimee(self):
+        self.client.post("/api/settings/cle-api", json={"action": "supprimer"})
+        self.assertEqual(self.externe.get("/api/externe/series", headers={"X-Cle-API": self.cle}).status_code, 403)

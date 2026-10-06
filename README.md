@@ -38,7 +38,10 @@ Pour installer l'appli sur le serveur et la remettre en route après une panne, 
 ## ✨ Ce que fait l'appli
 
 - 📚 **Bibliothèque automatique** : chaque sous-dossier du dossier des mangas est une série, chaque fichier `.cbz` / `.cbr` (ou `.zip` / `.rar`) est un chapitre ou un tome
-- 🖼️ **Couvertures** : première page du premier chapitre, ou une image `cover.jpg` posée dans le dossier de la série
+- 🖼️ **Couvertures** : première page du premier chapitre, ou une couverture choisie depuis la page de la série (image ou photo du téléphone, enregistrée en `cover.jpg` dans le dossier de la série)
+- 🎨 **Couverture créée avec MouFloster** : bouton « Créer avec MouFloster » sur la page d'une série ; MouFloster s'ouvre avec la recherche faite et renvoie le poster ici (connexion par clé API générée dans ⚙️ Réglages, voir plus bas)
+- 🔍 **Chapitres manquants** : trous dans la numérotation d'une série ; au téléchargement, les chapitres déjà présents sont marqués et décochés
+- 🗑️ **Suppression** d'un chapitre ou d'une série (corbeille gardée 30 jours)
 - 🔍 **Recherche et tri** : par titre, lecture récente, ajout récent, nombre de chapitres restant à lire
 - 📖 **Lecteur intégré** : une page à la fois ou défilement vertical, sens manga (droite → gauche) ou occidental, page entière ou largeur, plein écran
 - ⌨️ **Commandes** : flèches du clavier, espace, touches Début / Fin, clic sur le côté gauche ou droit de l'image (ou toucher sur téléphone), touche `H` pour masquer les barres
@@ -78,6 +81,13 @@ bash /opt/mouflanga/set-login.sh
 ```
 
 Puis ouvre `http://IP-DU-SERVEUR:5002`, va dans ⚙️ Réglages et choisis ton dossier de mangas. Les détails sont dans [`INSTALL.md`](INSTALL.md).
+
+## 🎨 Relier MouFloster (posters)
+
+1. MouFlanga → ⚙️ Réglages → **MouFloster** : indique l'adresse de MouFloster (ex. `http://192.168.1.141:8000`), puis appuie sur **Générer une clé API** et copie-la (elle n'est affichée qu'une fois).
+2. MouFloster → ⚙️ Réglages → **MouFlanga** : colle l'adresse de MouFlanga (ex. `http://192.168.1.141:5002`) et la clé, **Tester**, puis **Enregistrer**.
+
+La clé ne donne accès qu'à la liste des séries et à leur couverture (`/api/externe/…`) ; MouFlanga n'en garde que l'empreinte. Une nouvelle clé remplace l'ancienne.
 
 ## 🔐 Sécurité
 

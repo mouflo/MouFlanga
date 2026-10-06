@@ -43,3 +43,5 @@
     .series-head img { width:110px; }
     .toolbar select { flex:1 1 100%; }
 }
+#sCoverMfs { text-decoration:none; display:inline-flex; align-items:center; }
+#sCoverMfs[hidden] { display:none; }

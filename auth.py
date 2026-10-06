@@ -218,7 +218,8 @@ def init_app(app, version=""):
 
     @app.before_request
     def require_login():
-        if request.path in ("/login", "/healthz", "/favicon.ico") or request.path.startswith(("/icons/", "/ui/")):
+        # /api/externe/ : accès des autres applis, protégé par la clé API (api_externe.py)
+        if request.path in ("/login", "/healthz", "/favicon.ico") or request.path.startswith(("/icons/", "/ui/", "/api/externe/")):
             return None
         if is_logged_in():
             return None

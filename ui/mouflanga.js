@@ -70,6 +70,10 @@
     var perso = s.id !== '(Sans série)';
     $('sCoverPick').hidden = !perso;
     $('sCoverAuto').hidden = !s.cover_perso;
+    // MouFloster s'ouvre avec la recherche déjà faite ; une fois le poster envoyé, il propose de revenir ici
+    $('sCoverMfs').hidden = !(perso && s.moufloster);
+    if (s.moufloster) $('sCoverMfs').href = s.moufloster.replace(/\/$/, '') + '/?mouflanga=' + encodeURIComponent(s.id) +
+      '&q=' + encodeURIComponent(s.id) + '&retour=' + encodeURIComponent(location.origin + location.pathname + '#' + encodeURIComponent(s.id));
     $('sMissingBox').hidden = true;
     $('sMeta').textContent = s.chapters.length + ' fichier' + (s.chapters.length > 1 ? 's' : '') + ' · ' + read + ' lu' + (read > 1 ? 's' : '');
     var next = s.current || (s.chapters.find(function (c) { return !c.read; }) || s.chapters[0] || {}).path;

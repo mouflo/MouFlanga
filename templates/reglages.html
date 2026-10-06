@@ -38,6 +38,19 @@
     </div>
 
     <div class="panel">
+        <h2>🎨 MouFloster (posters)</h2>
+        <div class="sub">Pour créer la couverture d'une série avec MouFloster puis l'envoyer directement ici. <b>1.</b> Indique l'adresse de MouFloster : un bouton « 🎨 Créer avec MouFloster » apparaît sur la page de chaque série. <b>2.</b> Génère une clé API et colle-la dans MouFloster → ⚙️ Réglages → MouFlanga (avec l'adresse de MouFlanga).</div>
+        <div class="field"><label for="mfsUrl">Adresse de MouFloster</label><input type="text" id="mfsUrl" placeholder="http://192.168.1.141:8000" autocapitalize="off" spellcheck="false"></div>
+        <div class="row"><button class="btn" id="mfsUrlSave">Enregistrer l'adresse</button></div>
+        <div id="mfsUrlMsg"></div>
+        <div class="state" id="cleState" style="margin-top:14px"></div>
+        <div class="field" id="cleBox" style="display:none"><label for="cleValeur">Nouvelle clé API (affichée une seule fois)</label>
+            <div class="row nowrap"><input type="text" id="cleValeur" readonly autocapitalize="off" spellcheck="false"><button class="btn ghost" id="cleCopier">📋 Copier</button></div></div>
+        <div class="row"><button class="btn" id="cleGenerer">🔑 Générer une clé API</button><button class="btn ghost" id="cleSupprimer">Supprimer la clé</button></div>
+        <div id="cleMsg"></div>
+    </div>
+
+    <div class="panel">
         <h2>🔔 Alertes Telegram</h2>
         <div class="sub">Quand Cloudflare demande une vérification pendant un téléchargement, l'appli t'envoie un message Telegram avec le lien de la page « Vérification ». Si une autre appli de ce serveur (MouFloster, MouFlanimeXer, MouFlopening…) utilise déjà Telegram, MouFlanga reprend ses réglages tout seul : il n'y a rien à saisir. Sinon, crée un bot avec <b>@BotFather</b> (<code>/newbot</code>), colle son <b>jeton</b> ci-dessous, envoie « bonjour » au bot et clique sur « Détecter mon identifiant ».</div>
         <div class="tabsinfo" id="tgSource"></div>
@@ -122,6 +135,29 @@ $('tgTest').addEventListener('click', async () => {
     say('tgMsg', r.message || r.error, r.ok);
 });
 loadTelegram();
+async function loadCle() {
+    const c = await api('/api/settings/cle-api');
+    $('mfsUrl').value = c.moufloster || '';
+    $('cleState').textContent = c.configured ? 'Clé API active : ' + c.hint : 'Aucune clé API : aucune autre appli ne peut envoyer de couverture.';
+    $('cleSupprimer').hidden = !c.configured;
+}
+simpleSave('mfsUrlSave', 'mfsUrlMsg', '/api/settings/moufloster', () => ({url: $('mfsUrl').value}));
+$('cleGenerer').addEventListener('click', async () => {
+    if ($('cleSupprimer').hidden === false && !confirm('Générer une nouvelle clé ? L\'ancienne ne marchera plus : il faudra coller la nouvelle dans MouFloster.')) return;
+    const r = await post('/api/settings/cle-api', {action: 'generer'});
+    say('cleMsg', r.message || r.error, r.ok);
+    if (r.ok) { $('cleValeur').value = r.cle; $('cleBox').style.display = ''; loadCle(); }
+});
+$('cleCopier').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('cleValeur').value); say('cleMsg', 'Clé copiée : colle-la dans MouFloster → ⚙️ Réglages → MouFlanga.', true); }
+    catch (e) { $('cleValeur').select(); say('cleMsg', 'Copie automatique impossible : appuie longuement sur la clé pour la copier.', 'warn'); }
+});
+$('cleSupprimer').addEventListener('click', async () => {
+    if (!confirm('Supprimer la clé API ? MouFloster ne pourra plus envoyer de couverture.')) return;
+    const r = await post('/api/settings/cle-api', {action: 'supprimer'});
+    say('cleMsg', r.message || r.error, r.ok); $('cleBox').style.display = 'none'; loadCle();
+});
+loadCle();
 const PREFS = {dir: ['mfDir', 'rtl'], mode: ['mfMode', 'page'], fit: ['mfFit', 'height']};
 function getPref(k) { try { return localStorage.getItem(PREFS[k][0]) || PREFS[k][1]; } catch (e) { return PREFS[k][1]; } }
 for (const k of Object.keys(PREFS)) {

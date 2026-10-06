@@ -259,7 +259,8 @@ def api_series():
                     "rar": archives.rar_available(),
                     "manquants": trous, "premier": premier, "dernier": dernier,
                     "cover_perso": name != "(Sans série)" and (MANGA_DIR / name / COUVERTURE_PERSO).is_file(),
-                    "cover_v": int(_couverture_mtime(name))})
+                    "cover_v": int(_couverture_mtime(name)),
+                    "moufloster": os.getenv("MOUFLOSTER_URL", "").strip()})
 
 
 @app.route("/api/cover")
@@ -302,21 +303,25 @@ def api_cover():
 def api_cover_choisir():
     """Couverture choisie par l'utilisateur : image envoyée depuis le téléphone, enregistrée en cover.jpg
     dans le dossier de la série (l'ancienne cover.jpg va à la corbeille)."""
-    name = request.form.get("id", "")
+    rep, code = _enregistrer_couverture(request.form.get("id", ""), request.files.get("image"))
+    return jsonify(rep), code
+
+
+def _enregistrer_couverture(name, envoi):
+    """Enregistre l'image envoyée (fichier de formulaire) comme couverture de la série. Renvoie (réponse, code)."""
     if name not in _scan() or name == "(Sans série)":
-        return jsonify({"ok": False, "error": "Série introuvable"}), 404
-    envoi = request.files.get("image")
+        return {"ok": False, "error": "Série introuvable"}, 404
     if envoi is None:
-        return jsonify({"ok": False, "error": "Aucune image reçue"}), 400
+        return {"ok": False, "error": "Aucune image reçue"}, 400
     donnees = envoi.read(25 * 1048576 + 1)
     if len(donnees) > 25 * 1048576:
-        return jsonify({"ok": False, "error": "Image trop lourde (25 Mo au plus)"}), 400
+        return {"ok": False, "error": "Image trop lourde (25 Mo au plus)"}, 400
     try:
         from PIL import Image, ImageOps
         img = ImageOps.exif_transpose(Image.open(io.BytesIO(donnees))).convert("RGB")
         img.thumbnail((1200, 1800))
     except Exception:
-        return jsonify({"ok": False, "error": "Ce fichier n'est pas une image lisible (JPEG, PNG, WebP…)"}), 400
+        return {"ok": False, "error": "Ce fichier n'est pas une image lisible (JPEG, PNG, WebP…)"}, 400
     cible = MANGA_DIR / name / COUVERTURE_PERSO
     try:
         if cible.exists():
@@ -326,9 +331,9 @@ def api_cover_choisir():
         os.replace(tmp, cible)
     except OSError as e:
         logger.warning("Couverture impossible à enregistrer pour %s : %s", name, e)
-        return jsonify({"ok": False, "error": f"Enregistrement impossible : {e.strerror or e}"}), 500
+        return {"ok": False, "error": f"Enregistrement impossible : {e.strerror or e}"}, 500
     logger.info("Nouvelle couverture pour %s", name)
-    return jsonify({"ok": True, "v": int(cible.stat().st_mtime)})
+    return {"ok": True, "v": int(cible.stat().st_mtime)}, 200
 
 
 @app.route("/api/cover/automatique", methods=["POST"])
@@ -858,6 +863,21 @@ def _diag_dns():
 diag.init_app(app, APP_VERSION, lambda: MANGA_DIR, _diag_extra)
 import settings_page
 settings_page.init_app(app, BASE_DIR, lambda: APP_VERSION, lambda: {"manga": str(MANGA_DIR)})
+
+
+def _series_externes():
+    return [{"name": n, "cover": (MANGA_DIR / n / COUVERTURE_PERSO).is_file()} for n in _scan() if n != "(Sans série)"]
+
+
+def _couverture_choisie(nom):
+    if nom not in _scan() or nom == "(Sans série)":
+        return None
+    c = MANGA_DIR / nom / COUVERTURE_PERSO
+    return c if c.is_file() else None
+
+
+import api_externe
+api_externe.init_app(app, BASE_DIR, lambda: APP_VERSION, _series_externes, _couverture_choisie, _enregistrer_couverture)
 
 
 @app.route("/api/health")

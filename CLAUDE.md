@@ -14,6 +14,8 @@ Appli Flask (bibliothèque et lecteur de mangas) + scraper Japscan. Dossier `/op
 - Couverture : `cover.jpg` dans le dossier de la série (prioritaire), choisie par `/api/cover/choisir`, retirée par `/api/cover/automatique`. Chapitres manquants : trous dans les numéros lus dans les noms de fichiers (`_numero_chapitre`).
 - Séries Japscan : la liste du site pointe vers le dernier chapitre (« Dandadan 247 ») → `titre_serie()` retire ce numéro ; `_dossier_serie()` renomme l'ancien dossier « Titre N ». Page Télécharger : `deja` = chapitre déjà présent (même nom de fichier après « NNN - »).
 
+- Accès des autres applis (`api_externe.py`) : `/api/externe/series`, `/api/externe/couverture` (GET/POST), en-tête `X-Cle-API` ; clé générée dans ⚙️ Réglages (`MOUFLANGA_CLE_API_SHA256` + 4 derniers caractères) ; ces routes passent hors de l'écran de connexion (`auth.py`). Bouton « Créer avec MouFloster » : `MOUFLOSTER_URL` → `<moufloster>/?mouflanga=<série>&q=…&retour=…`.
+
 ## Le scraper Japscan (`japscan_scraper.py`)
 - Navigateur au choix dans ⚙ Réglages : Chrome (Patchright, profil `data/navigateur`) ou Camoufox (Firefox, profil `data/navigateur-firefox`), sous écran virtuel Xvfb ; clics réels avec xdotool.
 - Cloudflare impose une vérification interactive : la page `/verification` montre le navigateur du serveur (capture) et relaie clics, défilement et glisser du doigt ; alerte Telegram.
