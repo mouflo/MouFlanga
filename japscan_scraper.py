@@ -36,6 +36,31 @@ def nom_sur(texte: str, defaut: str = "sans-titre") -> str:
 CHALLENGE_TITRES = ("just a moment", "un instant", "attention required")
 
 
+def _installer_xdotool():
+    """Retrouve xdotool ; s'il manque, tente de l'installer (une tentative par heure au maximum)."""
+    import shutil
+    import subprocess
+    exe = shutil.which("xdotool")
+    if exe:
+        return exe
+    marque = PROFIL.parent / "xdotool-install-tente"
+    try:
+        if marque.exists() and time.time() - marque.stat().st_mtime < 3600:
+            return None
+        marque.parent.mkdir(parents=True, exist_ok=True)
+        marque.write_text(datetime.now().isoformat())
+        logger.info("Installation de xdotool (vrai clic de souris pour la vérification Cloudflare)...")
+        r = subprocess.run(["apt-get", "install", "-y", "-q", "xdotool"], capture_output=True, text=True, timeout=300)
+        if r.returncode == 0:
+            marque.unlink(missing_ok=True)
+            logger.info("✓ xdotool installé")
+            return shutil.which("xdotool")
+        logger.warning("Installation de xdotool échouée : " + (r.stderr or r.stdout)[-200:])
+    except Exception as e:
+        logger.warning(f"Installation de xdotool impossible : {e}")
+    return None
+
+
 def coord_ecran(geo: dict, x: float, y: float) -> tuple[int, int]:
     """Position à l'écran (écran virtuel) d'un point de la page, à partir de la géométrie de la fenêtre."""
     gauche = geo.get("sx", 0) + max(0, geo.get("dw", 0)) // 2
@@ -46,9 +71,10 @@ def coord_ecran(geo: dict, x: float, y: float) -> tuple[int, int]:
 async def _clic_reel(page, x: float, y: float) -> bool:
     """Clique comme une vraie souris, par l'écran virtuel (xdotool) : les coordonnées d'écran du clic sont alors
     cohérentes, ce que le clic « d'automatisation » ne permet pas. Renvoie False si ce n'est pas possible."""
-    import shutil
-    exe = shutil.which("xdotool")
-    if not exe or not os.environ.get("DISPLAY"):
+    if not os.environ.get("DISPLAY"):
+        return False
+    exe = await asyncio.to_thread(_installer_xdotool)
+    if not exe:
         return False
     try:
         geo = await page.evaluate("""() => ({sx: window.screenX, sy: window.screenY,

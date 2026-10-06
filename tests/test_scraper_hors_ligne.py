@@ -55,6 +55,25 @@ class CoordonneesTest(unittest.TestCase):
         self.assertEqual(js.coord_ecran({"dw": -3, "dh": -9}, 7, 8), (7, 8))
 
 
+class Xdotool(unittest.TestCase):
+    def test_deja_installe(self):
+        from unittest import mock
+        with mock.patch("shutil.which", return_value="/usr/bin/xdotool"):
+            self.assertEqual(js._installer_xdotool(), "/usr/bin/xdotool")
+
+    def test_une_seule_tentative_par_heure(self):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(js, "PROFIL", Path(d) / "profil"), \
+                 mock.patch("shutil.which", return_value=None), \
+                 mock.patch("subprocess.run", return_value=mock.Mock(returncode=100, stdout="", stderr="erreur")) as lance:
+                self.assertIsNone(js._installer_xdotool())
+                self.assertIsNone(js._installer_xdotool())
+            self.assertEqual(lance.call_count, 1)
+
+
 class CbzTest(unittest.TestCase):
     def test_creation_et_extensions(self):
         with tempfile.TemporaryDirectory() as d:
