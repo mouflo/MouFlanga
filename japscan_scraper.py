@@ -745,6 +745,17 @@ class JapscanScraper:
                         p_id = parent.get("id", "")
                         p_n = len(parent.find_all(True, class_="list_chapters"))
                         _noter(f"  1re zone : {brut}")
+                        zones_html = soup.find_all(True, class_="list_chapters")
+                        for k in (1, 2, 40):
+                            if len(zones_html) > k:
+                                _noter(f"  zone n°{k + 1} : " + re.sub(r"\s+", " ", str(zones_html[k]))[:900])
+                        attrs = sorted({n for z in zones_html for a in z.find_all("a") for n in a.attrs})
+                        _noter(f"  attributs des liens des zones : {attrs}")
+                        _noter(f"  nombre de zones « list_chapters » : {len(zones_html)}")
+                    nums = [e for e in soup.find_all(True) if re.fullmatch(r"Chapitre 0+\d+", e.get_text(strip=True) or "") and not e.find(True)]
+                    _noter(f"  éléments « Chapitre 0000N » : {len(nums)}")
+                    for e in nums[:2] + nums[-1:]:
+                        _noter("    " + re.sub(r"\s+", " ", str(e))[:300] + " ← parent : " + re.sub(r"\s+", " ", str(e.parent))[:300])
                         _noter(f"  parent : <{parent.name} class={p_classe!r} id={p_id!r}> : {p_n} zone(s) « list_chapters »")
                     boutons = [e.get_text(' ', strip=True)[:25] for e in soup.find_all(["button", "a"])
                                if re.search(r"chapitre|voir|plus|tous|afficher", e.get_text(' ', strip=True), re.I)
