@@ -113,6 +113,7 @@ class TelechargementTest(unittest.TestCase):
             sc._ouvrir_session = ouvrir
             sc._fermer_session = fermer
             js.async_playwright = lambda: _FauxPW()
+            os.environ["JAPSCAN_PAUSE"] = "0"
             chapitres = [
                 {"title": "Chap ../1", "url": "https://x/ok/1/", "num": 1},
                 {"title": "Chap 2", "url": "https://x/vide/2/", "num": 2},

@@ -1166,7 +1166,31 @@ class JapscanScraper:
             for _ in range(15):
                 await page.mouse.wheel(0, 1200)
                 await asyncio.sleep(0.6)
-            await asyncio.sleep(2)
+
+            # On attend que TOUTES les pages annoncées soient arrivées (le site les charge à son rythme).
+            # Sans mouvement pendant 6 s, on « tourne la page » comme un lecteur (touche →) pour relancer le chargement.
+            debut = time.time()
+            dernier, derniere_variation, attendues = len(captured_images), time.time(), 0
+            while time.time() - debut < 150:
+                try:
+                    attendues = await page.evaluate("() => (document.querySelector('select#pages') || {options: []}).options.length")
+                except Exception:
+                    pass
+                n = len(captured_images)
+                if n != dernier:
+                    dernier, derniere_variation = n, time.time()
+                if attendues and n >= attendues:
+                    break
+                calme = time.time() - derniere_variation
+                if calme > 25 and n > 0:
+                    break            # plus rien n'arrive : on prend ce qu'on a
+                if calme > 6:
+                    try:
+                        await page.keyboard.press("ArrowRight")
+                    except Exception:
+                        pass
+                await asyncio.sleep(1)
+            _noter(f"  attente des pages : {len(captured_images)} reçues sur {attendues or '?'} annoncées en {round(time.time() - debut)} s")
 
             # Ce que contient la page (pour le rapport)
             info = {}
@@ -1296,6 +1320,17 @@ class JapscanScraper:
                     job["progress"] = idx + 1
                     if progress_callback:
                         progress_callback(job)
+
+                    # Pause entre deux chapitres, comme un lecteur qui lit (réglable avec JAPSCAN_PAUSE, en secondes ; 0 = aucune)
+                    if idx < len(chapters) - 1 and not job.get("annule"):
+                        try:
+                            base = float(os.environ.get("JAPSCAN_PAUSE", "20"))
+                        except ValueError:
+                            base = 20.0
+                        if base > 0:
+                            import random
+                            job["en_cours"] = "(pause avant le chapitre suivant)"
+                            await asyncio.sleep(random.uniform(base * 0.75, base * 1.5))
 
                     if echecs_de_suite >= 3:
                         job["status"] = "error"
