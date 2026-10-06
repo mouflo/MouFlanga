@@ -448,6 +448,21 @@ def japscan_verif_capture():
     return resp
 
 
+@app.route("/api/japscan/verif/defiler", methods=["POST"])
+def japscan_verif_defiler():
+    """Fait défiler la page du navigateur du serveur."""
+    body = request.get_json(silent=True) or {}
+    try:
+        dy = max(-3000.0, min(3000.0, float(body.get("dy"))))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Valeur invalide"}), 400
+    try:
+        japscan_scraper.verif_defiler(dy)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e) or "Défilement impossible"}), 409
+    return jsonify({"ok": True})
+
+
 @app.route("/api/japscan/verif/clic", methods=["POST"])
 def japscan_verif_clic():
     """Relaie un clic de l'utilisateur dans le navigateur du serveur."""

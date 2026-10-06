@@ -6,6 +6,7 @@
 - Après la vérification, l'appli attend la vraie fiche série (page « Loading… ») avant de chercher les chapitres
 - Rapport : historique des échecs réseau du défi, empreinte du navigateur, test DNS et test IPv6
 - Téléchargement : l'onglet « ⏳ En cours » fonctionne enfin (liste des téléchargements, avancement, chapitre en cours, bouton Annuler) et reste à jour même après un rechargement de la page ou une vérification Cloudflare
+- Lecteur de chapitres : le site affiche un captcha d'images avant les pages ; l'appli le détecte, met le téléchargement en pause, t'alerte sur Telegram et te laisse le résoudre depuis la page « Vérification » (qui a maintenant des boutons pour faire défiler la page)
 - Rapport : description détaillée du lecteur de chapitres (sélecteur de page, boutons, zones de dessin) et essai de passage à la page suivante, pour comprendre comment le site affiche les pages
 - Téléchargement : arrêt automatique après 3 chapitres de suite sans aucune page ; lecture des pages telles qu'affichées (canvas ou grandes images) en plus de la capture réseau ; le rapport décrit ce que contient la page du lecteur
 - Téléchargement : les boutons « Retour / Suivant » restent collés en bas de l'écran, même au milieu d'une longue liste ; la page recharge maintenant son code à chaque nouvelle version (le navigateur gardait l'ancien, d'où « Tout décocher » sans effet)

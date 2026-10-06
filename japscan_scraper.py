@@ -264,6 +264,14 @@ def verif_capture() -> bytes:
     return _sur_la_boucle(f)
 
 
+def verif_defiler(dy: float) -> None:
+    """Fait défiler la page du navigateur du serveur (pour atteindre un captcha placé plus bas)."""
+    async def f(page):
+        await page.mouse.move(640, 400)
+        await page.mouse.wheel(0, dy)
+    _sur_la_boucle(f)
+
+
 def verif_clic(x: float, y: float) -> dict:
     """Clique à cet endroit de la page (coordonnées de la capture) et renvoie ce que le site répond ensuite."""
     async def f(page):
@@ -306,7 +314,7 @@ def verif_clic(x: float, y: float) -> dict:
     return info
 
 
-def _alerter_telegram(url_page: str):
+def _alerter_telegram(url_page: str, raison: str = "cloudflare"):
     """Prévient sur Telegram (au plus une fois par RAPPEL_ALERTE)."""
     with _VERIF_VERROU:
         if time.time() - _VERIF["alerte"] < RAPPEL_ALERTE:
@@ -316,8 +324,13 @@ def _alerter_telegram(url_page: str):
         import notifier
         base = os.getenv("APP_URL", "").strip().rstrip("/")
         lien = f"\n\n👉 {base}/verification" if base else "\n\nOuvre MouFlanga → Télécharger : la vérification t'attend."
-        ok, msg = notifier.envoyer("🛡️ MouFlanga : Cloudflare demande une vérification humaine. "
-                                   "Le téléchargement est en pause en attendant ton clic." + lien)
+        if raison == "captcha":
+            texte = ("🛡️ MouFlanga : le site demande un captcha avant d'afficher les pages du chapitre. "
+                     "Le téléchargement est en pause en attendant ta réponse.")
+        else:
+            texte = ("🛡️ MouFlanga : Cloudflare demande une vérification humaine. "
+                     "Le téléchargement est en pause en attendant ton clic.")
+        ok, msg = notifier.envoyer(texte + lien)
         logger.info("Alerte Telegram : %s", msg if not ok else "envoyée")
     except Exception as e:
         logger.warning(f"Alerte Telegram impossible : {e}")
@@ -370,6 +383,39 @@ async def attendre_cloudflare(page, secondes: int = 25, humain: bool = False) ->
                 return titre
         _noter("✗ vérification non faite dans le temps imparti")
         return titre
+    finally:
+        with _VERIF_VERROU:
+            _VERIF.update(actif=False, loop=None, page=None)
+
+
+async def _captcha_present(page) -> bool:
+    """Le lecteur du site réclame-t-il un captcha avant d'afficher les pages ?"""
+    try:
+        return bool(await page.evaluate("() => !!(window.__captcha && window.__captcha.needed)"))
+    except Exception:
+        return False   # page en cours de rechargement
+
+
+async def attendre_captcha(page) -> bool:
+    """Si le lecteur affiche un captcha, prévient l'utilisateur et attend qu'il le résolve
+    (depuis la page « Vérification » de l'appli). Renvoie True si la page est utilisable."""
+    if not await _captcha_present(page):
+        return True
+    logger.warning("Le lecteur demande un captcha : en attente de l'utilisateur")
+    _noter(f"captcha demandé sur {page.url}")
+    with _VERIF_VERROU:
+        _VERIF.update(actif=True, loop=asyncio.get_running_loop(), page=page, depuis=time.time(), url=page.url)
+    try:
+        await asyncio.to_thread(_alerter_telegram, page.url, "captcha")
+        fin = time.time() + PATIENCE_HUMAIN
+        while time.time() < fin:
+            await asyncio.sleep(2)
+            if not await _captcha_present(page):
+                _noter("✓ captcha résolu")
+                await asyncio.sleep(3)
+                return True
+        _noter("✗ captcha non résolu dans le temps imparti")
+        return False
     finally:
         with _VERIF_VERROU:
             _VERIF.update(actif=False, loop=None, page=None)
@@ -961,6 +1007,11 @@ class JapscanScraper:
                         break
                     await asyncio.sleep(2)
                 await asyncio.sleep(4)  # Laisser charger le lecteur JS
+
+                # Le lecteur peut exiger un captcha : l'utilisateur le résout depuis la page « Vérification »
+                if not await attendre_captcha(page):
+                    await browser.close()
+                    return []
 
                 # Défilement progressif vers le bas pour forcer le chargement de toutes les pages
                 logger.info("Défilement de la page pour forcer le lazy-loading...")

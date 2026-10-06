@@ -15,11 +15,11 @@ async function rafraichir() {
         const e = await api('/api/japscan/verif/etat');
         if (!e.actif) {
             if (actif) etat('✅ Vérification passée : le téléchargement reprend.', 'ok');
-            else etat('Aucune vérification en attente pour le moment. Cette page se mettra à jour toute seule si Cloudflare en demande une.', 'warn');
+            else etat('Aucune vérification en attente pour le moment. Cette page se mettra à jour toute seule si le site en demande une.', 'warn');
             actif = false; box.hidden = true;
             return;
         }
-        if (!actif) etat('⏳ Cloudflare attend ton clic sur la case de vérification.', 'warn');
+        if (!actif) etat('⏳ Le site attend ta vérification : clique sur la case Cloudflare ou réponds au captcha.', 'warn');
         actif = true; box.hidden = false;
         // Charge la nouvelle capture en arrière-plan pour éviter le clignotement
         const nouvelle = new Image();
@@ -66,6 +66,13 @@ img.addEventListener('click', async ev => {
         rafraichir();
     }
 });
+
+async function defiler(dy) {
+    try { await post('/api/japscan/verif/defiler', {dy}); } catch (e) { /* ignoré */ }
+    rafraichir();
+}
+$('vHaut').addEventListener('click', () => defiler(-500));
+$('vBas').addEventListener('click', () => defiler(500));
 
 setInterval(rafraichir, 1000);
 rafraichir();
