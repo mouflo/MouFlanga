@@ -155,7 +155,8 @@ class JapscanScraper:
                 no_viewport=True,
                 locale="fr-FR",
                 timezone_id="Europe/Paris",
-                args=["--no-sandbox", "--disable-setuid-sandbox", "--window-size=1366,900"],
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--window-size=1366,900",
+                      "--disk-cache-size=1", "--media-cache-size=1"],  # disque serveur limité : pas de cache
             )
             try:
                 context = await p.chromium.launch_persistent_context(channel="chrome", **options)
