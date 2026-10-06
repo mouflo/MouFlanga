@@ -1,7 +1,9 @@
 /* Page « Vérification » : capture du navigateur du serveur, cliquable */
-.vbox { margin-top: 14px; }
+.vbox { margin-top: 14px; position: relative; }
 .vbox img { display: block; width: 100%; max-width: 1100px; height: auto; border: 1px solid var(--border, #2a2c31); border-radius: 10px; cursor: crosshair; background: #000; user-select: none; -webkit-user-drag: none; touch-action: manipulation; }
+.vbox.occupe img { opacity: .8; cursor: progress; }
 .vhint { margin-top: 8px; color: var(--muted, #8b8f98); font-size: .9rem; }
-.vclic { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 2px solid #4ade80; border-radius: 50%; pointer-events: none; animation: vclic .7s ease-out forwards; }
-@keyframes vclic { from { opacity: 1; transform: scale(.6); } to { opacity: 0; transform: scale(1.8); } }
-.vbox { position: relative; }
+.vretour { margin-top: 8px; font-size: .9rem; color: var(--text2, #c4c7ce); min-height: 1.4em; word-break: break-word; }
+/* Repère du dernier clic : gros rond vert qui reste affiché plusieurs secondes */
+.vmarque { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border: 3px solid #4ade80; border-radius: 50%; background: rgba(74, 222, 128, .25); box-shadow: 0 0 0 2px rgba(0, 0, 0, .6); pointer-events: none; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #fff; }
+.vmarque[hidden] { display: none; }

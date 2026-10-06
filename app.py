@@ -416,7 +416,7 @@ def japscan_verif_capture():
         png = japscan_scraper.verif_capture()
     except Exception as e:
         return jsonify({"ok": False, "error": str(e) or "Capture impossible"}), 409
-    resp = Response(png, mimetype="image/png")
+    resp = Response(png, mimetype="image/jpeg")
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
@@ -432,10 +432,10 @@ def japscan_verif_clic():
     if not (0 <= x <= 5000 and 0 <= y <= 5000):
         return jsonify({"ok": False, "error": "Coordonnées hors de la page"}), 400
     try:
-        japscan_scraper.verif_clic(x, y)
+        info = japscan_scraper.verif_clic(x, y)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e) or "Clic impossible"}), 409
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "info": info})
 
 
 @app.route("/verification")
@@ -467,6 +467,9 @@ def _diag_extra():
         import notifier
         lignes += ["", "--- Telegram ---"] + notifier.diagnostic()
         lignes.append(f"Vérification Cloudflare en attente : {'OUI' if japscan_scraper.verif_etat()['actif'] else 'non'}")
+        hist = japscan_scraper.verif_historique()
+        if hist:
+            lignes += ["", "--- Vérification Cloudflare (derniers événements) ---"] + ["  " + h for h in hist]
     except Exception as e:
         lignes.append(f"Telegram : diagnostic impossible ({e.__class__.__name__})")
     return lignes

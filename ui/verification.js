@@ -1,7 +1,7 @@
 // Page « Vérification » : affiche le navigateur du serveur et relaie les clics.
-// Les fonctions $ / api / post / say viennent de mou-settings.js.
-const img = $('vImg'), box = $('vBox');
-let actif = false, occupe = false, dernierClic = 0;
+// Les fonctions $ / api / post viennent de mou-settings.js.
+const img = $('vImg'), box = $('vBox'), marque = $('vMarque'), retour = $('vRetour');
+let actif = false, occupe = false, clicEnCours = false, effaceMarque = null;
 
 function etat(texte, type) {
     $('vState').className = 'note ' + (type || 'warn');
@@ -9,7 +9,7 @@ function etat(texte, type) {
 }
 
 async function rafraichir() {
-    if (occupe) return;
+    if (occupe || clicEnCours) return;
     occupe = true;
     try {
         const e = await api('/api/japscan/verif/etat');
@@ -29,22 +29,43 @@ async function rafraichir() {
     finally { occupe = false; }
 }
 
+function placerMarque(clientX, clientY, texte) {
+    const b = box.getBoundingClientRect();
+    marque.style.left = (clientX - b.left) + 'px';
+    marque.style.top = (clientY - b.top) + 'px';
+    marque.textContent = texte || '';
+    marque.hidden = false;
+    clearTimeout(effaceMarque);
+}
+
 img.addEventListener('click', async ev => {
+    if (clicEnCours || !img.naturalWidth) return;
     const r = img.getBoundingClientRect();
-    if (!img.naturalWidth) return;
     // coordonnées dans l'image réelle (celle du navigateur du serveur)
     const x = (ev.clientX - r.left) * img.naturalWidth / r.width;
     const y = (ev.clientY - r.top) * img.naturalHeight / r.height;
-    const rond = document.createElement('div');
-    rond.className = 'vclic';
-    rond.style.left = (ev.clientX - box.getBoundingClientRect().left) + 'px';
-    rond.style.top = (ev.clientY - box.getBoundingClientRect().top) + 'px';
-    box.appendChild(rond); setTimeout(() => rond.remove(), 800);
-    dernierClic = Date.now();
-    const res = await post('/api/japscan/verif/clic', {x, y});
-    if (!res.ok) etat(res.error || 'Le clic a échoué.', 'err');
-    setTimeout(rafraichir, 700);
+    clicEnCours = true;
+    box.classList.add('occupe');
+    placerMarque(ev.clientX, ev.clientY, '⏳');
+    retour.textContent = 'Clic envoyé, en attente de la réponse de Cloudflare (3 secondes environ)…';
+    try {
+        const res = await post('/api/japscan/verif/clic', {x, y});
+        if (!res.ok) {
+            retour.textContent = '❌ ' + (res.error || 'Le clic a échoué.');
+            marque.textContent = '✖';
+        } else {
+            const i = res.info || {};
+            marque.textContent = '✔';
+            retour.textContent = `Clic effectué. Réponse du site : « ${i.titre || '…'} » · autorisation Cloudflare : ${i.cookie ? 'reçue' : 'pas encore'}` +
+                (i.texte ? ` · page : ${i.texte}` : '');
+        }
+    } finally {
+        clicEnCours = false;
+        box.classList.remove('occupe');
+        effaceMarque = setTimeout(() => { marque.hidden = true; }, 4000);
+        rafraichir();
+    }
 });
 
-setInterval(rafraichir, 1500);
+setInterval(rafraichir, 1000);
 rafraichir();

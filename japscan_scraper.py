@@ -64,6 +64,20 @@ PATIENCE_HUMAIN = 600          # secondes laissées à l'utilisateur pour interv
 RAPPEL_ALERTE = 900            # pas deux alertes Telegram à moins de 15 minutes
 
 
+_HISTORIQUE = []     # derniers événements de vérification (pour le rapport de l'appli)
+
+
+def _noter(texte: str) -> None:
+    ligne = f"{datetime.now().strftime('%H:%M:%S')} {texte}"
+    _HISTORIQUE.append(ligne)
+    del _HISTORIQUE[:-25]
+    logger.info("Vérification : " + texte)
+
+
+def verif_historique() -> list:
+    return list(_HISTORIQUE)
+
+
 def verif_etat() -> dict:
     """État lu par l'appli : une vérification attend-elle l'utilisateur ?"""
     with _VERIF_VERROU:
@@ -80,21 +94,35 @@ def _sur_la_boucle(coro_fn, timeout: float = 20):
 
 
 def verif_capture() -> bytes:
-    """Capture d'écran (PNG) du navigateur du serveur."""
+    """Capture d'écran (JPEG léger, pour aller vite) du navigateur du serveur."""
     async def f(page):
-        return await page.screenshot(type="png")
+        return await page.screenshot(type="jpeg", quality=55)
     return _sur_la_boucle(f)
 
 
-def verif_clic(x: float, y: float) -> None:
-    """Clique à cet endroit de la page (coordonnées de la capture)."""
+def verif_clic(x: float, y: float) -> dict:
+    """Clique à cet endroit de la page (coordonnées de la capture) et renvoie ce que le site répond ensuite."""
     async def f(page):
-        await page.mouse.move(x - 12, y - 6, steps=6)
-        await asyncio.sleep(0.25)
-        await page.mouse.move(x, y, steps=4)
-        await asyncio.sleep(0.15)
-        await page.mouse.click(x, y, delay=90)
-    _sur_la_boucle(f)
+        await page.mouse.move(x - 14, y - 8, steps=5)
+        await asyncio.sleep(0.2)
+        await page.mouse.move(x, y, steps=3)
+        await asyncio.sleep(0.12)
+        await page.mouse.click(x, y, delay=80)
+        await asyncio.sleep(2.5)           # laisse Cloudflare réagir
+        info = {"titre": "", "cookie": False, "texte": "", "cadres": 0}
+        try:
+            info["titre"] = (await page.title()) or ""
+            info["cookie"] = any(c["name"] == "cf_clearance" for c in await page.context.cookies())
+            info["cadres"] = len(page.frames)
+            texte = await page.evaluate("() => document.body ? document.body.innerText : ''")
+            info["texte"] = re.sub(r"\s+", " ", texte)[:140]
+        except Exception as e:
+            info["texte"] = f"(lecture impossible : {e.__class__.__name__})"
+        return info
+    info = _sur_la_boucle(f, timeout=25)
+    _noter(f"clic ({x:.0f},{y:.0f}) → titre « {info['titre']} », cf_clearance {'présent' if info['cookie'] else 'absent'}, "
+           f"{info['cadres']} cadre(s), texte : {info['texte']}")
+    return info
 
 
 def _alerter_telegram(url_page: str):
@@ -143,6 +171,7 @@ async def attendre_cloudflare(page, secondes: int = 25, humain: bool = False) ->
 
     # --- vérification humaine ---
     logger.warning("Cloudflare demande une vérification humaine : en attente de l'utilisateur")
+    _noter(f"vérification demandée sur {page.url}")
     with _VERIF_VERROU:
         _VERIF.update(actif=True, loop=asyncio.get_running_loop(), page=page, depuis=time.time(), url=page.url)
     try:
@@ -155,10 +184,10 @@ async def attendre_cloudflare(page, secondes: int = 25, humain: bool = False) ->
             except Exception:
                 continue
             if not _titre_defi(titre):
-                logger.info("✓ Vérification Cloudflare passée")
+                _noter(f"✓ vérification passée (titre « {titre} »)")
                 await asyncio.sleep(1)
                 return titre
-        logger.error("Vérification non faite dans le temps imparti")
+        _noter("✗ vérification non faite dans le temps imparti")
         return titre
     finally:
         with _VERIF_VERROU:

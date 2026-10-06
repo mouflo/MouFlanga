@@ -142,6 +142,15 @@ class VerificationTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             js.verif_clic(10, 10)
 
+    def test_historique_limite(self):
+        js._HISTORIQUE.clear()
+        for i in range(40):
+            js._noter(f"événement {i}")
+        h = js.verif_historique()
+        self.assertEqual(len(h), 25)
+        self.assertIn("événement 39", h[-1])
+        js._HISTORIQUE.clear()
+
     def test_titre_defi(self):
         self.assertTrue(js._titre_defi("Un instant…"))
         self.assertTrue(js._titre_defi("Just a moment..."))
