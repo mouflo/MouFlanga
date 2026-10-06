@@ -57,6 +57,11 @@ fi
 # Navigateur de Patchright (idempotent : ne retélécharge pas s'il est déjà là)
 if [ -x "./venv/bin/python" ]; then
     ./venv/bin/python -m patchright install chromium >>"$LOG_FILE" 2>&1 || log "⚠️ Installation de Chromium (Patchright) échouée, voir le journal"
+    # Vrai Google Chrome : bien mieux accepté par Cloudflare que Chromium (facultatif, sinon Chromium est utilisé)
+    if ! command -v google-chrome >/dev/null 2>&1 && ! command -v google-chrome-stable >/dev/null 2>&1; then
+        log "📦 Installation de Google Chrome (Patchright)..."
+        ./venv/bin/python -m patchright install chrome >>"$LOG_FILE" 2>&1 || log "⚠️ Google Chrome non installé : Chromium sera utilisé"
+    fi
 fi
 
 log "🔄 Redémarrage du service..."

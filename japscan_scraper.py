@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import shutil
+import threading
 import time
 import zipfile
 from pathlib import Path
@@ -35,18 +36,45 @@ def nom_sur(texte: str, defaut: str = "sans-titre") -> str:
 CHALLENGE_TITRES = ("just a moment", "un instant", "attention required")
 
 
-async def attendre_cloudflare(page, secondes: int = 45) -> str:
-    """Attend la fin du défi Cloudflare ; renvoie le titre final de la page."""
+async def _cliquer_case_cloudflare(page) -> bool:
+    """Tente de cocher la case « Vérifiez que vous êtes humain » (Turnstile)."""
+    try:
+        cadre = await page.query_selector("iframe[src*='challenges.cloudflare.com']")
+        if not cadre:
+            return False
+        boite = await cadre.bounding_box()
+        if not boite:
+            return False
+        await page.mouse.move(boite["x"] + 20, boite["y"] + boite["height"] / 2, steps=8)
+        await asyncio.sleep(0.4)
+        await page.mouse.click(boite["x"] + 28, boite["y"] + boite["height"] / 2)
+        logger.info("Clic sur la case Cloudflare")
+        return True
+    except Exception as e:
+        logger.debug(f"Clic Cloudflare impossible : {e}")
+        return False
+
+
+async def attendre_cloudflare(page, secondes: int = 60) -> str:
+    """Attend la fin du défi Cloudflare (en cochant la case si elle apparaît) ; renvoie le titre final."""
     titre = ""
-    for _ in range(secondes):
+    for i in range(secondes):
         try:
             titre = (await page.title()) or ""
         except Exception:
             titre = ""  # page en cours de navigation
         if titre and not any(k in titre.lower() for k in CHALLENGE_TITRES):
             return titre
+        if i >= 4 and i % 6 == 4:
+            await _cliquer_case_cloudflare(page)
         await asyncio.sleep(1)
     logger.warning(f"Défi Cloudflare non résolu (titre : {titre!r})")
+    try:
+        await page.screenshot(path="/tmp/japscan_cloudflare.png")
+        iframes = [f.url for f in page.frames]
+        logger.warning(f"Cadres de la page : {iframes} (capture : /tmp/japscan_cloudflare.png)")
+    except Exception:
+        pass
     return titre
 
 
@@ -54,6 +82,29 @@ logger = logging.getLogger("japscan_scraper")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 JAPSCAN_URL = "https://www.japscan.foo"
+
+PROFIL = Path(os.environ.get("JAPSCAN_PROFIL", Path(__file__).resolve().parent / "data" / "navigateur"))
+_VERROU = threading.Lock()
+
+
+class _Session:
+    """Ferme le navigateur puis libère le verrou (appelé comme browser.close())."""
+
+    def __init__(self, context):
+        self._context = context
+        self._ferme = False
+
+    async def close(self):
+        if self._ferme:
+            return
+        self._ferme = True
+        try:
+            await self._context.close()
+        except Exception:
+            pass
+        finally:
+            _VERROU.release()
+
 
 # État global des téléchargements (pour Flask)
 download_jobs = {}
@@ -67,24 +118,41 @@ class JapscanScraper:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     async def _init_browser(self, p):
-        """Lance Chromium sous Xvfb avec les arguments anti-détection."""
-        browser = await p.chromium.launch(
-            headless=False,  # Lancé via xvfb-run sur serveur
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-infobars",
-                "--window-size=1920,1080",
-            ]
-        )
-        context = await browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            locale="fr-FR",
-            timezone_id="Europe/Paris"
-        )
-        return browser, context
+        """Lance le navigateur sous Xvfb avec un profil persistant (les cookies Cloudflare sont gardés).
+
+        Patchright recommande : vrai Chrome si possible, pas de faux user-agent ni de taille imposée.
+        Un seul navigateur à la fois (le profil ne peut pas être partagé) : un verrou protège l'accès.
+        """
+        _VERROU.acquire()
+        try:
+            PROFIL.mkdir(parents=True, exist_ok=True)
+            options = dict(
+                user_data_dir=str(PROFIL),
+                headless=False,  # Lancé via xvfb-run sur serveur
+                no_viewport=True,
+                locale="fr-FR",
+                timezone_id="Europe/Paris",
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--window-size=1366,900"],
+            )
+            try:
+                context = await p.chromium.launch_persistent_context(channel="chrome", **options)
+                logger.info("Navigateur : Google Chrome")
+            except Exception as e:
+                logger.info(f"Chrome indisponible ({str(e).splitlines()[0][:80]}) : Chromium à la place")
+                context = await p.chromium.launch_persistent_context(**options)
+            return _Session(context), context
+        except Exception:
+            _VERROU.release()
+            raise
+
+    async def _chauffer(self, page):
+        """Passe d'abord par la page d'accueil (comme un vrai visiteur) pour obtenir le cookie Cloudflare."""
+        try:
+            await page.goto(JAPSCAN_URL + "/", wait_until="domcontentloaded", timeout=30000)
+            await attendre_cloudflare(page)
+            await asyncio.sleep(2)
+        except Exception as e:
+            logger.warning(f"Page d'accueil non chargée : {e}")
 
     def extract_manga_root_url(self, url: str) -> str:
         """Nettoie une URL de chapitre pour obtenir l'URL racine de la série."""
@@ -191,6 +259,7 @@ class JapscanScraper:
 
             try:
                 # domcontentloaded au lieu de networkidle pour éviter les timeouts
+                await self._chauffer(page)
                 await page.goto(manga_url, wait_until="domcontentloaded", timeout=30000)
 
                 title = await attendre_cloudflare(page)
@@ -276,6 +345,8 @@ class JapscanScraper:
             page.on("response", on_response)
 
             try:
+                await self._chauffer(page)
+                captured_images.clear()  # ignore les images de la page d'accueil
                 await page.goto(chapter_url, wait_until="domcontentloaded", timeout=30000)
                 await attendre_cloudflare(page)
                 await asyncio.sleep(4)  # Laisser charger le lecteur JS

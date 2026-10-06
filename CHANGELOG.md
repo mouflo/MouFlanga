@@ -6,6 +6,7 @@
 - Le service tourne sous écran virtuel (`xvfb-run`) ; le déploiement installe xvfb, Chromium (Patchright) et met à jour le fichier de service
 - Attente de la fin du défi Cloudflare sur chaque page ; détection des chapitres propre à la série
 - Noms de dossiers et de fichiers nettoyés (plus de `/` ni de `..` venant du site) ; filtre d'images moins agressif
+- Contournement de Cloudflare sur les fiches série : profil de navigateur conservé, vrai Google Chrome installé par le déploiement, passage par la page d'accueil, clic automatique sur la case de vérification, fausse identité de navigateur retirée
 - Ménage : anciens scripts de test Playwright et documents obsolètes supprimés
 
 ## 1.0
