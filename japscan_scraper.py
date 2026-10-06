@@ -87,6 +87,29 @@ PROFIL = Path(os.environ.get("JAPSCAN_PROFIL", Path(__file__).resolve().parent /
 _VERROU = threading.Lock()
 
 
+def _installer_chrome() -> bool:
+    """Installe Google Chrome via Patchright (une tentative par heure au maximum). Renvoie True si c'est fait."""
+    import subprocess
+    import sys
+    marque = PROFIL.parent / "chrome-install-tente"
+    try:
+        if marque.exists() and time.time() - marque.stat().st_mtime < 3600:
+            return False
+        marque.parent.mkdir(parents=True, exist_ok=True)
+        marque.write_text(datetime.now().isoformat())
+        logger.info("Installation de Google Chrome (2 à 5 minutes, une seule fois)...")
+        r = subprocess.run([sys.executable, "-m", "patchright", "install", "chrome"],
+                           capture_output=True, text=True, timeout=900)
+        if r.returncode == 0:
+            marque.unlink(missing_ok=True)
+            logger.info("✓ Google Chrome installé")
+            return True
+        logger.warning("Installation de Chrome échouée : " + (r.stderr or r.stdout)[-300:])
+    except Exception as e:
+        logger.warning(f"Installation de Chrome impossible : {e}")
+    return False
+
+
 class _Session:
     """Ferme le navigateur puis libère le verrou (appelé comme browser.close())."""
 
@@ -138,8 +161,17 @@ class JapscanScraper:
                 context = await p.chromium.launch_persistent_context(channel="chrome", **options)
                 logger.info("Navigateur : Google Chrome")
             except Exception as e:
-                logger.info(f"Chrome indisponible ({str(e).splitlines()[0][:80]}) : Chromium à la place")
-                context = await p.chromium.launch_persistent_context(**options)
+                logger.info(f"Chrome indisponible ({str(e).splitlines()[0][:80]})")
+                context = None
+                if _installer_chrome():
+                    try:
+                        context = await p.chromium.launch_persistent_context(channel="chrome", **options)
+                        logger.info("Navigateur : Google Chrome (tout juste installé)")
+                    except Exception as e2:
+                        logger.warning(f"Chrome installé mais inutilisable : {str(e2).splitlines()[0][:100]}")
+                if context is None:
+                    logger.info("Navigateur : Chromium (moins bien accepté par Cloudflare)")
+                    context = await p.chromium.launch_persistent_context(**options)
             return _Session(context), context
         except Exception:
             _VERROU.release()
