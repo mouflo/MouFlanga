@@ -77,3 +77,12 @@ body.mou-skin .tome-titre, body.mou-skin .tome-titre:hover { background:none; co
 #sCoverMfs[hidden] { display:none; }
 .bandeau-import { display:block; margin:0 0 16px; padding:12px 14px; border-radius:8px; background:rgba(82,181,75,.12); border:1px solid rgba(82,181,75,.45); color:var(--text); text-decoration:none; font-weight:600; }
 .bandeau-import[hidden] { display:none; }
+.card .etat { position:absolute; top:8px; left:8px; font-size:.7rem; font-weight:700; border-radius:10px; padding:2px 8px; color:#fff; background:rgba(0,0,0,.7); }
+.card .etat.fini { background:#2e7d32; }
+.card .etat.incomplet { background:#c77d12; }
+.card .etat.en_cours { background:#1f5fa8; }
+.card .etat.pause { background:#555; }
+.etat-ligne { font-size:.85rem; margin:-6px 0 10px; color:var(--muted); line-height:1.4; }
+.etat-ligne.fini { color:#6fcf73; }
+.etat-ligne.incomplet { color:#e0b25c; }
+.etat-ligne.en_cours { color:#7fb2ec; }

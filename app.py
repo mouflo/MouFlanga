@@ -236,13 +236,90 @@ def reader():
 # Bibliothèque
 # ----------------------------------------------------------------------------
 
+# ---------------------------------------------------------------- Fini / en cours / incomplet
+
+_STATUTS = {"en_cours": False, "dernier": 0.0}
+
+
+def _etat_serie(name, entrees):
+    """Marque de la couverture : fini (et tout est là), incomplet (fini officiellement mais il manque des tomes ou
+    chapitres), en_cours, pause, arrete ; None si inconnu. Avec un résumé lisible pour la page de la série."""
+    st = (tomes._charger(name) or {}).get("statut_officiel") or {}
+    statut = st.get("statut")
+    if not statut:
+        return None, ""
+    tomes_locaux = set()
+    for e in entrees:
+        if e.get("tome") is not None:
+            tomes_locaux.add(int(e["tome"]))
+        elif e.get("groupe", "") and e["groupe"].startswith("Tome "):
+            tomes_locaux.add(int(e["groupe"].split()[1]))
+    chapitres = [e["num"] for e in entrees if e.get("num") is not None]
+    info = tomes._charger(name) or {}
+    vol = st.get("volumes") or max([t for t in (info.get("tomes") or {}).values() if t is not None] or [0]) or None
+    chap = st.get("chapitres") or max(info.get("tomes") or {0: None}) or None
+    if statut in ("RELEASING", "NOT_YET_RELEASED"):
+        return "en_cours", "En cours de parution" + (f" ({vol} tomes sortis)" if vol else "") + "."
+    if statut == "HIATUS":
+        return "pause", "Parution en pause."
+    manquants = []
+    if vol and tomes_locaux:
+        manquants = [t for t in range(1, vol + 1) if t not in tomes_locaux]
+        complet = not manquants
+    elif chap and chapitres:
+        complet = max(chapitres) >= chap and not _manquants([], chapitres)[0]
+    else:
+        complet = False
+    total = f"{vol} tomes" if vol else (f"{chap} chapitres" if chap else "")
+    debut = "Série arrêtée" if statut == "CANCELLED" else "Série terminée"
+    if complet:
+        return "fini", f"{debut}{f' ({total})' if total else ''} : tout est là ✅"
+    if manquants:
+        txt = ", ".join(_plages(manquants))
+        return "incomplet", f"{debut} ({total}) : il te manque {'le tome' if len(manquants) == 1 else 'les tomes'} {txt}."
+    return "incomplet", f"{debut}{f' ({total})' if total else ''} : il manque des chapitres."
+
+
+def _plages(nums):
+    out, debut = [], None
+    nums = sorted(nums)
+    for i, n in enumerate(nums):
+        if debut is None:
+            debut = n
+        if i == len(nums) - 1 or nums[i + 1] != n + 1:
+            out.append(str(debut) if debut == n else f"{debut}–{n}")
+            debut = None
+    return out
+
+
+def _remplir_statuts(series):
+    """En arrière-plan : statut officiel (AniList) des séries qui ne l'ont pas encore, une toutes les 1,5 s."""
+    if _STATUTS["en_cours"] or time.time() - _STATUTS["dernier"] < 600:
+        return
+    _STATUTS.update(en_cours=True, dernier=time.time())
+
+    def travail():
+        try:
+            for name, tome_max in series:
+                st = (tomes._charger(name) or {}).get("statut_officiel") or {}
+                if st and time.time() - st.get("date", 0) < tomes.STATUT_DUREE:
+                    continue
+                tomes.statut_officiel(name, tome_max)
+                time.sleep(1.5)
+        except Exception as e:
+            logger.warning("Statuts officiels : %s", e)
+        finally:
+            _STATUTS["en_cours"] = False
+    threading.Thread(target=travail, daemon=True).start()
+
+
 @app.route("/api/library")
 def api_library():
     if not MANGA_DIR.is_dir():
         return jsonify({"error": f"Dossier des mangas introuvable : {MANGA_DIR} (le partage est-il monté ? voir ⚙️ Réglages)", "series": []}), 200
     _organiser_auto()
     progress = _read_json(PROGRESS_FILE, {})
-    out = []
+    out, a_remplir = [], []
     for name, files in _scan().items():
         p = progress.get(name, {})
         read = set(p.get("read", []))
@@ -256,7 +333,11 @@ def api_library():
             except OSError:
                 pass
         entrees = _entrees(files)
+        etat, _ = _etat_serie(name, entrees) if name != "(Sans série)" else (None, "")
+        a_remplir.append((name, max([e["tome"] for e in entrees if e.get("tome") is not None] +
+                                    [int(e["groupe"].split()[1]) for e in entrees if (e.get("groupe") or "").startswith("Tome ")] or [0]) or None))
         out.append({
+            "etat": etat,
             "id": name, "title": name, "chapters": len(entrees),
             "unite": "tome" if entrees and sum(e.get("tome") is not None for e in entrees) * 2 >= len(entrees) else "chapitre",
             "read": len([e for e in entrees if e["key"] in read]),
@@ -264,6 +345,7 @@ def api_library():
             "last_read": p.get("last", ""), "added": newest,
             "cover": f"/api/cover?id={_q(name)}&v={int(max(newest, _couverture_mtime(name)))}",
         })
+    _remplir_statuts([x for x in a_remplir if x[0] != "(Sans série)"])
     try:
         racine = sum(1 for f in MANGA_DIR.iterdir() if f.is_file() and importer.est_lot(f) and not f.name.startswith("."))
     except OSError:
@@ -341,11 +423,14 @@ def api_series():
         trous, premier, dernier = _manquants([c["title"] for c in chapters])
         type_manquants = "chapitres"
     en_tomes = any(c["groupe"] for c in chapters)
+    etat, etat_texte = _etat_serie(name, chapters) if name != "(Sans série)" else (None, "")
+    st = (tomes._charger(name) or {}).get("statut_officiel") or {}
     a_ranger = name != "(Sans série)" and any(not c["groupe"] and c["num"] is not None for c in chapters)
     return jsonify({"id": name, "title": name, "chapters": chapters,
                     "current": p.get("current", ""), "page": p.get("page", 0),
                     "rar": archives.rar_available(),
                     "en_tomes": en_tomes, "a_ranger": a_ranger, "rangement": _etat_rangement(name),
+                    "etat": etat, "etat_texte": etat_texte, "etat_source": st.get("titre"),
                     "manquants": trous, "premier": premier, "dernier": dernier, "type_manquants": type_manquants,
                     "organiser": _plan_organiser(name, files) if name != "(Sans série)" else None,
                     "cover_perso": name != "(Sans série)" and (MANGA_DIR / name / COUVERTURE_PERSO).is_file(),

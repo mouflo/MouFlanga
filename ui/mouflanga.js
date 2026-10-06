@@ -15,6 +15,9 @@
   function pref(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
   function setPref(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 
+  // Marque de la couverture : statut officiel (AniList) comparé à ce qu'il y a sur le NAS
+  var ETATS = {fini: ['✅ Fini', 'Série terminée, tout est là'], incomplet: ['⚠ Incomplet', 'Série terminée, mais il manque des tomes ou chapitres'],
+    en_cours: ['🔄 En cours', 'Encore en parution'], pause: ['⏸ En pause', 'Parution en pause']};
   var series = [], current = null, suiviRangement = null, tomesOuverts = {};
 
   function sorted(list) {
@@ -37,6 +40,7 @@
       var left = s.chapters - s.read, pct = s.chapters ? Math.round(100 * s.read / s.chapters) : 0;
       return '<div class="card" tabindex="0" data-id="' + esc(s.id) + '">' +
         '<img class="cv" loading="lazy" alt="" src="' + esc(s.cover) + '">' +
+        (ETATS[s.etat] ? '<span class="etat ' + s.etat + '" title="' + ETATS[s.etat][1] + '">' + ETATS[s.etat][0] + '</span>' : '') +
         (left > 0 ? '<span class="badge">' + left + ' à lire</span>' : '<span class="badge done">lu ✔</span>') +
         '<div class="nm">' + esc(s.title) + '</div>' +
         '<div class="st">' + s.chapters + ' ' + (s.unite || 'chapitre') + (s.chapters > 1 ? 's' : '') + ' · ' + s.size_mb + ' Mo</div>' +
@@ -81,6 +85,9 @@
     if (mfs) $('sCoverMfs').href = mfs.replace(/\/$/, '') + '/?mouflanga=' + encodeURIComponent(s.id) +
       '&q=' + encodeURIComponent(s.id) + '&retour=' + encodeURIComponent(location.origin + location.pathname + '#' + encodeURIComponent(s.id));
     // Chapitres manquants : une ligne discrète, seulement s'il en manque
+    $('sEtat').hidden = !s.etat_texte;
+    $('sEtat').className = 'etat-ligne ' + (s.etat || '');
+    $('sEtat').textContent = s.etat_texte ? s.etat_texte + (s.etat_source ? ' (d\'après AniList : ' + s.etat_source + ')' : '') : '';
     $('sMissingLine').hidden = !(s.manquants && s.manquants.length);
     if (s.manquants && s.manquants.length) $('sMissingLine').textContent = '⚠ ' + (s.type_manquants === 'tomes' ? 'Tomes manquants' : 'Manquants') + ' : ' + s.manquants.join(', ');
     fermerMenus();

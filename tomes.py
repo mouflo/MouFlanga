@@ -210,6 +210,12 @@ def _enregistrer(serie: str, info: dict):
     donnees = {"date": time.time(), "source": info.get("source"),
                "tomes": {str(k): v for k, v in info.get("tomes", {}).items()},
                "titres": {str(k): v for k, v in info.get("titres", {}).items()}}
+    try:                                                   # garder le statut officiel déjà connu
+        ancien = json.loads(_fichier(serie).read_text(encoding="utf-8"))
+        if ancien.get("statut_officiel"):
+            donnees["statut_officiel"] = ancien["statut_officiel"]
+    except (OSError, ValueError):
+        pass
     tmp = _fichier(serie).with_suffix(".tmp")
     tmp.write_text(json.dumps(donnees, ensure_ascii=False), encoding="utf-8")
     tmp.replace(_fichier(serie))
@@ -268,3 +274,61 @@ def tome_de(num: float, info: dict | None):
     if entier in tomes and tomes[entier] is not None:
         return tomes[entier]
     return None
+
+
+# ---------------------------------------------------------------- Statut officiel (fini / en cours)
+
+STATUT_DUREE = 7 * 86400
+
+
+def _choisir(medias, serie, tome_max):
+    """Parmi les résultats AniList, celui qui correspond le mieux : même titre, puis nombre de tomes compatible
+    avec ce qu'on a (« Kenichi » 61 tomes → « Shijou Saikyou no Deshi Kenichi », pas « Kenichi Tantei Chou »)."""
+    cle = _simple(serie)
+    def note(m):
+        titres = [_simple(t) for t in (m["title"].get("romaji"), m["title"].get("english")) if t] + [_simple(x) for x in m.get("synonyms") or []]
+        exact = cle in titres
+        contient = any(cle and cle in t for t in titres)
+        vol = m.get("volumes")
+        compatible = bool(tome_max and vol and vol >= tome_max)
+        proche = -abs((vol or 0) - (tome_max or 0)) if tome_max and vol else -999
+        return (exact, compatible, contient, m.get("format") == "MANGA", proche)
+    return max(medias, key=note) if medias else None
+
+
+def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
+    """{"statut": FINISHED | RELEASING | HIATUS | CANCELLED | NOT_YET_RELEASED, "volumes", "chapitres", "titre"}
+    d'après AniList, gardé 7 jours dans data/tomes/<série>.json ; None si inconnu."""
+    garde = _charger(serie) or {}
+    st = garde.get("statut_officiel")
+    if st and not forcer and time.time() - st.get("date", 0) < STATUT_DUREE:
+        return st if st.get("statut") else None
+    q = ("query($s:String){Page(perPage:6){media(search:$s,type:MANGA,format_not:NOVEL)"
+         "{title{romaji english} synonyms status volumes chapters format}}}")
+    medias = []
+    for v in _variantes(serie):
+        try:
+            r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": v}}, timeout=15)
+            if r.status_code == 429:
+                return None                                    # trop de demandes : on réessaiera plus tard
+            medias = r.json()["data"]["Page"]["media"]
+        except Exception as e:
+            logger.info("AniList injoignable (%s)", e.__class__.__name__)
+            return None
+        if medias:
+            break
+    m = _choisir(medias, serie, tome_max)
+    st = {"date": time.time(), "statut": m["status"] if m else None, "volumes": m.get("volumes") if m else None,
+          "chapitres": m.get("chapters") if m else None,
+          "titre": (m["title"].get("romaji") or m["title"].get("english")) if m else None}
+    # enregistrement à côté de la répartition des tomes (même fichier)
+    DOSSIER.mkdir(parents=True, exist_ok=True)
+    try:
+        brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        brut = {}
+    brut["statut_officiel"] = st
+    tmp = _fichier(serie).with_suffix(".tmp")
+    tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(_fichier(serie))
+    return st if st["statut"] else None

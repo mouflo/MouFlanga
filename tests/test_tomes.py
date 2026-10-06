@@ -531,3 +531,30 @@ class CasArchivesTest(unittest.TestCase):
         importer.extraire(lot, dest); importer.deplier(dest)
         series, _ = importer.repartir(dest)
         self.assertEqual(sorted(series[""]), [1, 2, 3])
+
+
+class EtatSerieTest(OrganiserTest):
+    """Marque fini / incomplet / en cours sur la couverture."""
+
+    def _etat(self, statut):
+        with mock.patch.object(tomes, "chercher", return_value=None):
+            self.client.post("/api/organiser", json={"series": self.vrac.name, "nom": "Gintama"})
+        with mock.patch.object(tomes, "_charger", return_value={"statut_officiel": statut, "tomes": {}}), \
+                mock.patch.object(self.A, "_remplir_statuts"):
+            lib = {s["id"]: s for s in self.client.get("/api/library").json["series"]}
+            serie = self.client.get("/api/series?id=Gintama").json
+        return lib["Gintama"]["etat"], serie["etat_texte"]
+
+    def test_incomplet(self):                      # tomes 1, 2 et 4 sur 4
+        etat, texte = self._etat({"statut": "FINISHED", "volumes": 4, "chapitres": 30, "titre": "Gintama"})
+        self.assertEqual(etat, "incomplet")
+        self.assertIn("il te manque le tome 3", texte)
+
+    def test_fini(self):                           # 2 tomes officiels, les tomes 1 et 2 sont là
+        etat, texte = self._etat({"statut": "FINISHED", "volumes": 2, "chapitres": 10, "titre": "Gintama"})
+        self.assertEqual(etat, "fini")
+        self.assertIn("tout est là", texte)
+
+    def test_en_cours(self):
+        etat, texte = self._etat({"statut": "RELEASING", "volumes": None, "chapitres": None, "titre": "Gintama"})
+        self.assertEqual((etat, texte), ("en_cours", "En cours de parution."))

@@ -27,6 +27,8 @@ Appli Flask (bibliothèque et lecteur de mangas) + scraper Japscan. Dossier `/op
 
 - Import des archives de la racine : `/importer`, `_archives_racine()` (nom proposé `_nom_depuis_archive`), file `_FILE_IMPORT` traitée par `_travail_file()` (une série à la fois, Telegram à la fin). `importer.deplier()` ouvre les archives/PDF intérieurs ; `_classer()` : 1er dossier « tome », sinon numéro final (« MAR.07 »), sinon nom de l'image ; `repartir()` sépare les séries dont les tomes se chevauchent. Cas réels étudiés : inventaire de 72 archives du 06/10/2026.
 
+- Marque fini/incomplet/en cours : `tomes.statut_officiel()` (AniList, choix du résultat d'après le titre et le nombre de tomes locaux, cache `statut_officiel` dans `data/tomes/<série>.json`, 7 jours), rempli en fond par `_remplir_statuts()` à l'ouverture de la bibliothèque ; `_etat_serie()` compare au NAS.
+
 ## Le scraper Japscan (`japscan_scraper.py`)
 - Navigateur au choix dans ⚙ Réglages : Chrome (Patchright, profil `data/navigateur`) ou Camoufox (Firefox, profil `data/navigateur-firefox`), sous écran virtuel Xvfb ; clics réels avec xdotool.
 - Cloudflare impose une vérification interactive : la page `/verification` montre le navigateur du serveur (capture) et relaie clics, défilement et glisser du doigt ; alerte Telegram.
