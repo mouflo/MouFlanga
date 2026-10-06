@@ -361,7 +361,10 @@ def api_cover():
     for cand in COUVERTURES:
         if name != "(Sans série)" and (sub / cand).is_file():
             return send_file(sub / cand, max_age=3600)
-    premiere = (_entrees(files) or [{"path": _rel(files[0]), "debut": 0}])[0]
+    lisibles = [e for e in _entrees(files) if not e.get("a_importer")]
+    if not lisibles:
+        return Response(status=404)                      # seulement des archives à importer : rien à montrer encore
+    premiere = lisibles[0]
     first, debut = MANGA_DIR / premiere["path"], premiere["debut"]
     try:
         st = first.stat()

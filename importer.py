@@ -59,9 +59,14 @@ def lister(path: Path) -> list[str]:
 
 def extraire(path: Path, dest: Path):
     dest.mkdir(parents=True, exist_ok=True)
-    r = subprocess.run(["bsdtar", "-xf", str(path), "-C", str(dest)], capture_output=True, text=True, timeout=7200)
-    if r.returncode != 0:
-        raise ErreurImport(f"Extraction de {path.name} impossible : {r.stderr.strip()[:200]}")
+    # Sur un partage réseau (NAS), on ne peut pas redonner aux fichiers leur propriétaire d'origine :
+    # --no-same-owner / --no-same-permissions évitent ces avertissements, qui ne sont pas des erreurs
+    r = subprocess.run(["bsdtar", "-x", "--no-same-owner", "--no-same-permissions", "-f", str(path), "-C", str(dest)],
+                       capture_output=True, text=True, timeout=7200)
+    vraies = [l for l in r.stderr.splitlines()
+              if l.strip() and not re.search(r"Can't set (user|group|permissions|time)|Operation not permitted", l)]
+    if r.returncode != 0 and (vraies or not any(dest.rglob("*"))):
+        raise ErreurImport(f"Extraction de {path.name} impossible : {' '.join(vraies or r.stderr.splitlines())[:200]}")
 
 
 def _est_image(p: Path) -> bool:
