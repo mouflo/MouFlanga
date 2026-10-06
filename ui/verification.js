@@ -16,6 +16,7 @@ async function rafraichir() {
         const e = await api('/api/japscan/verif/etat');
         if (!e.actif) {
             if (actif) etat('✅ Vérification passée : le téléchargement reprend.', 'ok');
+            else if (e.groupes) etat('🕒 ' + e.groupes + ' chapitre(s) mis de côté pour un captcha (captchas groupés) : ils arriveront ici à la fin du téléchargement, avec une alerte Telegram. Garde cette page ouverte ou reviens à ce moment-là.', 'warn');
             else etat('Aucune vérification en attente pour le moment. Cette page se mettra à jour toute seule si le site en demande une.', 'warn');
             actif = false; box.hidden = true;
             return;

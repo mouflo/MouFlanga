@@ -310,8 +310,11 @@ def verif_historique() -> list:
 
 def verif_etat() -> dict:
     """État lu par l'appli : une vérification attend-elle l'utilisateur ?"""
+    # Mode « captchas groupés » : chapitres mis de côté, dont le captcha viendra à la fin du téléchargement
+    groupes = sum(int(j.get("en_attente_captcha") or 0) for j in list(download_jobs.values())
+                  if j.get("status") == "running")
     with _VERIF_VERROU:
-        return {"actif": _VERIF["actif"], "depuis": _VERIF["depuis"], "url": _VERIF["url"]}
+        return {"actif": _VERIF["actif"], "depuis": _VERIF["depuis"], "url": _VERIF["url"], "groupes": groupes}
 
 
 def _sur_la_boucle(coro_fn, timeout: float = 20):

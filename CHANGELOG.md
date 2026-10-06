@@ -1,6 +1,7 @@
 # Historique des versions
 
 ## Captchas groupés (essai)
+- Page « Vérification » : pendant la première passe, elle indique combien de chapitres sont mis de côté et que leurs captchas arriveront à la fin (au lieu de « aucune vérification en attente »)
 - Le compteur de captchas ne compte plus que ceux qu'il faut vraiment résoudre (un chapitre mis de côté puis résolu était compté deux fois)
 - Nouvelle case « Captchas groupés » dans ⚙️ Réglages → Navigateur du scraper (désactivée par défaut) : les chapitres qui demandent un captcha sont gardés pour la fin du téléchargement, avec une seule alerte Telegram, puis on les fait à la suite
 - Onglet « En cours » : nombre de chapitres qui attendent un captcha (avec le lien vers la page Vérification) et, à la fin, nombre total de captchas demandés ; même chiffre dans le rapport, pour comparer les deux modes
