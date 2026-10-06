@@ -563,6 +563,42 @@ def _diag_extra():
     except Exception as e:
         lignes.append(f"Telegram : diagnostic impossible ({e.__class__.__name__})")
     lignes += ["", "--- Noms de domaine (DNS du serveur) ---"] + _diag_dns()
+    lignes += ["", "--- Carte graphique (accès du serveur) ---"] + _diag_gpu()
+    return lignes
+
+
+def _diag_gpu():
+    """Le serveur voit-il la carte graphique (/dev/dri) et les outils pour s'en servir ?"""
+    import grp
+    import shutil
+    import subprocess
+    lignes = []
+    try:
+        dri = Path("/dev/dri")
+        if not dri.exists():
+            lignes.append("/dev/dri : ABSENT (la carte graphique n'est pas donnée à ce conteneur)")
+        else:
+            for f in sorted(dri.iterdir()):
+                st = f.stat()
+                try:
+                    groupe = grp.getgrgid(st.st_gid).gr_name
+                except KeyError:
+                    groupe = str(st.st_gid)
+                lignes.append(f"  /dev/dri/{f.name} : droits {oct(st.st_mode)[-3:]}, groupe {groupe}, lisible {'oui' if os.access(f, os.R_OK | os.W_OK) else 'NON'}")
+        noms = []
+        for g in os.getgroups():
+            try:
+                noms.append(grp.getgrgid(g).gr_name)
+            except KeyError:
+                noms.append(str(g))
+        lignes.append(f"Groupes de l'appli : {', '.join(noms)} · DISPLAY={os.environ.get('DISPLAY', '(aucun)')}")
+        outils = {n: bool(shutil.which(n)) for n in ("vainfo", "glxinfo", "eglinfo", "Xorg", "Xvfb", "weston", "cage", "intel_gpu_top")}
+        lignes.append("Outils présents : " + ", ".join(f"{n} {'oui' if ok else 'non'}" for n, ok in outils.items()))
+        if outils["vainfo"]:
+            r = subprocess.run(["vainfo"], capture_output=True, text=True, timeout=8)
+            lignes += ["  vainfo : " + l.strip() for l in (r.stdout + r.stderr).splitlines()[:6] if l.strip()]
+    except Exception as e:
+        lignes.append(f"Diagnostic de la carte graphique impossible : {e.__class__.__name__}")
     return lignes
 
 

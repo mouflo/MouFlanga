@@ -226,6 +226,7 @@ _JS_INFO_LECTEUR = r"""() => {
     nImg: imgs.length, nImgGrandes: gros.length, nCanvas: cans.length,
     grandes: gros.slice(0, 4).map(i => ({src: court(i.currentSrc || i.src), w: i.naturalWidth, h: i.naturalHeight, cls: (i.className || '').toString().slice(0, 30), parent: (i.parentElement && (i.parentElement.id || i.parentElement.className) || '').toString().slice(0, 30)})),
     canvas: cans.slice(0, 4).map(c => ({w: c.width, h: c.height, cls: (c.className || '').toString().slice(0, 30), id: c.id})),
+    gl: (() => { try { const c = document.createElement('canvas'); const g = c.getContext('webgl') || c.getContext('experimental-webgl'); if (!g) return 'indisponible'; const e = g.getExtension('WEBGL_debug_renderer_info'); return String(e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER)).slice(0, 80); } catch (x) { return 'erreur'; } })(),
     nPages: (document.querySelector('select#pages') || {options: []}).options.length,
     stockage: Object.keys(localStorage).slice(0, 8).map(k => k + '=' + String(localStorage.getItem(k) || '').slice(0, 50)),
     cookies: document.cookie.split(';').map(c => c.split('=')[0].trim()).filter(Boolean).slice(0, 12),
@@ -1175,6 +1176,7 @@ class JapscanScraper:
                 _noter(f"lecteur : {info.get('titre')!r} {info.get('url')} · {info.get('nImg')} img "
                        f"({info.get('nImgGrandes')} grandes), {info.get('nCanvas')} canvas · pages annoncées : {attendues}")
                 _noter(f"  mémoire du site (localStorage) : {info.get('stockage')} · cookies : {info.get('cookies')}")
+                _noter(f"  rendu graphique annoncé par le navigateur (WebGL) : {info.get('gl')}")
             except Exception as e:
                 _noter(f"lecteur : lecture de la page impossible ({e.__class__.__name__})")
             for v in vues[:3]:
