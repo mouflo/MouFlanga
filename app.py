@@ -1365,6 +1365,9 @@ def _couverture_choisie(nom):
 import api_externe
 api_externe.init_app(app, BASE_DIR, lambda: APP_VERSION, _series_externes, _couverture_choisie, _enregistrer_couverture)
 
+import redemarrage      # alerte Telegram après un plantage ou un redémarrage du serveur
+redemarrage.init_app(app, BASE_DIR)
+
 
 @app.route("/api/health")
 def health():
@@ -1374,4 +1377,6 @@ def health():
 if __name__ == "__main__":
     port = int(os.getenv("FLASK_PORT", "5002"))
     print(f"MouFlanga {APP_VERSION} : http://0.0.0.0:{port}", file=sys.stderr)
+    import notifier
+    redemarrage.verifier(BASE_DIR, "MouFlanga", DATA_DIR / "mouflanga.log", lambda t: notifier.envoyer(t))
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

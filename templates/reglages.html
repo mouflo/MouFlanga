@@ -78,6 +78,7 @@
         <div class="field"><label for="tgUrl">Adresse de MouFlanga pour le lien du message (ton adresse perso si tu en as une)</label>
             <input type="text" id="tgUrl" autocapitalize="off" spellcheck="false" placeholder="https://mouflanga.mondomaine.fr"></div>
         <div class="field"><label for="tgUrlLocal">Adresse de l'appli sur le réseau local (facultatif)</label><input type="text" id="tgUrlLocal" placeholder="http://192.168.1.141:5002" autocapitalize="off" spellcheck="false"></div>
+        <div class="field"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="alerteRedem" style="width:20px;height:20px;flex:none;margin-top:2px"><span>Me prévenir si l'appli a planté ou si le serveur a redémarré (message envoyé dès qu'elle repart)</span></label></div>
         <div class="row" style="margin-top:12px"><button class="btn" id="tgSave">Enregistrer</button><button class="btn ghost" id="tgTest">📨 Envoyer un message de test</button></div>
         <div id="tgMsg"></div>
     </div>
@@ -203,6 +204,12 @@ for (const k of Object.keys(PREFS)) {
     el.addEventListener('change', () => { try { localStorage.setItem(PREFS[k][0], el.value); say('prefMsg', 'Enregistré sur cet appareil.', true); } catch (e) { say('prefMsg', 'Ce navigateur refuse de retenir le choix.', false); } });
 }
 loadPaths();
+
+(async () => {
+    const r = await api('/api/settings/alerte-redemarrage');
+    $('alerteRedem').checked = !!r.actif;
+    $('alerteRedem').addEventListener('change', async () => { const x = await post('/api/settings/alerte-redemarrage', {actif: $('alerteRedem').checked}); say('tgMsg', x.message || x.error, x.ok); });
+})();
 </script>
 </body>
 </html>
