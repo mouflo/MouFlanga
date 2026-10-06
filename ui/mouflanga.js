@@ -15,7 +15,7 @@
   function pref(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
   function setPref(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 
-  var series = [], current = null, suiviRangement = null;
+  var series = [], current = null, suiviRangement = null, tomesOuverts = {};
 
   function sorted(list) {
     var q = $('search').value.trim().toLowerCase(), how = $('sort').value;
@@ -87,15 +87,33 @@
     var next = s.current || (s.chapters.find(function (c) { return !c.read; }) || s.chapters[0] || {}).key;
     $('sResume').textContent = (s.current ? '▶ Reprendre' : read ? '▶ Continuer' : '▶ Commencer');
     $('sResume').dataset.path = next || '';
-    // Chapitres groupés par tome (« Tome 02 », « Hors tome ») quand la série est rangée en tomes
-    var groupe = null;
-    $('chapters').innerHTML = s.chapters.map(function (c) {
-      var titre = '';
-      if (c.groupe && c.groupe !== groupe) { groupe = c.groupe; titre = '<div class="tome-titre">📚 ' + esc(groupe) + '</div>'; }
-      return titre + '<div class="chap' + (c.read ? ' read' : '') + (c.key === s.current ? ' cur' : '') + '" data-path="' + esc(c.key) + '">' +
+    // Chapitres groupés par tome (« Tome 02 », « Hors tome ») : un appui sur le titre ouvre ou ferme le tome.
+    // Au départ, seul le tome en cours de lecture (ou le premier avec des chapitres à lire) est ouvert.
+    function ligne(c) {
+      return '<div class="chap' + (c.read ? ' read' : '') + (c.key === s.current ? ' cur' : '') + '" data-path="' + esc(c.key) + '">' +
         '<span class="dot"></span><span class="ct">' + esc(c.title) + '</span><span class="cs">' + c.size_mb + ' Mo</span>' +
         '<button class="tog" data-tog="' + esc(c.key) + '" title="Marquer ' + (c.read ? 'non lu' : 'lu') + '">' + (c.read ? '↺' : '✔') + '</button>' +
         '<button class="tog del" data-del="' + esc(c.key) + '" title="Supprimer ce chapitre">🗑</button></div>';
+    }
+    var groupes = [];
+    s.chapters.forEach(function (c) {
+      var g = groupes[groupes.length - 1];
+      if (!g || g.nom !== (c.groupe || '')) groupes.push(g = {nom: c.groupe || '', chapitres: []});
+      g.chapitres.push(c);
+    });
+    if (!tomesOuverts[s.id] && groupes.some(function (g) { return g.nom; })) {
+      var actuel = s.chapters.find(function (c) { return c.key === s.current; }) || s.chapters.find(function (c) { return !c.read; }) || {};
+      tomesOuverts[s.id] = {}; tomesOuverts[s.id][actuel.groupe || ''] = true;
+    }
+    $('chapters').innerHTML = groupes.map(function (g) {
+      if (!g.nom) return g.chapitres.map(ligne).join('');
+      var lus = g.chapitres.filter(function (c) { return c.read; }).length, ouvert = !!tomesOuverts[s.id][g.nom];
+      var cur = g.chapitres.some(function (c) { return c.key === s.current; });
+      return '<div class="tome' + (ouvert ? ' ouvert' : '') + '">' +
+        '<button class="tome-titre" data-tome="' + esc(g.nom) + '" aria-expanded="' + ouvert + '">' +
+        '<span class="fleche">▸</span><span class="tn">📚 ' + esc(g.nom) + (cur ? ' <small>· en cours</small>' : '') + '</span>' +
+        '<span class="tc">' + g.chapitres.length + ' ch. · ' + (lus === g.chapitres.length ? 'lu ✔' : lus + ' lu' + (lus > 1 ? 's' : '')) + '</span></button>' +
+        '<div class="tome-chaps">' + g.chapitres.map(ligne).join('') + '</div></div>';
     }).join('');
     if (!(s.rangement && s.rangement.message)) note('sMsg', (!s.rar && s.chapters.some(function (c) { return /\.(cbr|rar)$/i.test(c.path); })) ? 'Les vrais fichiers RAR (.cbr) ne s\'ouvrent que si le serveur a « rarfile » et un outil de décompression : voir le Journal si une page refuse de s\'ouvrir.' : '', 'warn');
   }
@@ -122,6 +140,13 @@
     $('backList').addEventListener('click', function (e) { e.preventDefault(); history.pushState({}, '', location.pathname); showList(); });
     $('sResume').addEventListener('click', function () { if ($('sResume').dataset.path) readChapter($('sResume').dataset.path); });
     $('chapters').addEventListener('click', async function (e) {
+      var tt = e.target.closest('[data-tome]');
+      if (tt) {
+        var bloc = tt.parentElement, ouvert = !bloc.classList.contains('ouvert');
+        bloc.classList.toggle('ouvert', ouvert); tt.setAttribute('aria-expanded', ouvert);
+        tomesOuverts[current.id][tt.dataset.tome] = ouvert;
+        return;
+      }
       var t = e.target.closest('[data-tog]');
       if (t) {
         e.stopPropagation();

@@ -25,7 +25,18 @@
 .row { display:flex; gap:8px; flex-wrap:wrap; }
 .missing { margin-top:10px; padding:8px 10px; border-radius:6px; background:var(--surface2); font-size:.9rem; line-height:1.5; }
 .chapters { margin-top:16px; border-top:1px solid var(--line); }
-.tome-titre { padding:14px 6px 6px; font-weight:700; color:var(--accent); border-bottom:1px solid var(--line); }
+.tome { border-bottom:1px solid var(--line); }
+.tome-titre { display:flex; align-items:center; gap:10px; width:100%; padding:14px 6px; background:none; border:0; color:var(--text); font:inherit; font-weight:700; text-align:left; cursor:pointer; }
+body.mou-skin .tome-titre, body.mou-skin .tome-titre:hover { background:none; color:var(--text); font-weight:700; }
+.tome-titre:hover .tn { color:var(--accent); }
+.tome-titre .fleche { color:var(--accent); transition:transform .15s; flex:none; }
+.tome.ouvert .fleche { transform:rotate(90deg); }
+.tome-titre .tn { flex:1; min-width:0; }
+.tome-titre .tn small { color:var(--accent); font-weight:500; }
+.tome-titre .tc { color:var(--muted); font-size:.8rem; font-weight:500; flex:none; }
+.tome-chaps { display:none; padding-left:8px; }
+.tome.ouvert .tome-chaps { display:block; }
+.tome-chaps .chap:last-child { border-bottom:0; }
 .chap { display:flex; align-items:center; gap:10px; padding:10px 6px; border-bottom:1px solid var(--line); cursor:pointer; }
 .chap:hover { background:var(--surface2); }
 .chap .dot { width:10px; height:10px; border-radius:50%; background:var(--accent); flex:none; }
