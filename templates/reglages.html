@@ -31,6 +31,7 @@
         <div class="sub">Navigateur utilisé pour passer la vérification Cloudflare de Japscan. <b>Chrome</b> est le choix par défaut. <b>Camoufox</b> est un Firefox conçu pour paraître plus naturel : il se télécharge une seule fois (quelques minutes). Si Camoufox ne démarre pas, l'appli revient toute seule à Chrome.</div>
         <div class="field"><label for="nvMoteur">Navigateur</label>
             <select id="nvMoteur"><option value="chrome">Google Chrome (par défaut)</option><option value="camoufox">Camoufox (Firefox anti-détection)</option></select></div>
+        <div class="field"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="nvGroupes" style="width:22px;height:22px;flex:none;margin-top:2px"><span><b>Captchas groupés</b> (essai) : les chapitres qui demandent un captcha sont gardés pour la fin du téléchargement. Une seule alerte Telegram, puis tu les fais à la suite. Le rapport indique le nombre de captchas, pour comparer avec le mode normal.</span></label></div>
         <div class="tabsinfo" id="nvInfo"></div>
         <div class="row" style="margin-top:12px"><button class="btn" id="nvSave">Enregistrer</button><button class="btn ghost" id="nvInstall">⬇️ Installer Camoufox maintenant</button></div>
         <div id="nvMsg"></div>
@@ -80,12 +81,13 @@ $('pathsSave').addEventListener('click', async () => {
 async function loadNav() {
     const n = await api('/api/settings/navigateur');
     $('nvMoteur').value = n.moteur;
+    $('nvGroupes').checked = !!n.captchas_groupes;
     $('nvInfo').textContent = 'Camoufox : ' + (n.module ? 'module présent' : 'module pas encore installé (arrive avec la prochaine mise à jour)')
         + ' · navigateur ' + (n.navigateur ? 'téléchargé ✅' : 'pas encore téléchargé') + (n.message ? ' · ' + n.message : '');
     return n;
 }
 $('nvSave').addEventListener('click', async () => {
-    const r = await post('/api/settings/navigateur', {moteur: $('nvMoteur').value});
+    const r = await post('/api/settings/navigateur', {moteur: $('nvMoteur').value, captchas_groupes: $('nvGroupes').checked});
     say('nvMsg', r.message || r.error, r.ok);
 });
 $('nvInstall').addEventListener('click', async () => {

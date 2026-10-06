@@ -1,5 +1,9 @@
 # Historique des versions
 
+## Captchas groupés (essai)
+- Nouvelle case « Captchas groupés » dans ⚙️ Réglages → Navigateur du scraper (désactivée par défaut) : les chapitres qui demandent un captcha sont gardés pour la fin du téléchargement, avec une seule alerte Telegram, puis on les fait à la suite
+- Onglet « En cours » : nombre de chapitres qui attendent un captcha (avec le lien vers la page Vérification) et, à la fin, nombre total de captchas demandés ; même chiffre dans le rapport, pour comparer les deux modes
+
 ## Mémo complet pour Claude Code
 - `docs/claude-opt.md` décrit maintenant toute la suite MouFl (la personne, les règles, le serveur, les quatre applis, le kit d'interface partagé, la façon de travailler)
 - Il est recopié dans `/opt/CLAUDE.md` à chaque déploiement de MouFlanga et par `scripts/installer-claude-code.sh`, pour que Claude Code lancé sur le serveur connaisse tout dès le départ

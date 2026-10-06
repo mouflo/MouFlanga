@@ -518,6 +518,7 @@ def japscan_jobs():
             "downloaded": len(j.get("downloaded", [])), "failed": len(j.get("failed", [])),
             "en_cours": j.get("en_cours"), "error": j.get("error"),
             "started": j.get("started"), "ended": j.get("ended"),
+            "en_attente_captcha": j.get("en_attente_captcha", 0), "captchas": j.get("captchas"),
         })
     jobs.sort(key=lambda j: j.get("started") or "", reverse=True)
     return jsonify({"ok": True, "jobs": jobs})

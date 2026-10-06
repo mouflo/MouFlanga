@@ -339,7 +339,9 @@ async function loadJobs() {
             const pct = j.total > 0 ? Math.round(j.progress / j.total * 100) : 0;
             const bouton = j.status === "running"
                 ? `<button class="mou-btn secondary" data-annuler="${echapper(j.id)}" type="button">Annuler</button>` : "";
-            const actuel = j.status === "running" && j.en_cours ? `<small>Chapitre en cours : ${echapper(j.en_cours)}</small><br>` : "";
+            const actuel = (j.status === "running" && j.en_cours ? `<small>Chapitre en cours : ${echapper(j.en_cours)}</small><br>` : "")
+                + (j.status === "running" && j.en_attente_captcha ? `<small>🛡️ ${j.en_attente_captcha} chapitre(s) attendent un captcha : <a href="/verification">page Vérification</a></small><br>` : "")
+                + (j.status !== "running" && j.captchas != null ? `<small>Captchas demandés : ${j.captchas}</small><br>` : "");
             const erreur = j.error ? `<small style="color: #ff6b6b;">${echapper(j.error)}</small><br>` : "";
             return `
             <div class="job-item" style="background: var(--card); border-radius: 8px; padding: 12px 16px; margin: 12px 0;">

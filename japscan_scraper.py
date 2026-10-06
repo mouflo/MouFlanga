@@ -417,7 +417,7 @@ def verif_clic(x: float, y: float) -> dict:
     return info
 
 
-def _alerter_telegram(url_page: str, raison: str = "cloudflare"):
+def _alerter_telegram(url_page: str, raison: str = "cloudflare", texte_libre: str = ""):
     """Prévient sur Telegram à chaque nouvelle demande (nouvelle page ou autre raison) ;
     pour la même page et la même raison, au plus une fois par RAPPEL_ALERTE."""
     cle = (raison, url_page)
@@ -429,7 +429,9 @@ def _alerter_telegram(url_page: str, raison: str = "cloudflare"):
         import notifier
         base = os.getenv("APP_URL", "").strip().rstrip("/")
         lien = f"\n\n👉 {base}/verification" if base else "\n\nOuvre MouFlanga → Télécharger : la vérification t'attend."
-        if raison == "captcha":
+        if texte_libre:
+            texte = texte_libre
+        elif raison == "captcha":
             texte = ("🛡️ MouFlanga : le site demande un captcha avant d'afficher les pages du chapitre. "
                      "Le téléchargement est en pause en attendant ta réponse.")
         else:
@@ -511,17 +513,32 @@ async def _captcha_present(page) -> bool:
         return False   # page en cours de rechargement
 
 
-async def attendre_captcha(page) -> bool:
+class CaptchaReporte(Exception):
+    """Mode « captchas groupés » : le chapitre demande un captcha, on le garde pour la fin."""
+
+
+def captchas_groupes() -> bool:
+    """Réglage « captchas groupés » (⚙️ Réglages) : les chapitres qui demandent un captcha sont
+    gardés pour la fin du téléchargement, avec une seule alerte."""
+    return os.environ.get("JAPSCAN_CAPTCHAS_GROUPES", "").strip() == "1"
+
+
+COMPTE_CAPTCHAS = {"n": 0}     # captchas affichés depuis le démarrage (pour comparer les deux modes)
+
+
+async def attendre_captcha(page, alerter: bool = True) -> bool:
     """Si le lecteur affiche un captcha, prévient l'utilisateur et attend qu'il le résolve
     (depuis la page « Vérification » de l'appli). Renvoie True si la page est utilisable."""
     if not await _captcha_present(page):
         return True
+    COMPTE_CAPTCHAS["n"] += 1
     logger.warning("Le lecteur demande un captcha : en attente de l'utilisateur")
     _noter(f"captcha demandé sur {page.url}")
     with _VERIF_VERROU:
         _VERIF.update(actif=True, loop=asyncio.get_running_loop(), page=page, depuis=time.time(), url=page.url)
     try:
-        await asyncio.to_thread(_alerter_telegram, page.url, "captcha")
+        if alerter:
+            await asyncio.to_thread(_alerter_telegram, page.url, "captcha")
         fin = time.time() + PATIENCE_HUMAIN
         while time.time() < fin:
             await asyncio.sleep(2)
@@ -585,7 +602,7 @@ def camoufox_etat() -> dict:
         module = importlib.util.find_spec("camoufox") is not None
     except Exception:
         module = False
-    return {"moteur": moteur(), "module": module, "navigateur": MARQUE_CAMOUFOX.exists(),
+    return {"moteur": moteur(), "captchas_groupes": captchas_groupes(), "module": module, "navigateur": MARQUE_CAMOUFOX.exists(),
             "en_cours": _INSTALL_CAMOUFOX["en_cours"], "message": _INSTALL_CAMOUFOX["etat"]}
 
 
@@ -1072,11 +1089,13 @@ class JapscanScraper:
                 await browser.close()
                 return []
 
-    async def download_chapter_pages(self, chapter_url: str, session=None) -> list[bytes]:
+    async def download_chapter_pages(self, chapter_url: str, session=None, reporter_captcha: bool = False,
+                                     alerter: bool = True) -> list[bytes]:
         """Récupère les pages d'un chapitre. Sans « session », ouvre puis ferme son propre navigateur ;
         avec une session (navigateur, contexte) déjà ouverte, la réutilise : plus rapide pour plusieurs chapitres."""
         if session is not None:
-            return await self._lire_chapitre(session[1], chapter_url, chauffer=False)
+            return await self._lire_chapitre(session[1], chapter_url, chauffer=False,
+                                             reporter_captcha=reporter_captcha, alerter=alerter)
         async with async_playwright() as p:
             browser, context = await self._init_browser(p)
             try:
@@ -1105,7 +1124,8 @@ class JapscanScraper:
         except Exception:
             pass
 
-    async def _lire_chapitre(self, context, chapter_url: str, chauffer: bool = False) -> list[bytes]:
+    async def _lire_chapitre(self, context, chapter_url: str, chauffer: bool = False,
+                             reporter_captcha: bool = False, alerter: bool = True) -> list[bytes]:
         """Lit les pages d'un chapitre : d'abord telles qu'affichées (canvas / grandes images),
         sinon en interceptant les images qui passent sur le réseau, dans l'ordre où le lecteur les demande."""
         logger.info(f"Début de l'aspiration du chapitre : {chapter_url}")
@@ -1168,7 +1188,11 @@ class JapscanScraper:
             await asyncio.sleep(4)  # Laisser charger le lecteur JS
 
             # Le lecteur peut exiger un captcha : l'utilisateur le résout depuis la page « Vérification »
-            if not await attendre_captcha(page):
+            if reporter_captcha and await _captcha_present(page):
+                COMPTE_CAPTCHAS["n"] += 1
+                _noter(f"captcha gardé pour la fin : {chapter_url}")
+                raise CaptchaReporte(chapter_url)
+            if not await attendre_captcha(page, alerter):
                 return []
 
             # Juste après un captcha, le lecteur reste parfois vide (aucune page annoncée) : on recharge
@@ -1183,7 +1207,7 @@ class JapscanScraper:
                     await page.goto(chapter_url, wait_until="domcontentloaded", timeout=30000)
                     await attendre_cloudflare(page, humain=True)
                     await asyncio.sleep(6)
-                    if not await attendre_captcha(page):
+                    if not await attendre_captcha(page, alerter):
                         return []
 
             # Défilement progressif vers le bas pour forcer le chargement de toutes les pages
@@ -1234,6 +1258,8 @@ class JapscanScraper:
             except Exception as e:
                 _noter(f"  extraction de la page impossible : {e.__class__.__name__}")
 
+        except CaptchaReporte:
+            raise
         except Exception as e:
             logger.error(f"Erreur lors du chargement du chapitre {chapter_url} : {e}")
         finally:
@@ -1312,55 +1338,101 @@ class JapscanScraper:
         async with async_playwright() as p:
             session = await self._ouvrir_session(p)
             try:
-                echecs_de_suite = 0
-                for idx, chapter in enumerate(chapters):
-                    if job.get("annule"):
-                        job["status"] = "annule"
-                        logger.info(f"Téléchargement annulé : {job_id}")
-                        break
+                groupes = captchas_groupes()
+                captchas_avant = COMPTE_CAPTCHAS["n"]
+                job["captchas_groupes"] = groupes
+                echecs = {"de_suite": 0}
+                reportes = []
+
+                async def traiter(idx, chapter, reporter, alerter=True):
+                    """Télécharge un chapitre ; renvoie False s'il est gardé pour la fin (captcha)."""
                     titre = chapter.get("title") or f"Chapitre {idx + 1}"
                     job["en_cours"] = titre
                     try:
-                        pages = await self.download_chapter_pages(chapter["url"], session=session)
+                        pages = await self.download_chapter_pages(chapter["url"], session=session,
+                                                                  reporter_captcha=reporter, alerter=alerter)
                         if not pages:
                             logger.warning(f"Aucune page pour {titre}")
                             job["failed"].append(titre)
-                            echecs_de_suite += 1
+                            echecs["de_suite"] += 1
                         else:
-                            echecs_de_suite = 0
+                            echecs["de_suite"] = 0
                             num = int(chapter.get("num") or idx + 1)
                             fichier = self.output_dir / f"{num:03d} - {nom_sur(titre)}.cbz"
                             if self.create_cbz(pages, fichier):
                                 job["downloaded"].append(str(fichier))
                             else:
                                 job["failed"].append(titre)
+                    except CaptchaReporte:
+                        return False
                     except Exception as e:
                         logger.error(f"Erreur chapitre {titre} : {e}")
                         job["failed"].append(titre)
                         job["error"] = str(e)
+                    return True
 
-                    job["progress"] = idx + 1
-                    if progress_callback:
-                        progress_callback(job)
-
+                async def pause():
                     # Pause entre deux chapitres, comme un lecteur qui lit (réglable avec JAPSCAN_PAUSE, en secondes ; 0 = aucune)
-                    if idx < len(chapters) - 1 and not job.get("annule"):
-                        try:
-                            base = float(os.environ.get("JAPSCAN_PAUSE", "20"))
-                        except ValueError:
-                            base = 20.0
-                        if base > 0:
-                            import random
-                            job["en_cours"] = "(pause avant le chapitre suivant)"
-                            await asyncio.sleep(random.uniform(base * 0.75, base * 1.5))
+                    try:
+                        base = float(os.environ.get("JAPSCAN_PAUSE", "20"))
+                    except ValueError:
+                        base = 20.0
+                    if base > 0:
+                        import random
+                        job["en_cours"] = "(pause avant le chapitre suivant)"
+                        await asyncio.sleep(random.uniform(base * 0.75, base * 1.5))
 
-                    if echecs_de_suite >= 3:
+                def trop_d_echecs():
+                    if echecs["de_suite"] >= 3:
                         job["status"] = "error"
                         job["error"] = ("3 chapitres de suite sans aucune page : arrêt du téléchargement "
                                         "(Cloudflare ou lecteur du site). Envoie le rapport pour qu'on cherche pourquoi.")
                         logger.error(job["error"])
+                        return True
+                    return False
+
+                # 1re passe : tous les chapitres (en mode groupé, ceux qui demandent un captcha sont mis de côté)
+                for idx, chapter in enumerate(chapters):
+                    if job.get("annule"):
+                        break
+                    if await traiter(idx, chapter, reporter=groupes):
+                        job["progress"] = job.get("progress", 0) + 1
+                    else:
+                        reportes.append((idx, chapter))
+                        job["en_attente_captcha"] = len(reportes)
+                    if progress_callback:
+                        progress_callback(job)
+                    if idx < len(chapters) - 1 and not job.get("annule"):
+                        await pause()
+                    if trop_d_echecs():
                         break
 
+                # 2e passe (mode groupé) : une seule alerte, puis les captchas à la suite
+                if reportes and job["status"] == "running" and not job.get("annule"):
+                    n = len(reportes)
+                    logger.info(f"{n} chapitre(s) gardé(s) pour la fin : captcha à résoudre")
+                    await asyncio.to_thread(
+                        _alerter_telegram, f"groupe:{job_id}", "captcha",
+                        f"🛡️ MouFlanga : « {job.get('title')} » est téléchargé, sauf {n} chapitre(s) qui demandent "
+                        f"un captcha. Ils t'attendent à la suite sur la page « Vérification ».")
+                    for k, (idx, chapter) in enumerate(reportes):
+                        if job.get("annule"):
+                            break
+                        job["en_attente_captcha"] = n - k
+                        await traiter(idx, chapter, reporter=False, alerter=False)
+                        job["progress"] = job.get("progress", 0) + 1
+                        if progress_callback:
+                            progress_callback(job)
+                        if trop_d_echecs():
+                            break
+                    job["en_attente_captcha"] = 0
+
+                job["captchas"] = COMPTE_CAPTCHAS["n"] - captchas_avant
+                _noter(f"captchas : {job['captchas']} pour {len(chapters)} chapitre(s) · mode "
+                       f"{'groupé (gardés pour la fin)' if groupes else 'normal (au fur et à mesure)'}")
+                if job.get("annule") and job["status"] == "running":
+                    job["status"] = "annule"
+                    logger.info(f"Téléchargement annulé : {job_id}")
                 if job["status"] == "running":
                     job["status"] = "completed"
                     logger.info(f"Téléchargement terminé : {job_id}")

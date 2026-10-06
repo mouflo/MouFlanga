@@ -71,7 +71,9 @@ def init_app(app, base_dir, version_fn, get_dirs):
             return jsonify({"ok": True, "message": "Installation lancée en arrière-plan (quelques minutes). Cette page se met à jour."})
         choix = "camoufox" if body.get("moteur") == "camoufox" else "chrome"
         _enregistrer("JAPSCAN_MOTEUR", choix)
-        logger.info("Navigateur du scraper : %s", choix)
+        groupes = "1" if body.get("captchas_groupes") else "0"
+        _enregistrer("JAPSCAN_CAPTCHAS_GROUPES", groupes)
+        logger.info("Navigateur du scraper : %s · captchas groupés : %s", choix, "oui" if groupes == "1" else "non")
         return jsonify({"ok": True, "message": "Enregistré : pris en compte au prochain lancement du navigateur."})
 
     @app.route("/api/settings/telegram")

@@ -78,5 +78,39 @@ class TelechargementTest(unittest.TestCase):
         self.assertEqual(self.fermees, 1)   # le navigateur est refermé une seule fois, à la fin
 
 
+    def test_captchas_groupes_gardes_pour_la_fin(self):
+        """Mode groupé : les chapitres à captcha passent à la fin, une seule alerte, tout est téléchargé."""
+        ordre = []
+
+        async def lire(url, reporter_captcha=False, alerter=True, **kw):
+            ordre.append((url, reporter_captcha, alerter))
+            if reporter_captcha and url.endswith(("/1/", "/3/")):
+                raise js.CaptchaReporte(url)
+            return [b"\xff\xd8" + b"0" * 20000]
+        with mock.patch.object(self.sc, "download_chapter_pages", lire), \
+                mock.patch.dict(os.environ, {"JAPSCAN_CAPTCHAS_GROUPES": "1"}), \
+                mock.patch.object(js, "_alerter_telegram") as alerte:
+            self.sc.download_manga_sync("g1", "Test", _chapitres(4))
+        job = js.download_jobs["g1"]
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(len(job["downloaded"]), 4)
+        self.assertEqual(job["progress"], 4)
+        self.assertEqual(alerte.call_count, 1)                       # une seule alerte groupée
+        fin = [(u, r, a) for u, r, a in ordre[4:]]
+        self.assertEqual([u[-3:] for u, _, _ in fin], ["/1/", "/3/"])  # repris à la fin, dans l'ordre
+        self.assertTrue(all(not r and not a for _, r, a in fin))     # sans report ni alerte par page
+
+    def test_mode_normal_sans_report(self):
+        vus = []
+
+        async def lire(url, reporter_captcha=False, **kw):
+            vus.append(reporter_captcha)
+            return [b"\xff\xd8" + b"0" * 20000]
+        with mock.patch.object(self.sc, "download_chapter_pages", lire), \
+                mock.patch.dict(os.environ, {"JAPSCAN_CAPTCHAS_GROUPES": ""}):
+            self.sc.download_manga_sync("g2", "Test", _chapitres(3))
+        self.assertEqual(vus, [False, False, False])
+        self.assertEqual(js.download_jobs["g2"]["status"], "completed")
+
 if __name__ == "__main__":
     unittest.main()
