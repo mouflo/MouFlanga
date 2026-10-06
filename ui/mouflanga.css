@@ -1,301 +1,41 @@
-/* MouFlanga - Styles spécifiques */
-
-.container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 16px;
-}
-
-.view {
-    display: none;
-}
-
-.view.active {
-    display: block;
-}
-
-.back {
-    display: inline-block;
-    margin-bottom: 16px;
-    color: var(--accent);
-    text-decoration: none;
-    font-weight: 500;
-}
-
-.back:hover {
-    text-decoration: underline;
-}
-
-/* Grille de mangas */
-.manga-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 16px;
-    margin-top: 16px;
-}
-
-.manga-card {
-    background: var(--card);
-    border-radius: 8px;
-    overflow: hidden;
-    cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.manga-card:hover {
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.manga-card img {
-    width: 100%;
-    height: 200px;
-    object-fit: cover;
-    background: var(--field);
-}
-
-.manga-card-info {
-    padding: 12px;
-    font-size: 0.9rem;
-}
-
-.manga-card-title {
-    font-weight: 600;
-    margin-bottom: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: var(--text);
-}
-
-.manga-card-meta {
-    color: var(--muted);
-    font-size: 0.8rem;
-}
-
-/* Liste des chapitres */
-.section {
-    margin-bottom: 24px;
-}
-
-.section h2 {
-    margin: 0 0 16px;
-    color: var(--text);
-}
-
-.chapters-list {
-    display: grid;
-    gap: 8px;
-}
-
-.chapter-item {
-    background: var(--field);
-    padding: 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    transition: background 0.2s;
-}
-
-.chapter-item:hover {
-    background: var(--surface2);
-}
-
-.chapter-item .meta {
-    color: var(--muted);
-    font-size: 0.85rem;
-}
-
-/* Lecteur */
-.reader-container {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    gap: 8px;
-    padding: 8px;
-}
-
-.reader-controls {
-    background: var(--card);
-    padding: 12px;
-    border-radius: 4px;
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-}
-
-.reader-controls button {
-    padding: 8px 16px;
-}
-
-#page-counter {
-    flex: 1;
-    text-align: center;
-    color: var(--text2);
-}
-
-.reader-pages {
-    flex: 1;
-    overflow: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg);
-    border-radius: 4px;
-}
-
-.reader-pages img {
-    max-width: 95%;
-    max-height: 95%;
-    object-fit: contain;
-}
-
-.reader-nav {
-    display: flex;
-    gap: 8px;
-    padding: 8px;
-}
-
-.reader-nav button {
-    flex: 1;
-    padding: 12px;
-}
-
-/* Panel */
-.mou-panel {
-    background: var(--card);
-    border-radius: 8px;
-    padding: 20px;
-    margin-bottom: 16px;
-}
-
-.mou-panel h2 {
-    margin: 0 0 8px;
-    color: var(--text);
-}
-
-.sub {
-    color: var(--muted);
-    font-size: 0.9rem;
-    margin-bottom: 16px;
-}
-
-.field {
-    margin-bottom: 16px;
-}
-
-.field label {
-    display: block;
-    font-size: 0.9rem;
-    color: var(--text);
-    margin-bottom: 6px;
-    font-weight: 500;
-}
-
-.field input[type="text"],
-.field input[type="number"],
-.field input[type="password"],
-.field select {
-    width: 100%;
-    padding: 10px;
-    background: var(--field);
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    color: var(--text);
-    font-family: inherit;
-    font-size: 0.95rem;
-}
-
-.field input:focus,
-.field select:focus {
-    border-color: var(--accent);
-    outline: none;
-    box-shadow: 0 0 0 2px rgba(82, 181, 75, 0.1);
-}
-
-.field input[type="checkbox"] {
-    margin-right: 8px;
-    accent-color: var(--accent);
-}
-
-.row {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-.mou-btn {
-    padding: 10px 20px;
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 0.95rem;
-    transition: background 0.2s;
-}
-
-.mou-btn:hover {
-    background: var(--accent-hover);
-}
-
-.mou-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-#save-msg {
-    margin-top: 12px;
-    padding: 10px;
-    border-radius: 4px;
-    font-size: 0.9rem;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-    .manga-grid {
-        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    }
-
-    .reader-controls {
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .reader-controls button {
-        width: 100%;
-    }
-
-    .reader-nav {
-        flex-direction: column;
-    }
-
-    .reader-nav button {
-        width: 100%;
-    }
-
-    .container {
-        padding: 8px;
-    }
-
-    .mou-panel {
-        padding: 16px;
-    }
-}
-
-@media (prefers-color-scheme: light) {
-    :root {
-        --bg: #f5f5f5;
-        --card: #ffffff;
-        --surface: #ffffff;
-        --field: #f0f0f0;
-        --text: #1a1a1a;
-        --text2: #333333;
-        --muted: #666666;
-    }
+/* MouFlanga · liste des séries et page d'une série (le style de base vient de mou-ui.css) */
+.container { max-width:1200px; margin:0 auto; padding:16px; }
+.panel { background:var(--card); border-radius:8px; padding:16px; margin-bottom:16px; }
+.panel h2 { margin:0 0 6px; font-size:1.2rem; }
+.toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+.toolbar input { flex:1 1 220px; }
+.back { display:inline-block; margin-bottom:12px; color:var(--muted); text-decoration:none; }
+.back:hover { color:var(--text); }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:14px; }
+.card { background:var(--surface2); border-radius:8px; overflow:hidden; cursor:pointer; position:relative; border:1px solid transparent; transition:border-color .15s, transform .15s; }
+.card:hover, .card:focus-visible { border-color:var(--accent); transform:translateY(-2px); outline:none; }
+.card .cv { aspect-ratio:2/3; width:100%; display:block; object-fit:cover; background:#151515; }
+.card .nm { padding:8px 10px 2px; font-weight:600; font-size:.92rem; line-height:1.25; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.card .st { padding:0 10px 10px; color:var(--muted); font-size:.8rem; }
+.card .bar { height:3px; background:#333; margin:0 10px 10px; border-radius:2px; overflow:hidden; }
+.card .bar i { display:block; height:100%; background:var(--accent); }
+.card .badge { position:absolute; top:8px; right:8px; background:var(--accent); color:#fff; font-size:.72rem; font-weight:700; border-radius:10px; padding:2px 8px; }
+.card .badge.done { background:#444; }
+.empty { color:var(--muted); padding:30px 8px; text-align:center; line-height:1.6; }
+.series-head { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+.series-head img { width:150px; aspect-ratio:2/3; object-fit:cover; border-radius:6px; background:#151515; flex:none; }
+.series-info { flex:1 1 260px; min-width:0; }
+.series-info h2 { font-size:1.4rem; overflow-wrap:anywhere; }
+.meta { color:var(--muted); font-size:.9rem; margin-bottom:12px; }
+.row { display:flex; gap:8px; flex-wrap:wrap; }
+.chapters { margin-top:16px; border-top:1px solid var(--line); }
+.chap { display:flex; align-items:center; gap:10px; padding:10px 6px; border-bottom:1px solid var(--line); cursor:pointer; }
+.chap:hover { background:var(--surface2); }
+.chap .dot { width:10px; height:10px; border-radius:50%; background:var(--accent); flex:none; }
+.chap.read .dot { background:transparent; border:2px solid #555; }
+.chap.read .ct { color:var(--muted); }
+.chap .ct { flex:1; min-width:0; overflow-wrap:anywhere; }
+.chap .cs { color:var(--muted); font-size:.8rem; flex:none; }
+.chap .tog { background:var(--field); color:var(--text); border:0; border-radius:4px; padding:5px 9px; font-size:.8rem; cursor:pointer; flex:none; }
+.chap.cur { background:rgba(82,181,75,.1); }
+@media (max-width:800px) {
+    .container { padding:10px; }
+    .grid { grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:10px; }
+    .series-head img { width:110px; }
+    .toolbar select { flex:1 1 100%; }
 }

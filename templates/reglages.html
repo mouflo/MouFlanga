@@ -5,80 +5,61 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Réglages · MouFlanga</title>
-<link rel="icon" type="image/svg+xml" href="/icons/mouflanga.svg">
-<link rel="manifest" href="/icons/manifest.webmanifest">
-<meta name="theme-color" content="#121315">
+<link rel="icon" type="image/svg+xml" href="/icons/mouflanga.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
 <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
-<link rel="stylesheet" href="/ui/mouflanga.css?v={{ version|urlencode }}">
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+<link rel="stylesheet" href="/ui/mou-settings.css?v={{ version|urlencode }}">
+<script src="/ui/mou-settings.js?v={{ version|urlencode }}"></script>
 </head>
-<body class="mou-skin">
+<body>
 <div class="container">
     <div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}" data-sub="Réglages"></div>
-    <a class="back" href="/">← Retour à la liste</a>
+    <a class="back" href="/">← Retour aux mangas</a>
 
-    <div class="mou-panel">
+    <div class="panel">
         <h2>📁 Dossiers</h2>
-        <div class="sub">Où trouver tes mangas et autres paramètres. L'appli redémarre après l'enregistrement.</div>
+        <div class="sub">Où se trouvent tes mangas : un sous-dossier par série, avec des fichiers .cbz ou .cbr dedans. L'appli redémarre après l'enregistrement (quelques secondes).</div>
+        <div class="field"><label for="pathManga">Dossier des mangas</label>
+            <div class="row nowrap"><input type="text" id="pathManga" autocapitalize="off" spellcheck="false" placeholder="/mnt/mouflosyno/Manga"><button class="btn ghost" data-browse="pathManga">📂 Parcourir</button></div></div>
+        <div class="tabsinfo" id="pathsInfo"></div>
+        <div class="row" style="margin-top:12px"><button class="btn" id="pathsSave">Enregistrer et redémarrer</button></div>
+        <div id="pathsMsg"></div>
+    </div>
 
-        <div class="field">
-            <label for="mangaDir">Dossier des mangas</label>
-            <input type="text" id="mangaDir" autocapitalize="off" spellcheck="false" placeholder="/mnt/data/manga">
-        </div>
-
-        <div class="field">
-            <label for="libraryDir">Dossier Emby (optionnel)</label>
-            <input type="text" id="libraryDir" autocapitalize="off" spellcheck="false" placeholder="/mnt/mouflosyno/Emby-Media">
-        </div>
-
-        <div class="field">
-            <label for="autoImport">
-                <input type="checkbox" id="autoImport"> Import automatique des nouveaux chapitres
-            </label>
-        </div>
-
-        <div class="row" style="margin-top:16px">
-            <button class="mou-btn" id="save-btn">Enregistrer</button>
-        </div>
-        <div id="save-msg"></div>
+    <div class="panel">
+        <h2>📖 Lecture</h2>
+        <div class="sub">Ces choix se font aussi dans le lecteur (boutons en haut) et sont retenus sur cet appareil.</div>
+        <div class="field"><label for="prefDir">Sens de lecture</label>
+            <select id="prefDir"><option value="rtl">Manga (de droite à gauche)</option><option value="ltr">Occidental (de gauche à droite)</option></select></div>
+        <div class="field"><label for="prefMode">Affichage</label>
+            <select id="prefMode"><option value="page">Une page à la fois</option><option value="scroll">Défilement vertical</option></select></div>
+        <div class="field"><label for="prefFit">Ajustement</label>
+            <select id="prefFit"><option value="height">Page entière (à la hauteur)</option><option value="width">À la largeur</option></select></div>
+        <div id="prefMsg"></div>
     </div>
 </div>
-
 <script>
-async function loadSettings() {
-    const r = await fetch('/api/settings/get');
-    if (!r.ok) return;
-
-    const data = await r.json();
-    document.getElementById('mangaDir').value = data.manga_dir || '';
-    document.getElementById('libraryDir').value = data.library_dir || '';
-    document.getElementById('autoImport').checked = data.auto_import || false;
+async function loadPaths() {
+    const p = await api('/api/settings/paths');
+    $('pathManga').value = p.manga || '';
+    $('pathsInfo').innerHTML = `📚 Mangas : ${p.manga_ok ? 'accessible' : '⚠️ introuvable'}`;
 }
-
-document.getElementById('save-btn').addEventListener('click', async () => {
-    const data = {
-        manga_dir: document.getElementById('mangaDir').value,
-        library_dir: document.getElementById('libraryDir').value,
-        auto_import: document.getElementById('autoImport').checked
-    };
-
-    const r = await fetch('/api/settings/save', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(data)
-    });
-
-    const msg = document.getElementById('save-msg');
-    if (r.ok) {
-        msg.textContent = '✅ Réglages enregistrés';
-        msg.style.color = '#52b54b';
-    } else {
-        msg.textContent = '❌ Erreur enregistrement';
-        msg.style.color = '#e5534b';
-    }
+$('pathsSave').addEventListener('click', async () => {
+    if (!confirm('Enregistrer ce dossier ? L\'appli va redémarrer (quelques secondes).')) return;
+    const r = await post('/api/settings/paths', {manga: $('pathManga').value});
+    if (!r.ok) return say('pathsMsg', r.error, false);
+    say('pathsMsg', r.message, 'warn');
+    for (let i = 0; i < 40; i++) { await new Promise(res => setTimeout(res, 2000)); try { const x = await fetch('/api/settings/paths'); if (x.ok) { await loadPaths(); return say('pathsMsg', 'Dossier relu.', true); } } catch (e) {} }
+    say('pathsMsg', 'L\'appli met longtemps à revenir : recharge la page dans un instant.', 'warn');
 });
-
-loadSettings();
+const PREFS = {dir: ['mfDir', 'rtl'], mode: ['mfMode', 'page'], fit: ['mfFit', 'height']};
+function getPref(k) { try { return localStorage.getItem(PREFS[k][0]) || PREFS[k][1]; } catch (e) { return PREFS[k][1]; } }
+for (const k of Object.keys(PREFS)) {
+    const el = $('pref' + k[0].toUpperCase() + k.slice(1));
+    el.value = getPref(k);
+    el.addEventListener('change', () => { try { localStorage.setItem(PREFS[k][0], el.value); say('prefMsg', 'Enregistré sur cet appareil.', true); } catch (e) { say('prefMsg', 'Ce navigateur refuse de retenir le choix.', false); } });
+}
+loadPaths();
 </script>
 </body>
 </html>

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Lecteur · MouFlanga</title>
+<link rel="icon" type="image/svg+xml" href="/icons/mouflanga.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="theme-color" content="#000000">
+<link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+<link rel="stylesheet" href="/ui/lecteur.css?v={{ version|urlencode }}">
+<script src="/ui/lecteur.js?v={{ version|urlencode }}" defer></script>
+</head>
+<body class="reader-body">
+<div id="bar" class="bar">
+    <a href="/" id="rBack" class="rbtn" title="Retour à la série">← Retour</a>
+    <div class="rtitle"><span id="rSeries"></span><small id="rChapter"></small></div>
+    <span id="rCount" class="rcount"></span>
+    <button class="rbtn" id="optMode" title="Une page à la fois ou défilement">📄 Page</button>
+    <button class="rbtn" id="optDir" title="Sens de lecture">⟵ Manga</button>
+    <button class="rbtn" id="optFit" title="Ajustement de l'image">↔ Largeur</button>
+    <button class="rbtn" id="optFull" title="Plein écran">⛶</button>
+</div>
+<div id="stage" class="stage" tabindex="0">
+    <div id="msg" class="rmsg"></div>
+    <div id="single" class="single"><img id="img" alt="" draggable="false"></div>
+    <div id="scroll" class="scroll"></div>
+    <div id="zoneL" class="zone left"></div><div id="zoneR" class="zone right"></div>
+</div>
+<div id="foot" class="foot">
+    <button class="rbtn" id="prevCh">⏮ Chapitre précédent</button>
+    <input type="range" id="slider" min="1" max="1" value="1" aria-label="Page">
+    <button class="rbtn" id="nextCh">Chapitre suivant ⏭</button>
+</div>
+</body>
+</html>

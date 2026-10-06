@@ -1,0 +1,16 @@
+[Unit]
+Description=MouFlanga - Bibliothèque et lecteur de mangas
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mouflanga
+ExecStart=/opt/mouflanga/venv/bin/python app.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/mouflanga.log
+StandardError=append:/var/log/mouflanga.log
+
+[Install]
+WantedBy=multi-user.target

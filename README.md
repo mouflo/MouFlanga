@@ -1,136 +1,95 @@
-# 📚 MouFlanga - Lecteur et gestionnaire de mangas
+# 📚 MouFlanga · bibliothèque et lecteur de mangas
 
 [![Licence : MIT](https://img.shields.io/badge/Licence-MIT-yellow.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
-**Application web pour gérer, organiser et lire vos mangas téléchargés en fichiers CBR** - une interface élégante pour parcourir vos chapitres, accéder aux informations des mangas, et les intégrer à votre médiathèque Emby.
+Application web pour **ranger et lire tes mangas et BD** (fichiers `.cbz` et `.cbr`) depuis ton serveur, sur ordinateur comme sur téléphone. Elle fait partie de la suite MouFl, avec MouFlanimeXer, MouFloster et MouFlopening : même style, même page ⚙️ Réglages, même connexion, même Journal de diagnostic.
+
+Pour installer l'appli sur le serveur et la remettre en route après une panne, voir [`INSTALL.md`](INSTALL.md).
 
 ## 📸 Aperçu
 
 *Captures avec des données de démonstration.*
 
-**La liste des mangas téléchargés avec progression de lecture**
+**La bibliothèque : une couverture par série, avec le nombre de chapitres à lire**
 
-![Liste des mangas](docs/screenshots/liste.png)
+![La bibliothèque](docs/screenshots/liste.png)
 
-**Lecteur de manga en plein écran avec navigation chapitres**
+**Une série : chapitres lus ou non, bouton « Reprendre »**
 
-![Lecteur](docs/screenshots/lecteur.png)
+![Une série](docs/screenshots/serie.png)
 
-**Gestion des mangas : supprimer, organiser, re-scraper**
+**Le lecteur : une page à la fois, sens manga, barre de progression**
 
-![Gestion](docs/screenshots/gestion.png)
+![Le lecteur](docs/screenshots/lecteur.png)
 
-**La page ⚙️ Réglages : dossiers, Emby, intégration scraper**
+**La page ⚙️ Réglages : dossier des mangas et préférences de lecture**
 
-![Réglages](docs/screenshots/reglages.png)
+![La page Réglages](docs/screenshots/reglages.png)
+
+**La fenêtre « Journal » pour comprendre une panne**
+
+![Le Journal](docs/screenshots/journal.png)
 
 **Sur téléphone**
 
-![Mobile](docs/screenshots/mobile.png)
+![Sur téléphone](docs/screenshots/mobile.png)
 
-## ✨ Fonctionnalités
+## ✨ Ce que fait l'appli
 
-- 📖 **Lecteur CBR intégré** : navigation fluide entre les pages, zoom, mode plein écran
-- 📚 **Gestion des mangas** : liste avec miniatures, tri par titre/date/progression
-- 🔍 **Recherche et filtres** : trouve rapidement un manga par titre, auteur ou genre
-- 📊 **Suivi de lecture** : progression sauvegardée par manga
-- 🎨 **Informations détaillées** : couverture, synopsis, nombre de chapitres, taille
-- 🔄 **Intégration Scraper** : relance le téléchargement pour ajouter de nouveaux chapitres
-- 🌙 **Thème clair/sombre** : interface cohérente avec le reste de la suite MouFl
-- 📱 **Responsive** : fonctionne sur téléphone, tablette et desktop
-- ⚙️ **Page Réglages** : même page que MouFlopening et MouFloster pour cohérence
-- 📦 **Import CBR** : détecte automatiquement les fichiers CBR dans le dossier manga
+- 📚 **Bibliothèque automatique** : chaque sous-dossier du dossier des mangas est une série, chaque fichier `.cbz` / `.cbr` (ou `.zip` / `.rar`) est un chapitre ou un tome
+- 🖼️ **Couvertures** : première page du premier chapitre, ou une image `cover.jpg` posée dans le dossier de la série
+- 🔍 **Recherche et tri** : par titre, lecture récente, ajout récent, nombre de chapitres restant à lire
+- 📖 **Lecteur intégré** : une page à la fois ou défilement vertical, sens manga (droite → gauche) ou occidental, page entière ou largeur, plein écran
+- ⌨️ **Commandes** : flèches du clavier, espace, touches Début / Fin, clic sur le côté gauche ou droit de l'image (ou toucher sur téléphone), touche `H` pour masquer les barres
+- ⏭️ **Chapitre suivant automatique** en arrivant à la fin, avec reprise exactement à la page où tu t'étais arrêté
+- ✔️ **Suivi de lecture** enregistré sur le serveur : chapitres lus, « Tout marquer lu / non lu »
+- 🔒 **Connexion** par identifiant et mot de passe (le mot de passe n'est jamais stocké en clair)
+- 🩺 **Journal** : un rapport complet à copier-coller pour comprendre un problème, sans se connecter au serveur
+- ⚙️ **Réglages** : dossier des mangas (avec un explorateur de dossiers) et préférences de lecture
+- 🔄 **Mise à jour automatique** : le serveur vérifie GitHub chaque minute et se met à jour tout seul
 
-## 🚀 Installation
+## 📁 Comment ranger les fichiers
 
-### Prérequis
-- Python 3.9+
-- Git
-- Accès à la liste des mangas (fichiers CBR)
+```
+Manga/
+├── Ma série A/
+│   ├── Ma série A - Tome 01.cbz
+│   └── Ma série A - Tome 02.cbz
+├── Ma série B/
+│   ├── Chapitre 001.cbr
+│   └── Chapitre 002.cbr
+└── Un fichier seul.cbz        → rangé dans « (Sans série) »
+```
 
-### Installation rapide
+Les pages des fichiers sont triées « comme un humain » (1, 2, 10 et non 1, 10, 2). Beaucoup de fichiers `.cbr` sont en réalité des ZIP : l'appli regarde le contenu du fichier, pas seulement son extension. Les vrais fichiers RAR demandent en plus un petit outil de décompression sur le serveur (installé automatiquement si possible, sinon le Journal l'explique).
+
+## 🚀 Installation rapide
+
+Sur le serveur, en `root` :
 
 ```bash
 cd /opt
 git clone https://github.com/mouflo/MouFlanga.git mouflanga
-cd mouflanga
-pip install -r requirements.txt
-bash install.sh
+bash /opt/mouflanga/install.sh
+bash /opt/mouflanga/set-login.sh
 ```
 
-Ouvre ensuite `http://<adresse-du-serveur>:5002` et configure les dossiers dans ⚙️ Réglages.
+Puis ouvre `http://IP-DU-SERVEUR:5002`, va dans ⚙️ Réglages et choisis ton dossier de mangas. Les détails sont dans [`INSTALL.md`](INSTALL.md).
 
-## 📖 Utilisation
+## 🔐 Sécurité
 
-1. **Ajoute tes mangas** : télécharge-les avec le scraper ou copie les fichiers CBR manuellement
-2. **Regarde la liste** : clique sur un manga pour voir ses chapitres
-3. **Lis** : clique sur un chapitre pour l'ouvrir en lecteur
-4. **Suivi** : ta progression est sauvegardée automatiquement
-5. **Gestion** : supprime, déplace, ou re-scrape un manga depuis le panneau de gestion
+- L'identifiant et le mot de passe (haché) sont dans `data/secrets.env`, qui n'est **jamais** envoyé sur GitHub
+- Aucune clé ni mot de passe dans le code ni dans l'historique du dépôt
+- Les fichiers ne sont lus que **dans** le dossier des mangas configuré : un chemin piégé (`../`, lien symbolique vers l'extérieur) est refusé
+- L'appli ne modifie, ne déplace et ne supprime aucun de tes fichiers : elle les lit seulement
 
-## ⚙️ Configuration
-
-Tout se règle dans la page **⚙️ Réglages** :
-
-- **Dossier des mangas** : où sont tes fichiers CBR (défaut `/mnt/data/manga`)
-- **Dossier Emby** : si tu veux synchroniser avec ta médiathèque (optionnel)
-- **Import automatique** : redémare automatiquement après un scraper (optionnel)
-
-## 📁 Structure attendue
-
-```
-/mnt/data/manga/
-├── One Piece/
-│   ├── Tome_01/
-│   │   ├── Chapitre_1.cbr
-│   │   ├── Chapitre_2.cbr
-│   │   └── Chapitre_3.cbr
-│   └── Tome_02/
-│       └── ...
-├── Naruto/
-└── Bleach/
-```
-
-## 🔧 Développement
+## 🧪 Tests
 
 ```bash
-# Cloner et activer l'environnement
-git clone https://github.com/mouflo/MouFlanga.git
-cd MouFlanga
-python3 -m venv venv
-source venv/bin/activate
-
-# Installer les dépendances
-pip install -r requirements.txt
-
-# Lancer l'app
-python3 app.py
+python3 -m unittest discover -s tests
 ```
 
-Ouvre `http://localhost:5002` 🎉
+## 📄 Licence
 
-## 🎨 Interface
-
-- **Dark mode** par défaut, toggle clair/sombre dans l'en-tête
-- **Design MouFl** cohérent avec MouFlanimeXer, MouFloster et MouFlopening
-- **Responsive** : s'adapte à tous les écrans
-- **Optimisée pour téléphone** : navigation tactile fluide
-
-## 🤝 Dans la même famille
-
-[MouFlanimeXer](https://github.com/mouflo/MouFlanimeXer) (remux d'animes) · [MouFloster](https://github.com/mouflo/MouFloster) (posters) · [MouFlopening](https://github.com/mouflo/MouFlopening) (thèmes) : même style, même page Réglages.
-
-## 📝 Licence
-
-MIT - voir [LICENSE](LICENSE)
-
-## 📞 Aide
-
-Un problème ? Ouvre une [issue sur GitHub](https://github.com/mouflo/MouFlanga/issues).
-
----
-
-Créé avec ❤️ pour les amateurs de manga • Intégré à MouFl
-
-*Dernière mise à jour: 2026-10-06*
+MIT, voir [`LICENSE`](LICENSE).

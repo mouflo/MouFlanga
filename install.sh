@@ -1,74 +1,40 @@
 #!/bin/bash
-# MouFlanga - Script d'installation
-
+# Installation de MouFlanga sur le serveur (Proxmox / LXC), à lancer UNE fois après le clonage dans /opt/mouflanga :
+#   cd /opt && git clone https://github.com/mouflo/MouFlanga.git mouflanga && bash /opt/mouflanga/install.sh
 set -e
+REPO_DIR="/opt/mouflanga"
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-INSTALL_DIR="/opt/mouflanga"
-PYTHON="python3"
+echo "📚 Installation de MouFlanga"
+echo "============================"
+[ -d "$REPO_DIR" ] || { echo "❌ $REPO_DIR introuvable : clone d'abord le dépôt dans /opt"; exit 1; }
+command -v python3 >/dev/null || { echo "❌ Python 3 n'est pas installé"; exit 1; }
+cd "$REPO_DIR"
 
-echo "╔════════════════════════════════════════════════════════════╗"
-echo "║            MouFlanga - Installation                        ║"
-echo "╚════════════════════════════════════════════════════════════╝"
-echo ""
+echo "🐍 Environnement Python et dépendances..."
+python3 -m venv venv
+./venv/bin/python -m pip install -q --upgrade pip
+./venv/bin/python -m pip install -q -r requirements.txt
 
-# Vérifier Python
-if ! command -v $PYTHON &> /dev/null; then
-    echo "❌ Python 3 n'est pas installé"
-    exit 1
+# Lecture des vrais fichiers RAR (.cbr) : un outil de décompression est nécessaire (facultatif)
+if ! command -v unrar >/dev/null && ! command -v 7z >/dev/null && ! command -v bsdtar >/dev/null; then
+    echo "📦 Outil de décompression RAR (pour les vrais .cbr)..."
+    (apt-get install -y -qq libarchive-tools >/dev/null 2>&1 && echo "✅ bsdtar installé") || echo "⚠️ Installation impossible : seuls les .cbz et les .cbr en ZIP s'ouvriront (voir le Journal)"
 fi
 
-echo "✅ Python trouvé: $(python3 --version)"
-echo ""
+mkdir -p data
+chmod +x deploy.sh setup-cronjob.sh set-login.sh set-secret.sh
 
-# Créer le répertoire d'installation
-if [ -d "$INSTALL_DIR" ]; then
-    echo "📂 MouFlanga existe déjà dans $INSTALL_DIR"
-    read -p "Remplacer ? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm -rf "$INSTALL_DIR"
-    else
-        exit 0
-    fi
-fi
+echo "⚙️  Service systemd..."
+cp mouflanga.service /etc/systemd/system/mouflanga.service
+systemctl daemon-reload
+systemctl enable mouflanga >/dev/null 2>&1
+systemctl restart mouflanga
 
-mkdir -p "$INSTALL_DIR"
-cp -r "$SCRIPT_DIR"/* "$INSTALL_DIR/"
-echo "✅ Fichiers copiés dans $INSTALL_DIR"
-echo ""
+echo "⏱️  Mise à jour automatique (cronjob, ajoutée sans toucher aux autres)..."
+bash "$REPO_DIR/setup-cronjob.sh"
 
-# Créer l'environnement virtuel
-cd "$INSTALL_DIR"
-$PYTHON -m venv venv
-source venv/bin/activate
-pip install -q -r requirements.txt
-
-echo "✅ Environnement virtuel créé et dépendances installées"
 echo ""
-
-# Créer les répertoires
-mkdir -p "$INSTALL_DIR/data"
-chmod 755 "$INSTALL_DIR"
-
-# Créer le fichier de configuration
-cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env" 2>/dev/null || true
-
-echo "✅ Répertoires créés"
-echo ""
-echo "╔════════════════════════════════════════════════════════════╗"
-echo "║            Installation terminée ! 🎉                     ║"
-echo "╚════════════════════════════════════════════════════════════╝"
-echo ""
-echo "📌 Prochaines étapes:"
-echo ""
-echo "1. Lance l'application:"
-echo "   cd $INSTALL_DIR"
-echo "   source venv/bin/activate"
-echo "   python3 app.py"
-echo ""
-echo "2. Ouvre http://localhost:5002"
-echo ""
-echo "3. Configure tes répertoires dans ⚙️ Réglages"
-echo ""
-echo "Besoin d'aide ? Voir INSTALL.md"
+echo "✅ Installation terminée !"
+echo "🌐 Accès : http://IP-DU-SERVEUR:5002"
+echo "🔒 Définis ton identifiant : bash /opt/mouflanga/set-login.sh"
+echo "📁 Dossier des mangas : ⚙️ Réglages dans l'appli (par défaut /mnt/mouflosyno/Manga)"

@@ -1,185 +1,60 @@
-# 📦 Installation - MouFlanga
+# Installation et remise en route de MouFlanga
 
-Guide d'installation complet de MouFlanga sur différentes plateformes.
+Ce guide sert à installer MouFlanga sur le serveur (Proxmox / LXC) et à tout remettre en place après une panne ou une migration. Toutes les commandes se tapent en `root`, sans `sudo`.
 
-## 🚀 Installation rapide
-
-### Linux / Proxmox / LXC
+## 1. Installer
 
 ```bash
-# Cloner le dépôt
 cd /opt
 git clone https://github.com/mouflo/MouFlanga.git mouflanga
-cd mouflanga
-
-# Lancer l'installation
-bash install.sh
-
-# Démarrer l'application
-source venv/bin/activate
-python3 app.py
+bash /opt/mouflanga/install.sh
 ```
 
-Ouvre http://localhost:5002 🎉
+Le script `install.sh` :
+- crée l'environnement Python (`venv`) et installe les dépendances ;
+- essaie d'installer un outil de décompression RAR (`bsdtar`), utile seulement pour les vrais `.cbr` ;
+- installe et démarre le service `mouflanga` (port **5002**) ;
+- ajoute **une ligne** à la crontab pour la mise à jour automatique, sans toucher aux autres lignes.
 
-### macOS
+Si le dépôt est privé, `git clone` demande un accès : crée un jeton GitHub en lecture seule limité à ce dépôt (*Settings → Developer settings → Fine-grained tokens*), et ne le colle jamais dans une conversation. Le jeton n'est utile qu'au clonage (le `git pull` automatique le garde dans la configuration de git sur le serveur).
+
+## 2. Définir l'identifiant
 
 ```bash
-# Cloner le dépôt
-git clone https://github.com/mouflo/MouFlanga.git ~/MouFlanga
-cd ~/MouFlanga
-
-# Créer l'environnement virtuel
-python3 -m venv venv
-source venv/bin/activate
-
-# Installer les dépendances
-pip install -r requirements.txt
-
-# Démarrer
-python3 app.py
+bash /opt/mouflanga/set-login.sh
 ```
 
-Ouvre http://localhost:5002
+Le script demande un identifiant et un mot de passe (8 caractères minimum). Seul un hash du mot de passe est conservé, dans `data/secrets.env`.
 
-### Windows
+## 3. Choisir le dossier des mangas
 
-```powershell
-# Cloner le dépôt
-git clone https://github.com/mouflo/MouFlanga.git C:\MouFlanga
-cd C:\MouFlanga
+Ouvre `http://IP-DU-SERVEUR:5002`, clique sur ⚙️ Réglages, puis sur 📂 Parcourir. Valeur par défaut : `/mnt/mouflosyno/Manga`. L'appli redémarre toute seule après l'enregistrement.
 
-# Créer l'environnement virtuel
-python -m venv venv
-venv\Scripts\activate
+## 4. Mise à jour automatique
 
-# Installer les dépendances
-pip install -r requirements.txt
+Chaque minute, `deploy.sh` compare le serveur à GitHub. S'il y a du nouveau, il met le code à jour, installe les dépendances si besoin et redémarre l'appli. Les réglages et la progression de lecture (dossier `data/`) ne sont jamais touchés.
 
-# Démarrer
-python app.py
-```
+- Journal du déploiement : `tail -f /var/log/mouflanga-cron.log`
+- Journal de l'appli : `journalctl -u mouflanga -n 50`
+- Tout est aussi visible dans l'appli, bouton 🩺 **Journal**
 
-Ouvre http://localhost:5002
+## 5. Reconstruire après une panne
 
-## ⚙️ Configuration
+1. Refaire l'étape 1 (cloner et lancer `install.sh`).
+2. Remettre le dossier `data/` sauvegardé (identifiant, progression, réglages), ou refaire les étapes 2 et 3.
+3. Vérifier que le partage réseau est bien monté (`ls /mnt/mouflosyno`).
 
-### Variables d'environnement
+## Fichiers propres au serveur (jamais sur GitHub)
 
-Crée un fichier `.env` dans le répertoire MouFlanga:
+| Fichier | Contenu |
+|---|---|
+| `data/secrets.env` | identifiant, mot de passe haché, dossier des mangas |
+| `data/progress.json` | chapitres lus et page en cours |
+| `data/covers/` | couvertures déjà calculées (peuvent être supprimées sans risque) |
+| `data/mouflanga.log` | journal de l'appli |
 
-```env
-# Dossiers
-MANGA_DIR=/mnt/data/manga
-OUTPUT_DIR=/mnt/data/manga-processed
-LIBRARY_DIR=/mnt/mouflosyno/Emby-Media
+## Problèmes courants
 
-# Application
-FLASK_PORT=5002
-FLASK_DEBUG=False
-SECRET_KEY=change-me-in-production
-```
-
-### Page Réglages
-
-Tout se configure depuis l'interface web → ⚙️ Réglages:
-
-- **Dossier des mangas**: Où sont tes fichiers CBR
-- **Dossier Emby**: Optionnel, pour la synchronisation
-- **Import automatique**: Ajouter les nouveaux chapitres automatiquement
-
-## 📂 Structure des fichiers
-
-```
-mouflanga/
-├── app.py                 # Application Flask principale
-├── requirements.txt       # Dépendances Python
-├── install.sh            # Script d'installation
-├── templates/            # Templates HTML
-├── ui/                   # CSS et JS
-├── static/               # Assets statiques
-├── data/                 # Configuration (généré)
-└── docs/                 # Documentation
-```
-
-## 🐍 Prérequis
-
-- Python 3.9+
-- Git (pour cloner)
-- ~500 MB d'espace libre (code + dépendances)
-- Accès aux fichiers CBR
-
-## 📖 Dépannage
-
-### Erreur "Port 5002 déjà utilisé"
-
-Modifie dans `.env`:
-```env
-FLASK_PORT=5003
-```
-
-### Erreur "Répertoire non trouvé"
-
-Vérifie que les dossiers existent:
-```bash
-ls -la /mnt/data/manga
-```
-
-### Mangas ne s'affichent pas
-
-1. Vérifie le dossier configuré
-2. Assure-toi qu'il y a des fichiers `.cbr`
-3. Regarde la console pour les erreurs
-
-### Impossible d'enregistrer les réglages
-
-Vérifie les permissions du répertoire `data/`:
-```bash
-chmod 755 /opt/mouflanga/data
-```
-
-## 🚀 Démarrage automatique avec systemd
-
-Crée `/etc/systemd/system/mouflanga.service`:
-
-```ini
-[Unit]
-Description=MouFlanga - Lecteur de mangas
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/mouflanga
-ExecStart=/opt/mouflanga/venv/bin/python3 /opt/mouflanga/app.py
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Puis:
-```bash
-systemctl enable mouflanga
-systemctl start mouflanga
-systemctl status mouflanga
-```
-
-## 🔄 Mise à jour
-
-```bash
-cd /opt/mouflanga
-git pull
-source venv/bin/activate
-pip install -r requirements.txt
-systemctl restart mouflanga
-```
-
-## 📞 Aide
-
-Besoin d'aide ? Ouvre une [issue sur GitHub](https://github.com/mouflo/MouFlanga/issues).
-
----
-
-*Dernière mise à jour: 2026-10-06*
+- **« Dossier des mangas introuvable »** : le partage réseau n'est pas monté, ou le chemin est faux. Corrige-le dans ⚙️ Réglages.
+- **Un `.cbr` ne s'ouvre pas** : le Journal indique s'il s'agit d'un vrai RAR sans outil de décompression. Installe-le avec `apt-get install libarchive-tools`, puis `./venv/bin/python -m pip install rarfile`.
+- **L'appli ne répond plus** : `systemctl restart mouflanga`, puis ouvre le Journal.

@@ -1,305 +1,360 @@
 #!/usr/bin/env python3
 """
-MouFlanga - Lecteur et gestionnaire de mangas CBR
-Application web pour organiser et lire vos mangas téléchargés
-"""
+MouFlanga · bibliothèque et lecteur de BD / mangas (fichiers .cbz et .cbr) pour la suite MouFl.
 
-import os
+- Parcourt le dossier des mangas : un sous-dossier = une série, un fichier = un chapitre (ou un tome)
+- Lecteur intégré : une page à la fois ou défilement, sens manga ou occidental, reprise là où tu t'es arrêté
+- Suivi de lecture (chapitres lus, page en cours), enregistré sur le serveur
+- Connexion, Journal de diagnostic et ⚙️ Réglages identiques aux autres applis
+"""
+import hashlib
+import io
 import json
 import logging
-from pathlib import Path
+import os
+import sys
+import threading
+import time
 from datetime import datetime
-from functools import wraps
-from flask import Flask, render_template, request, jsonify, send_file, session
-from werkzeug.security import check_password_hash, generate_password_hash
-import zipfile
-from io import BytesIO
-from PIL import Image
+from pathlib import Path
 
-# Configuration
-app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'mouflanga-dev-key-change-in-prod')
-VERSION = "1.0.0"
+from flask import Flask, Response, jsonify, render_template, request, send_file
 
-# Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Dossiers
-MANGA_DIR = Path(os.getenv('MANGA_DIR', '/mnt/data/manga'))
-DATA_DIR = Path('./data')
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
+_SECRETS_FILE = DATA_DIR / "secrets.env"
 
-SETTINGS_FILE = DATA_DIR / 'settings.json'
-AUTH_FILE = DATA_DIR / 'auth.json'
-PROGRESS_FILE = DATA_DIR / 'progress.json'
+try:
+    from dotenv import load_dotenv
+    for _f in (BASE_DIR / ".env", _SECRETS_FILE):
+        if _f.exists():
+            load_dotenv(_f, override=True)
+except ImportError:
+    pass  # python-dotenv absent : variables d'environnement du système seulement
 
-def load_json(path, default=None):
-    """Charge un fichier JSON"""
-    if path.exists():
+import archives
+import diag
+
+BASE_VERSION = "1.0"
+
+
+def get_version():
+    """Version = base manuelle + nombre de commits (numéro de déploiement) + hash court."""
+    try:
+        import subprocess
+        cwd = str(BASE_DIR)
+        count = subprocess.check_output(["git", "rev-list", "--count", "HEAD"], cwd=cwd, text=True, stderr=subprocess.DEVNULL).strip()
+        short = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=cwd, text=True, stderr=subprocess.DEVNULL).strip()
+        return f"v{BASE_VERSION}.{count} ({short})"
+    except Exception:
+        return f"v{BASE_VERSION}"
+
+
+APP_VERSION = get_version()
+MANGA_DIR = Path(os.getenv("MANGA_DIR", "/mnt/mouflosyno/Manga"))
+
+diag.setup_logging()
+logger = logging.getLogger("mouflanga")
+
+app = Flask(__name__)
+app.json.ensure_ascii = False
+
+import auth
+auth.init_app(app, APP_VERSION)
+
+PROGRESS_FILE = DATA_DIR / "progress.json"
+COVER_DIR = DATA_DIR / "covers"
+_progress_lock = threading.Lock()
+
+
+# ----------------------------------------------------------------------------
+# Outils
+# ----------------------------------------------------------------------------
+
+def _read_json(path, default):
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return default
+
+
+def _write_json(path, data):
+    tmp = Path(path).with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _safe_path(rel):
+    """Chemin relatif (donné par la page) -> chemin réel, uniquement À L'INTÉRIEUR du dossier des mangas."""
+    root = MANGA_DIR.resolve()
+    try:
+        full = (root / rel).resolve()
+        full.relative_to(root)
+    except (ValueError, OSError, RuntimeError):
+        return None
+    return full if full.is_file() and full.suffix.lower() in archives.ARCHIVE_EXT else None
+
+
+def _is_archive(p: Path):
+    return p.suffix.lower() in archives.ARCHIVE_EXT and not p.name.startswith(".")
+
+
+def _scan():
+    """{série: [fichiers]} — chaque sous-dossier est une série ; les fichiers posés à la racine forment « (Sans série) »."""
+    series = {}
+    if not MANGA_DIR.is_dir():
+        return series
+    loose = []
+    try:
+        entries = sorted(MANGA_DIR.iterdir(), key=lambda p: archives.natural_key(p.name))
+    except OSError:
+        return series
+    for entry in entries:
         try:
-            return json.loads(path.read_text())
-        except:
-            return default or {}
-    return default or {}
+            if entry.name.startswith((".", "@", "#")):
+                continue
+            if entry.is_dir():
+                files = []
+                for dirpath, dirnames, filenames in os.walk(entry, onerror=lambda e: None):
+                    dirnames[:] = [d for d in dirnames if not d.startswith((".", "@"))]
+                    files += [Path(dirpath) / n for n in filenames if _is_archive(Path(n))]
+                if files:
+                    series[entry.name] = sorted(files, key=lambda p: archives.natural_key(p.relative_to(entry)))
+            elif _is_archive(entry):
+                loose.append(entry)
+        except OSError:
+            continue
+    if loose:
+        series["(Sans série)"] = loose
+    return series
 
-def save_json(path, data):
-    """Sauvegarde un fichier JSON"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str))
 
-def load_settings():
-    """Charge les paramètres"""
-    return load_json(SETTINGS_FILE, {
-        'manga_dir': str(MANGA_DIR),
-        'library_dir': '',
-        'auto_import': True
-    })
+def _rel(p: Path):
+    return str(p.relative_to(MANGA_DIR))
 
-def require_login(f):
-    """Décorateur pour vérifier l'authentification"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user' not in session:
-            return jsonify({'error': 'Non authentifié'}), 401
-        return f(*args, **kwargs)
-    return decorated_function
 
-# ========== ROUTES AUTHENTIFICATION ==========
+def _title_of(p: Path):
+    return p.stem.replace("_", " ").strip()
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    """Page de connexion"""
-    if request.method == 'POST':
-        data = request.get_json()
-        username = data.get('username', '')
-        password = data.get('password', '')
 
-        auth = load_json(AUTH_FILE, {})
-        if username in auth and check_password_hash(auth[username], password):
-            session['user'] = username
-            return jsonify({'ok': True, 'message': 'Connecté'})
+# ----------------------------------------------------------------------------
+# Pages
+# ----------------------------------------------------------------------------
 
-        return jsonify({'ok': False, 'error': 'Identifiants invalides'}), 401
-
-    return render_template('login.html', version=VERSION)
-
-@app.route('/logout')
-def logout():
-    """Déconnexion"""
-    session.clear()
-    return jsonify({'ok': True})
-
-@app.route('/setup', methods=['GET', 'POST'])
-def setup():
-    """Page de configuration initiale"""
-    auth = load_json(AUTH_FILE, {})
-    if auth:
-        return jsonify({'error': 'Déjà configuré'}), 403
-
-    if request.method == 'POST':
-        data = request.get_json()
-        username = data.get('username', 'admin')
-        password = data.get('password', '')
-
-        if len(password) < 6:
-            return jsonify({'error': 'Mot de passe trop court'}), 400
-
-        auth[username] = generate_password_hash(password)
-        save_json(AUTH_FILE, auth)
-        session['user'] = username
-
-        return jsonify({'ok': True, 'message': 'Configuration terminée'})
-
-    return render_template('setup.html', version=VERSION)
-
-# ========== ROUTES MANGA ==========
-
-@app.route('/')
+@app.route("/")
 def index():
-    """Page d'accueil"""
-    auth = load_json(AUTH_FILE, {})
-    if 'user' not in session:
-        if auth:
-            return render_template('login.html', version=VERSION)
-        return render_template('setup.html', version=VERSION)
+    return render_template("index.html", version=APP_VERSION)
 
-    return render_template('index.html', version=VERSION)
 
-@app.route('/api/manga/list')
-@require_login
-def manga_list():
-    """Liste les mangas disponibles"""
-    settings = load_settings()
-    manga_dir = Path(settings.get('manga_dir', str(MANGA_DIR)))
-    progress = load_json(PROGRESS_FILE, {})
+@app.route("/lire")
+def reader():
+    return render_template("lecteur.html", version=APP_VERSION)
 
-    mangas = []
-    if manga_dir.exists():
-        for manga_folder in sorted(manga_dir.iterdir()):
-            if not manga_folder.is_dir():
-                continue
 
-            cbr_files = list(manga_folder.rglob('*.cbr'))
-            if not cbr_files:
-                continue
+# ----------------------------------------------------------------------------
+# Bibliothèque
+# ----------------------------------------------------------------------------
 
-            # Lire la couverture depuis le premier CBR
-            cover_url = f'/api/manga/{manga_folder.name}/cover'
-            chapters = len(cbr_files)
-            size_mb = sum(f.stat().st_size for f in cbr_files) / (1024 * 1024)
-
-            manga_id = manga_folder.name
-            progress_data = progress.get(manga_id, {})
-
-            mangas.append({
-                'id': manga_id,
-                'title': manga_folder.name,
-                'chapters': chapters,
-                'size_mb': round(size_mb, 1),
-                'cover': cover_url,
-                'progress': progress_data.get('current_chapter', 0),
-                'last_read': progress_data.get('last_read', '')
-            })
-
-    return jsonify({'mangas': mangas})
-
-@app.route('/api/manga/<manga_id>/chapters')
-@require_login
-def manga_chapters(manga_id):
-    """Liste les chapitres d'un manga"""
-    settings = load_settings()
-    manga_dir = Path(settings.get('manga_dir', str(MANGA_DIR)))
-    manga_path = manga_dir / manga_id
-
-    if not manga_path.exists():
-        return jsonify({'error': 'Manga non trouvé'}), 404
-
-    chapters = []
-    for cbr in sorted(manga_path.rglob('*.cbr')):
-        chapters.append({
-            'name': cbr.stem,
-            'path': str(cbr.relative_to(manga_dir)),
-            'size_mb': round(cbr.stat().st_size / (1024 * 1024), 1)
+@app.route("/api/library")
+def api_library():
+    if not MANGA_DIR.is_dir():
+        return jsonify({"error": f"Dossier des mangas introuvable : {MANGA_DIR} (le partage est-il monté ? voir ⚙️ Réglages)", "series": []}), 200
+    progress = _read_json(PROGRESS_FILE, {})
+    out = []
+    for name, files in _scan().items():
+        p = progress.get(name, {})
+        read = set(p.get("read", []))
+        total_size = 0
+        newest = 0
+        for f in files:
+            try:
+                st = f.stat()
+                total_size += st.st_size
+                newest = max(newest, st.st_mtime)
+            except OSError:
+                pass
+        out.append({
+            "id": name, "title": name, "chapters": len(files),
+            "read": len([f for f in files if _rel(f) in read]),
+            "size_mb": round(total_size / 1048576, 1),
+            "last_read": p.get("last", ""), "added": newest,
+            "cover": f"/api/cover?id={_q(name)}&v={int(newest)}",
         })
+    return jsonify({"series": out})
 
-    return jsonify({'chapters': chapters})
 
-@app.route('/api/manga/<manga_id>/cover')
-def manga_cover(manga_id):
-    """Obtient la couverture d'un manga"""
-    settings = load_settings()
-    manga_dir = Path(settings.get('manga_dir', str(MANGA_DIR)))
-    manga_path = manga_dir / manga_id
+def _q(text):
+    from urllib.parse import quote
+    return quote(text, safe="")
 
-    cbr_files = list(manga_path.glob('**/*.cbr'))
-    if not cbr_files:
-        return jsonify({'error': 'Pas de couverture'}), 404
 
+@app.route("/api/series")
+def api_series():
+    name = request.args.get("id", "")
+    files = _scan().get(name)
+    if files is None:
+        return jsonify({"error": "Série introuvable"}), 404
+    p = _read_json(PROGRESS_FILE, {}).get(name, {})
+    read = set(p.get("read", []))
+    chapters = []
+    for f in files:
+        try:
+            size = round(f.stat().st_size / 1048576, 1)
+        except OSError:
+            size = 0
+        chapters.append({"path": _rel(f), "title": _title_of(f), "size_mb": size, "read": _rel(f) in read})
+    return jsonify({"id": name, "title": name, "chapters": chapters,
+                    "current": p.get("current", ""), "page": p.get("page", 0),
+                    "rar": archives.rar_available()})
+
+
+@app.route("/api/cover")
+def api_cover():
+    name = request.args.get("id", "")
+    files = _scan().get(name)
+    if not files:
+        return Response(status=404)
+    # image « cover.jpg » / « folder.jpg » posée dans le dossier de la série : prioritaire
+    sub = MANGA_DIR / name
+    for cand in ("cover.jpg", "folder.jpg", "poster.jpg", "cover.png", "folder.png", "poster.png"):
+        if (sub / cand).is_file():
+            return send_file(sub / cand, max_age=3600)
+    first = files[0]
     try:
-        with zipfile.ZipFile(cbr_files[0], 'r') as cbr:
-            images = [f for f in cbr.namelist() if f.lower().endswith(('.jpg', '.png'))]
-            if images:
-                with cbr.open(images[0]) as img_file:
-                    img = Image.open(img_file)
-                    img.thumbnail((200, 300))
-                    output = BytesIO()
-                    img.save(output, format='JPEG', quality=85)
-                    output.seek(0)
-                    return send_file(output, mimetype='image/jpeg')
-    except Exception as e:
-        logger.error(f"Erreur couverture: {e}")
+        st = first.stat()
+        key = hashlib.sha1(f"{first}|{st.st_mtime_ns}|{st.st_size}".encode()).hexdigest()[:20]
+        cached = COVER_DIR / f"{key}.jpg"
+        if not cached.is_file():
+            from PIL import Image
+            names = archives.pages(first)
+            if not names:
+                return Response(status=404)
+            data, _ = archives.read_page(first, 0)
+            img = Image.open(io.BytesIO(data)).convert("RGB")
+            img.thumbnail((360, 540))
+            COVER_DIR.mkdir(parents=True, exist_ok=True)
+            tmp = cached.with_suffix(".tmp")
+            img.save(tmp, format="JPEG", quality=82)
+            os.replace(tmp, cached)
+        return send_file(cached, max_age=86400)
+    except archives.ArchiveError as e:
+        logger.warning("Couverture impossible pour %s : %s", name, e)
+    except Exception as e:  # image abîmée, format exotique...
+        logger.warning("Couverture impossible pour %s : %s: %s", name, e.__class__.__name__, e)
+    return Response(status=404)
 
-    return jsonify({'error': 'Erreur lecture couverture'}), 500
 
-@app.route('/api/chapter/pages/<path:cbr_path>')
-@require_login
-def chapter_pages(cbr_path):
-    """Liste les pages d'un chapitre"""
-    settings = load_settings()
-    manga_dir = Path(settings.get('manga_dir', str(MANGA_DIR)))
-    full_path = manga_dir / cbr_path
+# ----------------------------------------------------------------------------
+# Lecteur
+# ----------------------------------------------------------------------------
 
-    if not full_path.exists():
-        return jsonify({'error': 'Chapitre non trouvé'}), 404
-
+@app.route("/api/pages")
+def api_pages():
+    full = _safe_path(request.args.get("path", ""))
+    if full is None:
+        return jsonify({"error": "Chapitre introuvable"}), 404
     try:
-        with zipfile.ZipFile(full_path, 'r') as cbr:
-            pages = sorted([f for f in cbr.namelist() if f.lower().endswith(('.jpg', '.png'))])
-            return jsonify({'pages': pages, 'count': len(pages)})
-    except Exception as e:
-        logger.error(f"Erreur pages: {e}")
-        return jsonify({'error': str(e)}), 500
+        n = len(archives.pages(full))
+    except archives.ArchiveError as e:
+        logger.warning("Lecture impossible de %s : %s", full.name, e)
+        return jsonify({"error": str(e)}), 422
+    if n == 0:
+        return jsonify({"error": "Aucune image dans ce fichier"}), 422
+    return jsonify({"count": n, "title": _title_of(full)})
 
-@app.route('/api/chapter/page/<path:cbr_path>')
-@require_login
-def chapter_page(cbr_path):
-    """Obtient une page d'un chapitre"""
-    page_num = request.args.get('page', '0')
-    settings = load_settings()
-    manga_dir = Path(settings.get('manga_dir', str(MANGA_DIR)))
-    full_path = manga_dir / cbr_path
 
-    if not full_path.exists():
-        return jsonify({'error': 'Chapitre non trouvé'}), 404
-
+@app.route("/api/page")
+def api_page():
+    full = _safe_path(request.args.get("path", ""))
+    if full is None:
+        return Response("Chapitre introuvable", status=404)
     try:
-        with zipfile.ZipFile(full_path, 'r') as cbr:
-            pages = sorted([f for f in cbr.namelist() if f.lower().endswith(('.jpg', '.png'))])
-            if int(page_num) >= len(pages):
-                return jsonify({'error': 'Page non trouvée'}), 404
+        index = int(request.args.get("n", "0"))
+        data, mime = archives.read_page(full, index)
+    except ValueError:
+        return Response("Numéro de page invalide", status=400)
+    except archives.ArchiveError as e:
+        return Response(str(e), status=404)
+    resp = Response(data, mimetype=mime)
+    resp.headers["Cache-Control"] = "private, max-age=3600"
+    return resp
 
-            with cbr.open(pages[int(page_num)]) as page_file:
-                return send_file(BytesIO(page_file.read()), mimetype='image/jpeg')
+
+@app.route("/api/progress", methods=["POST"])
+def api_progress():
+    body = request.get_json(silent=True) or {}
+    series, rel = str(body.get("series", "")), str(body.get("path", ""))
+    if not series or _safe_path(rel) is None:
+        return jsonify({"ok": False, "error": "Chapitre inconnu"}), 400
+    try:
+        page = max(0, int(body.get("page", 0)))
+    except (TypeError, ValueError):
+        page = 0
+    with _progress_lock:
+        data = _read_json(PROGRESS_FILE, {})
+        p = data.setdefault(series, {})
+        p["current"], p["page"], p["last"] = rel, page, datetime.now().strftime("%Y-%m-%d %H:%M")
+        read = set(p.get("read", []))
+        if body.get("finished"):
+            read.add(rel)
+        p["read"] = sorted(read)
+        _write_json(PROGRESS_FILE, data)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/mark", methods=["POST"])
+def api_mark():
+    """Marquer des chapitres comme lus / non lus : un seul (path) ou toute la série (all)."""
+    body = request.get_json(silent=True) or {}
+    series = str(body.get("series", ""))
+    files = _scan().get(series)
+    if files is None:
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    value = bool(body.get("read", True))
+    targets = [_rel(f) for f in files] if body.get("all") else [str(body.get("path", ""))]
+    with _progress_lock:
+        data = _read_json(PROGRESS_FILE, {})
+        p = data.setdefault(series, {})
+        read = set(p.get("read", []))
+        valid = {_rel(f) for f in files}
+        for t in targets:
+            if t in valid:
+                (read.add if value else read.discard)(t)
+        p["read"] = sorted(read)
+        if not value and body.get("all"):
+            p.pop("current", None)
+            p["page"] = 0
+        _write_json(PROGRESS_FILE, data)
+    return jsonify({"ok": True})
+
+
+# ----------------------------------------------------------------------------
+# Journal, Réglages
+# ----------------------------------------------------------------------------
+
+def _diag_extra():
+    n_series, n_files = 0, 0
+    try:
+        sc = _scan()
+        n_series, n_files = len(sc), sum(len(v) for v in sc.values())
     except Exception as e:
-        logger.error(f"Erreur page: {e}")
-        return jsonify({'error': str(e)}), 500
+        return [f"Bibliothèque : analyse impossible ({e.__class__.__name__})"]
+    rar = "oui" if archives.rar_available() else "NON (les vrais .cbr en RAR ne s'ouvriront pas)"
+    return [f"Bibliothèque : {n_series} série(s), {n_files} fichier(s)", f"Lecture des RAR possible : {rar}"]
 
-# ========== ROUTES RÉGLAGES ==========
 
-@app.route('/reglages')
-@require_login
-def reglages():
-    """Page Réglages"""
-    settings = load_settings()
-    return render_template('reglages.html', version=VERSION, settings=settings)
+diag.init_app(app, APP_VERSION, lambda: MANGA_DIR, _diag_extra)
+import settings_page
+settings_page.init_app(app, BASE_DIR, lambda: APP_VERSION, lambda: {"manga": str(MANGA_DIR)})
 
-@app.route('/api/settings/get')
-@require_login
-def get_settings():
-    """Obtient les paramètres"""
-    return jsonify(load_settings())
 
-@app.route('/api/settings/save', methods=['POST'])
-@require_login
-def save_settings():
-    """Sauvegarde les paramètres"""
-    data = request.get_json()
-    settings = load_settings()
-    settings.update(data)
-    save_json(SETTINGS_FILE, settings)
-    return jsonify({'ok': True})
-
-# ========== ROUTES API ==========
-
-@app.route('/api/health')
+@app.route("/api/health")
 def health():
-    """Vérification de santé"""
-    return jsonify({'status': 'ok', 'version': VERSION})
+    return jsonify({"status": "ok", "version": APP_VERSION})
 
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({'error': 'Non trouvé'}), 404
 
-@app.errorhandler(500)
-def server_error(e):
-    logger.error(str(e))
-    return jsonify({'error': 'Erreur serveur'}), 500
-
-if __name__ == '__main__':
-    port = int(os.getenv('FLASK_PORT', 5002))
-    app.run(
-        host='0.0.0.0',
-        port=port,
-        debug=os.getenv('FLASK_DEBUG', False)
-    )
+if __name__ == "__main__":
+    port = int(os.getenv("FLASK_PORT", "5002"))
+    print(f"MouFlanga {APP_VERSION} : http://0.0.0.0:{port}", file=sys.stderr)
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
