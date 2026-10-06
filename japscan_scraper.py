@@ -491,6 +491,14 @@ async def attendre_cloudflare(page, secondes: int = 25, humain: bool = False) ->
             _VERIF.update(actif=False, loop=None, page=None)
 
 
+async def _pages_annoncees(page) -> int:
+    """Nombre de pages que le lecteur annonce (liste déroulante des pages), 0 si inconnu."""
+    try:
+        return int(await page.evaluate("() => (document.querySelector('select#pages') || {options: []}).options.length") or 0)
+    except Exception:
+        return 0
+
+
 async def _captcha_present(page) -> bool:
     """Le lecteur du site réclame-t-il un captcha avant d'afficher les pages ?"""
     try:
@@ -1161,6 +1169,21 @@ class JapscanScraper:
             if not await attendre_captcha(page):
                 return []
 
+            # Juste après un captcha, le lecteur reste parfois vide (aucune page annoncée) : on recharge
+            # le chapitre une fois, le site se souvient alors du captcha résolu
+            if not await _pages_annoncees(page):
+                await asyncio.sleep(4)
+                if not await _pages_annoncees(page):
+                    _noter("  lecteur vide (aucune page annoncée) : rechargement du chapitre")
+                    captured_images.clear()
+                    arrivee.clear()
+                    ordre.clear()
+                    await page.goto(chapter_url, wait_until="domcontentloaded", timeout=30000)
+                    await attendre_cloudflare(page, humain=True)
+                    await asyncio.sleep(6)
+                    if not await attendre_captcha(page):
+                        return []
+
             # Défilement progressif vers le bas pour forcer le chargement de toutes les pages
             logger.info("Défilement de la page pour forcer le lazy-loading...")
             for _ in range(15):
@@ -1172,18 +1195,15 @@ class JapscanScraper:
             debut = time.time()
             dernier, derniere_variation, attendues = len(captured_images), time.time(), 0
             while time.time() - debut < 150:
-                try:
-                    attendues = await page.evaluate("() => (document.querySelector('select#pages') || {options: []}).options.length")
-                except Exception:
-                    pass
+                attendues = await _pages_annoncees(page) or attendues
                 n = len(captured_images)
                 if n != dernier:
                     dernier, derniere_variation = n, time.time()
                 if attendues and n >= attendues:
                     break
                 calme = time.time() - derniere_variation
-                if calme > 25 and n > 0:
-                    break            # plus rien n'arrive : on prend ce qu'on a
+                if calme > 25 and (n > 0 or not attendues):
+                    break            # plus rien n'arrive (ou lecteur vide) : on prend ce qu'on a
                 if calme > 6:
                     try:
                         await page.keyboard.press("ArrowRight")

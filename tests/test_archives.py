@@ -85,6 +85,7 @@ class CheminsTest(unittest.TestCase):
             for mod in ("app",):
                 sys.modules.pop(mod, None)
             import app as A
+            A.MANGA_DIR = root   # data/secrets.env du serveur peut imposer un autre dossier
             self.assertIsNotNone(A._safe_path("S/c.cbz"))
             self.assertIsNone(A._safe_path("../secret.cbz"))
             self.assertIsNone(A._safe_path("/etc/passwd"))

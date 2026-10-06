@@ -28,7 +28,9 @@ class NotifierTest(unittest.TestCase):
         self.assertNotIn(TOKEN, msg)
 
     def test_non_configure(self):
-        with mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "", "TELEGRAM_CHAT_ID": ""}):
+        # Sans reprendre le jeton d'une autre appli MouFl installée sur le même serveur
+        with mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "", "TELEGRAM_CHAT_ID": ""}), \
+                mock.patch("notifier._chercher_ailleurs", return_value=None):
             self.assertFalse(notifier.configure())
             ok, _ = notifier.envoyer("x")
             self.assertFalse(ok)
