@@ -336,3 +336,14 @@
         flex-wrap: wrap;
     }
 }
+
+/* Boutons « Retour / Suivant » toujours visibles en bas de l'écran, même au milieu d'une longue liste */
+.actions-collantes {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    margin-top: 20px;
+    padding: 12px 0;
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+}

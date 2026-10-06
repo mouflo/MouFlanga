@@ -448,7 +448,7 @@ def verification():
 @app.route("/telecharger")
 def telecharger():
     """Page de téléchargement de mangas depuis Japscan."""
-    return render_template("telecharger.html")
+    return render_template("telecharger.html", version=APP_VERSION)
 
 
 # ----------------------------------------------------------------------------

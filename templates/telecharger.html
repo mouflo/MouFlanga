@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Télécharger · MouFlanga</title>
-    <link rel="stylesheet" href="/ui/mou-ui.css">
-    <link rel="stylesheet" href="/ui/mou-settings.css">
-    <link rel="stylesheet" href="/ui/telecharger.css">
+    <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+    <link rel="stylesheet" href="/ui/mou-settings.css?v={{ version|urlencode }}">
+    <link rel="stylesheet" href="/ui/telecharger.css?v={{ version|urlencode }}">
 </head>
 <body>
     <div class="container">
@@ -42,7 +42,7 @@
                     <div class="loading">Chargement des mangas...</div>
                 </div>
 
-                <div style="margin-top: 20px; text-align: right;">
+                <div class="actions-collantes" style="text-align: right;">
                     <button class="mou-btn" id="btn-next-chapters" disabled>
                         Suivant →
                     </button>
@@ -67,7 +67,7 @@
 
                 <div id="chapters-list" class="chapters-list"></div>
 
-                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                <div class="actions-collantes" style="display: flex; gap: 10px;">
                     <button class="mou-btn secondary" id="btn-back-manga">
                         ← Retour
                     </button>
@@ -84,7 +84,7 @@
 
                 <div id="metadata-form" style="max-width: 600px;"></div>
 
-                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                <div class="actions-collantes" style="display: flex; gap: 10px;">
                     <button class="mou-btn secondary" id="btn-back-chapters">
                         ← Retour
                     </button>
@@ -117,7 +117,7 @@
         </div>
     </div>
 
-    <script src="/ui/mou-ui.js"></script>
-    <script src="/ui/telecharger.js"></script>
+    <script src="/ui/mou-ui.js?v={{ version|urlencode }}"></script>
+    <script src="/ui/telecharger.js?v={{ version|urlencode }}"></script>
 </body>
 </html>
