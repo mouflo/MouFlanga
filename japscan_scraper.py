@@ -164,8 +164,30 @@ _JS_INFO_LECTEUR = r"""() => {
     nImg: imgs.length, nImgGrandes: gros.length, nCanvas: cans.length,
     grandes: gros.slice(0, 4).map(i => ({src: court(i.currentSrc || i.src), w: i.naturalWidth, h: i.naturalHeight, cls: (i.className || '').toString().slice(0, 30), parent: (i.parentElement && (i.parentElement.id || i.parentElement.className) || '').toString().slice(0, 30)})),
     canvas: cans.slice(0, 4).map(c => ({w: c.width, h: c.height, cls: (c.className || '').toString().slice(0, 30), id: c.id})),
-    texte: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 160),
+    texte: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 700),
   };
+}"""
+
+
+# Structure du lecteur (pour le rapport) : où sont les pages, comment passer à la suivante
+_JS_STRUCTURE_LECTEUR = r"""() => {
+  const nom = e => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + ((e.className && e.className.toString().trim()) ? '.' + e.className.toString().trim().split(/\s+/).slice(0, 3).join('.') : '');
+  const court = u => (u || '').split('?')[0].replace(/^https?:\/\//, '').slice(0, 70);
+  const res = {};
+  res.selects = [...document.querySelectorAll('select')].slice(0, 4).map(s => ({nom: nom(s), n: s.options.length, debut: [...s.options].slice(0, 3).map(o => (o.text + '=' + o.value).slice(0, 40))}));
+  res.nav = [...document.querySelectorAll('a, button')].filter(e => /suiv|préc|prec|next|prev|page|»|«|›|‹/i.test((e.innerText || e.title || e.getAttribute('aria-label') || '').trim()) && (e.innerText || '').length < 30).slice(0, 8).map(e => nom(e) + ' « ' + (e.innerText || e.title || '').trim().slice(0, 20) + ' » ' + court(e.getAttribute('href')));
+  res.scripts = [...document.querySelectorAll('script[src]')].map(s => court(s.src)).slice(0, 10);
+  res.inline = [...document.querySelectorAll('script:not([src])')].map(s => s.textContent).filter(t => /page|image|canvas|chap|scan/i.test(t)).slice(0, 3).map(t => t.replace(/\s+/g, ' ').slice(0, 260));
+  const cible = [...document.querySelectorAll('body *')].filter(e => e.children.length < 12 && /^\s*Page\s*1\s*$/.test(e.innerText || '')).slice(-1)[0];
+  if (cible) {
+    const chaine = []; for (let n = cible, i = 0; n && n !== document.body && i < 6; n = n.parentElement, i++) chaine.push(nom(n));
+    res.chaine = chaine;
+    const conteneur = cible.parentElement && cible.parentElement.parentElement || cible.parentElement;
+    res.autour = [...conteneur.children].slice(0, 12).map(e => nom(e) + ' ' + Math.round(e.getBoundingClientRect().width) + 'x' + Math.round(e.getBoundingClientRect().height) + ' [' + (e.innerText || '').replace(/\s+/g, ' ').slice(0, 25) + ']');
+  }
+  res.imgs = [...document.querySelectorAll('img')].slice(0, 8).map(i => court(i.currentSrc || i.src) + ' ' + i.naturalWidth + 'x' + i.naturalHeight + ' ' + nom(i));
+  res.canvas = [...document.querySelectorAll('canvas')].slice(0, 8).map(c => nom(c) + ' ' + c.width + 'x' + c.height + ' css:' + Math.round(c.getBoundingClientRect().width) + 'x' + Math.round(c.getBoundingClientRect().height) + (c.parentElement ? ' dans ' + nom(c.parentElement) : ''));
+  return res;
 }"""
 
 # Extrait les pages telles qu'on les voit : canvas (images remises en ordre par le site) ou grandes images
@@ -961,6 +983,23 @@ class JapscanScraper:
                     _noter(f"lecteur : lecture de la page impossible ({e.__class__.__name__})")
                 for v in vues:
                     _noter(f"  image réseau : {v}")
+
+                # Si rien d'exploitable à l'écran : on décrit le lecteur et on essaie de passer à la page suivante
+                if not info.get("nImgGrandes"):
+                    try:
+                        st = await page.evaluate(_JS_STRUCTURE_LECTEUR)
+                        for k, v in st.items():
+                            _noter(f"  lecteur/{k} : {str(v)[:700]}")
+                        for essai in ("touche →", "clic au centre"):
+                            if essai == "touche →":
+                                await page.keyboard.press("ArrowRight")
+                            else:
+                                await page.mouse.click(640, 400)
+                            await asyncio.sleep(4)
+                            st2 = await page.evaluate(_JS_STRUCTURE_LECTEUR)
+                            _noter(f"  après {essai} : images {st2.get('imgs')} · canvas {st2.get('canvas')}")
+                    except Exception as e:
+                        _noter(f"  description du lecteur impossible : {e.__class__.__name__}")
 
                 # Pages telles qu'affichées (les canvas contiennent les images déjà remises en ordre)
                 try:
