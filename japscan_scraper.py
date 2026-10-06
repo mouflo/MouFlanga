@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import shutil
+import socket
 import threading
 import time
 import zipfile
@@ -396,6 +397,14 @@ class JapscanScraper:
         try:
             _assurer_ecran()
             PROFIL.mkdir(parents=True, exist_ok=True)
+            args_cf = []
+            try:
+                # brunhild.challenges.cloudflare.com n'existe qu'en IPv6 : sans IPv6 sur le serveur, le défi ne peut pas
+                # s'achever. On le redirige vers une adresse IPv4 de Cloudflare (le nom reste le même pour le chiffrement).
+                ip4 = socket.getaddrinfo("challenges.cloudflare.com", 443, socket.AF_INET)[0][4][0]
+                args_cf = [f"--host-resolver-rules=MAP *.challenges.cloudflare.com {ip4}"]
+            except OSError:
+                pass
             options = dict(
                 user_data_dir=str(PROFIL),
                 headless=False,  # Lancé via xvfb-run sur serveur
@@ -409,6 +418,7 @@ class JapscanScraper:
                     # sinon le navigateur annonce « WebGL indisponible », typique d'un robot
                     "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader",
                     "--ignore-gpu-blocklist", "--enable-webgl",
+                    *args_cf,
                 ],
             )
             try:

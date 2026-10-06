@@ -12,6 +12,7 @@ import io
 import json
 import logging
 import os
+import socket
 import sys
 import threading
 import time
@@ -478,13 +479,20 @@ def _diag_extra():
 
 def _diag_dns():
     """Vérifie que le serveur sait joindre les adresses dont Cloudflare a besoin pour valider la vérification."""
-    import socket
     lignes = []
     try:
         serveurs = [l.split()[1] for l in open("/etc/resolv.conf", encoding="utf-8") if l.startswith("nameserver")]
         lignes.append("Serveur(s) DNS utilisé(s) : " + (", ".join(serveurs) or "aucun"))
     except OSError:
         pass
+    try:
+        c = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        c.settimeout(4)
+        c.connect(("2606:4700:4700::1111", 443))
+        c.close()
+        lignes.append("IPv6 du serveur : oui")
+    except OSError:
+        lignes.append("IPv6 du serveur : NON (brunhild.challenges.cloudflare.com n'existe qu'en IPv6 : redirigé vers IPv4 par l'appli)")
     for nom in ("www.japscan.foo", "challenges.cloudflare.com", "brunhild.challenges.cloudflare.com",
                 "turnstile.cloudflare.com", "cloudflare.com"):
         try:
