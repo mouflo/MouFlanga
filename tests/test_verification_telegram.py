@@ -46,6 +46,54 @@ class NotifierTest(unittest.TestCase):
             self.assertFalse(notifier.detecter_chat(TOKEN)[0])
 
 
+class RepriseTest(unittest.TestCase):
+    """MouFlanga reprend les réglages Telegram d'une autre appli du serveur."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self.tmp = tempfile.TemporaryDirectory()
+        self.racine = Path(self.tmp.name)
+        autre = self.racine / "moufloster" / "data"
+        autre.mkdir(parents=True)
+        (autre / "secrets.env").write_text(f'TELEGRAM_BOT_TOKEN="{TOKEN}"\nTELEGRAM_CHAT_ID="987654321"\nAUTRE="x"\n')
+        self.patchs = [mock.patch.object(notifier, "RACINE_APPLIS", self.racine),
+                       mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "", "TELEGRAM_CHAT_ID": ""})]
+        for p in self.patchs:
+            p.start()
+        notifier.vider_cache()
+
+    def tearDown(self):
+        for p in self.patchs:
+            p.stop()
+        notifier.vider_cache()
+        self.tmp.cleanup()
+
+    def test_reprise_env(self):
+        self.assertTrue(notifier.configure())
+        self.assertEqual(notifier.source_reprise(), "moufloster")
+        self.assertEqual(notifier._chat(), "987654321")
+
+    def test_valeurs_mal_formees_ignorees(self):
+        (self.racine / "moufloster" / "data" / "secrets.env").write_text('TELEGRAM_BOT_TOKEN="pas-un-jeton"\nTELEGRAM_CHAT_ID="abc"\n')
+        notifier.vider_cache()
+        self.assertFalse(notifier.configure())
+
+    def test_reprise_json(self):
+        import json
+        d = self.racine / "mouflopening" / "data"
+        d.mkdir(parents=True)
+        (d / "settings.json").write_text(json.dumps({"telegram": {"bot_token": TOKEN, "chat_id": 555666777}}))
+        (self.racine / "moufloster" / "data" / "secrets.env").unlink()
+        notifier.vider_cache()
+        self.assertEqual(notifier.source_reprise(), "mouflopening")
+
+    def test_reglages_perso_prioritaires(self):
+        with mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "1" * 9 + ":" + "B" * 35, "TELEGRAM_CHAT_ID": "111222333"}):
+            self.assertEqual(notifier.source_reprise(), "")
+            self.assertEqual(notifier._chat(), "111222333")
+
+
 class VerificationTest(unittest.TestCase):
     def test_aucune_verification(self):
         self.assertFalse(js.verif_etat()["actif"])

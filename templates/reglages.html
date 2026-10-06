@@ -28,7 +28,8 @@
 
     <div class="panel">
         <h2>🔔 Alertes Telegram</h2>
-        <div class="sub">Quand Cloudflare demande une vérification pendant un téléchargement, l'appli t'envoie un message Telegram avec le lien de la page « Vérification ». Étapes : dans Telegram, parle à <b>@BotFather</b>, envoie <code>/newbot</code> et suis les questions ; il te donne un <b>jeton</b>. Colle-le ci-dessous, puis envoie « bonjour » à ton nouveau bot et clique sur « Détecter mon identifiant ».</div>
+        <div class="sub">Quand Cloudflare demande une vérification pendant un téléchargement, l'appli t'envoie un message Telegram avec le lien de la page « Vérification ». Si une autre appli de ce serveur (MouFloster, MouFlanimeXer, MouFlopening…) utilise déjà Telegram, MouFlanga reprend ses réglages tout seul : il n'y a rien à saisir. Sinon, crée un bot avec <b>@BotFather</b> (<code>/newbot</code>), colle son <b>jeton</b> ci-dessous, envoie « bonjour » au bot et clique sur « Détecter mon identifiant ».</div>
+        <div class="tabsinfo" id="tgSource"></div>
         <div class="field"><label for="tgToken">Jeton du bot</label>
             <input type="password" id="tgToken" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="123456789:ABC…"><div class="tabsinfo" id="tgTokenState"></div></div>
         <div class="field"><label for="tgChat">Ton identifiant Telegram</label>
@@ -70,6 +71,7 @@ async function loadTelegram() {
     $('tgChat').value = t.chat_id || '';
     $('tgUrl').value = t.app_url || '';
     $('tgTokenState').textContent = t.token_hint ? 'Jeton actuel : ' + t.token_hint : 'Aucun jeton défini';
+    $('tgSource').textContent = t.source ? '✅ Réglages Telegram repris de « ' + t.source + ' » : tu peux simplement envoyer un message de test.' : '';
 }
 const tgCorps = action => ({action, token: $('tgToken').value, chat_id: $('tgChat').value, app_url: $('tgUrl').value});
 $('tgDetect').addEventListener('click', async () => {

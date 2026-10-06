@@ -59,8 +59,9 @@ def init_app(app, base_dir, version_fn, get_dirs):
         return jsonify({
             "configured": notifier.configure(),
             "token_hint": notifier.indice_token(),      # jamais le jeton complet
-            "chat_id": os.getenv("TELEGRAM_CHAT_ID", ""),
+            "chat_id": os.getenv("TELEGRAM_CHAT_ID", "") or notifier._chat(),
             "app_url": os.getenv("APP_URL", ""),
+            "source": notifier.source_reprise(),     # nom de l'autre appli dont les réglages sont repris
         })
 
     @app.route("/api/settings/telegram", methods=["POST"])
@@ -70,7 +71,7 @@ def init_app(app, base_dir, version_fn, get_dirs):
         token_saisi = str(body.get("token", "")).strip()
         chat_id = str(body.get("chat_id", "")).strip()
         app_url = str(body.get("app_url", "")).strip().rstrip("/")
-        token = token_saisi or os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        token = token_saisi or notifier._token()
 
         for valeur in (token_saisi, chat_id, app_url):
             if _BAD_CHARS & set(valeur) or " " in valeur:
@@ -99,5 +100,6 @@ def init_app(app, base_dir, version_fn, get_dirs):
         if chat_id:
             _enregistrer("TELEGRAM_CHAT_ID", chat_id)
         _enregistrer("APP_URL", app_url)
+        notifier.vider_cache()
         logger.info("Réglages Telegram mis à jour depuis la page web")
         return jsonify({"ok": True, "message": "Enregistré. Les alertes sont actives tout de suite."})
