@@ -1087,6 +1087,28 @@ def _marquer_deja(chapters, titre):
     return [{**c, "deja": japscan_scraper._numero(c) in deja} for c in chapters]
 
 
+_RECHERCHES = {}                # texte -> (heure, résultats) : gardés 1 heure
+
+
+@app.route("/api/japscan/recherche", methods=["POST"])
+def japscan_recherche():
+    """Recherche dans tout le catalogue de Japscan (ouvre le navigateur : 10 à 30 secondes)."""
+    texte = str((request.get_json(silent=True) or {}).get("q", "")).strip()[:80]
+    if len(texte) < 2:
+        return jsonify({"ok": False, "error": "Tape au moins 2 lettres."}), 400
+    cle = texte.lower()
+    ancien = _RECHERCHES.get(cle)
+    if ancien and time.time() - ancien[0] < 3600:
+        return jsonify({"ok": True, "mangas": ancien[1]})
+    try:
+        resultats = japscan_scraper.JapscanScraper(MANGA_DIR).rechercher_sync(texte)
+    except Exception as e:
+        logger.error(f"Recherche Japscan impossible : {e}")
+        return jsonify({"ok": False, "error": f"Recherche impossible : {e}"}), 500
+    _RECHERCHES[cle] = (time.time(), resultats)
+    return jsonify({"ok": True, "mangas": resultats})
+
+
 @app.route("/api/japscan/chapters/<manga_id>", methods=["POST"])
 def japscan_chapters(manga_id: str):
     """Récupère les chapitres d'un manga (gardés 1 heure en mémoire)."""

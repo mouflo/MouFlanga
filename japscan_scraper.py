@@ -6,6 +6,7 @@ Utilise Patchright (fork de Playwright) pour meilleur contournement Cloudflare.
 """
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import re
@@ -1382,6 +1383,55 @@ class JapscanScraper:
     # ------------------------------------------------------------------
     # Versions synchrones (Flask n'est pas asynchrone)
     # ------------------------------------------------------------------
+    async def rechercher(self, texte: str) -> list[dict]:
+        """Recherche dans tout le catalogue de Japscan, comme sa case « Chercher par manga ou nom d'auteur ».
+        Le site répond une liste [{"name", "image", "url"}] à une requête « /ls/ » envoyée par la page ;
+        on tape donc le texte dans la case et on lit cette réponse."""
+        texte = (texte or "").strip()[:80]
+        if len(texte) < 2:
+            return []
+        logger.info(f"Recherche sur Japscan : {texte!r}")
+        async with async_playwright() as p:
+            browser, context = await self._init_browser(p)
+            try:
+                page = await context.new_page()
+                _surveiller(page)
+                reponses = []
+
+                async def sur_reponse(r):
+                    if r.url.rstrip("/").endswith("/ls"):
+                        try:
+                            reponses.append(json.loads(await r.text()))
+                        except Exception:
+                            pass
+                page.on("response", sur_reponse)
+                await self._chauffer(page)
+                champ = await page.wait_for_selector("#searchInput", timeout=20000)
+                await champ.click()
+                await champ.fill("")
+                await page.keyboard.type(texte, delay=80)
+                for _ in range(20):                  # la réponse arrive en général en moins d'une seconde
+                    await asyncio.sleep(0.5)
+                    if reponses:
+                        await asyncio.sleep(1)       # laisser arriver la réponse au texte complet
+                        break
+                resultats = reponses[-1] if reponses else []
+            finally:
+                await browser.close()
+        out = []
+        for r in resultats if isinstance(resultats, list) else []:
+            url = urljoin(JAPSCAN_URL, str(r.get("url", "")))
+            a = _ADRESSE_SERIE.search(url)
+            if not a or not r.get("name"):
+                continue
+            out.append({"title": str(r["name"]).strip(), "url": f"{JAPSCAN_URL}/{a.group(1)}/{a.group(2)}/",
+                        "type": a.group(1), "id": hashlib.md5(url.encode()).hexdigest()[:12]})
+        logger.info(f"Recherche {texte!r} : {len(out)} résultat(s)")
+        return out
+
+    def rechercher_sync(self, texte: str) -> list[dict]:
+        return asyncio.run(self.rechercher(texte))
+
     def list_manga_sync(self) -> list[dict]:
         return asyncio.run(self.list_manga())
 

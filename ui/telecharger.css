@@ -356,6 +356,8 @@
 /* Étape 1 : liste alphabétique des séries */
 .recherche-manga { margin: 10px 0; }
 .recherche-manga input { width: 100%; box-sizing: border-box; font-size: 16px; }
+.recherche-manga button { margin-top: 8px; width: 100%; }
+.recherche-manga button[hidden] { display: none; }
 .lettres { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 10px; }
 .lettres button { min-width: 34px; padding: 6px 0; border: 0; border-radius: 6px; background: var(--field, #2a2a2a); color: var(--text, #eee); font: inherit; font-weight: 600; cursor: pointer; }
 .lettres button:hover { background: var(--accent, #52b54b); color: #fff; }
