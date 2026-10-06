@@ -130,16 +130,21 @@ class JapscanScraper:
         """Liste les mangas disponibles avec Playwright."""
         logger.info("Scrape la liste des mangas...")
 
-        # Essaie plusieurs endpoints possibles
-        endpoints = ["/mangas/", "/listing", "/series", "/"]
+        # Essaie plusieurs endpoints - / fonctionne, /mangas/ timeout, /listing et /series sont 404
+        endpoints = ["/", "/mangas/", "/listing", "/series"]
         html = None
 
         for endpoint in endpoints:
             url = f"{JAPSCAN_URL}{endpoint}"
             logger.info(f"Essai: {url}")
-            html = self._fetch_with_browser(url)
-            if html and len(html) > 1000:  # Page valide
-                break
+            try:
+                html = self._fetch_with_browser(url)
+                if html and len(html) > 1000:  # Page valide
+                    logger.info(f"✓ Endpoint {endpoint} chargé")
+                    break
+            except Exception as e:
+                logger.warning(f"Erreur endpoint {endpoint}: {e}")
+                continue
 
         if not html:
             logger.error("Impossible de charger la liste des mangas")
@@ -148,50 +153,38 @@ class JapscanScraper:
         soup = BeautifulSoup(html, "html.parser")
         mangas = []
 
-        # Essaie plusieurs patterns de sélecteurs (site peut varier)
+        # Sélecteurs éprouvés via probe_japscan.py
         selectors = [
-            "div.manga-item, a.manga-link",  # Pattern standard
-            "div.serie, a.serie-link",        # Pattern alternatif
-            "div[class*='manga'], a[class*='manga']",  # Classes contenant 'manga'
-            "div.col a",  # Cards en colonnes
-            "article",    # HTML5 semantic
-            "div.card",   # Bootstrap cards
-            "a[href*='/manga/']",
-            "a[href*='/serie/']",
+            "a[href*='/manga/']",      # Liens manga directs (673 matches testés)
+            "a[href*='/manhua/']",     # Liens manhua
+            "a[href*='/manhwa/']",     # Liens manhwa
+            "a.image-box",             # Classe des vignettes
+            "a[class*='manga']",       # Classes contenant 'manga'
         ]
 
         seen_urls = set()
 
         for selector in selectors:
+            logger.info(f"Teste sélecteur: {selector}")
             try:
-                for item in soup.select(selector)[:100]:
-                    try:
-                        # Essaie d'extraire le titre et l'URL
-                        title = None
-                        link_href = None
+                matches = soup.select(selector)
+                logger.info(f"  → {len(matches)} matches trouvés")
 
-                        # Si c'est un lien, utilise-le
-                        if item.name == "a":
-                            title = item.get_text(strip=True)
-                            link_href = item.get("href", "")
-                        else:
-                            # Sinon cherche le titre dans les enfants
-                            name_el = item.select_one("h3, h2, h1, .title, .name, a")
-                            if name_el:
-                                title = name_el.get_text(strip=True)
-                                if name_el.name == "a":
-                                    link_href = name_el.get("href", "")
-                                else:
-                                    link = item.select_one("a")
-                                    if link:
-                                        link_href = link.get("href", "")
+                for item in matches:
+                    try:
+                        title = item.get_text(strip=True)
+                        link_href = item.get("href", "")
 
                         if not title or not link_href:
                             continue
 
+                        # Filtre les liens qui ne sont pas des mangas
+                        if not any(x in link_href.lower() for x in ["manga", "manhua", "manhwa"]):
+                            continue
+
                         url = urljoin(JAPSCAN_URL, link_href)
 
-                        # Évite les doublons
+                        # Évite les doublons et la page principale
                         if url in seen_urls or url == JAPSCAN_URL:
                             continue
 
@@ -206,13 +199,13 @@ class JapscanScraper:
                         logger.debug(f"Erreur parsing item: {e}")
                         continue
 
-                if mangas:  # Si on a trouvé des mangas, on arrête
-                    break
+                if mangas:  # Si on a trouvé des mangas, on continue avec les autres sélecteurs aussi
+                    logger.info(f"Trouvé {len(mangas)} mangas avec ce sélecteur")
             except Exception as e:
                 logger.debug(f"Erreur avec sélecteur '{selector}': {e}")
                 continue
 
-        logger.info(f"Trouvé {len(mangas)} mangas")
+        logger.info(f"Trouvé {len(mangas)} mangas au total")
         return mangas
 
     def get_chapters(self, manga_url: str) -> list[dict]:
