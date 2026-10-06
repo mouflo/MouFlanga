@@ -3,7 +3,8 @@ Alertes Telegram de MouFlanga.
 
 Réglages lus à chaque envoi (donc pris en compte sans redémarrer) :
   TELEGRAM_BOT_TOKEN : le jeton du bot (créé avec @BotFather)
-  TELEGRAM_CHAT_ID   : ton identifiant Telegram (l'appli sait le détecter)
+  TELEGRAM_CHAT_ID   : ton identifiant Telegram ou celui de ton groupe (l'appli sait le détecter)
+  TELEGRAM_THREAD_ID : facultatif, le numéro du « sujet » d'un groupe Telegram à sujets (propre à MouFlanga)
 Ils sont enregistrés dans data/secrets.env (jamais sur GitHub) depuis la page ⚙️ Réglages.
 Si MouFlanga n'a pas les siens, il reprend (en lecture seule) ceux d'une autre appli du serveur sous /opt.
 Le jeton n'apparaît jamais dans les journaux ni dans les réponses de l'appli.
@@ -21,6 +22,7 @@ logger = logging.getLogger("mouflanga.notifier")
 
 _TOKEN_RE = re.compile(r"^\d{6,12}:[A-Za-z0-9_-]{30,50}$")
 _CHAT_RE = re.compile(r"^-?\d{3,20}$")
+_THREAD_RE = re.compile(r"^\d{1,12}$")
 API = "https://api.telegram.org"
 
 
@@ -30,6 +32,10 @@ def token_valide(token: str) -> bool:
 
 def chat_valide(chat_id: str) -> bool:
     return bool(_CHAT_RE.match(chat_id or ""))
+
+
+def thread_valide(thread_id: str) -> bool:
+    return bool(_THREAD_RE.match(thread_id or ""))
 
 
 # ----------------------------------------------------------------------
@@ -173,6 +179,12 @@ def _chat() -> str:
     return t[1] if t else ""
 
 
+def _thread() -> str:
+    """Sujet du groupe (propre à MouFlanga, jamais repris d'une autre appli : chaque appli a le sien)."""
+    t = os.getenv("TELEGRAM_THREAD_ID", "").strip()
+    return t if thread_valide(t) else ""
+
+
 def configure() -> bool:
     """Prêt à envoyer : un jeton suffit (l'identifiant se détecte tout seul s'il manque)."""
     return bool(_token())
@@ -203,10 +215,13 @@ def _appel(token: str, methode: str, donnees: dict | None = None, timeout: int =
         return False, "Telegram injoignable : " + _propre(e.__class__.__name__ + " " + str(e), token)[:150]
 
 
-def envoyer(texte: str, token: str | None = None, chat_id: str | None = None) -> tuple[bool, str]:
-    """Envoie un message. Renvoie (réussi, message lisible)."""
+def envoyer(texte: str, token: str | None = None, chat_id: str | None = None,
+            thread_id: str | None = None) -> tuple[bool, str]:
+    """Envoie un message. Renvoie (réussi, message lisible).
+    thread_id : None = celui des réglages ; "" = aucun sujet ; sinon le numéro du sujet."""
     token = token or _token()
     chat_id = chat_id or _chat()
+    thread_id = _thread() if thread_id is None else thread_id
     if token and not chat_id:
         # Jeton connu mais pas d'identifiant : on le déduit du dernier message reçu par le bot
         ok, trouve = detecter_chat(token)
@@ -217,7 +232,10 @@ def envoyer(texte: str, token: str | None = None, chat_id: str | None = None) ->
             return False, "Identifiant Telegram introuvable : " + trouve
     if not token:
         return False, "Aucun jeton Telegram : MouFlanga n'en a pas et n'en a trouvé chez aucune autre appli (voir le rapport, section Telegram)."
-    ok, rep = _appel(token, "sendMessage", {"chat_id": chat_id, "text": texte, "disable_web_page_preview": True})
+    donnees = {"chat_id": chat_id, "text": texte, "disable_web_page_preview": True}
+    if thread_valide(thread_id):
+        donnees["message_thread_id"] = int(thread_id)
+    ok, rep = _appel(token, "sendMessage", donnees)
     if ok:
         return True, "Message envoyé."
     logger.warning("Envoi Telegram échoué : %s", _propre(rep, token))
@@ -235,3 +253,19 @@ def detecter_chat(token: str) -> tuple[bool, str]:
         if chat.get("type") == "private" and chat.get("id"):
             return True, str(chat["id"])
     return False, "Aucun message reçu : ouvre ton bot dans Telegram, envoie-lui « bonjour », puis réessaie."
+
+
+def detecter_groupe(token: str) -> tuple[bool, str, str, str]:
+    """Cherche un groupe à sujets : écris un message dans le sujet de MouFlanga, puis clique sur « Détecter ».
+    Renvoie (réussi, identifiant du groupe, numéro du sujet, message d'erreur)."""
+    ok, rep = _appel(token, "getUpdates", {"limit": 50, "timeout": 0})
+    if not ok:
+        return False, "", "", str(rep)
+    for m in reversed(rep.get("result", [])):
+        msg = m.get("message") or m.get("channel_post") or {}
+        chat = msg.get("chat") or {}
+        sujet = msg.get("message_thread_id")
+        if chat.get("type") == "supergroup" and chat.get("id") and sujet and msg.get("is_topic_message"):
+            return True, str(chat["id"]), str(sujet), ""
+    return False, "", "", ("Aucun message de sujet reçu : dans ton groupe, ouvre le sujet de cette appli, écris « bonjour », "
+                            "vérifie que le bot est administrateur du groupe, puis réessaie.")

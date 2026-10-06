@@ -42,6 +42,8 @@ Source : `docs/claude-opt.md` du dépôt MouFlanga, recopié dans `/opt/CLAUDE.m
 - Changer un dossier dans ⚙️ Réglages fait redémarrer l'appli toute seule (`os._exit(0)`, systemd la relance).
 - Les clés ne sont jamais renvoyées à la page (seulement les 4 derniers caractères) et sont masquées dans les journaux (`_RedactFormatter`).
 
+- **Telegram par sujets** : un seul bot, un groupe à sujets, un sujet par appli. Chaque appli a son propre numéro de sujet (`thread_id` dans `telegram_config.json` pour MouFlanimeXer, `TELEGRAM_THREAD_ID` dans `data/secrets.env` pour les autres), envoyé en `message_thread_id` ; vide = message normal. Le sujet n'est jamais repris d'une autre appli.
+
 ## MouFlanimeXer (`mouflanimexer.py`, v3.33)
 - Remux MKV d'épisodes : garde les pistes audio japonaise/française, traite les sous-titres ASS (mise à l'échelle de la résolution y compris `\iclip`, dessins, bordures et ombres ; style imposé ; polices vérifiées et embarquées depuis la bibliothèque `/opt/mouflanimexer/fonts`). Un fichier dont une police manque est mis de côté dans « À traiter (police manquante) ».
 - Deux usages : l'**interface web** (scan d'un dossier, file d'attente, pause) et le **surveillant Sonarr** lancé par cron toutes les 2 minutes (`python3 mouflanimexer.py --watch-sonarr`). Le surveillant parcourt le dossier manga (`.mkv` et `.mp4`), traite chaque fichier stable et nouveau, **remplace l'original en place** (`os.replace`), puis demande à Sonarr un rescan + renommage. Il envoie un compte rendu Telegram par fichier.
