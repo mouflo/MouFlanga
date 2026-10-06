@@ -469,11 +469,13 @@ def japscan_verif_etat():
 def japscan_verif_capture():
     """Capture d'écran du navigateur du serveur (pour passer la vérification à la main)."""
     try:
-        png = japscan_scraper.verif_capture()
+        png, zone = japscan_scraper.verif_capture_zoom()
     except Exception as e:
         return jsonify({"ok": False, "error": str(e) or "Capture impossible"}), 409
     resp = Response(png, mimetype="image/jpeg")
     resp.headers["Cache-Control"] = "no-store"
+    # Si la capture est recadrée (captcha), l'interface a besoin du décalage pour renvoyer les clics au bon endroit
+    resp.headers["X-Zone"] = f"{zone['x']},{zone['y']},{zone['width']},{zone['height']}" if zone else ""
     return resp
 
 

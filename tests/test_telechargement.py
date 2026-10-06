@@ -14,13 +14,34 @@ def _chapitres(n):
     return [{"title": f"Chapitre {i}", "url": f"https://x/{i}/", "num": i, "chapter_id": str(i)} for i in range(1, n + 1)]
 
 
+class _FauxPlaywright:
+    async def __aenter__(self):
+        return None
+
+    async def __aexit__(self, *a):
+        return False
+
+
 class TelechargementTest(unittest.TestCase):
     def setUp(self):
         self.dossier = Path(tempfile.mkdtemp())
         self.sc = js.JapscanScraper(self.dossier)
 
+        async def ouvrir(p):
+            return ("navigateur", "contexte")
+
+        async def fermer(session):
+            self.fermees = getattr(self, "fermees", 0) + 1
+        for cible, valeur in (("_ouvrir_session", ouvrir), ("_fermer_session", fermer)):
+            patcher = mock.patch.object(self.sc, cible, valeur)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(js, "async_playwright", lambda: _FauxPlaywright())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_arret_apres_trois_echecs_de_suite(self):
-        async def vide(url):
+        async def vide(url, **kw):
             return []
         with mock.patch.object(self.sc, "download_chapter_pages", vide):
             self.sc.download_manga_sync("t1", "Test", _chapitres(10))
@@ -32,7 +53,7 @@ class TelechargementTest(unittest.TestCase):
     def test_succes_et_remise_a_zero_des_echecs(self):
         appels = []
 
-        async def une_sur_deux(url):
+        async def une_sur_deux(url, **kw):
             appels.append(url)
             return [] if len(appels) % 2 else [b"\xff\xd8" + b"0" * 20000]
         with mock.patch.object(self.sc, "download_chapter_pages", une_sur_deux):
@@ -43,7 +64,7 @@ class TelechargementTest(unittest.TestCase):
         self.assertEqual(len(job["failed"]), 3)
 
     def test_annulation(self):
-        async def page(url):
+        async def page(url, **kw):
             js.download_jobs["t3"]["annule"] = True
             return [b"\xff\xd8" + b"0" * 20000]
         with mock.patch.object(self.sc, "download_chapter_pages", page):
@@ -51,6 +72,7 @@ class TelechargementTest(unittest.TestCase):
         job = js.download_jobs["t3"]
         self.assertEqual(job["status"], "annule")
         self.assertEqual(job["progress"], 1)
+        self.assertEqual(self.fermees, 1)   # le navigateur est refermé une seule fois, à la fin
 
 
 if __name__ == "__main__":

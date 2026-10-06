@@ -2,6 +2,7 @@
 // Les fonctions $ / api / post viennent de mou-settings.js.
 const img = $('vImg'), box = $('vBox'), marque = $('vMarque'), retour = $('vRetour');
 let actif = false, occupe = false, clicEnCours = false, effaceMarque = null;
+let zone = [0, 0];   // décalage de la capture si elle est recadrée sur le captcha (x, y dans la page)
 
 function etat(texte, type) {
     $('vState').className = 'note ' + (type || 'warn');
@@ -21,10 +22,20 @@ async function rafraichir() {
         }
         if (!actif) etat('⏳ Le site attend ta vérification : clique sur la case Cloudflare ou réponds au captcha.', 'warn');
         actif = true; box.hidden = false;
-        // Charge la nouvelle capture en arrière-plan pour éviter le clignotement
-        const nouvelle = new Image();
-        nouvelle.onload = () => { img.src = nouvelle.src; };
-        nouvelle.src = '/api/japscan/verif/capture?t=' + Date.now();
+        const rep = await fetch('/api/japscan/verif/capture?t=' + Date.now(), {cache: 'no-store'});
+        if (rep.ok) {
+            const z = (rep.headers.get('X-Zone') || '').split(',').map(Number);
+            const blob = await rep.blob();
+            const url = URL.createObjectURL(blob);
+            const nouvelle = new Image();
+            nouvelle.onload = () => {
+                const ancienne = img.src;
+                zone = z.length === 4 && z.every(v => !isNaN(v)) ? [z[0], z[1]] : [0, 0];
+                img.src = url;
+                if (ancienne && ancienne.startsWith('blob:')) URL.revokeObjectURL(ancienne);
+            };
+            nouvelle.src = url;
+        }
     } catch (err) { /* réseau coupé un instant : on réessaie au prochain tour */ }
     finally { occupe = false; }
 }
@@ -45,7 +56,7 @@ img.style.touchAction = 'none';   // empêche la page de défiler pendant qu'on 
 
 function versImage(ev) {
     const r = img.getBoundingClientRect();
-    return [(ev.clientX - r.left) * img.naturalWidth / r.width, (ev.clientY - r.top) * img.naturalHeight / r.height];
+    return [(ev.clientX - r.left) * img.naturalWidth / r.width + zone[0], (ev.clientY - r.top) * img.naturalHeight / r.height + zone[1]];
 }
 
 img.addEventListener('pointerdown', ev => {
@@ -73,7 +84,7 @@ img.addEventListener('pointerup', async ev => {
     t.points.push(fin);
     // on garde au plus ~60 points pour un envoi léger
     let pts = t.points;
-    if (pts.length > 60) { const pas = pts.length / 60; pts = Array.from({length: 60}, (_, k) => pts[Math.floor(k * pas)]).concat([fin]); }
+    if (pts.length > 30) { const pas = pts.length / 30; pts = Array.from({length: 30}, (_, k) => pts[Math.floor(k * pas)]).concat([fin]); }
     clicEnCours = true;
     box.classList.add('occupe');
     placerMarque(ev.clientX, ev.clientY, '⏳');
@@ -101,8 +112,8 @@ img.addEventListener('click', async ev => {
     if (clicEnCours || !img.naturalWidth) return;
     const r = img.getBoundingClientRect();
     // coordonnées dans l'image réelle (celle du navigateur du serveur)
-    const x = (ev.clientX - r.left) * img.naturalWidth / r.width;
-    const y = (ev.clientY - r.top) * img.naturalHeight / r.height;
+    const x = (ev.clientX - r.left) * img.naturalWidth / r.width + zone[0];
+    const y = (ev.clientY - r.top) * img.naturalHeight / r.height + zone[1];
     clicEnCours = true;
     box.classList.add('occupe');
     placerMarque(ev.clientX, ev.clientY, '⏳');
@@ -133,5 +144,13 @@ async function defiler(dy) {
 $('vHaut').addEventListener('click', () => defiler(-500));
 $('vBas').addEventListener('click', () => defiler(500));
 
-setInterval(rafraichir, 1000);
-rafraichir();
+// Captures enchaînées dès que la précédente est arrivée (le captcha a un chronomètre : chaque seconde compte)
+async function boucle() {
+    while (true) {
+        const debut = Date.now();
+        await rafraichir();
+        const duree = Date.now() - debut;
+        await new Promise(r => setTimeout(r, actif ? Math.max(120, 350 - duree) : 1000));
+    }
+}
+boucle();

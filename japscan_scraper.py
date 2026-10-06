@@ -118,17 +118,15 @@ async def _glisser_reel(page, points: list) -> bool:
             return proc.returncode
 
         ecran = [coord_ecran(geo, x, y) for x, y in points]
-        if await xdo("mousemove", str(max(0, ecran[0][0])), str(max(0, ecran[0][1]))) != 0:
-            return False
-        await asyncio.sleep(0.15)
-        await xdo("mousedown", "1")
-        await asyncio.sleep(0.15)
+        # Tout le geste dans UNE commande xdotool : appui, déplacements, relâchement (rapide et régulier)
+        cmd = ["mousemove", str(max(0, ecran[0][0])), str(max(0, ecran[0][1])), "sleep", "0.08", "mousedown", "1", "sleep", "0.08"]
         for cx, cy in ecran[1:]:
-            await xdo("mousemove", str(max(0, cx)), str(max(0, cy)))
-            await asyncio.sleep(0.03)
-        await asyncio.sleep(0.15)
-        await xdo("mouseup", "1")
-        return True
+            cmd += ["mousemove", str(max(0, cx)), str(max(0, cy)), "sleep", "0.012"]
+        cmd += ["sleep", "0.08", "mouseup", "1"]
+        proc = await asyncio.create_subprocess_exec(exe, *cmd, stdout=asyncio.subprocess.DEVNULL,
+                                                    stderr=asyncio.subprocess.DEVNULL)
+        await asyncio.wait_for(proc.wait(), 30)
+        return proc.returncode == 0
     except Exception as e:
         logger.debug(f"Glisser réel impossible : {e}")
         return False
@@ -196,6 +194,27 @@ _JS_CAPTCHA_PRESENT = r"""() => {
   return !pageVisible;
 }"""
 
+# Zone du captcha d'images (fenêtre « Vérification humaine ») : sert à zoomer la capture sur le téléphone
+_JS_ZONE_CAPTCHA = r"""() => {
+  const imgs = [...document.querySelectorAll('img')].filter(i => (i.currentSrc || i.src || '').startsWith('data:image/jpeg') && i.getBoundingClientRect().width > 100);
+  if (imgs.length < 2) return null;
+  let n = imgs[0], r = null;
+  for (let k = 0; k < 8 && n.parentElement; k++) {
+    n = n.parentElement;
+    const b = n.getBoundingClientRect();
+    if (/Vérification humaine|Valider/i.test(n.innerText || '') && b.height > 150 && b.width < innerWidth - 20) { r = b; break; }
+  }
+  if (!r) {
+    const bs = imgs.map(i => i.getBoundingClientRect());
+    const x1 = Math.min(...bs.map(b => b.left)) - 20, y1 = Math.min(...bs.map(b => b.top)) - 80;
+    const x2 = Math.max(...bs.map(b => b.right)) + 20, y2 = Math.max(...bs.map(b => b.bottom)) + 90;
+    r = {x: x1, y: y1, width: x2 - x1, height: y2 - y1};
+  }
+  const x = Math.max(0, Math.floor(r.x)), y = Math.max(0, Math.floor(r.y));
+  const w = Math.min(innerWidth - x, Math.ceil(r.width)), h = Math.min(innerHeight - y, Math.ceil(r.height));
+  return (w > 80 && h > 80) ? {x, y, width: w, height: h} : null;
+}"""
+
 # Décrit ce que contient la page du lecteur (pour le rapport)
 _JS_INFO_LECTEUR = r"""() => {
   const court = u => (u || '').split('?')[0].replace(/^https?:\/\//, '').slice(0, 80);
@@ -207,7 +226,10 @@ _JS_INFO_LECTEUR = r"""() => {
     nImg: imgs.length, nImgGrandes: gros.length, nCanvas: cans.length,
     grandes: gros.slice(0, 4).map(i => ({src: court(i.currentSrc || i.src), w: i.naturalWidth, h: i.naturalHeight, cls: (i.className || '').toString().slice(0, 30), parent: (i.parentElement && (i.parentElement.id || i.parentElement.className) || '').toString().slice(0, 30)})),
     canvas: cans.slice(0, 4).map(c => ({w: c.width, h: c.height, cls: (c.className || '').toString().slice(0, 30), id: c.id})),
-    texte: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 700),
+    nPages: (document.querySelector('select#pages') || {options: []}).options.length,
+    stockage: Object.keys(localStorage).slice(0, 8).map(k => k + '=' + String(localStorage.getItem(k) || '').slice(0, 50)),
+    cookies: document.cookie.split(';').map(c => c.split('=')[0].trim()).filter(Boolean).slice(0, 12),
+    texte: (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 300),
   };
 }"""
 
@@ -326,11 +348,30 @@ def verif_glisser(points: list) -> dict:
                 await page.mouse.move(x, y, steps=2)
                 await asyncio.sleep(0.02)
             await page.mouse.up()
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.7)
         return {"mode": "souris écran" if reel else "automatisation", "captcha": await _captcha_present(page)}
     info = _sur_la_boucle(f, timeout=40)
     _noter(f"glissement ({len(points)} points) → mode {info['mode']}, captcha encore présent : {'oui' if info['captcha'] else 'non'}")
     return info
+
+
+def verif_capture_zoom():
+    """Capture du navigateur du serveur ; si un captcha d'images est affiché, la capture est recadrée dessus
+    (beaucoup plus lisible sur un téléphone). Renvoie (image JPEG, zone recadrée ou None)."""
+    async def f(page):
+        zone = None
+        try:
+            zone = await page.evaluate(_JS_ZONE_CAPTCHA)
+        except Exception:
+            zone = None
+        options = {"type": "jpeg", "quality": 60}
+        if zone:
+            options["clip"] = zone
+        try:
+            return await page.screenshot(**options), zone
+        except Exception:
+            return await page.screenshot(type="jpeg", quality=60), None
+    return _sur_la_boucle(f)
 
 
 def verif_clic(x: float, y: float) -> dict:
@@ -1020,117 +1061,138 @@ class JapscanScraper:
                 await browser.close()
                 return []
 
-    async def download_chapter_pages(self, chapter_url: str) -> list[bytes]:
-        """Récupère les pages d'un chapitre : d'abord telles qu'affichées (canvas / grandes images),
-        sinon en interceptant les images qui passent sur le réseau."""
+    async def download_chapter_pages(self, chapter_url: str, session=None) -> list[bytes]:
+        """Récupère les pages d'un chapitre. Sans « session », ouvre puis ferme son propre navigateur ;
+        avec une session (navigateur, contexte) déjà ouverte, la réutilise : plus rapide pour plusieurs chapitres."""
+        if session is not None:
+            return await self._lire_chapitre(session[1], chapter_url, chauffer=False)
+        async with async_playwright() as p:
+            browser, context = await self._init_browser(p)
+            try:
+                return await self._lire_chapitre(context, chapter_url, chauffer=True)
+            finally:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
+
+    async def _ouvrir_session(self, p):
+        """Ouvre le navigateur une seule fois pour tout le téléchargement (et passe par l'accueil)."""
+        browser, context = await self._init_browser(p)
+        try:
+            page = await context.new_page()
+            _surveiller(page)
+            await self._chauffer(page)
+            await page.close()
+        except Exception as e:
+            logger.warning(f"Échauffement du navigateur impossible : {e}")
+        return browser, context
+
+    async def _fermer_session(self, session):
+        try:
+            await session[0].close()
+        except Exception:
+            pass
+
+    async def _lire_chapitre(self, context, chapter_url: str, chauffer: bool = False) -> list[bytes]:
+        """Lit les pages d'un chapitre : d'abord telles qu'affichées (canvas / grandes images),
+        sinon en interceptant les images qui passent sur le réseau, dans l'ordre où le lecteur les demande."""
         logger.info(f"Début de l'aspiration du chapitre : {chapter_url}")
         captured_images = {}
         vues = []          # images vues passer sur le réseau (pour le rapport)
+        ordre = {}         # adresse -> rang de la demande (le lecteur demande les pages dans l'ordre)
+        arrivee = []       # adresses dans l'ordre d'arrivée des réponses
         pages_dom = []
+        attendues = None
 
-        async with async_playwright() as p:
-            browser, context = await self._init_browser(p)
-            page = await context.new_page()
-            _surveiller(page)
+        page = await context.new_page()
+        _surveiller(page)
 
-            # Listener d'interception des requêtes d'images
-            async def on_response(response):
-                try:
-                    content_type = response.headers.get("content-type", "")
-                    if "image" in content_type and response.status == 200:
-                        url = response.url
-                        chemin = url.split("?")[0].lower()
-                        body = await response.body()
-                        if len(vues) < 12:
-                            vues.append(f"{len(body) // 1024} Ko {content_type.split(';')[0]} {re.sub(r'^https?://', '', chemin)[:70]}")
-                        # Exclure les éléments d'interface (logos, pubs, avatars, favicons)
-                        if not any(k in chemin for k in ["logo", "avatar", "banner", "/ads/", "/ad/", "favicon", "/icons/"]):
-                            if len(body) > 15000:  # Exclure les petites images/icônes (< 15 Ko)
-                                captured_images[url] = body
-                except Exception:
-                    pass
+        def on_request(req):
+            if len(ordre) < 5000 and req.url not in ordre:
+                ordre[req.url] = len(ordre)
 
-            page.on("response", on_response)
-
+        # Listener d'interception des requêtes d'images
+        async def on_response(response):
             try:
+                content_type = response.headers.get("content-type", "")
+                if "image" in content_type and response.status == 200:
+                    url = response.url
+                    chemin = url.split("?")[0].lower()
+                    body = await response.body()
+                    if len(vues) < 12:
+                        vues.append(f"{len(body) // 1024} Ko {content_type.split(';')[0]} {re.sub(r'^https?://', '', chemin)[:70]}")
+                    # Exclure les éléments d'interface (logos, pubs, avatars, favicons)
+                    if not any(k in chemin for k in ["logo", "avatar", "banner", "/ads/", "/ad/", "favicon", "/icons/"]):
+                        if len(body) > 15000:  # Exclure les petites images/icônes (< 15 Ko)
+                            if url not in captured_images:
+                                arrivee.append(url)
+                            captured_images[url] = body
+            except Exception:
+                pass
+
+        page.on("request", on_request)
+        page.on("response", on_response)
+
+        try:
+            if chauffer:
                 await self._chauffer(page)
-                captured_images.clear()  # ignore les images de la page d'accueil
-                vues.clear()
-                await page.goto(chapter_url, wait_until="domcontentloaded", timeout=30000)
-                title = await attendre_cloudflare(page, humain=True)
+            captured_images.clear()  # ignore les images de la page d'accueil
+            vues.clear()
+            arrivee.clear()
+            ordre.clear()
+            await page.goto(chapter_url, wait_until="domcontentloaded", timeout=30000)
+            title = await attendre_cloudflare(page, humain=True)
 
-                # Après une vérification, le site affiche « Loading… » avant la vraie page
-                debut = time.time()
-                while time.time() - debut < 40:
-                    try:
-                        title = (await page.title()) or ""
-                    except Exception:
-                        title = "loading"   # la page se recharge
-                    if title and not title.lower().startswith("loading") and not _titre_defi(title):
-                        break
-                    await asyncio.sleep(2)
-                await asyncio.sleep(4)  # Laisser charger le lecteur JS
-
-                # Le lecteur peut exiger un captcha : l'utilisateur le résout depuis la page « Vérification »
-                if not await attendre_captcha(page):
-                    await browser.close()
-                    return []
-
-                # Défilement progressif vers le bas pour forcer le chargement de toutes les pages
-                logger.info("Défilement de la page pour forcer le lazy-loading...")
-                for _ in range(15):
-                    await page.mouse.wheel(0, 1200)
-                    await asyncio.sleep(0.6)
-                await asyncio.sleep(2)
-
-                # Ce que contient la page (pour le rapport)
+            # Après une vérification, le site affiche « Loading… » avant la vraie page
+            debut = time.time()
+            while time.time() - debut < 40:
                 try:
-                    info = await page.evaluate(_JS_INFO_LECTEUR)
-                    _noter(f"lecteur : {info.get('titre')!r} {info.get('url')} · {info.get('nImg')} img "
-                           f"({info.get('nImgGrandes')} grandes), {info.get('nCanvas')} canvas")
-                    for g in info.get("grandes", []):
-                        _noter(f"  grande image : {g}")
-                    for c in info.get("canvas", []):
-                        _noter(f"  canvas : {c}")
-                    _noter(f"  texte de la page : {info.get('texte')}")
-                except Exception as e:
-                    _noter(f"lecteur : lecture de la page impossible ({e.__class__.__name__})")
-                for v in vues:
-                    _noter(f"  image réseau : {v}")
-
-                # Si rien d'exploitable à l'écran : on décrit le lecteur et on essaie de passer à la page suivante
-                if not info.get("nImgGrandes"):
-                    try:
-                        st = await page.evaluate(_JS_STRUCTURE_LECTEUR)
-                        for k, v in st.items():
-                            _noter(f"  lecteur/{k} : {str(v)[:700]}")
-                        for essai in ("touche →", "clic au centre"):
-                            if essai == "touche →":
-                                await page.keyboard.press("ArrowRight")
-                            else:
-                                await page.mouse.click(640, 400)
-                            await asyncio.sleep(4)
-                            st2 = await page.evaluate(_JS_STRUCTURE_LECTEUR)
-                            _noter(f"  après {essai} : images {st2.get('imgs')} · canvas {st2.get('canvas')}")
-                    except Exception as e:
-                        _noter(f"  description du lecteur impossible : {e.__class__.__name__}")
-
-                # Pages telles qu'affichées (les canvas contiennent les images déjà remises en ordre)
-                try:
-                    brut = await page.evaluate(_JS_EXTRAIRE_PAGES)
-                    _noter(f"  extraction de la page : {[(b['type'], len(b['data'])) for b in brut][:6]}")
-                    pages_dom = brut
-                except Exception as e:
-                    _noter(f"  extraction de la page impossible : {e.__class__.__name__}")
-
-                await browser.close()
-
-            except Exception as e:
-                logger.error(f"Erreur lors du chargement du chapitre {chapter_url} : {e}")
-                try:
-                    await browser.close()
+                    title = (await page.title()) or ""
                 except Exception:
-                    pass
+                    title = "loading"   # la page se recharge
+                if title and not title.lower().startswith("loading") and not _titre_defi(title):
+                    break
+                await asyncio.sleep(2)
+            await asyncio.sleep(4)  # Laisser charger le lecteur JS
+
+            # Le lecteur peut exiger un captcha : l'utilisateur le résout depuis la page « Vérification »
+            if not await attendre_captcha(page):
+                return []
+
+            # Défilement progressif vers le bas pour forcer le chargement de toutes les pages
+            logger.info("Défilement de la page pour forcer le lazy-loading...")
+            for _ in range(15):
+                await page.mouse.wheel(0, 1200)
+                await asyncio.sleep(0.6)
+            await asyncio.sleep(2)
+
+            # Ce que contient la page (pour le rapport)
+            info = {}
+            try:
+                info = await page.evaluate(_JS_INFO_LECTEUR)
+                attendues = info.get("nPages")
+                _noter(f"lecteur : {info.get('titre')!r} {info.get('url')} · {info.get('nImg')} img "
+                       f"({info.get('nImgGrandes')} grandes), {info.get('nCanvas')} canvas · pages annoncées : {attendues}")
+                _noter(f"  mémoire du site (localStorage) : {info.get('stockage')} · cookies : {info.get('cookies')}")
+            except Exception as e:
+                _noter(f"lecteur : lecture de la page impossible ({e.__class__.__name__})")
+            for v in vues[:3]:
+                _noter(f"  image réseau : {v}")
+
+            # Pages telles qu'affichées (si le lecteur dessine de vraies pages dans des canvas / grandes images)
+            try:
+                pages_dom = await page.evaluate(_JS_EXTRAIRE_PAGES)
+            except Exception as e:
+                _noter(f"  extraction de la page impossible : {e.__class__.__name__}")
+
+        except Exception as e:
+            logger.error(f"Erreur lors du chargement du chapitre {chapter_url} : {e}")
+        finally:
+            try:
+                await page.close()
+            except Exception:
+                pass
 
         import base64
         from_dom, vus_hash = [], set()
@@ -1150,11 +1212,14 @@ class JapscanScraper:
             logger.info(f"✓ {len(from_dom)} pages lues dans la page ({'canvas' if a_canvas else 'images'}).")
             return from_dom
 
-        # Sinon : images interceptées sur le réseau, triées par nom
-        def _naturel(u):
-            return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", u.split("?")[0])]
-        sorted_urls = sorted(captured_images.keys(), key=_naturel)
-        images_bytes = [captured_images[u] for u in sorted_urls]
+        # Sinon : images interceptées sur le réseau, dans l'ordre où le lecteur les a demandées
+        # (les noms de fichiers sont des suites de lettres sans ordre : on ne peut pas s'y fier)
+        urls = sorted(captured_images.keys(), key=lambda u: (ordre.get(u, 10 ** 9), arrivee.index(u) if u in arrivee else 0))
+        decalees = sum(1 for k, u in enumerate(urls) if k < len(arrivee) and arrivee[k] != u)
+        _noter(f"  pages : {len(urls)} capturées"
+               f"{f' sur {attendues} annoncées' if attendues else ''} · triées par ordre de demande"
+               f" · {decalees} arrivée(s) dans un autre ordre que la demande")
+        images_bytes = [captured_images[u] for u in urls]
         logger.info(f"✓ {len(images_bytes)} pages capturées sur le réseau.")
         return images_bytes
 
@@ -1193,6 +1258,56 @@ class JapscanScraper:
     def get_chapters_sync(self, manga_url: str) -> list[dict]:
         return asyncio.run(self.get_chapters(manga_url))
 
+    async def _telecharger_chapitres(self, job: dict, chapters: list[dict], progress_callback=None):
+        """Télécharge les chapitres un par un avec UN SEUL navigateur (plus rapide, moins de vérifications)."""
+        job_id = job["id"]
+        async with async_playwright() as p:
+            session = await self._ouvrir_session(p)
+            try:
+                echecs_de_suite = 0
+                for idx, chapter in enumerate(chapters):
+                    if job.get("annule"):
+                        job["status"] = "annule"
+                        logger.info(f"Téléchargement annulé : {job_id}")
+                        break
+                    titre = chapter.get("title") or f"Chapitre {idx + 1}"
+                    job["en_cours"] = titre
+                    try:
+                        pages = await self.download_chapter_pages(chapter["url"], session=session)
+                        if not pages:
+                            logger.warning(f"Aucune page pour {titre}")
+                            job["failed"].append(titre)
+                            echecs_de_suite += 1
+                        else:
+                            echecs_de_suite = 0
+                            num = int(chapter.get("num") or idx + 1)
+                            fichier = self.output_dir / f"{num:03d} - {nom_sur(titre)}.cbz"
+                            if self.create_cbz(pages, fichier):
+                                job["downloaded"].append(str(fichier))
+                            else:
+                                job["failed"].append(titre)
+                    except Exception as e:
+                        logger.error(f"Erreur chapitre {titre} : {e}")
+                        job["failed"].append(titre)
+                        job["error"] = str(e)
+
+                    job["progress"] = idx + 1
+                    if progress_callback:
+                        progress_callback(job)
+
+                    if echecs_de_suite >= 3:
+                        job["status"] = "error"
+                        job["error"] = ("3 chapitres de suite sans aucune page : arrêt du téléchargement "
+                                        "(Cloudflare ou lecteur du site). Envoie le rapport pour qu'on cherche pourquoi.")
+                        logger.error(job["error"])
+                        break
+
+                if job["status"] == "running":
+                    job["status"] = "completed"
+                    logger.info(f"Téléchargement terminé : {job_id}")
+            finally:
+                await self._fermer_session(session)
+
     def download_manga_sync(self, job_id: str, manga_title: str, chapters: list[dict],
                             progress_callback=None):
         """Télécharge les chapitres un par un et crée un .cbz par chapitre."""
@@ -1210,47 +1325,7 @@ class JapscanScraper:
         download_jobs[job_id] = job
 
         try:
-            echecs_de_suite = 0
-            for idx, chapter in enumerate(chapters):
-                if job.get("annule"):
-                    job["status"] = "annule"
-                    logger.info(f"Téléchargement annulé : {job_id}")
-                    break
-                titre = chapter.get("title") or f"Chapitre {idx + 1}"
-                job["en_cours"] = titre
-                try:
-                    pages = asyncio.run(self.download_chapter_pages(chapter["url"]))
-                    if not pages:
-                        logger.warning(f"Aucune page pour {titre}")
-                        job["failed"].append(titre)
-                        echecs_de_suite += 1
-                    else:
-                        echecs_de_suite = 0
-                        num = int(chapter.get("num") or idx + 1)
-                        fichier = self.output_dir / f"{num:03d} - {nom_sur(titre)}.cbz"
-                        if self.create_cbz(pages, fichier):
-                            job["downloaded"].append(str(fichier))
-                        else:
-                            job["failed"].append(titre)
-                except Exception as e:
-                    logger.error(f"Erreur chapitre {titre} : {e}")
-                    job["failed"].append(titre)
-                    job["error"] = str(e)
-
-                job["progress"] = idx + 1
-                if progress_callback:
-                    progress_callback(job)
-
-                if echecs_de_suite >= 3:
-                    job["status"] = "error"
-                    job["error"] = ("3 chapitres de suite sans aucune page : arrêt du téléchargement "
-                                    "(Cloudflare ou lecteur du site). Envoie le rapport pour qu'on cherche pourquoi.")
-                    logger.error(job["error"])
-                    break
-
-            if job["status"] == "running":
-                job["status"] = "completed"
-                logger.info(f"Téléchargement terminé : {job_id}")
+            asyncio.run(self._telecharger_chapitres(job, chapters, progress_callback))
         except Exception as e:
             job["status"] = "error"
             job["error"] = str(e)

@@ -94,9 +94,25 @@ class TelechargementTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             sc = js.JapscanScraper(Path(d))
 
-            async def faux(url):
+            class _FauxPW:
+                async def __aenter__(self):
+                    return None
+
+                async def __aexit__(self, *a):
+                    return False
+
+            async def ouvrir(p):
+                return ("navigateur", "contexte")
+
+            async def fermer(session):
+                return None
+
+            async def faux(url, **kw):
                 return [b"\xff\xd8\xff" + b"0" * 20] if "ok" in url else []
             sc.download_chapter_pages = faux
+            sc._ouvrir_session = ouvrir
+            sc._fermer_session = fermer
+            js.async_playwright = lambda: _FauxPW()
             chapitres = [
                 {"title": "Chap ../1", "url": "https://x/ok/1/", "num": 1},
                 {"title": "Chap 2", "url": "https://x/vide/2/", "num": 2},
