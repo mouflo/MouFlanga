@@ -305,3 +305,67 @@ class TelechargementTomesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OrganiserTest(BibliothequeTest):
+    """Série ajoutée à la main, avec des tomes complets au nom encombré."""
+
+    def setUp(self):
+        super().setUp()
+        self.vrac = self.root / "Gintama Integrale T01-03 [eBooks officiels][FR][CBZ]"
+        for t in (1, 2, 4):
+            p = self.vrac / f"Gintama T{t:02d} (Sorachi) (2007) [Digital-1700] [Manga FR].cbz"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(p, "w") as z:
+                for k, d in enumerate(_pages(3, t), 1):
+                    z.writestr(f"{k:03d}.jpg", d)
+        (self.vrac / "cover.jpg").write_bytes(_jpeg((1, 2, 3)))
+        ancien = self.vrac.name + "/Gintama T02 (Sorachi) (2007) [Digital-1700] [Manga FR].cbz"
+        data = json.loads(self.A.PROGRESS_FILE.read_text())
+        data[self.vrac.name] = {"current": ancien, "page": 7, "read": [self.vrac.name + "/Gintama T01 (Sorachi) (2007) [Digital-1700] [Manga FR].cbz"]}
+        self.A.PROGRESS_FILE.write_text(json.dumps(data))
+
+    def test_plan_propose(self):
+        s = self.client.get("/api/series?id=" + self.vrac.name).json
+        self.assertEqual(s["organiser"], {"nom": "Gintama", "tomes": 3, "a_deplacer": 3, "chapitres": 0,
+                                          "premier_tome": 1, "dernier_tome": 4})
+        self.assertEqual([c["title"] for c in s["chapters"]], ["Tome 01", "Tome 02", "Tome 04"])
+        self.assertEqual((s["type_manquants"], s["manquants"]), ("tomes", ["3"]))
+
+    def test_organiser(self):
+        with mock.patch.object(tomes, "chercher", return_value=None):
+            r = self.client.post("/api/organiser", json={"series": self.vrac.name, "nom": "Gintama"})
+        self.assertEqual(r.json, {"ok": True, "id": "Gintama"})
+        self.assertFalse(self.vrac.exists())
+        g = self.root / "Gintama"
+        self.assertEqual(sorted(str(p.relative_to(g)) for p in g.rglob("*") if p.is_file()),
+                         ["Tome 01/Gintama - Tome 01.cbz", "Tome 02/Gintama - Tome 02.cbz",
+                          "Tome 04/Gintama - Tome 04.cbz", "cover.jpg"])
+        s = self.client.get("/api/series?id=Gintama").json
+        self.assertIsNone(s["organiser"])
+        self.assertEqual((s["current"], s["page"]), ("Gintama/Tome 02/Gintama - Tome 02.cbz", 7))
+        self.assertEqual([c["read"] for c in s["chapters"]], [True, False, False])
+        self.assertTrue(s["cover_perso"])
+
+    def test_nom_deja_pris(self):
+        r = self.client.post("/api/organiser", json={"series": self.vrac.name, "nom": "Serie"})
+        self.assertEqual(r.status_code, 409)
+        self.assertTrue(self.vrac.exists())
+
+    def test_tome_complet_jamais_reecrit(self):
+        with mock.patch.object(tomes, "chercher", return_value=None):
+            self.client.post("/api/organiser", json={"series": self.vrac.name, "nom": "Gintama"})
+        complet = self.root / "Gintama" / "Tome 01" / "Gintama - Tome 01.cbz"
+        avant = complet.read_bytes()
+        with self.assertRaises(FileExistsError):
+            tomes_cbz.ajouter(self.root / "Gintama", "Gintama", 1, 3.0, "", _pages(1))
+        self.assertEqual(complet.read_bytes(), avant)
+
+    def test_chapitres_couverts_par_un_tome_complet(self):
+        with mock.patch.object(tomes, "chercher", return_value=None):
+            self.client.post("/api/organiser", json={"series": self.vrac.name, "nom": "Gintama"})
+        with mock.patch.object(tomes, "_charger", return_value={"tomes": {1.0: 1, 2.0: 1, 3.0: 2, 9.0: 5}}):
+            s = self.client.get("/api/series?id=Gintama").json
+            self.assertEqual(s["chapters"][0]["title"], "Tome 01 · chapitres 1 à 2")
+            marques = self.A._marquer_deja([{"chapter_id": "2"}, {"chapter_id": "9"}], "Gintama")
+        self.assertEqual([c["deja"] for c in marques], [True, False])

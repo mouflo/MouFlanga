@@ -139,6 +139,28 @@ def _rel(p: Path):
     return str(p.relative_to(MANGA_DIR))
 
 
+_NUM_TOME = re.compile(r"(?:^|[\s_\-.(\[])(?:t|tome|vol(?:ume)?\.?|v)\s*0*(\d{1,3})(?=$|[\s_\-.)\]])", re.I)
+
+
+def _numero_tome(nom):
+    """Numéro de tome d'après un nom de fichier (« Gintama T01 (…) », « Vol. 3 », « Tome 12 ») ; None pour un chapitre."""
+    if _NUM_CHAPITRE.search(nom):
+        return None
+    m = _NUM_TOME.search(nom)
+    return int(m.group(1)) if m else None
+
+
+def _plage_chapitres(serie, tome):
+    """« chapitres 1 à 8 » pour un tome complet, si la répartition de la série est déjà connue (sans aller sur Internet)."""
+    info = tomes._charger(serie)
+    if not info or not info.get("tomes"):
+        return [], ""
+    nums = sorted(n for n, t in info["tomes"].items() if t == tome)
+    if not nums:
+        return [], ""
+    return nums, (f"chapitre {nums[0]:g}" if len(nums) == 1 else f"chapitres {nums[0]:g} à {nums[-1]:g}")
+
+
 def _entrees(files):
     """Chapitres d'une série, dans l'ordre de lecture.
     Fichier ordinaire = un chapitre (clé : son chemin). Fichier de tome = plusieurs chapitres (clé : « #12 »),
@@ -153,8 +175,15 @@ def _entrees(files):
         info = tomes_cbz.lire_info(f) if f.suffix.lower() == ".cbz" else None
         if info is None:
             titre = _title_of(f)
-            out.append({"key": rel, "path": rel, "title": titre, "num": _numero_chapitre(titre), "groupe": None,
-                        "debut": 0, "nb": None, "size_mb": round(taille / 1048576, 1)})
+            entree = {"key": rel, "path": rel, "title": titre, "num": _numero_chapitre(titre), "groupe": None,
+                      "debut": 0, "nb": None, "size_mb": round(taille / 1048576, 1)}
+            tome = _numero_tome(titre)
+            if tome is not None:
+                # Tome complet (un fichier = un tome) : affiché « Tome 03 · chapitres 17 à 25 »
+                couverts, plage = _plage_chapitres(f.relative_to(MANGA_DIR).parts[0], tome)
+                entree.update(num=None, tome=tome, couverts=couverts,
+                              title=tomes_cbz.dossier_tome(tome) + (f" · {plage}" if plage else ""))
+            out.append(entree)
             continue
         try:
             chapitres = tomes_cbz.chapitres(f)
@@ -214,6 +243,7 @@ def api_library():
         entrees = _entrees(files)
         out.append({
             "id": name, "title": name, "chapters": len(entrees),
+            "unite": "tome" if entrees and sum(e.get("tome") is not None for e in entrees) * 2 >= len(entrees) else "chapitre",
             "read": len([e for e in entrees if e["key"] in read]),
             "size_mb": round(total_size / 1048576, 1),
             "last_read": p.get("last", ""), "added": newest,
@@ -257,9 +287,11 @@ def _numero_chapitre(titre):
         return None
 
 
-def _manquants(titres):
-    """Trous dans la numérotation (chapitres entiers absents entre le premier et le dernier) : « 7 », « 12–14 »."""
-    nums = {int(n) for n in (_numero_chapitre(t) for t in titres) if n is not None and n == int(n)}
+def _manquants(titres, nums=None):
+    """Trous dans la numérotation (chapitres, ou tomes, entiers absents entre le premier et le dernier) : « 7 », « 12–14 »."""
+    if nums is None:
+        nums = [_numero_chapitre(t) for t in titres]
+    nums = {int(n) for n in nums if n is not None and n == int(n)}
     if len(nums) < 2:
         return [], (min(nums) if nums else None), (max(nums) if nums else None)
     trous = [n for n in range(min(nums), max(nums) + 1) if n not in nums]
@@ -282,14 +314,21 @@ def api_series():
     p = _read_json(PROGRESS_FILE, {}).get(name, {})
     read = set(p.get("read", []))
     chapters = [{**e, "read": e["key"] in read} for e in _entrees(files)]
-    trous, premier, dernier = _manquants([c["title"] for c in chapters])
+    nums_tomes = [c.get("tome") for c in chapters if c.get("tome") is not None]
+    if nums_tomes and len(nums_tomes) >= len(chapters) / 2:          # série en tomes complets
+        trous, premier, dernier = _manquants([], nums_tomes)
+        type_manquants = "tomes"
+    else:
+        trous, premier, dernier = _manquants([c["title"] for c in chapters])
+        type_manquants = "chapitres"
     en_tomes = any(c["groupe"] for c in chapters)
     a_ranger = name != "(Sans série)" and any(not c["groupe"] and c["num"] is not None for c in chapters)
     return jsonify({"id": name, "title": name, "chapters": chapters,
                     "current": p.get("current", ""), "page": p.get("page", 0),
                     "rar": archives.rar_available(),
                     "en_tomes": en_tomes, "a_ranger": a_ranger, "rangement": _etat_rangement(name),
-                    "manquants": trous, "premier": premier, "dernier": dernier,
+                    "manquants": trous, "premier": premier, "dernier": dernier, "type_manquants": type_manquants,
+                    "organiser": _plan_organiser(name, files) if name != "(Sans série)" else None,
                     "cover_perso": name != "(Sans série)" and (MANGA_DIR / name / COUVERTURE_PERSO).is_file(),
                     "cover_v": int(_couverture_mtime(name)),
                     "moufloster": os.getenv("MOUFLOSTER_URL", "").strip(),
@@ -607,7 +646,12 @@ def _dossier_serie(titre):
 def _deja_telecharges(titre):
     """Numéros des chapitres déjà présents dans la série (fichiers de tome ou un fichier par chapitre)."""
     nom = _dossier_serie(titre).name
-    return {e["num"] for e in _entrees(_scan().get(nom) or []) if e["num"] is not None}
+    deja = set()
+    for e in _entrees(_scan().get(nom) or []):
+        if e["num"] is not None:
+            deja.add(e["num"])
+        deja.update(e.get("couverts") or [])
+    return deja
 
 
 # ---------------------------------------------------------------- Tomes
@@ -655,6 +699,11 @@ def _ranger_en_tomes(name, info, garder_en_cours=False):
                 renommes[_rel(f)] = f"#{num:g}"
                 anciens.append(f)
             cible = tomes_cbz.fichier_tome(dossier, name, t)
+            if cible.exists() and tomes_cbz.lire_info(cible) is None:
+                logger.info("Tome %s déjà présent en entier : ses chapitres séparés sont laissés tels quels", t)
+                anciens = [a for a in anciens if a not in {f for _, f in liste}]
+                renommes = {k: v for k, v in renommes.items() if k not in {_rel(f) for _, f in liste}}
+                continue
             tomes_cbz._reecrire(cible, name, t, set(), ajouts, titres)
             etat["fait"] += len(liste)
         for f in anciens:
@@ -694,6 +743,146 @@ def _etat_rangement(name):
     if not etat.get("en_cours"):
         etat.pop("message", None)
     return copie
+
+
+_CROCHETS = re.compile(r"\[[^\]]*\]|\([^)]*\)|\{[^}]*\}")
+_MARQUE = re.compile(r"(?:^|[\s_\-.])(?:t|tome|vol(?:ume)?\.?|v|chap(?:itre|ter)?\.?|ch\.?|#)\s*\d{1,4}\b.*$", re.I)
+_BRUIT = re.compile(r"\b(?:int[ée]grale?|complete|complet|fr|vf|vostfr|cbz|cbr|e-?books?|officiels?|digital|scans?|manga)\b", re.I)
+
+
+def _nettoyer_nom(texte):
+    t = _CROCHETS.sub(" ", texte.replace("_", " "))
+    t = _MARQUE.sub(" ", t)
+    t = _BRUIT.sub(" ", t)
+    t = re.sub(r"\s+", " ", t).strip(" -–—.,")
+    return t
+
+
+def _plan_organiser(name, files):
+    """Ce que ferait « Organiser » (sans rien toucher), ou None si la série est déjà bien rangée.
+    Série ajoutée à la main : nom du dossier encombré (« Gintama Integrale T01-77 [FR][CBZ] »),
+    tomes complets hors de leur dossier « Tome NN », ou chapitres pas encore rangés en tomes."""
+    from collections import Counter
+    noms = [_nettoyer_nom(f.stem) for f in files if f.parent != MANGA_DIR]
+    noms = [n for n in noms if n]
+    commun = Counter(noms).most_common(1)
+    propose = commun[0][0] if commun and commun[0][1] >= max(2, len(files) * 0.6) else (_nettoyer_nom(name) or name)
+    propose = japscan_scraper.nom_sur(propose)
+    tomes_fichiers, a_deplacer, chapitres = [], 0, 0
+    for f in files:
+        if tomes_cbz.lire_info(f) is not None:
+            continue
+        t = _numero_tome(f.stem)
+        if t is not None:
+            tomes_fichiers.append(t)
+            attendu = Path(tomes_cbz.dossier_tome(t)) / f"{propose} - {tomes_cbz.dossier_tome(t)}{f.suffix.lower()}"
+            if f.relative_to(MANGA_DIR / name) != attendu:
+                a_deplacer += 1
+        elif _numero_chapitre(f.stem) is not None:
+            chapitres += 1
+    if propose == name and not a_deplacer and not chapitres:
+        return None
+    return {"nom": propose, "tomes": len(tomes_fichiers), "a_deplacer": a_deplacer, "chapitres": chapitres,
+            "premier_tome": min(tomes_fichiers) if tomes_fichiers else None,
+            "dernier_tome": max(tomes_fichiers) if tomes_fichiers else None}
+
+
+def _organiser(name, nouveau):
+    """Renomme la série et range ses fichiers : tomes complets dans « Tome NN/<Série> - Tome NN.cbz » (simples
+    déplacements), chapitres regroupés en tomes ensuite. La progression de lecture suit. Renvoie le nouveau nom."""
+    files = _scan().get(name) or []
+    ancien_dossier, dossier = MANGA_DIR / name, MANGA_DIR / nouveau
+    if nouveau != name and dossier.exists() and not dossier.is_dir():
+        raise ValueError(f"« {nouveau} » existe déjà et n'est pas un dossier")
+    deplaces = {}
+    for f in files:
+        if tomes_cbz.lire_info(f) is not None:
+            cible = dossier / f.relative_to(ancien_dossier)
+        else:
+            t = _numero_tome(f.stem)
+            if t is None:
+                cible = dossier / f.relative_to(ancien_dossier)       # chapitres et fichiers inconnus : même place
+            else:
+                cible = dossier / tomes_cbz.dossier_tome(t) / f"{nouveau} - {tomes_cbz.dossier_tome(t)}{f.suffix.lower()}"
+        if cible == f:
+            continue
+        if cible.exists():
+            logger.warning("Organiser : %s existe déjà, %s laissé en place", cible, f.name)
+            continue
+        cible.parent.mkdir(parents=True, exist_ok=True)
+        f.rename(cible)
+        deplaces[_rel(f)] = _rel(cible)
+    # Le reste du dossier (couverture, images…) suit, puis les dossiers vidés disparaissent
+    if nouveau != name and ancien_dossier.is_dir():
+        for reste in sorted(ancien_dossier.rglob("*"), key=lambda p: -len(p.parts)):
+            if reste.is_file():
+                cible = dossier / reste.relative_to(ancien_dossier)
+                if not cible.exists():
+                    cible.parent.mkdir(parents=True, exist_ok=True)
+                    reste.rename(cible)
+    for d in sorted((p for p in ancien_dossier.rglob("*") if p.is_dir()), key=lambda p: -len(p.parts)) if ancien_dossier.is_dir() else []:
+        try:
+            d.rmdir()
+        except OSError:
+            pass
+    if nouveau != name:
+        try:
+            ancien_dossier.rmdir()
+        except OSError:
+            pass
+    with _progress_lock:
+        data = _read_json(PROGRESS_FILE, {})
+        p = data.pop(name, None) if nouveau != name else data.get(name)
+        if p is not None:
+            conv = lambda r: deplaces.get(r, r)
+            p["read"] = sorted({conv(r) for r in p.get("read", [])})
+            if p.get("current"):
+                p["current"] = conv(p["current"])
+            data[nouveau] = p
+            _write_json(PROGRESS_FILE, data)
+    logger.info("Série organisée : « %s » → « %s » (%d fichier(s) déplacé(s))", name, nouveau, len(deplaces))
+    return nouveau
+
+
+@app.route("/api/organiser", methods=["POST"])
+def api_organiser():
+    """Bouton « Organiser » d'une série ajoutée à la main."""
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    files = _scan().get(name)
+    if files is None or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    nouveau = japscan_scraper.nom_sur(str(body.get("nom", "")).strip())
+    if not nouveau or nouveau.startswith(".") or nouveau in (".corbeille", "(Sans série)"):
+        return jsonify({"ok": False, "error": "Nom de série invalide"}), 400
+    if nouveau != name and nouveau in _scan():
+        return jsonify({"ok": False, "error": f"Une série « {nouveau} » existe déjà : choisis un autre nom."}), 409
+    for j in list(japscan_scraper.download_jobs.values()):
+        if j.get("status") == "running" and japscan_scraper.nom_sur(japscan_scraper.titre_serie(j.get("title") or "")) == name:
+            return jsonify({"ok": False, "error": "Cette série est en cours de téléchargement : attends la fin."}), 409
+    try:
+        nouveau = _organiser(name, nouveau)
+    except (OSError, ValueError) as e:
+        logger.warning("Organiser %s impossible : %s", name, e)
+        return jsonify({"ok": False, "error": f"Impossible d'organiser : {e}"}), 500
+    # Chapitres à regrouper en tomes : en arrière-plan (recherche sur Internet)
+    files = _scan().get(nouveau) or []
+    chapitres = any(tomes_cbz.lire_info(f) is None and _numero_tome(f.stem) is None and _numero_chapitre(f.stem) is not None for f in files)
+    _RANGEMENTS[nouveau] = {"en_cours": True, "fait": 0, "total": 0, "erreur": None, "message": "Recherche des tomes…"}
+
+    def travail():
+        etat = _RANGEMENTS[nouveau]
+        try:
+            info = tomes.chercher(nouveau, forcer=True)
+            if info and chapitres:
+                n = _ranger_en_tomes(nouveau, info, garder_en_cours=True)
+                etat.update(en_cours=False, message=f"✅ Série organisée ; {n} chapitre(s) rangé(s) en tomes (d'après {info['source']}).")
+            else:
+                etat.update(en_cours=False, message="✅ Série organisée." + (f" Tomes connus d'après {info['source']}." if info else ""))
+        except Exception as e:
+            etat.update(en_cours=False, message=f"Série organisée, mais rangement des chapitres impossible : {e}")
+    threading.Thread(target=travail, daemon=True).start()
+    return jsonify({"ok": True, "id": nouveau})
 
 
 @app.route("/api/tomes/ranger", methods=["POST"])

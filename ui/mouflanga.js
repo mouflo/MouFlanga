@@ -39,7 +39,7 @@
         '<img class="cv" loading="lazy" alt="" src="' + esc(s.cover) + '">' +
         (left > 0 ? '<span class="badge">' + left + ' à lire</span>' : '<span class="badge done">lu ✔</span>') +
         '<div class="nm">' + esc(s.title) + '</div>' +
-        '<div class="st">' + s.chapters + ' chapitre' + (s.chapters > 1 ? 's' : '') + ' · ' + s.size_mb + ' Mo</div>' +
+        '<div class="st">' + s.chapters + ' ' + (s.unite || 'chapitre') + (s.chapters > 1 ? 's' : '') + ' · ' + s.size_mb + ' Mo</div>' +
         '<div class="bar"><i style="width:' + pct + '%"></i></div></div>';
     }).join('');
   }
@@ -77,8 +77,18 @@
       '&q=' + encodeURIComponent(s.id) + '&retour=' + encodeURIComponent(location.origin + location.pathname + '#' + encodeURIComponent(s.id));
     // Chapitres manquants : une ligne discrète, seulement s'il en manque
     $('sMissingLine').hidden = !(s.manquants && s.manquants.length);
-    if (s.manquants && s.manquants.length) $('sMissingLine').textContent = '⚠ Manquants : ' + s.manquants.join(', ');
+    if (s.manquants && s.manquants.length) $('sMissingLine').textContent = '⚠ ' + (s.type_manquants === 'tomes' ? 'Tomes manquants' : 'Manquants') + ' : ' + s.manquants.join(', ');
     fermerMenus();
+    // Série ajoutée à la main : proposition de rangement (nom propre, un dossier par tome)
+    var o = s.organiser;
+    $('sOrga').hidden = !o || !!(s.rangement && s.rangement.en_cours);
+    if (o) {
+      var quoi = [];
+      if (o.tomes) quoi.push(o.tomes + ' tome' + (o.tomes > 1 ? 's' : '') + ' complet' + (o.tomes > 1 ? 's' : '') + (o.premier_tome != null && o.tomes > 1 ? ' (' + o.premier_tome + ' à ' + o.dernier_tome + ')' : '') + ' rangé' + (o.tomes > 1 ? 's' : '') + ' chacun dans son dossier « Tome NN »');
+      if (o.chapitres) quoi.push(o.chapitres + ' chapitre' + (o.chapitres > 1 ? 's' : '') + ' regroupé' + (o.chapitres > 1 ? 's' : '') + ' en tomes (répartition cherchée sur Internet)');
+      $('sOrgaTexte').innerHTML = '<b>Série ajoutée à la main.</b> « Organiser » la renomme' + (quoi.length ? ', puis : ' + esc(quoi.join(' ; ')) : '') + '. Ta progression et ta couverture sont gardées.';
+      if (document.activeElement !== $('sOrgaNom')) $('sOrgaNom').value = o.nom;
+    }
     var rg = s.rangement || {};
     $('sTomes').hidden = !(s.a_ranger || rg.en_cours);
     $('sTomes').disabled = !!rg.en_cours;
@@ -86,7 +96,8 @@
     if (rg.message && !rg.en_cours) note('sMsg', rg.message, 'ok');
     clearTimeout(suiviRangement);
     if (rg.en_cours) suiviRangement = setTimeout(function () { if (current && current.id === s.id) openSeries(s.id, false); }, 2500);
-    $('sMeta').textContent = s.chapters.length + ' chapitre' + (s.chapters.length > 1 ? 's' : '') + ' · ' + read + ' lu' + (read > 1 ? 's' : '');
+    var unite = s.type_manquants === 'tomes' ? 'tome' : 'chapitre';
+    $('sMeta').textContent = s.chapters.length + ' ' + unite + (s.chapters.length > 1 ? 's' : '') + ' · ' + read + ' lu' + (read > 1 ? 's' : '');
     var next = s.current || (s.chapters.find(function (c) { return !c.read; }) || s.chapters[0] || {}).key;
     $('sResume').textContent = (s.current ? '▶ Reprendre' : read ? '▶ Continuer' : '▶ Commencer');
     $('sResume').dataset.path = next || '';
@@ -193,6 +204,16 @@
       var r = await post('/api/tomes/ranger', {series: current.id});
       if (!r.ok) { note('sMsg', r.error); return; }
       await openSeries(current.id, false);
+    });
+    $('sOrgaGo').addEventListener('click', async function () {
+      var nom = $('sOrgaNom').value.trim(); if (!nom) return;
+      $('sOrgaGo').disabled = true; note('sMsg', 'Rangement des fichiers…', 'warn');
+      var r = await post('/api/organiser', {series: current.id, nom: nom});
+      $('sOrgaGo').disabled = false;
+      if (!r.ok) { note('sMsg', r.error); return; }
+      tomesOuverts[r.id] = null;
+      history.replaceState({s: r.id}, '', '#' + encodeURIComponent(r.id));
+      await openSeries(r.id, false);
     });
     // Menus : appui sur la couverture (couverture) et sur « ⋯ » (actions moins courantes)
     function basculer(menu, e) {

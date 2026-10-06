@@ -21,6 +21,8 @@ Appli Flask (bibliothèque et lecteur de mangas) + scraper Japscan. Dossier `/op
 - Fichier de tome : `Tome NN/<Série> - Tome NN.cbz` (ou `Hors tome/`), pages `c0012.00-p003.jpg`, `chapitres.json` (titres), `ComicInfo.xml`. Réécriture complète à chaque ajout (fichier .tmp puis remplacement).
 - Bibliothèque : `_entrees()` donne les chapitres (clé = chemin pour un fichier ordinaire, « #12 » pour un chapitre de tome, avec `debut`/`nb`) ; progression et « lu » par clé. `_ranger_en_tomes()` : anciens fichiers → tomes, hors tome → tome sorti ; lancé avant chaque téléchargement (`preparer`) et par le bouton « Ranger en tomes ».
 
+- Séries ajoutées à la main : `_plan_organiser()` (nom proposé d'après les noms de fichiers, crochets et « T01 » retirés) et `/api/organiser` (`_organiser()` : renommage, tomes complets déplacés dans `Tome NN/`, progression suivie, puis rangement des chapitres en arrière-plan). `_numero_tome()` reconnaît un tome complet ; `tomes_cbz._reecrire` refuse d'écraser un fichier qui n'est pas un fichier de tome.
+
 ## Le scraper Japscan (`japscan_scraper.py`)
 - Navigateur au choix dans ⚙ Réglages : Chrome (Patchright, profil `data/navigateur`) ou Camoufox (Firefox, profil `data/navigateur-firefox`), sous écran virtuel Xvfb ; clics réels avec xdotool.
 - Cloudflare impose une vérification interactive : la page `/verification` montre le navigateur du serveur (capture) et relaie clics, défilement et glisser du doigt ; alerte Telegram.

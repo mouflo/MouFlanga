@@ -105,6 +105,9 @@ def _reecrire(path: Path, serie: str, tome, retirer: set, ajouts: dict, titres_a
     """Réécrit le fichier : enlève les chapitres « retirer », ajoute « ajouts » {num: [octets]}."""
     path = Path(path)
     titres, anciennes = {}, []
+    if path.exists() and lire_info(path) is None:
+        # Un tome complet ajouté à la main porte ce nom : on n'y touche jamais (ses pages seraient perdues)
+        raise FileExistsError(f"{path.name} est un tome complet ajouté à la main : chapitre non ajouté")
     if path.exists():
         info = lire_info(path) or {}
         titres = {float(k): v for k, v in (info.get("titres") or {}).items()}
