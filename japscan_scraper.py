@@ -138,7 +138,7 @@ _HISTORIQUE = []     # derniers événements de vérification (pour le rapport d
 def _noter(texte: str) -> None:
     ligne = f"{datetime.now().strftime('%H:%M:%S')} {texte}"
     _HISTORIQUE.append(ligne)
-    del _HISTORIQUE[:-40]
+    del _HISTORIQUE[:-60]
     logger.info("Vérification : " + texte)
 
 
@@ -696,8 +696,20 @@ class JapscanScraper:
 
                 # Tous les liens pointant vers /<type>/<slug>/<numéro>/ de CETTE série
                 pattern = re.compile(
-                    r"/(?:manga|manhua|manhwa)/" + (re.escape(slug) if slug else r"[^/]+") + r"/([\w.\-]+)/?$"
+                    r"/(?:manga|manhua|manhwa|lecture-en-ligne|chapitre)/" + (re.escape(slug) if slug else r"[^/]+") + r"/([\w.\-]+)/?$"
                 )
+                # Pour le rapport : à quoi ressemblent les liens de cette série (aucune donnée personnelle)
+                try:
+                    liens = [(a["href"], a.get_text(strip=True)[:30]) for a in soup.find_all("a", href=True)
+                             if slug and f"/{slug}/" in a["href"]]
+                    _noter(f"fiche série : {len(liens)} lien(s) contenant « {slug} »")
+                    for h, t in (liens[:6] + liens[-4:] if len(liens) > 10 else liens):
+                        _noter(f"  lien {re.sub(r'^https?://[^/]+', '', h)[:70]} → « {t} »")
+                    zones = [(e.name, " ".join(e.get("class", []))[:40], len(e.find_all("a")))
+                             for e in soup.find_all(True, class_=re.compile("chapter|chapitre|episode", re.I))][:6]
+                    _noter(f"  zones « chapitres » : {zones}")
+                except Exception as e:
+                    _noter(f"  diagnostic des liens impossible : {e.__class__.__name__}")
                 for item in soup.find_all("a", href=True):
                     href = item["href"]
                     m = pattern.search(href)
