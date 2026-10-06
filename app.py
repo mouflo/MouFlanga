@@ -331,6 +331,80 @@ def api_mark():
     return jsonify({"ok": True})
 
 
+CORBEILLE = ".corbeille"        # dans le dossier des mangas ; ignorée par la bibliothèque (commence par un point)
+CORBEILLE_JOURS = 30            # ce qui est mis à la corbeille est effacé pour de bon au bout de 30 jours
+
+
+def _vers_corbeille(p: Path):
+    """Déplace un fichier ou un dossier de série dans .corbeille/<date>/ (même chemin relatif)."""
+    import shutil
+    dest = MANGA_DIR / CORBEILLE / datetime.now().strftime("%Y-%m-%d") / p.relative_to(MANGA_DIR)
+    if dest.exists():
+        dest = dest.with_name(f"{dest.stem} ({int(time.time())}){dest.suffix}" if p.is_file()
+                              else f"{dest.name} ({int(time.time())})")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(p), str(dest))
+
+
+def _vider_corbeille():
+    """Efface les jours de corbeille plus vieux que CORBEILLE_JOURS."""
+    import shutil
+    racine = MANGA_DIR / CORBEILLE
+    if not racine.is_dir():
+        return
+    limite = time.time() - CORBEILLE_JOURS * 86400
+    for d in racine.iterdir():
+        try:
+            if d.is_dir() and datetime.strptime(d.name, "%Y-%m-%d").timestamp() < limite:
+                shutil.rmtree(d, ignore_errors=True)
+        except ValueError:
+            continue
+
+
+@app.route("/api/delete", methods=["POST"])
+def api_delete():
+    """Met à la corbeille un chapitre (path) ou toute une série (all)."""
+    body = request.get_json(silent=True) or {}
+    series = str(body.get("series", ""))
+    files = _scan().get(series)
+    if files is None:
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    for j in list(japscan_scraper.download_jobs.values()):
+        if j.get("status") == "running" and japscan_scraper.nom_sur(j.get("title") or "") == series:
+            return jsonify({"ok": False, "error": "Cette série est en cours de téléchargement : annule-le d'abord (onglet « En cours »)."}), 409
+    if body.get("all"):
+        cibles = files if series == "(Sans série)" else [MANGA_DIR / series]
+        retires = {_rel(f) for f in files}
+    else:
+        rel = str(body.get("path", ""))
+        cibles = [f for f in files if _rel(f) == rel]
+        if not cibles:
+            return jsonify({"ok": False, "error": "Chapitre introuvable"}), 404
+        retires = {rel}
+    try:
+        for c in cibles:
+            _vers_corbeille(c)
+    except OSError as e:
+        logger.warning("Suppression impossible dans %s : %s", series, e)
+        return jsonify({"ok": False, "error": f"Suppression impossible : {e.strerror or e}"}), 500
+    logger.info("Mis à la corbeille : %s (%d fichier(s))", series if body.get("all") else next(iter(retires)), len(retires))
+
+    with _progress_lock:
+        data = _read_json(PROGRESS_FILE, {})
+        p = data.get(series)
+        if p is not None:
+            if body.get("all"):
+                data.pop(series)
+            else:
+                p["read"] = [r for r in p.get("read", []) if r not in retires]
+                if p.get("current") in retires:
+                    p.pop("current", None)
+                    p["page"] = 0
+            _write_json(PROGRESS_FILE, data)
+    _vider_corbeille()
+    return jsonify({"ok": True, "supprimes": len(retires), "jours": CORBEILLE_JOURS})
+
+
 # ============================================================================
 # Japscan - Scraper et téléchargement
 # ============================================================================

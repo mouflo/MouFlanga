@@ -32,6 +32,9 @@
 .chap .ct { flex:1; min-width:0; overflow-wrap:anywhere; }
 .chap .cs { color:var(--muted); font-size:.8rem; flex:none; }
 .chap .tog { background:var(--field); color:var(--text); border:0; border-radius:4px; padding:5px 9px; font-size:.8rem; cursor:pointer; flex:none; }
+.chap .tog.del { background:transparent; opacity:.6; }
+.chap .tog.del:hover { opacity:1; background:rgba(220,60,60,.25); }
+.row .danger { color:#e06c6c; }
 .chap.cur { background:rgba(82,181,75,.1); }
 @media (max-width:800px) {
     .container { padding:10px; }

@@ -8,6 +8,9 @@ Appli Flask (bibliothèque et lecteur de mangas) + scraper Japscan. Dossier `/op
 ## Tests
 `python -m unittest discover -s tests` (doit rester vert avant tout push). Journal : `journalctl -u mouflanga`. Le bouton « Rapport » de l'appli résume l'état (vérification Cloudflare, DNS, carte graphique, derniers événements).
 
+## Bibliothèque
+- Suppression (`/api/delete`) : chapitre ou série déplacés dans `<dossier des mangas>/.corbeille/<AAAA-MM-JJ>/`, vidée après 30 jours (`CORBEILLE_JOURS`) ; refusée pendant le téléchargement de la série.
+
 ## Le scraper Japscan (`japscan_scraper.py`)
 - Navigateur au choix dans ⚙ Réglages : Chrome (Patchright, profil `data/navigateur`) ou Camoufox (Firefox, profil `data/navigateur-firefox`), sous écran virtuel Xvfb ; clics réels avec xdotool.
 - Cloudflare impose une vérification interactive : la page `/verification` montre le navigateur du serveur (capture) et relaie clics, défilement et glisser du doigt ; alerte Telegram.

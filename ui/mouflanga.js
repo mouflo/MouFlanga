@@ -74,7 +74,8 @@
     $('chapters').innerHTML = s.chapters.map(function (c) {
       return '<div class="chap' + (c.read ? ' read' : '') + (c.path === s.current ? ' cur' : '') + '" data-path="' + esc(c.path) + '">' +
         '<span class="dot"></span><span class="ct">' + esc(c.title) + '</span><span class="cs">' + c.size_mb + ' Mo</span>' +
-        '<button class="tog" data-tog="' + esc(c.path) + '" title="Marquer ' + (c.read ? 'non lu' : 'lu') + '">' + (c.read ? '↺' : '✔') + '</button></div>';
+        '<button class="tog" data-tog="' + esc(c.path) + '" title="Marquer ' + (c.read ? 'non lu' : 'lu') + '">' + (c.read ? '↺' : '✔') + '</button>' +
+        '<button class="tog del" data-del="' + esc(c.path) + '" title="Supprimer ce chapitre">🗑</button></div>';
     }).join('');
     note('sMsg', (!s.rar && s.chapters.some(function (c) { return /\.(cbr|rar)$/i.test(c.path); })) ? 'Les vrais fichiers RAR (.cbr) ne s\'ouvrent que si le serveur a « rarfile » et un outil de décompression : voir le Journal si une page refuse de s\'ouvrir.' : '', 'warn');
   }
@@ -100,10 +101,28 @@
         await post('/api/mark', {series: current.id, path: c.path, read: !c.read});
         c.read = !c.read; drawSeries(); return;
       }
+      var d = e.target.closest('[data-del]');
+      if (d) {
+        e.stopPropagation();
+        var ch = current.chapters.find(function (x) { return x.path === d.dataset.del; });
+        if (!confirm('Supprimer « ' + ch.title + ' » ?\n\nLe fichier va dans la corbeille du dossier des mangas (effacé pour de bon après 30 jours).')) return;
+        var r = await post('/api/delete', {series: current.id, path: ch.path});
+        if (!r.ok) { note('sMsg', r.error); return; }
+        if (current.chapters.length <= 1) { history.pushState({}, '', location.pathname); showList(); }
+        else await openSeries(current.id, false);
+        return;
+      }
       var row = e.target.closest('.chap'); if (row) readChapter(row.dataset.path);
     });
     async function markAll(v) { await post('/api/mark', {series: current.id, all: true, read: v}); await openSeries(current.id, false); }
     $('sAllRead').addEventListener('click', function () { markAll(true); });
+    $('sDelete').addEventListener('click', async function () {
+      var n = current.chapters.length;
+      if (!confirm('Supprimer toute la série « ' + current.title + ' » (' + n + ' fichier' + (n > 1 ? 's' : '') + ') ?\n\nLes fichiers vont dans la corbeille du dossier des mangas (effacés pour de bon après 30 jours).')) return;
+      var r = await post('/api/delete', {series: current.id, all: true});
+      if (!r.ok) { note('sMsg', r.error); return; }
+      history.pushState({}, '', location.pathname); showList();
+    });
     $('sAllUnread').addEventListener('click', function () { if (confirm('Tout marquer comme non lu pour cette série ?')) markAll(false); });
     window.addEventListener('popstate', route);
     route();
