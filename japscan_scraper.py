@@ -25,7 +25,7 @@ except ImportError:
 
 logger = logging.getLogger("japscan_scraper")
 
-JAPSCAN_URL = "https://japscan.cc"  # japscan.st a fermé, on utilise japscan.cc
+JAPSCAN_URL = "https://www.japscan.foo"  # japscan.cc redirige vers japscan.foo
 TIMEOUT = 10
 MAX_RETRIES = 3
 
@@ -71,31 +71,66 @@ class JapscanScraper:
         soup = BeautifulSoup(html, "html.parser")
         mangas = []
 
-        # Structure dépend du site - à adapter
-        for item in soup.select("div.manga-item, a.manga-link")[:50]:  # Limite à 50
+        # Essaie plusieurs patterns de sélecteurs (site peut varier)
+        selectors = [
+            "div.manga-item, a.manga-link",  # Pattern standard
+            "div.serie, a.serie-link",        # Pattern alternatif
+            "div[class*='manga'], a[class*='manga']",  # Classes contenant 'manga'
+            "div.col a",  # Cards en colonnes
+            "article",    # HTML5 semantic
+            "div.card",   # Bootstrap cards
+        ]
+
+        seen_urls = set()
+
+        for selector in selectors:
             try:
-                name_el = item.select_one("h3, .title, .name")
-                if not name_el:
-                    continue
+                for item in soup.select(selector)[:100]:
+                    try:
+                        # Essaie d'extraire le titre et l'URL
+                        title = None
+                        link_href = None
 
-                title = name_el.get_text(strip=True)
-                link = item.get("href") or item.select_one("a")
-                if not link:
-                    link_href = ""
-                elif isinstance(link, str):
-                    link_href = link
-                else:
-                    link_href = link.get("href", "")
+                        # Si c'est un lien, utilise-le
+                        if item.name == "a":
+                            title = item.get_text(strip=True)
+                            link_href = item.get("href", "")
+                        else:
+                            # Sinon cherche le titre dans les enfants
+                            name_el = item.select_one("h3, h2, h1, .title, .name, a")
+                            if name_el:
+                                title = name_el.get_text(strip=True)
+                                if name_el.name == "a":
+                                    link_href = name_el.get("href", "")
+                                else:
+                                    link = item.select_one("a")
+                                    if link:
+                                        link_href = link.get("href", "")
 
-                url = urljoin(JAPSCAN_URL, link_href)
+                        if not title or not link_href:
+                            continue
 
-                mangas.append({
-                    "title": title,
-                    "url": url,
-                    "id": hashlib.md5(url.encode()).hexdigest()[:12]
-                })
+                        url = urljoin(JAPSCAN_URL, link_href)
+
+                        # Évite les doublons
+                        if url in seen_urls or url == JAPSCAN_URL:
+                            continue
+
+                        seen_urls.add(url)
+
+                        mangas.append({
+                            "title": title,
+                            "url": url,
+                            "id": hashlib.md5(url.encode()).hexdigest()[:12]
+                        })
+                    except Exception as e:
+                        logger.debug(f"Erreur parsing item: {e}")
+                        continue
+
+                if mangas:  # Si on a trouvé des mangas, on arrête
+                    break
             except Exception as e:
-                logger.warning(f"Erreur parsing manga: {e}")
+                logger.debug(f"Erreur avec sélecteur '{selector}': {e}")
                 continue
 
         logger.info(f"Trouvé {len(mangas)} mangas")
@@ -111,22 +146,46 @@ class JapscanScraper:
         soup = BeautifulSoup(html, "html.parser")
         chapters = []
 
-        # À adapter selon la structure du site
-        for item in soup.select("a.chapter-link, .chapter-item a"):
+        # Essaie plusieurs patterns de sélecteurs
+        selectors = [
+            "a.chapter-link",
+            ".chapter-item a",
+            "a[class*='chapter']",
+            "div.chapitre a",
+            "div.chapter a",
+            "tr a",  # Les mangas peuvent être en tableau
+            "li a",  # Ou en liste
+        ]
+
+        seen_urls = set()
+
+        for selector in selectors:
             try:
-                title = item.get_text(strip=True)
-                url = urljoin(JAPSCAN_URL, item.get("href", ""))
+                for item in soup.select(selector):
+                    try:
+                        title = item.get_text(strip=True)
+                        url = urljoin(JAPSCAN_URL, item.get("href", ""))
 
-                if url == JAPSCAN_URL:
-                    continue
+                        if not title or url == JAPSCAN_URL or url in seen_urls:
+                            continue
 
-                chapters.append({
-                    "title": title,
-                    "url": url,
-                    "num": len(chapters) + 1
-                })
+                        # Filtre les URLs qui ne semblent pas être des chapitres
+                        if not any(x in url.lower() for x in ["chapitre", "chapter", "lecture", "read", "/ch"]):
+                            continue
+
+                        seen_urls.add(url)
+                        chapters.append({
+                            "title": title,
+                            "url": url,
+                            "num": len(chapters) + 1
+                        })
+                    except Exception as e:
+                        logger.debug(f"Erreur parsing chapitre: {e}")
+
+                if chapters:  # Si on a trouvé des chapitres, on arrête
+                    break
             except Exception as e:
-                logger.warning(f"Erreur parsing chapitre: {e}")
+                logger.debug(f"Erreur avec sélecteur '{selector}': {e}")
 
         logger.info(f"Trouvé {len(chapters)} chapitres")
         return list(reversed(chapters))  # Ordre chronologique
@@ -141,23 +200,52 @@ class JapscanScraper:
         soup = BeautifulSoup(html, "html.parser")
         pages = []
 
-        # À adapter selon la structure (cherche img.page, img[data-src], etc.)
-        for img in soup.select("img.page, img[data-src], img[data-lazy-src]"):
+        # Essaie plusieurs patterns d'images
+        img_selectors = [
+            "img.page",
+            "img[data-src]",
+            "img[data-lazy-src]",
+            "img[class*='page']",
+            "img[class*='chapter']",
+            "div.page img",
+            "img",  # Fallback: toutes les images
+        ]
+
+        for selector in img_selectors:
             try:
-                src = img.get("data-src") or img.get("data-lazy-src") or img.get("src")
-                if not src or "blank" in src.lower():
-                    continue
+                for img in soup.select(selector):
+                    try:
+                        # Essaie plusieurs attributs pour l'URL
+                        src = img.get("data-src") or img.get("data-lazy-src") or img.get("src")
 
-                page_url = urljoin(JAPSCAN_URL, src)
-                logger.debug(f"Télécharge page: {page_url}")
+                        if not src or "blank" in src.lower() or "placeholder" in src.lower():
+                            continue
 
-                # Télécharge l'image
-                img_data = self._fetch_binary(page_url)
-                if img_data:
-                    pages.append(img_data)
-                    time.sleep(0.5)  # Rate limiting
+                        # Filtre les images trop petites (logos, etc.)
+                        width = img.get("width")
+                        height = img.get("height")
+                        if width and height:
+                            try:
+                                if int(width) < 300 or int(height) < 400:
+                                    continue
+                            except (ValueError, TypeError):
+                                pass
+
+                        page_url = urljoin(chapter_url, src)  # Relative to chapter page
+                        logger.debug(f"Télécharge page: {page_url}")
+
+                        # Télécharge l'image
+                        img_data = self._fetch_binary(page_url)
+                        if img_data:
+                            pages.append(img_data)
+                            time.sleep(0.3)  # Rate limiting
+                    except Exception as e:
+                        logger.debug(f"Erreur téléchargement page: {e}")
+
+                if pages:  # Si on a trouvé des pages, on arrête
+                    break
             except Exception as e:
-                logger.warning(f"Erreur téléchargement page: {e}")
+                logger.debug(f"Erreur avec sélecteur '{selector}': {e}")
 
         logger.info(f"Téléchargé {len(pages)} pages")
         return pages
