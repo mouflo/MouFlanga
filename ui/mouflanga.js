@@ -98,6 +98,33 @@
     window.scrollTo(0, 0);
   }
 
+  // Couverture de la même hauteur que la colonne d'infos : bords du haut et du bas alignés
+  function ajusterCouverture() {
+    var img = $('sCover'), info = document.querySelector('.series-info'), head = document.querySelector('.series-head');
+    if (!head || !head.offsetWidth) return;
+    info.style.minHeight = '';
+    var max = head.clientWidth * 0.38, min = 90;
+    var w = min;
+    for (var k = 0; k < 5; k++) {                          // la largeur de la couverture change la hauteur des infos
+      w = Math.max(min, Math.min(max, info.offsetHeight / 1.5));
+      img.style.width = w + 'px'; img.style.height = (w * 1.5) + 'px';
+    }
+    // Infos plus hautes que la couverture (titre très long) : la couverture s'allonge un peu (bords légèrement rognés)
+    var h = Math.max(w * 1.5, info.offsetHeight);
+    img.style.height = h + 'px';
+    info.style.minHeight = h + 'px';                       // couverture plus haute : le bouton descend en bas
+  }
+  window.addEventListener('resize', function () { if (current) ajusterCouverture(); });
+  // Le contenu des infos peut changer après coup (police chargée, état de la série, rangement) : on réaligne
+  var reAligner = null;
+  if (window.ResizeObserver) new ResizeObserver(function () {
+    cancelAnimationFrame(reAligner);
+    reAligner = requestAnimationFrame(function () {
+      var img = $('sCover'), info = document.querySelector('.series-info');
+      if (current && info && Math.abs(info.offsetHeight - parseFloat(img.style.height || 0)) > 1) ajusterCouverture();
+    });
+  }).observe(document.querySelector('.series-info'));
+
   function drawSeries() {
     var s = current, read = s.chapters.filter(function (c) { return c.read; }).length;
     $('sTitle').textContent = s.title;
@@ -129,6 +156,7 @@
       $('sMissingLine').href = '/telecharger?q=' + encodeURIComponent(s.title);   // la page Télécharger ouvre la série sur Japscan
     }
     fermerMenus();
+    ajusterCouverture();
     // Série ajoutée à la main : proposition de rangement (nom propre, un dossier par tome)
     var o = s.organiser;
     $('sOrga').hidden = !o || !!(s.rangement && s.rangement.en_cours);

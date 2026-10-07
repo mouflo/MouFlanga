@@ -128,3 +128,12 @@ a.missing-line:hover { text-decoration:underline; }
 .lettres button { min-width:34px; padding:6px 8px; border:0; border-radius:6px; background:var(--field, #2a2a2a); color:var(--text, #eee); font:inherit; font-weight:600; cursor:pointer; }
 body.mou-skin .lettres button { padding:6px 8px; font-weight:600; background:var(--field, #2a2a2a); color:var(--text, #eee); }
 body.mou-skin .lettres button.actif, .lettres button.actif { background:var(--accent, #52b54b); color:#fff; }
+
+/* Couverture alignée en haut et en bas sur la colonne d'infos (hauteur calculée par ajusterCouverture) */
+.series-head { gap:14px; }
+.series-info { display:flex; flex-direction:column; }
+.series-info .actions { margin-top:auto; padding-top:4px; }
+.series-info .actions > * { margin:0; }
+#sResume { min-width:0; padding:8px 6px; font-size:.9rem; white-space:normal; line-height:1.25; }
+#sMore { min-width:38px; padding:8px 8px; }
+@media (max-width:800px) { #sTitle { font-size:1.1rem; } }
