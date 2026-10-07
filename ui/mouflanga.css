@@ -148,3 +148,28 @@ body.mou-skin #sEcouter.joue { background:var(--accent, #52b54b); color:#fff; }
 
 /* Affiche d'une série entièrement lue : petite coche en haut à droite */
 .card .lue { position:absolute; top:8px; right:8px; width:24px; height:24px; border-radius:50%; background:#2e7d32; color:#fff; font-size:.8rem; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.5); }
+
+/* Bibliothèque : menus « Ma lecture · Parution · Tri » (cumulables) */
+.filtres { display:flex; gap:8px; margin:-4px 0 10px; }
+.filtre { position:relative; flex:1 1 0; min-width:0; }
+.filtre-tri { flex:0 0 auto; min-width:88px; }
+body.mou-skin .filtre-btn { width:100%; display:flex; flex-direction:column; align-items:flex-start; gap:1px; padding:6px 22px 6px 10px; border-radius:6px;
+  background:var(--field, #2a2a2a); border:1px solid #3a3a3a; color:var(--text, #eee); font-weight:500; text-align:left; position:relative; }
+.filtre-btn::after { content:"▾"; position:absolute; right:8px; top:50%; transform:translateY(-50%); color:#aaa; font-size:.8rem; }
+.filtre-nom { font-size:.62rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#999; white-space:nowrap; }
+.filtre-val { font-size:.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.filtre.actif body.mou-skin .filtre-btn, body.mou-skin .filtre.actif .filtre-btn { border-color:var(--accent, #52b54b); background:rgba(82,181,75,.14); }
+.filtre.actif .filtre-nom { color:var(--accent, #52b54b); }
+.filtre-menu { position:absolute; z-index:30; top:calc(100% + 4px); left:0; min-width:210px; padding:4px 0; border-radius:10px;
+  background:#1e1f22; border:1px solid #3a3a3a; box-shadow:0 10px 30px rgba(0,0,0,.6); }
+.filtre-menu[hidden] { display:none; }
+.filtre-menu-droite { left:auto; right:0; }
+.filtre-titre { padding:8px 14px 4px; font-size:.68rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--accent, #52b54b); }
+body.mou-skin .filtre-menu button { display:flex; justify-content:space-between; width:100%; padding:9px 14px; border:0; border-radius:0; background:none;
+  color:#ddd; font-weight:400; font-size:.9rem; text-align:left; }
+body.mou-skin .filtre-menu button.on { color:#fff; font-weight:600; background:rgba(82,181,75,.12); }
+.filtre-menu button.on::after { content:"✓"; color:var(--accent, #52b54b); font-weight:800; margin-left:12px; }
+.filtre-resume { font-size:.8rem; color:var(--muted); margin:-2px 0 10px; }
+.filtre-resume[hidden] { display:none; }
+body.mou-skin #filtreRaz { background:none; border:0; padding:0; color:var(--accent, #52b54b); font-size:.8rem; font-weight:600; }
+.card .lue.attente { background:#1f5fa8; }

@@ -23,24 +23,13 @@
         <div class="panel">
             <div class="toolbar">
                 <input type="text" id="search" placeholder="🔍 Chercher une série…" autocomplete="off" spellcheck="false">
-                <select id="sort" aria-label="Afficher">
-                    <optgroup label="Toutes les séries">
-                        <option value="title">Titre (A → Z)</option>
-                        <option value="recent">Lues récemment</option>
-                        <option value="added">Ajoutées récemment</option>
-                    </optgroup>
-                    <optgroup label="Ma lecture">
-                        <option value="lecture">📖 En cours de lecture</option>
-                        <option value="nonlu">🆕 Pas encore commencées</option>
-                        <option value="lu">✔️ Déjà lues</option>
-                    </optgroup>
-                    <optgroup label="Parution">
-                        <option value="fini">✅ Séries complètes (tout est là)</option>
-                        <option value="incomplet">⚠ Terminées mais incomplètes</option>
-                        <option value="parution">🔄 En cours de parution</option>
-                    </optgroup>
-                </select>
             </div>
+            <div class="filtres" id="filtres">
+                <div class="filtre" data-filtre="lecture"><button type="button" class="filtre-btn"><span class="filtre-nom">Ma lecture</span><span class="filtre-val"></span></button><div class="filtre-menu" hidden></div></div>
+                <div class="filtre" data-filtre="parution"><button type="button" class="filtre-btn"><span class="filtre-nom">Parution</span><span class="filtre-val"></span></button><div class="filtre-menu" hidden></div></div>
+                <div class="filtre filtre-tri" data-filtre="tri"><button type="button" class="filtre-btn"><span class="filtre-nom">Tri</span><span class="filtre-val"></span></button><div class="filtre-menu filtre-menu-droite" hidden></div></div>
+            </div>
+            <div class="filtre-resume" id="filtreResume" hidden></div>
             <div class="lettres" id="lettres" hidden></div>
             <div id="listMsg"></div>
             <div id="grid" class="grid"></div>

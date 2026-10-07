@@ -266,6 +266,24 @@ def reader():
 _STATUTS = {"en_cours": False, "dernier": 0.0}
 
 
+def _il_en_manque(name, entrees, etat):
+    """Filtre « Il en manque » : série finie incomplète, ou en cours de parution avec des tomes déjà sortis absents
+    (ex. 18 tomes sortis, on a 1 à 10 avec des trous) ; pour une série en chapitres, des trous dans les numéros."""
+    if etat == "incomplet":
+        return True
+    if etat not in ("en_cours", "pause"):
+        return False
+    tomes_locaux = {int(e["tome"]) for e in entrees if e.get("tome") is not None}
+    tomes_locaux |= {int(e["groupe"].split()[1]) for e in entrees if (e.get("groupe") or "").startswith("Tome ")}
+    st = (tomes._charger(name) or {}).get("statut_officiel") or {}
+    vol = st.get("volumes")
+    if tomes_locaux:
+        fin = max(vol or 0, max(tomes_locaux))
+        return any(t not in tomes_locaux for t in range(1, fin + 1))
+    nums = [e["num"] for e in entrees if e.get("num") is not None]
+    return bool(nums) and bool(_manquants([], nums)[0])
+
+
 def _etat_serie(name, entrees):
     """Marque de la couverture : fini (et tout est là), incomplet (fini officiellement mais il manque des tomes ou
     chapitres), en_cours, pause, arrete ; None si inconnu. Avec un résumé lisible pour la page de la série."""
@@ -359,10 +377,11 @@ def api_library():
                 pass
         entrees = _entrees(files)
         etat, _ = _etat_serie(name, entrees) if name != "(Sans série)" else (None, "")
+        manque = name != "(Sans série)" and _il_en_manque(name, entrees, etat)
         a_remplir.append((name, max([e["tome"] for e in entrees if e.get("tome") is not None] +
                                     [int(e["groupe"].split()[1]) for e in entrees if (e.get("groupe") or "").startswith("Tome ")] or [0]) or None))
         out.append({
-            "etat": etat,
+            "etat": etat, "manque": manque,
             "id": name, "title": name, "chapters": len(entrees), "compte": _compte(entrees),
             "unite": "tome" if entrees and sum(e.get("tome") is not None for e in entrees) * 2 >= len(entrees) else "chapitre",
             "read": len([e for e in entrees if e["key"] in read]),

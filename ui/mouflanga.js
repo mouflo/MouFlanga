@@ -26,26 +26,50 @@
   var series = [], current = null, suiviRangement = null, tomesOuverts = {};
 
   function lue(s) { return s.chapters > 0 && s.read >= s.chapters; }
+  function enParution(s) { return s.etat === 'en_cours' || s.etat === 'pause'; }
+  // Trois menus cumulables : Ma lecture · Parution · Tri (+ recherche et lettres)
+  var FILTRES = {
+    lecture: {titre: '📖 Ma lecture', choix: [['', 'Toutes'], ['lecture', 'En cours de lecture', 'En cours'], ['nonlu', 'Pas commencées'], ['lu', 'Déjà lues']],
+      garde: {lecture: function (s) { return s.read > 0 && s.read < s.chapters; }, nonlu: function (s) { return !s.read; }, lu: lue}},
+    parution: {titre: '🗞 Parution', choix: [['', 'Toutes'], ['fini', 'Complètes'], ['manque', 'Il en manque'], ['parution', 'En cours de parution', 'En parution']],
+      garde: {fini: function (s) { return s.etat === 'fini'; }, manque: function (s) { return !!s.manque; }, parution: enParution}},
+    tri: {titre: '↕ Tri', choix: [['az', 'A → Z'], ['za', 'Z → A'], ['added', 'Ajoutées récemment', 'Ajoutées'], ['recent', 'Lues récemment', 'Lues réc.'], ['progression', 'Progression']]}
+  };
+  var choixFiltre = {lecture: pref('mfLecture', ''), parution: pref('mfParution', ''), tri: pref('mfTri2', 'az')};
+  Object.keys(FILTRES).forEach(function (k) {     // ancien choix qui n'existe plus : valeur par défaut
+    if (!FILTRES[k].choix.some(function (c) { return c[0] === choixFiltre[k]; })) choixFiltre[k] = FILTRES[k].choix[0][0];
+  });
+  function libelle(k, court) { var c = FILTRES[k].choix.filter(function (c) { return c[0] === choixFiltre[k]; })[0]; return c ? (court && c[2] || c[1]) : ''; }
+  function drawFiltres() {
+    document.querySelectorAll('#filtres .filtre').forEach(function (f) {
+      var k = f.dataset.filtre, F = FILTRES[k];
+      f.querySelector('.filtre-val').textContent = libelle(k, true);
+      f.classList.toggle('actif', k !== 'tri' && !!choixFiltre[k]);
+      f.querySelector('.filtre-menu').innerHTML = '<div class="filtre-titre">' + F.titre + '</div>' + F.choix.map(function (c) {
+        return '<button type="button" data-val="' + c[0] + '"' + (c[0] === choixFiltre[k] ? ' class="on"' : '') + '>' + esc(c[1]) + '</button>';
+      }).join('');
+    });
+  }
+  function fermerFiltres(sauf) {
+    document.querySelectorAll('#filtres .filtre-menu').forEach(function (m) { if (m !== sauf) m.hidden = true; });
+  }
   function sorted(list) {
-    var q = sansAccents($('search').value.trim()), how = $('sort').value;
+    var q = sansAccents($('search').value.trim());
     list = list.filter(function (s) { return !q || sansAccents(s.title).indexOf(q) >= 0; });
     if (lettre && !q) list = list.filter(function (s) { return lettreDe(s.title) === lettre; });
-    // Filtres « Ma lecture » et « Parution » : la liste reste de A à Z
-    var garde = {
-      lecture: function (s) { return s.read > 0 && s.read < s.chapters; },
-      nonlu: function (s) { return !s.read; },
-      lu: lue,
-      fini: function (s) { return s.etat === 'fini'; },
-      incomplet: function (s) { return s.etat === 'incomplet'; },
-      parution: function (s) { return s.etat === 'en_cours' || s.etat === 'pause'; }
-    }[how];
-    if (garde) list = list.filter(garde);
+    ['lecture', 'parution'].forEach(function (k) {
+      var g = FILTRES[k].garde[choixFiltre[k]]; if (g) list = list.filter(g);
+    });
+    var titre = function (a, b) { return a.title.localeCompare(b.title, 'fr', {numeric: true}); };
+    var pc = function (s) { return s.chapters ? s.read / s.chapters : 0; };
     var by = {
-      title: function (a, b) { return a.title.localeCompare(b.title, 'fr', {numeric: true}); },
-      recent: function (a, b) { return (b.last_read || '').localeCompare(a.last_read || '') || by.title(a, b); },
-      added: function (a, b) { return b.added - a.added || by.title(a, b); }
+      az: titre,
+      za: function (a, b) { return titre(b, a); },
+      recent: function (a, b) { return (b.last_read || '').localeCompare(a.last_read || '') || titre(a, b); },
+      added: function (a, b) { return b.added - a.added || titre(a, b); },
+      progression: function (a, b) { return pc(b) - pc(a) || titre(a, b); }
     };
-    return list.sort(by[how] || by.title);
+    return list.sort(by[choixFiltre.tri] || titre);
   }
 
   // Recherche sans accents ni majuscules, et index des lettres (comme la page Télécharger)
@@ -63,13 +87,17 @@
   }
 
   function drawGrid() {
-    drawLettres();
+    drawLettres(); drawFiltres();
     var list = sorted(series.slice());
+    // « 12 séries · ✕ Tout remettre » dès qu'un filtre réduit la liste
+    var filtre = choixFiltre.lecture || choixFiltre.parution || lettre;
+    $('filtreResume').hidden = !filtre || !series.length;
+    $('filtreResume').innerHTML = list.length + ' série' + (list.length > 1 ? 's' : '') + ' · <button type="button" id="filtreRaz">✕ Tout remettre</button>';
     if (!series.length) { $('grid').innerHTML = ''; return; }
     if (!list.length) {
-      var choix = $('sort').options[$('sort').selectedIndex].text.replace(/^\W+\s*/, '');
+      var quoi = [choixFiltre.lecture && libelle('lecture').toLowerCase(), choixFiltre.parution && libelle('parution').toLowerCase()].filter(Boolean).join(' et ');
       $('grid').innerHTML = '<div class="empty">' + ($('search').value.trim() ? 'Aucune série ne correspond à « ' + esc($('search').value) + ' ».'
-        : 'Aucune série dans « ' + esc(choix) + ' »' + (lettre ? ' à la lettre ' + esc(lettre) : '') + '.') + '</div>';
+        : 'Aucune série' + (quoi ? ' ' + esc(quoi) : '') + (lettre ? ' à la lettre ' + esc(lettre) : '') + '.') + '</div>';
       return;
     }
     $('grid').innerHTML = list.map(function (s) {
@@ -77,7 +105,8 @@
       return '<div class="card" tabindex="0" data-id="' + esc(s.id) + '">' +
         '<img class="cv" loading="lazy" alt="" src="' + esc(s.cover) + '">' +
         (ETATS[s.etat] ? '<span class="etat ' + s.etat + '" title="' + ETATS[s.etat][1] + '">' + ETATS[s.etat][0] + '</span>' : '') +
-        (lue(s) ? '<span class="lue" title="Déjà lue">✔</span>' : '') +
+        (lue(s) ? (enParution(s) ? '<span class="lue attente" title="À jour : en attente du prochain tome">⏳</span>'
+                                 : '<span class="lue" title="Déjà lue">✔</span>') : '') +
         '<div class="nm">' + esc(s.title) + '</div>' +
         '<div class="st">' + esc(s.compte || (s.chapters + ' chapitre(s)')) + ' · ' + taille(s.size_mb) + '</div>' +
         '<div class="bar"><i style="width:' + pct + '%"></i></div></div>';
@@ -270,9 +299,22 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     $('search').addEventListener('input', drawGrid);
-    $('sort').value = pref('mfTri', 'title');
-    if (!$('sort').value) $('sort').value = 'title';          // ancien choix qui n'existe plus
-    $('sort').addEventListener('change', function () { setPref('mfTri', $('sort').value); drawGrid(); });
+    $('filtres').addEventListener('click', function (e) {
+      var f = e.target.closest('.filtre'); if (!f) return;
+      var menu = f.querySelector('.filtre-menu'), b = e.target.closest('[data-val]');
+      if (b) {
+        var k = f.dataset.filtre; choixFiltre[k] = b.dataset.val;
+        setPref({lecture: 'mfLecture', parution: 'mfParution', tri: 'mfTri2'}[k], b.dataset.val);
+        menu.hidden = true; drawGrid(); return;
+      }
+      if (e.target.closest('.filtre-btn')) { fermerFiltres(menu); menu.hidden = !menu.hidden; }
+    });
+    document.addEventListener('click', function (e) { if (!e.target.closest('#filtres')) fermerFiltres(); });
+    $('filtreResume').addEventListener('click', function (e) {
+      if (e.target.id !== 'filtreRaz') return;
+      choixFiltre.lecture = choixFiltre.parution = ''; lettre = '';
+      setPref('mfLecture', ''); setPref('mfParution', ''); drawGrid();
+    });
     $('lettres').addEventListener('click', function (e) {
       var b = e.target.closest('[data-lettre]'); if (!b) return;
       lettre = b.dataset.lettre; drawGrid();
