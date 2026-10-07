@@ -423,7 +423,8 @@ def api_library():
                         "cover": x.get("couverture") or "", "propositions": sum(p["statut"] == "attente" for p in x.get("propositions", []))})
     _remplir_statuts([x for x in a_remplir if x[0] != "(Sans série)"])
     try:
-        racine = sum(1 for f in MANGA_DIR.iterdir() if f.is_file() and importer.est_lot(f) and not f.name.startswith("."))
+        faites = _read_json(DATA_DIR / "archives-importees.json", {})
+        racine = sum(1 for f in MANGA_DIR.iterdir() if f.is_file() and importer.est_lot(f) and not f.name.startswith(".") and f.name not in faites)
     except OSError:
         racine = 0
     return jsonify({"series": out, "a_importer": racine, "import_en_cours": _FILE_IMPORT["en_cours"]})
@@ -1382,7 +1383,8 @@ def _nom_depuis_archive(nom_fichier, existantes):
 def _archives_racine():
     """Archives (.rar/.zip/.7z) posées directement dans le dossier des mangas, regroupées par série proposée."""
     try:
-        fichiers = sorted((f for f in MANGA_DIR.iterdir() if f.is_file() and importer.est_lot(f) and not f.name.startswith(".")),
+        faites = _read_json(DATA_DIR / "archives-importees.json", {})          # déjà importées, gardées par le NAS
+        fichiers = sorted((f for f in MANGA_DIR.iterdir() if f.is_file() and importer.est_lot(f) and not f.name.startswith(".") and f.name not in faites),
                           key=lambda f: archives.natural_key(f.name))
     except OSError:
         return []
@@ -1414,10 +1416,20 @@ def _travail_file():
                 if not src.is_file():
                     continue
                 cible = dossier / src.name
-                src.rename(cible)
+                try:
+                    src.rename(cible)
+                except OSError as e:                 # le NAS refuse parfois de déplacer un gros fichier : extrait sur place
+                    logger.info("%s laissé à la racine (%s) : extraction sur place", src.name, e.strerror or e)
+                    cible = src
                 deplaces.append(cible)
                 _noter_choix(src.name, g.get("propose", nom), nom)
             msg = _lancer_import(nom, attendre=True, lots_forces=deplaces)
+            restes = [x.name for x in deplaces if x.parent == MANGA_DIR and x.exists()]
+            if restes:                               # pas effaçable par le serveur : retenue comme « déjà importée »
+                faites = _read_json(DATA_DIR / "archives-importees.json", {})
+                faites.update({x: datetime.now().strftime("%Y-%m-%d") for x in restes})
+                _write_json(DATA_DIR / "archives-importees.json", faites)
+                msg += f" (archive{'s' if len(restes) > 1 else ''} d'origine à supprimer à la main depuis le NAS : {', '.join(restes)})"
             with _FILE_VERROU:
                 (_FILE_IMPORT["erreurs"] if "⚠" in msg else _FILE_IMPORT["faits"]).append(f"{nom} : {msg}")
         except Exception as e:

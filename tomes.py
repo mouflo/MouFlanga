@@ -325,7 +325,7 @@ def _texte_propre(t):
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 
 
-def _resume(m):
+def _resume(m, serie=""):
     """Résumé de la série : en français d'après MangaDex (même série, reconnue par l'identifiant AniList),
     sinon en anglais d'après AniList. → (texte, langue « fr » ou « en »)."""
     titre = m["title"].get("romaji") or m["title"].get("english") or ""
@@ -340,15 +340,16 @@ def _resume(m):
                 break
     except Exception:
         pass
-    fr = _wikipedia_fr(m)
+    fr = _wikipedia_fr(m, serie)
     if fr:
         return fr, "fr"
     return _texte_propre(m.get("description") or ""), ("en" if m.get("description") else "")
 
 
-def _wikipedia_fr(m):
-    """Introduction de l'article Wikipédia en français sur la série (si c'est bien un article de manga)."""
-    for titre in [t for t in (m["title"].get("romaji"), m["title"].get("english")) if t]:
+def _wikipedia_fr(m, serie=""):
+    """Introduction de l'article Wikipédia en français sur la série (si c'est bien un article de manga). Le nom du dossier
+    (souvent le titre français : « Arago ») passe avant les titres d'AniList (« AR∀GO »)."""
+    for titre in list(dict.fromkeys(t for t in (serie, m["title"].get("romaji"), m["title"].get("english")) if t and _simple(t))):
         try:
             r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={
                 "action": "query", "list": "search", "srsearch": f"{titre} manga", "srlimit": 3,
@@ -404,7 +405,7 @@ def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
           "chapitres": m.get("chapters") if m else None,
           "titre": (m["title"].get("romaji") or m["title"].get("english")) if m else None,
           "titre_en": m["title"].get("english") if m else None, "anilist": m.get("id") if m else None}
-    st["resume"], st["resume_langue"] = _resume(m) if m else ("", "")
+    st["resume"], st["resume_langue"] = _resume(m, serie) if m else ("", "")
     # enregistrement à côté de la répartition des tomes (même fichier)
     DOSSIER.mkdir(parents=True, exist_ok=True)
     try:
@@ -435,7 +436,7 @@ def _infobox(titre_page: str) -> dict:
     w = r.get("parse", {}).get("wikitext", {}).get("*", "")
     out = {}
     for cle in ("auteur", "scénariste", "dessinateur", "genre", "éditeur", "éditeur_francophone", "prépublication"):
-        m = re.search(r"^\s*\|\s*" + cle + r"\s*=\s*(.+)$", w, re.M)
+        m = re.search(r"^[ \t]*\|[ \t]*" + cle + r"[ \t]*=[ \t]*(.+)$", w, re.M)      # jamais la ligne suivante
         if m:
             v = re.sub(r"\{\{[^}]*\}\}|<ref.*?(</ref>|/>)|<[^>]+>", "", m.group(1))
             v = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", r"\1", v).strip(" ,")
@@ -487,7 +488,7 @@ def fiche(serie: str, forcer=False) -> dict:
         except Exception as e:
             logger.info("Fiche AniList de %s : %s", serie, e.__class__.__name__)
     try:
-        page = _page_wikipedia([st.get("titre"), st.get("titre_en"), serie.split(" : ")[0]])
+        page = _page_wikipedia([serie, st.get("titre"), st.get("titre_en"), serie.split(" : ")[0]])
         if page:
             ib = _infobox(page)
             out["wikipedia"] = page
@@ -559,6 +560,13 @@ def details_tome(serie: str, tome) -> dict:
     """Infos d'un tome (titre, sortie en France, couverture, résumé, chapitres) d'après la mémoire de titres_tomes."""
     t = ((_charger(serie) or {}).get("titres_tomes") or {})
     d = dict((t.get("details") or {}).get(str(int(tome)), {}))
+    if not d.get("chapitres"):                       # pas de liste en français : titres anglais connus pour ce tome
+        info = _charger(serie) or {}
+        nums = sorted(n for n, v in (info.get("tomes") or {}).items() if v is not None and int(v) == int(tome))
+        titres_ch = info.get("titres") or {}
+        if nums:
+            d["chapitres"] = [f"{n:g}. {titres_ch[n]}" if titres_ch.get(n) else f"{n:g}." for n in nums][:60]
+            d["chapitres_langue"] = "en" if any(titres_ch.get(n) for n in nums) else ""
     if not d.get("titre") and (t.get("titres") or {}).get(str(int(tome))):
         d["titre"] = t["titres"][str(int(tome))]
     return d
@@ -599,7 +607,7 @@ def titres_tomes(serie: str, forcer=False) -> dict:
             if pages:
                 break
         # Liens de la fiche Wikipédia de la série et des pages « Liste… » qui renvoient vers leurs parties (One Piece : 6 parties)
-        principale = _page_wikipedia([st.get("titre"), st.get("titre_en"), serie.split(" : ")[0]])
+        principale = _page_wikipedia([serie, st.get("titre"), st.get("titre_en"), serie.split(" : ")[0]])
         pages = list(dict.fromkeys(pages + _liens_listes([principale] if principale else []) + _liens_listes(pages)))
         for page in pages[:12]:
             r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "parse", "page": page, "prop": "wikitext",
@@ -621,12 +629,14 @@ def titres_tomes(serie: str, forcer=False) -> dict:
                 if not titre and m_t:
                     titre = _wiki_propre(m_t.group(1))
                 m_c = re.search(r"Personnages en couverture\s*:?\s*'*\s*(?:<br\s*/?>)?(.+?)(?:<br|$)", extra, re.S | re.I)
-                chap = [(int(n), _wiki_propre(t)) for n, t in re.findall(r"^\*\s*Ch(?:apitre)?\.?\s*(\d+)\s*:\s*(.+)$", champs.get("chapitre", ""), re.M)]
+                # « * Ch.1 : … », « * [gras]Plat 1 :[/gras] … », « * Chapitre 12 : … » (le mot avant le numéro varie)
+                brut = champs.get("chapitre", "").replace("'" * 3, "")
+                chap = [(float(n), _wiki_propre(t)) for n, t in re.findall(r"^\*\s*[^\d:\n]{0,15}?(\d+(?:\.\d+)?)\s*:\s*(.+)$", brut, re.M)]
                 resume = re.sub(r"'{3}\s*Résumé\s*:?\s*'{3}", "", champs.get("résumé", ""), flags=re.I)
                 d = {"titre": titre, "sortie": _wiki_propre(_dates(champs.get("sortie_" + langue_fr, ""))),
                      "couverture": _wiki_propre(m_c.group(1)) if m_c else "",
                      "resume": _wiki_propre(_puces(resume)),
-                     "chapitres": [f"{n}. {t}" for n, t in chap if t][:40]}
+                     "chapitres": [f"{n:g}. {t}" for n, t in chap if t][:40]}
                 details[vol.group(1)] = {k: v for k, v in d.items() if v}
                 if titre:
                     fr[vol.group(1)] = titre

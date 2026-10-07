@@ -239,3 +239,10 @@ body.mou-skin .tog.tinfo { background:none; width:auto; }
 .lettres { display:grid; grid-template-columns:repeat(14, 1fr); gap:3px; }      /* 28 boutons : 2 rangées de 14 */
 body.mou-skin .lettres button { min-width:0; padding:4px 0; font-size:.75rem; border-radius:4px; }
 body.mou-skin .lettres button:disabled { opacity:.3; cursor:default; }
+
+/* ‹ › série précédente / suivante : toujours visibles, au milieu des bords */
+.nav-serie { position:fixed; top:50%; transform:translateY(-50%); z-index:40; width:34px; height:56px; padding:0; border:0;
+  background:rgba(20,20,20,.72); color:#fff; font-size:1.8rem; line-height:1; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.5); }
+body.mou-skin .nav-serie, body.mou-skin .nav-serie:hover { width:30px; padding:0; font-weight:400; background:rgba(20,20,20,.6); color:#fff; }
+.nav-serie.prec { left:0; border-radius:0 10px 10px 0; } .nav-serie.suiv { right:0; border-radius:10px 0 0 10px; }
+.nav-serie[hidden] { display:none; }

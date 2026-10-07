@@ -192,6 +192,20 @@
     if (push !== false) history.pushState({s: id}, '', '#' + encodeURIComponent(id));
     drawSeries();
     window.scrollTo(0, 0);
+    majNavSeries();
+  }
+
+  // ‹ › : série précédente / suivante, dans l'ordre de la bibliothèque (tri, filtres et lettre en cours)
+  function voisinsSeries() {
+    var l = sorted(series.slice()).filter(function (s) { return !s.recherchee; });
+    var i = current ? l.findIndex(function (s) { return s.id === current.id; }) : -1;
+    return {prec: i > 0 ? l[i - 1] : null, suiv: i >= 0 && i < l.length - 1 ? l[i + 1] : null};
+  }
+  async function majNavSeries() {
+    if (!series.length) { var r = await api('/api/library'); series = r.series || []; }
+    var v = voisinsSeries();
+    $('serPrec').hidden = !v.prec; $('serSuiv').hidden = !v.suiv;
+    $('serPrec').title = v.prec ? '‹ ' + v.prec.title : ''; $('serSuiv').title = v.suiv ? v.suiv.title + ' ›' : '';
   }
 
   // Couverture de la même hauteur que la colonne d'infos : bords du haut et du bas alignés
@@ -547,6 +561,8 @@
       note('sMsg', r.message, 'ok');
     }
     $('sPitchModif').addEventListener('click', function () { editionResume(true); });
+    $('serPrec').addEventListener('click', function () { var v = voisinsSeries(); if (v.prec) openSeries(v.prec.id); });
+    $('serSuiv').addEventListener('click', function () { var v = voisinsSeries(); if (v.suiv) openSeries(v.suiv.id); });
     $('sInfos').addEventListener('click', async function () {
       $('infosTitre').textContent = 'ℹ️ ' + current.title; $('infosCorps').innerHTML = '<div class="dem-sous">Recherche des infos…</div>'; $('infosVue').hidden = false;
       var f = await api('/api/fiche?id=' + encodeURIComponent(current.id));
@@ -571,7 +587,7 @@
       var d = await api('/api/tome?id=' + encodeURIComponent(current.id) + '&tome=' + n);
       var l = [['Titre', d.titre], ['Sortie en France', d.sortie], ['En couverture', d.couverture], ['Résumé', d.resume]].filter(function (x) { return x[1]; });
       $('infosCorps').innerHTML = (l.length ? '<dl>' + l.map(function (x) { return '<dt>' + x[0] + '</dt><dd>' + esc(x[1]) + '</dd>'; }).join('') + '</dl>' : '<div class="dem-sous">Pas d\'infos sur ce tome (Wikipédia n\'en donne pas).</div>') +
-        ((d.chapitres || []).length ? '<div class="dem-titre">Chapitres</div><ol class="tchap">' + d.chapitres.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') + '</ol>' : '');
+        ((d.chapitres || []).length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') + '</div><ol class="tchap">' + d.chapitres.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') + '</ol>' : '');
     }, true);
     $('infosVue').addEventListener('click', function (e) { if (e.target === $('infosVue')) $('infosVue').hidden = true; });
     $('sSurveiller').addEventListener('click', async function () {
