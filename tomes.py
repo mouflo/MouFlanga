@@ -499,3 +499,79 @@ def fiche(serie: str, forcer=False) -> dict:
     tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
     tmp.replace(_fichier(serie))
     return out
+
+
+# ---------------------------------------------------------------- Titres des tomes (« Romance Dawn »)
+
+def _wiki_propre(v: str) -> str:
+    v = re.sub(r"<ref.*?(</ref>|/>)|<[^>]+>", "", v or "", flags=re.S)
+    v = re.sub(r"\{\{\s*(?:nowrap|lang|nihongo|japonais)\s*\|(?:[a-z]{2}\|)?([^|}]*)[^}]*\}\}", r"\1", v, flags=re.I)
+    v = re.sub(r"\{\{[^}]*\}\}", "", v)
+    v = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", r"\1", v).replace("\'\'", "").replace("\'\'\'", "")
+    v = v.replace("''", "")
+    return re.sub(r"\s+", " ", v).strip(" .,-–—")
+
+
+def titres_tomes(serie: str, forcer=False) -> dict:
+    """{numéro de tome (texte): titre} : Wikipédia français (TomeBD, titre_2 = titre français) en priorité,
+    sinon Wikipédia anglais (Graphic novel list : LicensedTitle, sinon TranslitTitle). Gardé 30 jours."""
+    garde = _charger(serie) or {}
+    t = garde.get("titres_tomes")
+    if t and not forcer and time.time() - t.get("date", 0) < FICHE_DUREE:
+        return t.get("titres", {})
+    st = garde.get("statut_officiel") or {}
+    if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans titre anglais) : refaite une fois
+        st = statut_officiel(serie, forcer=True) or st
+    noms = list(dict.fromkeys(x for x in [*_variantes(serie), st.get("titre"), st.get("titre_en")] if x))
+    titres = {}
+    try:                                                  # anglais
+        for page in (_pages_wiki(noms) or [])[:8]:
+            texte = _wiki({"action": "parse", "page": page, "prop": "wikitext", "redirects": 1}).get("parse", {}).get("wikitext", "")
+            for bloc in re.split(r"\{\{\s*Graphic novel list", re.sub(r"<!--.*?-->", "", texte, flags=re.S))[1:]:
+                vol = re.search(r"\|\s*VolumeNumber\s*=\s*(\d+)", bloc)
+                tit = re.search(r"\|\s*LicensedTitle\s*=\s*([^\n|]+)", bloc) or re.search(r"\|\s*TranslitTitle\s*=\s*([^\n|]+)", bloc)
+                if vol and tit and _wiki_propre(tit.group(1)):
+                    titres[vol.group(1)] = _wiki_propre(tit.group(1))
+    except Exception as e:
+        logger.info("Titres des tomes (anglais) de %s : %s", serie, e.__class__.__name__)
+    fr = {}
+    try:                                                  # français, prioritaire
+        pages = []
+        for nom in noms[:3]:
+            r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "query", "list": "search", "format": "json",
+                                                                             "srsearch": f'intitle:"Liste des chapitres" {nom}', "srlimit": 8}, timeout=15).json()
+            for x in r.get("query", {}).get("search", []):     # « Liste des chapitres de Dragon Ball (…) », pas « … Dragon Ball Super »
+                reste = re.sub(r"^Liste des (?:chapitres|volumes) de\s+", "", x["title"])
+                if _simple(re.sub(r"\s*\(.*\)$", "", reste)) == _simple(nom):
+                    pages.append(x["title"])
+            if pages:
+                break
+        for page in list(dict.fromkeys(pages))[:8]:
+            r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "parse", "page": page, "prop": "wikitext",
+                                                                             "format": "json", "redirects": 1}, timeout=15).json()
+            w = r.get("parse", {}).get("wikitext", {}).get("*", "")
+            langue_fr = "2"                               # quel champ « titre_N » est en français (d'après TomeBD/Entête)
+            for bloc in re.split(r"\{\{\s*TomeBD", w)[1:]:
+                if bloc.startswith("/Entête"):
+                    m = re.search(r"\|\s*langue_(\d)\s*=\s*Fran", bloc)
+                    langue_fr = m.group(1) if m else "1"
+                    continue
+                vol = re.search(r"\|\s*volume\s*=\s*(\d+)", bloc)
+                tit = re.search(r"\|\s*titre_" + langue_fr + r"[ \t]*=[ \t]*([^\n]+)", bloc)
+                if vol and tit and _wiki_propre(tit.group(1)) and vol.group(1) not in fr:
+                    fr[vol.group(1)] = _wiki_propre(tit.group(1))   # 1re édition de la page (pas la « double », la « perfect »)
+            time.sleep(0.3)
+    except Exception as e:
+        logger.info("Titres des tomes (français) de %s : %s", serie, e.__class__.__name__)
+    titres.update(fr)
+    try:
+        brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        brut = {}
+    brut["titres_tomes"] = {"date": time.time() if titres else time.time() - FICHE_DUREE + 86400, "titres": titres}   # rien : retenté demain
+    DOSSIER.mkdir(parents=True, exist_ok=True)
+    tmp = _fichier(serie).with_suffix(".tmp")
+    tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(_fichier(serie))
+    logger.info("Titres des tomes de %s : %d trouvé(s)", serie, len(titres))
+    return titres

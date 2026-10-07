@@ -228,3 +228,5 @@ body.lecteur #sSurveiller, body.lecteur #sProps { display:none !important; }
 .infos-corps dt { color:var(--muted); }
 .infos-corps dd { margin:0; overflow-wrap:anywhere; }
 .infos-lien { font-size:.85rem; color:var(--accent, #52b54b); }
+
+.tome-titre .tome-nom { display:block; font-weight:400; color:var(--muted); font-size:.78rem; margin-top:2px; }

@@ -350,7 +350,7 @@
     var groupes = [];
     s.chapters.forEach(function (c) {
       var g = groupes[groupes.length - 1];
-      if (!g || g.nom !== (c.groupe || '')) groupes.push(g = {nom: c.groupe || '', chapitres: []});
+      if (!g || g.nom !== (c.groupe || '')) groupes.push(g = {nom: c.groupe || '', titre: c.groupe_titre || '', chapitres: []});
       g.chapitres.push(c);
     });
     if (!tomesOuverts[s.id] && groupes.some(function (g) { return g.nom; })) {
@@ -363,7 +363,8 @@
       var cur = g.chapitres.some(function (c) { return c.key === s.current; });
       return '<div class="tome' + (ouvert ? ' ouvert' : '') + '">' +
         '<button class="tome-titre" data-tome="' + esc(g.nom) + '" aria-expanded="' + ouvert + '">' +
-        '<span class="fleche">▸</span><span class="tn">📚 ' + esc(g.nom) + (cur ? ' <small>· en cours</small>' : '') + '</span>' +
+        '<span class="fleche">▸</span><span class="tn">📚 ' + esc(g.nom) + (cur ? ' <small>· en cours</small>' : '') +
+        (g.titre ? '<small class="tome-nom">« ' + esc(g.titre) + ' »</small>' : '') + '</span>' +
         '<span class="tc">' + g.chapitres.length + ' ch. · ' + (lus === g.chapitres.length ? 'lu ✔' : lus + ' lu' + (lus > 1 ? 's' : '')) + '</span></button>' +
         '<div class="tome-chaps">' + g.chapitres.map(ligne).join('') + '</div></div>';
     }).join('');

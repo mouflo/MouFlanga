@@ -219,7 +219,12 @@ def _entrees(files):
     """Chapitres d'une série, dans l'ordre de lecture.
     Fichier ordinaire = un chapitre (clé : son chemin). Fichier de tome = plusieurs chapitres (clé : « #12 »),
     repérés par leur première page et leur nombre de pages dans le fichier."""
-    out = []
+    out, titres_de = [], {}
+
+    def titre_tome(serie, t):                    # « Romance Dawn » (mémoire de tomes.titres_tomes, sans aller sur Internet)
+        if serie not in titres_de:
+            titres_de[serie] = ((tomes._charger(serie) or {}).get("titres_tomes") or {}).get("titres") or {}
+        return titres_de[serie].get(str(int(t))) if t is not None else None
     for f in files:
         rel = _rel(f)
         try:
@@ -239,8 +244,9 @@ def _entrees(files):
             if tome is not None:
                 # Tome complet (un fichier = un tome) : affiché « Tome 03 · chapitres 17 à 25 »
                 couverts, plage = _plage_chapitres(f.relative_to(MANGA_DIR).parts[0], tome)
-                entree.update(num=None, tome=tome, couverts=couverts, title=tomes_cbz.dossier_tome(tome),
-                              sous=plage[:1].upper() + plage[1:] if plage else "")   # « Chapitres 71 à 79 », sur une 2e ligne
+                nom_tome = titre_tome(f.relative_to(MANGA_DIR).parts[0], tome)
+                sous = " · ".join(x for x in (f"« {nom_tome} »" if nom_tome else "", plage[:1].upper() + plage[1:] if plage else "") if x)
+                entree.update(num=None, tome=tome, couverts=couverts, title=tomes_cbz.dossier_tome(tome), sous=sous)   # 2e ligne
             out.append(entree)
             continue
         try:
@@ -252,6 +258,7 @@ def _entrees(files):
             out.append({"key": f"#{c['num']:g}", "path": rel, "num": c["num"],
                         "title": f"Chapitre {c['num']:g}" + (f" : {c['titre']}" if c["titre"] else ""),
                         "groupe": tomes_cbz.dossier_tome(info.get("tome")), "debut": c["debut"], "nb": c["nb"],
+                        "groupe_titre": titre_tome(f.relative_to(MANGA_DIR).parts[0], info.get("tome")) or "",
                         "size_mb": round(taille * c["nb"] / total / 1048576, 1)})
     if any(e["groupe"] or e.get("tome") is not None for e in out):
         out.sort(key=_ordre_entree)
@@ -475,6 +482,25 @@ def _manquants(titres, nums=None):
     return plages, min(nums), max(nums)
 
 
+_TITRES_EN_COURS = set()
+
+
+def _titres_tomes_en_fond(name, chapters):
+    """Titres des tomes (« Romance Dawn ») cherchés une fois, en arrière-plan ; ils s'affichent au rechargement."""
+    if "unittest" in sys.modules or name in _TITRES_EN_COURS or not any(c.get("tome") is not None or c.get("groupe") for c in chapters):
+        return
+    if "titres_tomes" in (tomes._charger(name) or {}):
+        return
+    _TITRES_EN_COURS.add(name)
+
+    def travail():
+        try:
+            tomes.titres_tomes(name)
+        except Exception as e:
+            logger.info("Titres des tomes de %s : %s", name, e)
+    threading.Thread(target=travail, daemon=True).start()
+
+
 def _infos_edition(name, files):
     """Résolution, source (Digital, Scan, web), NFO : voir edition.py (analyse des pages faite une fois, en fond)."""
     if name == "(Sans série)" or not files:
@@ -551,7 +577,7 @@ def api_series():
                     "cover_v": int(_couverture_mtime(name)),
                     "moufloster": os.getenv("MOUFLOSTER_URL", "").strip(),
                     "moufloster_externe": os.getenv("MOUFLOSTER_URL_EXTERNE", "").strip(),
-                    **_infos_anime(name), "edition": _infos_edition(name, files),
+                    **_infos_anime(name), "edition": _infos_edition(name, files), "_t": _titres_tomes_en_fond(name, chapters),
                     "suivi": suivi.lire()["series"].get(name)})
 
 
