@@ -23,11 +23,22 @@
         <div class="panel">
             <div class="toolbar">
                 <input type="text" id="search" placeholder="🔍 Chercher une série…" autocomplete="off" spellcheck="false">
-                <select id="sort" aria-label="Trier">
-                    <option value="title">Titre (A → Z)</option>
-                    <option value="recent">Lu récemment</option>
-                    <option value="added">Ajouté récemment</option>
-                    <option value="unread">Plus de chapitres à lire</option>
+                <select id="sort" aria-label="Afficher">
+                    <optgroup label="Toutes les séries">
+                        <option value="title">Titre (A → Z)</option>
+                        <option value="recent">Lues récemment</option>
+                        <option value="added">Ajoutées récemment</option>
+                    </optgroup>
+                    <optgroup label="Ma lecture">
+                        <option value="lecture">📖 En cours de lecture</option>
+                        <option value="nonlu">🆕 Pas encore commencées</option>
+                        <option value="lu">✔️ Déjà lues</option>
+                    </optgroup>
+                    <optgroup label="Parution">
+                        <option value="fini">✅ Séries complètes (tout est là)</option>
+                        <option value="incomplet">⚠ Terminées mais incomplètes</option>
+                        <option value="parution">🔄 En cours de parution</option>
+                    </optgroup>
                 </select>
             </div>
             <div class="lettres" id="lettres" hidden></div>

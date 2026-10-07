@@ -145,3 +145,6 @@ body.mou-skin .lettres button.actif, .lettres button.actif { background:var(--ac
 .resume-titre .resume-modif + .resume-modif { margin-left:6px; }
 #sEcouter[hidden] { display:none; }
 body.mou-skin #sEcouter.joue { background:var(--accent, #52b54b); color:#fff; }
+
+/* Affiche d'une série entièrement lue : petite coche en haut à droite */
+.card .lue { position:absolute; top:8px; right:8px; width:24px; height:24px; border-radius:50%; background:#2e7d32; color:#fff; font-size:.8rem; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.5); }

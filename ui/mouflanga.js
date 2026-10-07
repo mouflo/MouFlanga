@@ -25,15 +25,25 @@
   }
   var series = [], current = null, suiviRangement = null, tomesOuverts = {};
 
+  function lue(s) { return s.chapters > 0 && s.read >= s.chapters; }
   function sorted(list) {
     var q = sansAccents($('search').value.trim()), how = $('sort').value;
     list = list.filter(function (s) { return !q || sansAccents(s.title).indexOf(q) >= 0; });
     if (lettre && !q) list = list.filter(function (s) { return lettreDe(s.title) === lettre; });
+    // Filtres « Ma lecture » et « Parution » : la liste reste de A à Z
+    var garde = {
+      lecture: function (s) { return s.read > 0 && s.read < s.chapters; },
+      nonlu: function (s) { return !s.read; },
+      lu: lue,
+      fini: function (s) { return s.etat === 'fini'; },
+      incomplet: function (s) { return s.etat === 'incomplet'; },
+      parution: function (s) { return s.etat === 'en_cours' || s.etat === 'pause'; }
+    }[how];
+    if (garde) list = list.filter(garde);
     var by = {
       title: function (a, b) { return a.title.localeCompare(b.title, 'fr', {numeric: true}); },
       recent: function (a, b) { return (b.last_read || '').localeCompare(a.last_read || '') || by.title(a, b); },
-      added: function (a, b) { return b.added - a.added || by.title(a, b); },
-      unread: function (a, b) { return (b.chapters - b.read) - (a.chapters - a.read) || by.title(a, b); }
+      added: function (a, b) { return b.added - a.added || by.title(a, b); }
     };
     return list.sort(by[how] || by.title);
   }
@@ -56,12 +66,18 @@
     drawLettres();
     var list = sorted(series.slice());
     if (!series.length) { $('grid').innerHTML = ''; return; }
-    if (!list.length) { $('grid').innerHTML = '<div class="empty">Aucune série ne correspond à « ' + esc($('search').value) + ' ».</div>'; return; }
+    if (!list.length) {
+      var choix = $('sort').options[$('sort').selectedIndex].text.replace(/^\W+\s*/, '');
+      $('grid').innerHTML = '<div class="empty">' + ($('search').value.trim() ? 'Aucune série ne correspond à « ' + esc($('search').value) + ' ».'
+        : 'Aucune série dans « ' + esc(choix) + ' »' + (lettre ? ' à la lettre ' + esc(lettre) : '') + '.') + '</div>';
+      return;
+    }
     $('grid').innerHTML = list.map(function (s) {
       var left = s.chapters - s.read, pct = s.chapters ? Math.round(100 * s.read / s.chapters) : 0;
       return '<div class="card" tabindex="0" data-id="' + esc(s.id) + '">' +
         '<img class="cv" loading="lazy" alt="" src="' + esc(s.cover) + '">' +
         (ETATS[s.etat] ? '<span class="etat ' + s.etat + '" title="' + ETATS[s.etat][1] + '">' + ETATS[s.etat][0] + '</span>' : '') +
+        (lue(s) ? '<span class="lue" title="Déjà lue">✔</span>' : '') +
         '<div class="nm">' + esc(s.title) + '</div>' +
         '<div class="st">' + esc(s.compte || (s.chapters + ' chapitre(s)')) + ' · ' + taille(s.size_mb) + '</div>' +
         '<div class="bar"><i style="width:' + pct + '%"></i></div></div>';
@@ -255,6 +271,7 @@
   document.addEventListener('DOMContentLoaded', function () {
     $('search').addEventListener('input', drawGrid);
     $('sort').value = pref('mfTri', 'title');
+    if (!$('sort').value) $('sort').value = 'title';          // ancien choix qui n'existe plus
     $('sort').addEventListener('change', function () { setPref('mfTri', $('sort').value); drawGrid(); });
     $('lettres').addEventListener('click', function (e) {
       var b = e.target.closest('[data-lettre]'); if (!b) return;
