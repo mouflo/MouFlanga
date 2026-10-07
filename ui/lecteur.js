@@ -95,6 +95,12 @@
       if (fit === 'height' && w / h > r) w = h * r;
       im.style.width = w + 'px'; im.style.height = (w / r) + 'px';
       im.style.objectPosition = (demi === 0 ? premiere : seconde) + ' 50%';
+    } else if (large && mode === 'page') {
+      // Double page entière (paysage, ou « ▭ Entières ») : toujours en entier dans l'écran, quel que soit l'ajustement
+      var st2 = $('stage'), w2 = st2.clientWidth, h2 = st2.clientHeight, r2 = im.naturalWidth / im.naturalHeight;
+      if (w2 / h2 > r2) w2 = h2 * r2;
+      im.style.width = w2 + 'px'; im.style.height = (w2 / r2) + 'px'; im.style.objectPosition = '';
+      st2.scrollTop = 0;
     } else { im.style.width = ''; im.style.height = ''; im.style.objectPosition = ''; }
   }
 
