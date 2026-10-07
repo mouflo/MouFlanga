@@ -269,8 +269,14 @@ def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
                 fin = importer_serie(j["serie"], source, j.get("remplacer", False))
                 if reglages()["ok"]:
                     q.appel("torrents/setLocation", hashes=t["hash"], location=reglages()["ok"])
-                _maj(j["id"], etat="fini", message=fin or "Importé")
-                envoyer(f"🧲 MouFlanga : « {j['serie']} » importé depuis le torrent {j['titre'][:80]}\n{fin or ''}".strip())
+                _maj(j["id"], etat="fini", message=(fin or "Importé").split("\n")[0][:200])
+                rapport = None
+                if _ETAT.get("rapport"):
+                    try:
+                        rapport = _ETAT["rapport"](j["serie"], j["titre"])      # compte rendu complet (app.py)
+                    except Exception as e:
+                        logger.warning("Compte rendu de %s : %s", j["serie"], e)
+                envoyer(rapport or f"🧲 MouFlanga : « {j['serie']} » importé depuis le torrent {j['titre'][:80]}\n{fin or ''}".strip())
             except Exception as e:
                 logger.warning("Torrent %s : %s", j["titre"], e)
                 _maj(j["id"], etat="erreur", message=str(e)[:200])

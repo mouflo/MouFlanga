@@ -457,7 +457,8 @@ def fiche(serie: str, forcer=False) -> dict:
     st = garde.get("statut_officiel") or {}
     if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans identifiant) : on la refait une fois
         st = statut_officiel(serie, forcer=True) or st
-    out = {"date": time.time()}
+    out = {k: v for k, v in (f or {}).items()}              # un échec (AniList qui demande de ralentir…) garde l'ancien
+    out["date"] = time.time()
     if st.get("anilist"):
         q = ("query($i:Int){Media(id:$i){startDate{year month} endDate{year month} status genres title{native romaji english} "
              "staff(perPage:8){edges{role node{name{full}}}}}}")

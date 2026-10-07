@@ -1610,6 +1610,71 @@ def api_suivies():
     return jsonify({"ok": False, "error": "Action inconnue"}), 400
 
 
+def _rapport_serie(nom, titre_torrent):
+    """Compte rendu Telegram d'une série arrivée par torrent : import, édition, parution, auteurs, éditeurs, générique,
+    synopsis, demande d'un lecteur, surveillance. Les infos manquantes sont cherchées tout de suite."""
+    import edition
+    files = _scan().get(nom) or []
+    entrees = _entrees(files)
+    numeros = sorted({int(_tome_de_entree(e)) for e in entrees if _tome_de_entree(e) is not None})
+    taille = sum(f.stat().st_size for f in files if f.exists()) / 1073741824
+    tome_max = max(numeros) if numeros else None
+    st = tomes.statut_officiel(nom, tome_max=tome_max) or {}
+    fi = tomes.fiche(nom) if st else {}
+    try:
+        a = edition.analyser(sorted(files, key=lambda f: f.name), " ".join(edition.lire(MANGA_DIR / nom).get("archives", [])) + " " + titre_torrent)
+        d = edition.lire(MANGA_DIR / nom); d["analyse"] = a; edition.ecrire(MANGA_DIR / nom, d)
+    except Exception:
+        a = {}
+    etat, etat_texte = _etat_serie(nom, entrees)
+    gen = ""
+    if _theme_de(_anime_de(nom)):
+        gen = f"générique de l'anime « {_anime_de(nom).name} » (Emby)"
+    else:
+        try:
+            r = generiques.pour_serie(nom, MANGA_DIR / nom, st.get("anilist"))
+            g = generiques.lire().get(nom) or {}
+            gen = {"ok": f"OP1 de « {g.get('anime', '')} » ajouté", "deja": "déjà présent", "aucun_anime": "pas d'adaptation animée connue",
+                   "aucun_theme": f"anime « {g.get('anime', '')} » sans générique connu"}.get(r, "introuvable")
+        except Exception as e:
+            gen = f"recherche impossible ({e.__class__.__name__})"
+    demandeurs = []
+    with demandes._verrou:                          # demande d'un lecteur pour cette série : marquée disponible
+        dd = demandes._lire()
+        for x in dd["demandes"]:
+            if x["statut"] in ("attente", "accepte") and (x.get("anilist") == st.get("anilist") or _cle_nom(x.get("titre", "")) == _cle_nom(nom)):
+                x["statut"], x["traitee"] = "dispo", datetime.now().strftime("%Y-%m-%d %H:%M")
+                demandeurs.append(x["par"])
+        if demandeurs:
+            demandes._ecrire(dd)
+    sv = suivi.lire()["series"].get(nom) or {}
+    plage = f" ({numeros[0]} à {numeros[-1]})" if len(numeros) > 1 else ""
+    resume = (_read_json(RESUMES, {}).get(nom) or st.get("resume") or "").strip()
+    connus = [int(t) for t in ((tomes._charger(nom) or {}).get("tomes") or {}).values() if t]
+    vol = st.get("volumes") or (max(connus) if connus else None)
+    manquants = [t for t in range(1, (vol or tome_max or 0) + 1) if numeros and t not in numeros]
+    lignes = [f"📗 MouFlanga : nouvelle série prête — {nom}", "§",
+              f"🧲 Torrent : {titre_torrent[:100]}",
+              f"📚 {_compte(entrees)}{plage} · {taille:.1f} Go".replace(".", ","),
+              ("🏷 " + " · ".join(x for x in (a.get("source"), a.get("resolution")) if x)) if a.get("source") or a.get("resolution") else "",
+              f"📅 Parution : {fi.get('debut', '?')} → {fi.get('fin') or 'en cours'}" if fi.get("debut") else "",
+              ("✅ " if etat == "fini" else "⚠️ " if etat == "incomplet" else "🔄 ") + etat_texte if etat_texte else "",
+              f"⚠️ Il manque : tome{'s' if len(manquants) > 1 else ''} {', '.join(map(str, manquants[:20]))}" if manquants else "",
+              f"✍️ Scénario : {fi['scenario']}" if fi.get("scenario") else "",
+              f"🎨 Dessin : {fi['dessin']}" if fi.get("dessin") and fi.get("dessin") != fi.get("scenario") else "",
+              f"🏢 Éditeur : {fi['editeur_fr']} (VF)" + (f" · {fi['editeur_jp']} (Japon)" if fi.get("editeur_jp") else "") if fi.get("editeur_fr") else "",
+              f"🎭 Genres : {fi['genres']}" if fi.get("genres") else "",
+              f"🎵 Générique : {gen}" if gen else "",
+              f"📮 Demandée par : {', '.join(demandeurs)} (marquée disponible)" if demandeurs else "",
+              "👁 Surveillée : nouveaux tomes vérifiés chaque jour" if sv.get("surveiller") else "",
+              "§", f"📖 {resume[:280].rstrip(' .…')}{'…' if len(resume) > 280 else ''}" if resume else "",
+              (os.getenv("APP_URL", "").rstrip("/") + "/#" + __import__("urllib.parse").parse.quote(nom)) if os.getenv("APP_URL") else ""]
+    return "\n".join("" if l == "§" else l for l in lignes if l).strip()
+
+
+torrents._ETAT["rapport"] = _rapport_serie
+
+
 @app.route("/api/torrents/chercher")
 def api_torrents_chercher():
     q = (request.args.get("q") or "").strip()

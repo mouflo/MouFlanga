@@ -124,7 +124,7 @@
 
   // ---------- 📮 Demandes de mangas (lecteur : chercher et demander ; admin : accepter ou refuser) ----------
   var demResultats = [];
-  var DEM_STATUT = {attente: '⏳ En attente', accepte: '✅ Acceptée', refuse: '❌ Refusée'};
+  var DEM_STATUT = {attente: '⏳ En attente', accepte: '✅ Acceptée', refuse: '❌ Refusée', dispo: '📚 Disponible'};
   async function chargerDemandes() {
     var r = await api('/api/demandes');
     var n = r.attente || 0;

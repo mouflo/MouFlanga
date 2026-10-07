@@ -19,6 +19,7 @@ class TorrentsTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.t = Path(self.tmp.name)
         torrents._ETAT["fichier"] = self.t / "torrents.json"
+        torrents._ETAT["rapport"] = None            # pas de compte rendu complet (il interroge Internet)
         self._env = dict(os.environ)
         os.environ.update(TORRENTS_OK="/ok", TORRENTS_CHEMINS="")
 
