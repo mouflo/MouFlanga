@@ -467,6 +467,7 @@ def fiche(serie: str, forcer=False) -> dict:
     if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans identifiant) : on la refait une fois
         st = statut_officiel(serie, forcer=True) or st
     out = {k: v for k, v in (f or {}).items()}              # un échec (AniList qui demande de ralentir…) garde l'ancien
+    roles = {}
     out["date"] = time.time()
     if st.get("anilist"):
         q = ("query($i:Int){Media(id:$i){startDate{year month} endDate{year month} status genres title{native romaji english} "
@@ -477,12 +478,11 @@ def fiche(serie: str, forcer=False) -> dict:
             out.update(debut=date(m.get("startDate")), fin=date(m.get("endDate")), statut=m.get("status"),
                        titre_original=(m.get("title") or {}).get("native") or "", romaji=(m.get("title") or {}).get("romaji") or "",
                        genres=", ".join(_GENRES.get(g, g.lower()) for g in m.get("genres") or []))
-            roles = {}
             for e in ((m.get("staff") or {}).get("edges") or []):
                 role = e.get("role") or ""
-                cle = "scenario" if "Story" in role else "dessin" if "Art" in role else None
-                if cle:
-                    roles.setdefault(cle, []).append(e["node"]["name"]["full"])
+                for cle, mot in (("scenario", "Story"), ("dessin", "Art")):      # « Story & Art » : les deux
+                    if mot in role and "Assist" not in role:
+                        roles.setdefault(cle, []).append(e["node"]["name"]["full"])
             out.update({k: ", ".join(dict.fromkeys(v)) for k, v in roles.items()})
         except Exception as e:
             logger.info("Fiche AniList de %s : %s", serie, e.__class__.__name__)
@@ -491,8 +491,9 @@ def fiche(serie: str, forcer=False) -> dict:
         if page:
             ib = _infobox(page)
             out["wikipedia"] = page
-            out["scenario"] = ib.get("auteur") or ib.get("scénariste") or out.get("scenario", "")
-            out["dessin"] = ib.get("dessinateur") or out.get("dessin", "")
+            # AniList connaît les auteurs de CETTE série (une suite peut avoir un autre dessinateur que l'article Wikipédia)
+            out["scenario"] = (", ".join(dict.fromkeys(roles.get("scenario", []))) if roles.get("scenario") else "") or ib.get("auteur") or ib.get("scénariste") or out.get("scenario", "")
+            out["dessin"] = (", ".join(dict.fromkeys(roles.get("dessin", []))) if roles.get("dessin") else "") or ib.get("dessinateur") or out.get("dessin", "")
             out["genres"] = ib.get("genre") or out.get("genres", "")
             out["editeur_jp"] = ib.get("éditeur", "")
             out["editeur_fr"] = ib.get("éditeur_francophone", "")
