@@ -18,6 +18,11 @@
   // Marque de la couverture : statut officiel (AniList) comparé à ce qu'il y a sur le NAS
   var ETATS = {fini: ['✅ Fini', 'Série terminée, tout est là'], incomplet: ['⚠ Incomplet', 'Série terminée, mais il manque des tomes ou chapitres'],
     en_cours: ['🔄 En cours', 'Encore en parution'], pause: ['⏸ En pause', 'Parution en pause']};
+  // 1234,5 Mo → « 1,2 Go » ; sinon des Mo arrondis
+  function taille(mo) {
+    mo = +mo || 0;
+    return mo >= 1000 ? (mo / 1024).toFixed(1).replace('.', ',') + ' Go' : Math.round(mo) + ' Mo';
+  }
   var series = [], current = null, suiviRangement = null, tomesOuverts = {};
 
   function sorted(list) {
@@ -41,9 +46,8 @@
       return '<div class="card" tabindex="0" data-id="' + esc(s.id) + '">' +
         '<img class="cv" loading="lazy" alt="" src="' + esc(s.cover) + '">' +
         (ETATS[s.etat] ? '<span class="etat ' + s.etat + '" title="' + ETATS[s.etat][1] + '">' + ETATS[s.etat][0] + '</span>' : '') +
-        (left > 0 ? '<span class="badge">' + left + ' à lire</span>' : '<span class="badge done">lu ✔</span>') +
         '<div class="nm">' + esc(s.title) + '</div>' +
-        '<div class="st">' + s.chapters + ' ' + (s.unite || 'chapitre') + (s.chapters > 1 ? 's' : '') + ' · ' + s.size_mb + ' Mo</div>' +
+        '<div class="st">' + esc(s.compte || (s.chapters + ' chapitre(s)')) + ' · ' + taille(s.size_mb) + '</div>' +
         '<div class="bar"><i style="width:' + pct + '%"></i></div></div>';
     }).join('');
   }
@@ -60,6 +64,12 @@
     if (!r.error && !series.length) {
       $('grid').innerHTML = '<div class="empty">Aucun manga trouvé dans le dossier configuré.<br>Range des fichiers <b>.cbz</b> ou <b>.cbr</b> dans un sous-dossier par série, ou change le dossier dans ⚙️ Réglages.</div>';
     } else drawGrid();
+  }
+
+  async function rafraichirSerie(id) {
+    var r = await api('/api/series?id=' + encodeURIComponent(id));
+    if (r.error || $('seriesView').style.display === 'none' || !current || current.id !== id) return;
+    current = r; drawSeries();
   }
 
   async function openSeries(id, push) {
@@ -85,6 +95,14 @@
     if (mfs) $('sCoverMfs').href = mfs.replace(/\/$/, '') + '/?mouflanga=' + encodeURIComponent(s.id) +
       '&q=' + encodeURIComponent(s.id) + '&retour=' + encodeURIComponent(location.origin + location.pathname + '#' + encodeURIComponent(s.id));
     // Chapitres manquants : une ligne discrète, seulement s'il en manque
+    var nbLus = s.chapters.filter(function (c) { return c.read; }).length;
+    $('sMeta').textContent = (s.compte || '') + ' · ' + nbLus + ' lu' + (nbLus > 1 ? 's' : '');
+    $('sPitch').hidden = !s.resume;
+    if (s.resume) {
+      $('sPitchTexte').textContent = s.resume;
+      $('sPitchLangue').textContent = s.resume_langue === 'en' ? ' (en anglais, aucun résumé français trouvé)' : '';
+      $('sPitch').classList.remove('ouvert');
+    }
     $('sEtat').hidden = !s.etat_texte;
     $('sEtat').className = 'etat-ligne ' + (s.etat || '');
     $('sEtat').textContent = s.etat_texte ? s.etat_texte + (s.etat_source ? ' (d\'après AniList : ' + s.etat_source + ')' : '') : '';
@@ -122,9 +140,10 @@
       if ($('sMsg').textContent.indexOf('Rangement des fichiers') >= 0) note('sMsg', '');
     }
     clearTimeout(suiviRangement);
-    if (rg.en_cours) suiviRangement = setTimeout(function () { if (current && current.id === s.id) openSeries(s.id, false); }, 2500);
-    var unite = s.type_manquants === 'tomes' ? 'tome' : 'chapitre';
-    $('sMeta').textContent = s.chapters.length + ' ' + unite + (s.chapters.length > 1 ? 's' : '') + ' · ' + read + ' lu' + (read > 1 ? 's' : '');
+    if (rg.en_cours) suiviRangement = setTimeout(function () {
+      if ($('seriesView').style.display === 'none' || !current || current.id !== s.id) return;   // tu es allé ailleurs
+      rafraichirSerie(s.id);
+    }, 2500);
     var next = s.current || (s.chapters.find(function (c) { return !c.read; }) || s.chapters[0] || {}).key;
     $('sResume').textContent = (s.current ? '▶ Reprendre' : read ? '▶ Continuer' : '▶ Commencer');
     $('sResume').dataset.path = next || '';
@@ -132,7 +151,7 @@
     // Au départ, seul le tome en cours de lecture (ou le premier avec des chapitres à lire) est ouvert.
     function ligne(c) {
       return '<div class="chap' + (c.read ? ' read' : '') + (c.key === s.current ? ' cur' : '') + '" data-path="' + esc(c.key) + '">' +
-        '<span class="dot"></span><span class="ct">' + esc(c.title) + (c.sous ? '<small class="ct2">' + esc(c.sous) + '</small>' : '') + '</span><span class="cs">' + c.size_mb + ' Mo</span>' +
+        '<span class="dot"></span><span class="ct">' + esc(c.title) + (c.sous ? '<small class="ct2">' + esc(c.sous) + '</small>' : '') + '</span><span class="cs">' + taille(c.size_mb) + '</span>' +
         '<button class="tog" data-tog="' + esc(c.key) + '" title="Marquer ' + (c.read ? 'non lu' : 'lu') + '">' + (c.read ? '↺' : '✔') + '</button>' +
         '<button class="tog del" data-del="' + esc(c.key) + '" title="Supprimer ce chapitre">🗑</button></div>';
     }
@@ -230,6 +249,16 @@
       if (!r.ok) { note('sMsg', r.error); return; }
       await openSeries(current.id, false);
     });
+    $('sRenommer').addEventListener('click', async function () {
+      var nom = prompt('Nouveau nom de la série :', current.title);
+      if (!nom || nom.trim() === current.title) return;
+      var r = await post('/api/renommer', {series: current.id, nom: nom.trim()});
+      if (!r.ok) { note('sMsg', r.error); return; }
+      history.replaceState({s: r.id}, '', '#' + encodeURIComponent(r.id));
+      await openSeries(r.id, false);
+      note('sMsg', 'Série renommée.', 'ok');
+    });
+    $('sPitchTexte').addEventListener('click', function () { $('sPitch').classList.toggle('ouvert'); });
     $('sTomes').addEventListener('click', async function () {
       if (!confirm('Ranger « ' + current.title + ' » en tomes ?\n\nL\'appli cherche sur Internet (Wikipédia, MangaDex) quels chapitres vont dans quel tome, puis regroupe les chapitres : un fichier par tome, les chapitres pas encore sortis en tome dans « Hors tome ». Ta progression de lecture est gardée ; les anciens fichiers vont dans la corbeille.')) return;
       var r = await post('/api/tomes/ranger', {series: current.id});

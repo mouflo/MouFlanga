@@ -171,6 +171,31 @@ def _plage_chapitres(serie, tome):
     return nums, (f"chapitre {nums[0]:g}" if len(nums) == 1 else f"chapitres {nums[0]:g} à {nums[-1]:g}")
 
 
+def _tome_de_entree(e):
+    if e.get("tome") is not None:
+        return int(e["tome"])
+    g = e.get("groupe") or ""
+    return int(g.split()[1]) if g.startswith("Tome ") else None
+
+
+def _ordre_entree(e):
+    """Tomes dans l'ordre (tome complet ou tome à chapitres), puis chapitres « hors tome », puis le reste."""
+    t = _tome_de_entree(e)
+    if t is not None:
+        return (0, t, e.get("num") or 0)
+    return (1 if e.get("num") is not None else 2, 0, e.get("num") or 0)
+
+
+def _compte(entrees):
+    """« 50 tomes », « 43 tomes + 12 chapitres », « 20 chapitres »."""
+    tomes = {_tome_de_entree(e) for e in entrees} - {None}
+    autres = sum(1 for e in entrees if _tome_de_entree(e) is None)
+    if not tomes:
+        return f"{autres} chapitre{'s' if autres > 1 else ''}"
+    texte = f"{len(tomes)} tome{'s' if len(tomes) > 1 else ''}"
+    return texte + (f" + {autres} chapitre{'s' if autres > 1 else ''}" if autres else "")
+
+
 def _entrees(files):
     """Chapitres d'une série, dans l'ordre de lecture.
     Fichier ordinaire = un chapitre (clé : son chemin). Fichier de tome = plusieurs chapitres (clé : « #12 »),
@@ -209,8 +234,8 @@ def _entrees(files):
                         "title": f"Chapitre {c['num']:g}" + (f" : {c['titre']}" if c["titre"] else ""),
                         "groupe": tomes_cbz.dossier_tome(info.get("tome")), "debut": c["debut"], "nb": c["nb"],
                         "size_mb": round(taille * c["nb"] / total / 1048576, 1)})
-    if any(e["groupe"] for e in out):
-        out.sort(key=lambda e: (e["num"] is None, e["num"] or 0))
+    if any(e["groupe"] or e.get("tome") is not None for e in out):
+        out.sort(key=_ordre_entree)
     return out
 
 
@@ -302,7 +327,7 @@ def _remplir_statuts(series):
         try:
             for name, tome_max in series:
                 st = (tomes._charger(name) or {}).get("statut_officiel") or {}
-                if st and time.time() - st.get("date", 0) < tomes.STATUT_DUREE:
+                if st and "resume" in st and time.time() - st.get("date", 0) < tomes.STATUT_DUREE:
                     continue
                 tomes.statut_officiel(name, tome_max)
                 time.sleep(1.5)
@@ -338,7 +363,7 @@ def api_library():
                                     [int(e["groupe"].split()[1]) for e in entrees if (e.get("groupe") or "").startswith("Tome ")] or [0]) or None))
         out.append({
             "etat": etat,
-            "id": name, "title": name, "chapters": len(entrees),
+            "id": name, "title": name, "chapters": len(entrees), "compte": _compte(entrees),
             "unite": "tome" if entrees and sum(e.get("tome") is not None for e in entrees) * 2 >= len(entrees) else "chapitre",
             "read": len([e for e in entrees if e["key"] in read]),
             "size_mb": round(total_size / 1048576, 1),
@@ -431,6 +456,7 @@ def api_series():
                     "rar": archives.rar_available(),
                     "en_tomes": en_tomes, "a_ranger": a_ranger, "rangement": _etat_rangement(name),
                     "etat": etat, "etat_texte": etat_texte, "etat_source": st.get("titre"),
+                    "compte": _compte(chapters), "resume": st.get("resume") or "", "resume_langue": st.get("resume_langue") or "",
                     "manquants": trous, "premier": premier, "dernier": dernier, "type_manquants": type_manquants,
                     "organiser": _plan_organiser(name, files) if name != "(Sans série)" else None,
                     "cover_perso": name != "(Sans série)" and (MANGA_DIR / name / COUVERTURE_PERSO).is_file(),
@@ -1251,6 +1277,37 @@ def api_occupe():
 @app.route("/importer")
 def page_importer():
     return render_template("importer.html", version=APP_VERSION)
+
+
+@app.route("/api/renommer", methods=["POST"])
+def api_renommer():
+    """« ✏️ Renommer la série » : dossier, fichiers de tome, progression, couverture et infos gardées suivent."""
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    nouveau = japscan_scraper.nom_sur(str(body.get("nom", "")).strip())
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if not nouveau or nouveau.startswith(".") or nouveau == name:
+        return jsonify({"ok": False, "error": "Nouveau nom invalide ou identique."}), 400
+    if nouveau in _scan() or (MANGA_DIR / nouveau).exists():
+        return jsonify({"ok": False, "error": f"Une série « {nouveau} » existe déjà."}), 409
+    if (_RANGEMENTS.get(name) or {}).get("en_cours") or any(
+            j.get("status") == "running" and japscan_scraper.nom_sur(japscan_scraper.titre_serie(j.get("title") or "")) == name
+            for j in japscan_scraper.download_jobs.values()):
+        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    try:
+        nouveau = _organiser(name, nouveau)
+        for f in (MANGA_DIR / nouveau).rglob("*.cbz"):        # « Ancien nom - Tome 03.cbz » → « Nouveau nom - Tome 03.cbz »
+            if f.name.startswith(name + " - "):
+                f.rename(f.with_name(nouveau + f.name[len(name):]))
+        ancien_cache, nouveau_cache = tomes._fichier(name), tomes._fichier(nouveau)
+        if ancien_cache.exists() and not nouveau_cache.exists():
+            ancien_cache.rename(nouveau_cache)
+        _noter_choix(name, name, nouveau)
+    except OSError as e:
+        return jsonify({"ok": False, "error": f"Renommage impossible : {e}"}), 500
+    logger.info("Série renommée : « %s » → « %s »", name, nouveau)
+    return jsonify({"ok": True, "id": nouveau})
 
 
 @app.route("/api/tomes/ranger", methods=["POST"])

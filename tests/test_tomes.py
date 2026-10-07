@@ -602,3 +602,29 @@ class OccupeTest(BibliothequeTest):
         finally:
             self.A._RANGEMENTS.pop("Serie")
         self.assertEqual(c.get("/api/occupe", environ_base={"REMOTE_ADDR": "192.168.1.50"}).status_code, 401)
+
+
+class RenommerEtOrdreTest(BibliothequeTest):
+    def test_ordre_et_compte_melange(self):
+        """Tomes complets 1-2 et tome 3 à chapitres (cas de Karate) : dans l'ordre, et « 3 tomes »."""
+        d = self.root / "Karate"
+        for t in (1, 2):
+            p = d / f"Tome {t:02d}" / f"Karate - Tome {t:02d}.cbz"
+            p.parent.mkdir(parents=True)
+            with zipfile.ZipFile(p, "w") as z:
+                z.writestr("001.jpg", _jpeg((t, 0, 0)))
+        tomes_cbz.ajouter(d, "Karate", 3, 21.0, "", _pages(2))
+        tomes_cbz.ajouter(d, "Karate", 3, 22.0, "", _pages(2))
+        s = self.client.get("/api/series?id=Karate").json
+        self.assertEqual([c["title"] for c in s["chapters"]], ["Tome 01", "Tome 02", "Chapitre 21", "Chapitre 22"])
+        self.assertEqual(s["compte"], "3 tomes")
+
+    def test_renommer(self):
+        self.A._ranger_en_tomes("Serie", self.info)
+        r = self.client.post("/api/renommer", json={"series": "Serie", "nom": "Nouvelle Série"})
+        self.assertEqual(r.json, {"ok": True, "id": "Nouvelle Série"})
+        noms = sorted(p.name for p in (self.root / "Nouvelle Série").rglob("*.cbz"))
+        self.assertEqual(noms, ["Nouvelle Série - Hors tome.cbz", "Nouvelle Série - Tome 01.cbz", "Nouvelle Série - Tome 02.cbz"])
+        s = self.client.get("/api/series?id=Nouvelle Série").json
+        self.assertEqual((s["current"], [c["read"] for c in s["chapters"]][:2]), ("#3", [True, True]))
+        self.assertEqual(self.client.post("/api/renommer", json={"series": "Nouvelle Série", "nom": "Nouvelle Série"}).status_code, 400)

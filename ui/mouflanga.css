@@ -95,3 +95,9 @@ body.mou-skin .tome-titre, body.mou-skin .tome-titre:hover { background:none; co
 .pg-barre.indet i { width:30%; position:absolute; animation:pgIndet 1.4s ease-in-out infinite; }
 @keyframes pgIndet { from { left:-30%; } to { left:100%; } }
 .chap .ct2 { display:block; font-size:.8rem; color:var(--muted); margin-top:2px; }
+.resume { margin-top:14px; }
+.resume[hidden] { display:none; }
+.resume-titre { font-weight:700; margin-bottom:4px; }
+.resume-titre span { font-weight:400; color:var(--muted); font-size:.8rem; }
+.resume-texte { color:var(--muted); font-size:.92rem; line-height:1.5; white-space:pre-line; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; }
+.resume.ouvert .resume-texte { -webkit-line-clamp:unset; display:block; }

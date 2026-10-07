@@ -6,6 +6,9 @@
 - ⚙️ Réglages → Alertes Telegram : champ « Sujet du groupe » (groupe Telegram à sujets) et bouton « 🔎 Détecter le groupe et le sujet » ; vide = comportement d'avant (`TELEGRAM_THREAD_ID` dans `data/secrets.env`, propre à MouFlanga)
 
 ## Tomes
+- Page d'une série : résumé de l'histoire (section « Synopsis » de Wikipédia en français, sinon MangaDex, sinon AniList en anglais), appui pour tout lire ; « ✏️ Renommer la série » dans le menu « ⋯ » (dossier, fichiers de tome, progression et couverture suivent)
+- Comptage clair (« 50 tomes », « 43 tomes + 12 chapitres ») ; tomes complets et tomes à chapitres affichés dans l'ordre ; tailles en Go au-delà de 1 000 Mo, Mo arrondis ; pastille « xx à lire » retirée des couvertures
+- Pendant un import ou un rangement, la page de la série se met à jour sans remonter en haut et ne te ramène plus dessus si tu vas ailleurs
 - Télécharger : les séries trouvées par recherche restent dans la liste ; bouton « 📚 Charger tout le catalogue » (≈ 17 000 séries, 279 pages lues posément en 20 à 30 min, en arrière-plan, gardé un mois, progression et message Telegram) ; liste très longue affichée lettre par lettre
 - Import et rangement : progression détaillée sur la page de la série (étape en cours, archive n sur m, tomes écrits, barre de progression)
 - Mises à jour : le déploiement automatique attend la fin d'un import, d'un rangement ou d'un téléchargement avant de redémarrer l'appli (adresse interne /api/occupe, réservée au serveur)

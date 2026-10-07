@@ -296,15 +296,76 @@ def _choisir(medias, serie, tome_max):
     return max(medias, key=note) if medias else None
 
 
+def _texte_propre(t):
+    t = re.sub(r"<br\s*/?>", "\n", t or "", flags=re.I)
+    t = re.sub(r"<[^>]+>", "", t)
+    t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)              # liens au format [texte](adresse)
+    t = re.sub(r"\(Source:[^)]*\)|\n---.*$", "", t, flags=re.S | re.I)
+    return re.sub(r"\n{3,}", "\n\n", t).strip()
+
+
+def _resume(m):
+    """Résumé de la série : en français d'après MangaDex (même série, reconnue par l'identifiant AniList),
+    sinon en anglais d'après AniList. → (texte, langue « fr » ou « en »)."""
+    titre = m["title"].get("romaji") or m["title"].get("english") or ""
+    try:
+        r = _SESSION.get("https://api.mangadex.org/manga", params={"title": titre, "limit": 10}, timeout=15).json()
+        for d in r.get("data", []):
+            a = d.get("attributes", {})
+            if str((a.get("links") or {}).get("al", "")) == str(m.get("id")):
+                desc = a.get("description") or {}
+                if desc.get("fr"):
+                    return _texte_propre(desc["fr"]), "fr"
+                break
+    except Exception:
+        pass
+    fr = _wikipedia_fr(m)
+    if fr:
+        return fr, "fr"
+    return _texte_propre(m.get("description") or ""), ("en" if m.get("description") else "")
+
+
+def _wikipedia_fr(m):
+    """Introduction de l'article Wikipédia en français sur la série (si c'est bien un article de manga)."""
+    for titre in [t for t in (m["title"].get("romaji"), m["title"].get("english")) if t]:
+        try:
+            r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={
+                "action": "query", "list": "search", "srsearch": f"{titre} manga", "srlimit": 3,
+                "format": "json", "formatversion": 2}, timeout=15).json()
+            for res in r.get("query", {}).get("search", []):
+                if _simple(titre).split()[0] not in _simple(res["title"]):
+                    continue
+                d = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={
+                    "action": "query", "prop": "extracts", "explaintext": 1, "titles": res["title"],
+                    "format": "json", "formatversion": 2}, timeout=15).json()
+                texte = ((d.get("query", {}).get("pages") or [{}])[0].get("extract") or "")
+                if "manga" not in texte[:1500].lower():
+                    continue
+                # La section « Synopsis » (l'histoire) plutôt que l'introduction (auteur, magazine…)
+                m_syn = re.search(r"\n==+\s*(Synopsis|Histoire|Résumé|Intrigue|Scénario|Univers et synopsis)\s*==+\n(.*?)(?=\n==[^=]|\Z)",
+                                  texte, re.S | re.I)
+                if m_syn:
+                    corps = re.sub(r"\n===+[^=]+===+\n", "\n", m_syn.group(2)).strip()
+                    if len(corps) > 80:
+                        return corps[:1500].rsplit(" ", 1)[0] + ("…" if len(corps) > 1500 else "")
+                intro = texte.split("\n==", 1)[0].strip()
+                if len(intro) > 80:
+                    return intro
+            time.sleep(0.5)
+        except Exception:
+            continue
+    return ""
+
+
 def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
     """{"statut": FINISHED | RELEASING | HIATUS | CANCELLED | NOT_YET_RELEASED, "volumes", "chapitres", "titre"}
     d'après AniList, gardé 7 jours dans data/tomes/<série>.json ; None si inconnu."""
     garde = _charger(serie) or {}
     st = garde.get("statut_officiel")
-    if st and not forcer and time.time() - st.get("date", 0) < STATUT_DUREE:
+    if st and "resume" in st and not forcer and time.time() - st.get("date", 0) < STATUT_DUREE:
         return st if st.get("statut") else None
     q = ("query($s:String){Page(perPage:6){media(search:$s,type:MANGA,format_not:NOVEL)"
-         "{title{romaji english} synonyms status volumes chapters format}}}")
+         "{id title{romaji english} synonyms status volumes chapters format description(asHtml:false)}}}")
     medias = []
     for v in _variantes(serie):
         try:
@@ -321,6 +382,7 @@ def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
     st = {"date": time.time(), "statut": m["status"] if m else None, "volumes": m.get("volumes") if m else None,
           "chapitres": m.get("chapters") if m else None,
           "titre": (m["title"].get("romaji") or m["title"].get("english")) if m else None}
+    st["resume"], st["resume_langue"] = _resume(m) if m else ("", "")
     # enregistrement à côté de la répartition des tomes (même fichier)
     DOSSIER.mkdir(parents=True, exist_ok=True)
     try:
