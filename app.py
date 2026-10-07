@@ -1382,7 +1382,83 @@ def api_occupe():
     if _CATALOGUE_ETAT["en_cours"]:
         raisons.append("chargement du catalogue")
     raisons += [f"rangement de {n}" for n, e in _RANGEMENTS.items() if e.get("en_cours")]
+    import torrents
+    raisons += [f"import du torrent {j['titre'][:40]}" for j in torrents.liste() if j.get("etat") == "import"]
     return jsonify({"occupe": bool(raisons), "raisons": raisons})
+
+
+# ---------------- 🧲 Torrents (Prowlarr → qBittorrent → import) : admin seulement ----------------
+import torrents
+torrents._ETAT["fichier"] = DATA_DIR / "torrents.json"
+
+
+def _importer_torrent(nom, copies):
+    """Contenu d'un torrent copié dans <série>/ : archives extraites, tomes rangés, comme un import habituel."""
+    lots = [c for c in copies if c.suffix.lower() in (".zip", ".rar", ".7z", ".pdf") and c.exists()]
+    fin = _lancer_import(nom, attendre=True, lots_forces=lots)
+    try:
+        _organiser(nom, nom)                     # tomes complets rangés dans « Tome NN/<série> - Tome NN.cbz »
+    except Exception as e:
+        logger.warning("Rangement après torrent (%s) : %s", nom, e)
+    return fin
+
+
+@app.route("/api/torrents/chercher")
+def api_torrents_chercher():
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify({"resultats": []})
+    if not torrents.configure():
+        return jsonify({"error": "Prowlarr et qBittorrent ne sont pas encore réglés (⚙️ Réglages → Connexions)."}), 400
+    try:
+        return jsonify({"resultats": torrents.chercher(q[:100], request.args.get("tout") == "1")})
+    except Exception as e:
+        logger.warning("Recherche Prowlarr impossible : %s", e)
+        return jsonify({"error": f"Recherche impossible : {e}"}), 502
+
+
+@app.route("/api/torrents", methods=["GET", "POST"])
+def api_torrents():
+    if request.method == "GET":
+        return jsonify({"configure": torrents.configure(), "torrents": torrents.liste()[:30],
+                        "series": sorted(n for n in _scan() if n != "(Sans série)")})
+    body = request.get_json(silent=True) or {}
+    lien, titre, serie = str(body.get("lien", "")), str(body.get("titre", ""))[:200], _nom_serie(str(body.get("serie", "")).strip())
+    if not lien.startswith(("http://", "https://", "magnet:")) or not serie or serie == "sans-titre":
+        return jsonify({"ok": False, "error": "Choisis le nom de la série."}), 400
+    try:
+        torrents.lancer(lien, titre, serie)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 502
+    return jsonify({"ok": True, "message": f"Envoyé à qBittorrent : il sera importé dans « {serie} » à la fin du téléchargement."})
+
+
+@app.route("/api/settings/torrents", methods=["GET", "POST"])
+def api_settings_torrents():
+    from secrets_store import write_secret
+    r = torrents.reglages()
+    if request.method == "GET":
+        return jsonify({"prowlarr": r["prowlarr"], "prowlarr_cle": ("…" + r["prowlarr_cle"][-4:]) if r["prowlarr_cle"] else "",
+                        "qbit": r["qbit"], "qbit_user": r["qbit_user"], "qbit_mdp": bool(r["qbit_mdp"]),
+                        "nok": r["nok"], "ok": r["ok"], "chemins": r["chemins"]})
+    body = request.get_json(silent=True) or {}
+    if body.get("tester"):
+        return jsonify({"ok": True, "lignes": torrents.tester()})
+    champs = {"PROWLARR_URL": "prowlarr", "QBIT_URL": "qbit", "QBIT_USER": "qbit_user", "TORRENTS_NOK": "nok",
+              "TORRENTS_OK": "ok", "TORRENTS_CHEMINS": "chemins", "PROWLARR_API_KEY": "prowlarr_cle", "QBIT_PASSWORD": "qbit_mdp"}
+    for env, cle in champs.items():
+        if cle not in body:
+            continue
+        v = str(body[cle]).strip().rstrip("/") if cle not in ("qbit_mdp",) else str(body[cle])
+        if cle in ("prowlarr_cle", "qbit_mdp") and not v:
+            continue                              # champ secret laissé vide : on garde l'ancien
+        if set('"$`\\\n\r') & set(v):
+            return jsonify({"ok": False, "error": "Caractère interdit (\" $ ` \\) dans un champ."}), 400
+        if cle in ("prowlarr", "qbit") and v and not v.startswith(("http://", "https://")):
+            return jsonify({"ok": False, "error": "Les adresses commencent par http:// ou https://"}), 400
+        write_secret(DATA_DIR / "secrets.env", env, v)
+        os.environ[env] = v
+    return jsonify({"ok": True, "message": "Réglages des torrents enregistrés."})
 
 
 @app.route("/importer")
@@ -2017,6 +2093,7 @@ if __name__ == "__main__":
     print(f"MouFlanga {APP_VERSION} : http://0.0.0.0:{port}", file=sys.stderr)
     import notifier
     redemarrage.verifier(BASE_DIR, "MouFlanga", DATA_DIR / "mouflanga.log", lambda t: notifier.envoyer(t))
+    threading.Thread(target=torrents.surveiller, args=(_importer_torrent, lambda t: notifier.envoyer(t), MANGA_DIR), daemon=True).start()
     threading.Thread(target=demandes._boucle_rappels, args=(lambda t: notifier.envoyer(t), lambda: os.getenv("APP_URL", "").strip()),
                      daemon=True).start()
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

@@ -24,7 +24,10 @@
         <!-- Onglets -->
         <div class="tabs">
             <button class="tab active" data-tab="browse">
-                📚 Parcourir
+                📚 Japscan
+            </button>
+            <button class="tab" data-tab="torrents">
+                🧲 Torrents
             </button>
             <button class="tab" data-tab="jobs">
                 ⏳ En cours
@@ -114,6 +117,22 @@
             </div>
         </div>
 
+        <!-- Tab: Torrents (Prowlarr → qBittorrent → import) -->
+        <div id="torrents-tab" class="tab-content">
+            <div class="step">
+                <h2>🧲 Torrents</h2>
+                <p class="sub">Recherche dans tes indexeurs Prowlarr. Le torrent choisi part dans qBittorrent (catégorie « mouflanga ») ; à la fin, il est importé tout seul dans la bibliothèque et continue à partager.</p>
+                <div id="tor-config" class="tor-config" hidden>Prowlarr et qBittorrent ne sont pas encore réglés : <a href="/reglages#connexions">⚙️ Réglages → Connexions</a>.</div>
+                <div class="recherche-manga"><input type="search" id="tor-q" placeholder="🔍 Nom du manga (ex. Air Gear intégrale)…" autocomplete="off" spellcheck="false" enterkeyhint="search">
+                    <button type="button" class="mou-btn" id="tor-go">Chercher</button></div>
+                <label class="tor-tout"><input type="checkbox" id="tor-tout"> Chercher dans toutes les catégories (si rien n'est trouvé en livres/BD)</label>
+                <datalist id="tor-series"></datalist>
+                <div id="tor-res"></div>
+                <h3 class="tor-titre">Téléchargements</h3>
+                <div id="tor-liste"></div>
+            </div>
+        </div>
+
         <!-- Tab: En cours -->
         <div id="jobs-tab" class="tab-content">
             <div id="jobs-list"></div>
@@ -122,5 +141,6 @@
 
     <script src="/ui/mou-ui.js?v={{ version|urlencode }}"></script>
     <script src="/ui/telecharger.js?v={{ version|urlencode }}"></script>
+    <script src="/ui/torrents.js?v={{ version|urlencode }}"></script>
 </body>
 </html>

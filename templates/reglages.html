@@ -55,6 +55,21 @@
     </div>
 
     <div class="panel" data-onglet="Connexions">
+        <h2>🧲 Torrents (Prowlarr + qBittorrent)</h2>
+        <div class="sub">Pour chercher et télécharger des mangas par torrent (page Télécharger → 🧲 Torrents). MouFlanga crée tout seul sa catégorie « mouflanga » dans qBittorrent et ne touche jamais aux autres torrents. Les champs secrets laissés vides gardent leur valeur.</div>
+        <div class="field"><label for="torProwlarr">Adresse de Prowlarr</label><input type="text" id="torProwlarr" placeholder="http://192.168.1.x:9696" autocapitalize="off" spellcheck="false"></div>
+        <div class="field"><label for="torProwlarrCle">Clé API de Prowlarr (Prowlarr → Settings → General)</label><input type="password" id="torProwlarrCle" autocomplete="off" placeholder="(inchangée)"></div>
+        <div class="field"><label for="torQbit">Adresse de qBittorrent (interface web)</label><input type="text" id="torQbit" placeholder="http://192.168.1.x:8080" autocapitalize="off" spellcheck="false"></div>
+        <div class="field"><label for="torQbitUser">Identifiant qBittorrent</label><input type="text" id="torQbitUser" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+        <div class="field"><label for="torQbitMdp">Mot de passe qBittorrent</label><input type="password" id="torQbitMdp" autocomplete="new-password" placeholder="(inchangé)"></div>
+        <div class="field"><label for="torNok">Dossier d'arrivée des téléchargements (vu par qBittorrent)</label><input type="text" id="torNok" placeholder="/chemin/vers/Mouflanga.NOK" autocapitalize="off" spellcheck="false"></div>
+        <div class="field"><label for="torOk">Dossier de partage une fois importé</label><input type="text" id="torOk" placeholder="/chemin/vers/Mouflanga.OK" autocapitalize="off" spellcheck="false"></div>
+        <div class="field"><label for="torChemins">Correspondance de chemins (facultatif, si qBittorrent ne voit pas les mêmes chemins) : « chemin_qbittorrent=>chemin_ici »</label><input type="text" id="torChemins" placeholder="/downloads=>/mnt/nas/Downloads" autocapitalize="off" spellcheck="false"></div>
+        <div class="row"><button class="btn" id="torSave">Enregistrer</button><button class="btn ghost" id="torTest">🔌 Tester la connexion</button></div>
+        <div id="torMsg"></div>
+    </div>
+
+    <div class="panel" data-onglet="Connexions">
         <h2>🎵 MouFlopening (génériques)</h2>
         <div class="sub">Quand un manga a aussi une version animée dans Emby, son générique peut s'écouter sur la page de la série (bouton 🎵), et le menu « ⋯ » propose « 🎵 Choisir le générique » (ouvre MouFlopening). Indique l'adresse de MouFlopening (et l'adresse perso si tu y accèdes de l'extérieur).</div>
         <div class="field"><label for="mfoUrl">Adresse de MouFlopening sur le réseau local</label><input type="text" id="mfoUrl" placeholder="http://192.168.1.141:8001" autocapitalize="off" spellcheck="false"></div>
@@ -155,6 +170,27 @@ loadUsr();
 $('demHeure').innerHTML = Array.from({length: 24}, (_, h) => `<option value="${h}">à ${h} h</option>`).join('');
 api('/api/demandes').then(r => { if (r.rappel) { $('demFreq').value = r.rappel.frequence; $('demHeure').value = r.rappel.heure; } });
 simpleSave('demRappelSave', 'demRappelMsg', '/api/demandes', () => ({action: 'rappel', frequence: $('demFreq').value, heure: $('demHeure').value}));
+
+// ---------- 🧲 Torrents ----------
+async function loadTor() {
+    const t = await api('/api/settings/torrents');
+    $('torProwlarr').value = t.prowlarr || ''; $('torQbit').value = t.qbit || ''; $('torQbitUser').value = t.qbit_user || '';
+    $('torNok').value = t.nok || ''; $('torOk').value = t.ok || ''; $('torChemins').value = t.chemins || '';
+    $('torProwlarrCle').placeholder = t.prowlarr_cle ? 'enregistrée (' + t.prowlarr_cle + ')' : 'pas encore saisie';
+    $('torQbitMdp').placeholder = t.qbit_mdp ? 'enregistré' : 'pas encore saisi';
+}
+$('torSave').addEventListener('click', async () => {
+    const r = await post('/api/settings/torrents', {prowlarr: $('torProwlarr').value, prowlarr_cle: $('torProwlarrCle').value, qbit: $('torQbit').value,
+        qbit_user: $('torQbitUser').value, qbit_mdp: $('torQbitMdp').value, nok: $('torNok').value, ok: $('torOk').value, chemins: $('torChemins').value});
+    say('torMsg', r.message || r.error, r.ok);
+    if (r.ok) { $('torProwlarrCle').value = ''; $('torQbitMdp').value = ''; loadTor(); }
+});
+$('torTest').addEventListener('click', async () => {
+    say('torMsg', 'Test en cours…', 'warn');
+    const r = await post('/api/settings/torrents', {tester: true});
+    $('torMsg').innerHTML = '<div class="note ' + ((r.lignes || []).some(l => l.startsWith('❌')) ? 'err' : 'ok') + '">' + (r.lignes || [r.error]).map(esc).join('<br>') + '</div>';
+});
+loadTor();
 
 async function loadPaths() {
     const p = await api('/api/settings/paths');
