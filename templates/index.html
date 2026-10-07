@@ -20,8 +20,6 @@
             <a href="/telecharger" class="mou-btn" style="display: inline-block; margin-right: 8px;">📥 Télécharger des mangas</a>
             <button type="button" class="mou-btn ghost" id="btnDemandes">{% if role == 'lecteur' %}📮 Demander un manga{% else %}➕ Ajouter une série{% endif %}<span class="pastille" id="nbDemandes" hidden></span></button>
         </div>
-        <div class="dem-fond" id="infosVue" hidden><div class="dem-boite"><div class="dem-tete"><h2 id="infosTitre">ℹ️ Infos</h2>
-            <button type="button" class="ghost" id="infosFermer" aria-label="Fermer">✕</button></div><div id="infosCorps" class="infos-corps"></div></div></div>
         <div class="dem-fond" id="demVue" hidden>
             <div class="dem-boite">
                 <div class="dem-tete"><h2>{% if role == 'lecteur' %}📮 Demander un manga{% else %}➕ Ajouter une série{% endif %}</h2><button type="button" class="ghost" id="demFermer" aria-label="Fermer">✕</button></div>
@@ -109,5 +107,7 @@
         </div>
     </div>
 </div>
+<div class="dem-fond" id="infosVue" hidden><div class="dem-boite"><div class="dem-tete"><h2 id="infosTitre">ℹ️ Infos</h2>
+            <button type="button" class="ghost" id="infosFermer" aria-label="Fermer">✕</button></div><div id="infosCorps" class="infos-corps"></div></div></div>
 </body>
 </html>

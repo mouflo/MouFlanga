@@ -217,13 +217,33 @@
   }).observe(document.querySelector('.series-info'));
 
   var lecteurGenerique = null, dernierAuto = null;
-  function jouerGenerique() {
-    lecteurGenerique = new Audio('/api/generique?id=' + encodeURIComponent(current.id));
-    lecteurGenerique.serie = current.id; lecteurGenerique.volume = 0.7;
-    lecteurGenerique.addEventListener('ended', arreterGenerique);
-    lecteurGenerique.play().catch(function () { arreterGenerique(); });
-    $('sEcouter').textContent = '⏸'; $('sEcouter').classList.add('joue');
+  // Un seul lecteur audio, « débloqué » au premier appui (les téléphones refusent un son lancé sans appui) :
+  // ensuite le générique peut partir tout seul à l'ouverture d'une fiche.
+  var audioGen = new Audio(), audioDebloque = false;
+  audioGen.addEventListener('ended', function () { if (lecteurGenerique) arreterGenerique(); });
+  function debloquerAudio() {
+    if (audioDebloque) return;
+    audioDebloque = true;
+    audioGen.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+    var p = audioGen.play(); if (p && p.catch) p.catch(function () {});
   }
+  ['pointerdown', 'touchend', 'keydown'].forEach(function (t) { document.addEventListener(t, debloquerAudio, {capture: true, passive: true}); });
+  function jouerGenerique(auto) {
+    lecteurGenerique = audioGen;
+    lecteurGenerique.serie = current.id; audioGen.volume = 0.7;
+    audioGen.src = '/api/generique?id=' + encodeURIComponent(current.id);
+    $('sEcouter').textContent = '⏸'; $('sEcouter').classList.add('joue');
+    var p = audioGen.play();
+    if (p && p.catch) p.catch(function () {
+      arreterGenerique();
+      if (auto) {                                   // refusé (aucun appui encore) : il part au premier appui sur la page
+        var reessai = function () { document.removeEventListener('pointerdown', reessai, true); if (current && current.id === lecteurGenerique_cible && !lecteurGenerique) jouerGenerique(); };
+        lecteurGenerique_cible = current.id;
+        document.addEventListener('pointerdown', reessai, true);
+      }
+    });
+  }
+  var lecteurGenerique_cible = null;
   // Bouton 🔊 / 🔇 dans l'en-tête : lecture automatique des génériques à l'ouverture d'une fiche
   function boutonAuto() {
     var actions = document.querySelector('.mou-actions');
@@ -238,6 +258,7 @@
   boutonAuto();
   function arreterGenerique() {
     if (lecteurGenerique) { lecteurGenerique.pause(); lecteurGenerique = null; }
+    lecteurGenerique_cible = null;
     $('sEcouter').textContent = '🎵'; $('sEcouter').classList.remove('joue');
   }
 
@@ -297,7 +318,7 @@
     $('sEcouter').hidden = !(s.anime && s.anime.generique);
     if (lecteurGenerique && lecteurGenerique.serie !== s.id) arreterGenerique();   // une autre série : on coupe
     if (s.anime && s.anime.generique && !lecteurGenerique && pref('mfAutoGenerique', '1') === '1' && dernierAuto !== s.id) {
-      dernierAuto = s.id; jouerGenerique();                // comme Emby : le générique part à l'ouverture de la fiche
+      dernierAuto = s.id; jouerGenerique(true);            // comme Emby : le générique part à l'ouverture de la fiche
     }
     fermerMenus();
     ajusterCouverture();
