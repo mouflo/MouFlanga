@@ -3,6 +3,15 @@
 (function () {
   if (document.body.classList.contains('lecteur') || location.pathname === '/verification') return;
   var CLE = 'mfRetourVerif';
+  // Dernière page vue (fiche d'une série comprise) : sert au retour quand la vérification est ouverte depuis l'alerte Telegram
+  function noterPage() {
+    try { localStorage.setItem('mfDernierePage', JSON.stringify({url: location.pathname + location.search + location.hash, t: Date.now()})); } catch (e) { /* stockage bloqué */ }
+  }
+  noterPage();
+  window.addEventListener('hashchange', noterPage);
+  window.addEventListener('popstate', noterPage);
+  var pousser = history.pushState;
+  history.pushState = function () { var r = pousser.apply(this, arguments); noterPage(); return r; };
   function memoriser() {
     try { localStorage.setItem(CLE, JSON.stringify({url: location.pathname + location.search + location.hash, t: Date.now()})); } catch (e) { /* stockage bloqué */ }
   }

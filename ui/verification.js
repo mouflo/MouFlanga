@@ -11,13 +11,13 @@ function etat(texte, type) {
 
 // Vérification passée : retour automatique à la page où elle était (mémorisée par le bandeau de ui/verif-banniere.js)
 function retourApres() {
-    try {
-        const r = JSON.parse(localStorage.getItem('mfRetourVerif') || 'null');
-        if (!r || !r.url || Date.now() - r.t > 2 * 3600 * 1000 || r.url.indexOf('/verification') === 0) return;
-        localStorage.removeItem('mfRetourVerif');
-        etat('✅ Vérification passée. Retour à la page où tu étais…', 'ok');
-        setTimeout(() => { location.href = r.url; }, 2000);
-    } catch (e) { /* stockage bloqué : pas de retour automatique */ }
+    const lire = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } };
+    // page notée en touchant le bandeau, sinon dernière page vue (vérification ouverte depuis l'alerte Telegram)
+    const r = [lire('mfRetourVerif'), lire('mfDernierePage')].find(x => x && x.url && Date.now() - x.t < 2 * 3600 * 1000 && x.url.indexOf('/verification') !== 0);
+    if (!r) return;
+    try { localStorage.removeItem('mfRetourVerif'); } catch (e) { /* stockage bloqué */ }
+    etat('✅ Vérification passée. Retour à la page où tu étais…', 'ok');
+    setTimeout(() => { location.href = r.url; }, 2000);
 }
 
 async function rafraichir() {
