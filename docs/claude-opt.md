@@ -53,7 +53,7 @@ Source : `docs/claude-opt.md` du dépôt MouFlanga, recopié dans `/opt/CLAUDE.m
 - Séries exclues (style conservé, ex. One Piece) et pistes de sous-titres supplémentaires par série : commandes `--list-series`, `--exclude-series`, `--add-extra-sub-lang` (voir `INSTALL.md`).
 - Python système (pas de venv), service `mouflanimexer.service`. Tests : `python3 -m unittest discover -s tests`.
 
-## MouFloster (`app.py`, ~3 000 lignes, page HTML et JavaScript dans le même fichier)
+## MouFloster (`app.py`, ~3 500 lignes, page HTML et JavaScript dans le même fichier, v1.0)
 - Cherche films, séries et **sagas** sur TheMovieDB, fabrique des posters 1000×1500 : cadre blanc (« anime » 45 px ou standard 22 px), dégradé noir, jusqu'à 5 textes (Arial Bold), numéro de saison, zoom 50–300 %, recadrage au doigt, effacement de texte/logo (OpenCV, ou **LaMa** installé en arrière-plan par `deploy.sh`).
 - **Envoi dans la médiathèque** (`library.py`) : repère le bon dossier (mémorisé par identifiant TMDB dans `data/layouts.json` et le choix de dossier), compare ancien et nouveau poster, **sauvegarde toujours l'ancien** (`<nom>.<date>.jpg`, restaurable depuis la page), puis actualise seulement le titre concerné dans Emby (`emby.py`). Vignettes d'épisode `S00E100-thumb.jpg`. Sagas : image envoyée directement dans la collection Emby.
 - **Couverture dans MouFlanga** (`mouflanga_link.py`) : par le réseau (adresse + clé API de MouFlanga, `MOUFLANGA_URL` / `MOUFLANGA_CLE`, ⚙️ Réglages → MouFlanga) ou, sans réglage, en local (copie de `cover.jpg` dans le dossier de la série, `MANGA_DIR` lu dans `/opt/mouflanga/data/secrets.env`) ; ancienne couverture sauvegardée dans `_anciens-posters/MouFlanga/<série>/`. Ouverture depuis MouFlanga : `?mouflanga=<série>&q=<recherche>&retour=<adresse>` (bandeau + bouton retour).
@@ -66,14 +66,14 @@ Source : `docs/claude-opt.md` du dépôt MouFlanga, recopié dans `/opt/CLAUDE.m
 - Clés : TMDB et Emby via la page Réglages ou `set-secret.sh` (`TMDB_API_KEY`, `EMBY_API_KEY`, `EMBY_URL`). Sorties dans `/mnt/mouflosyno/MouFloster`. Pas de dossier `tests` ; les essais se font sur une copie avec de fausses données.
 - Piège connu : dans le gabarit HTML (chaîne Python entre triples guillemets), un `\'` ou `\s` dans le JavaScript est interprété par Python ; utiliser `’` ou doubler la barre oblique.
 
-## MouFlopening (`app.py` + `mouflopening.py` + `src/`, v0.26)
+## MouFlopening (`app.py` + `mouflopening.py` + `src/`, v1.0)
 - Télécharge le **générique de chaque anime ou série** (`theme.mp3` dans le dossier du titre) pour Emby. Sources : AnimeThemes, ThemerrDB, YouTube (`yt-dlp`, avec cookies facultatifs). Recherche, filtre « sans thème / recherché sans résultat », éditeur audio (recadrage, normalisation en dB réglable, `AUTO_TRIM`), anciens thèmes restaurables (`/api/backups*`), détection de doublons.
 - Tâches en arrière-plan (`src/progress.py`) avec verrou `_work_lock` ; installation d'un thème = copie de l'ancien en sauvegarde puis `os.replace`. Les échecs passagers (partage réseau, YouTube) sont préfixés `⏳ ` et ne mettent pas le titre de côté.
 - **Lot de nuit** (`src/nightly.py`) à l'heure choisie + **compte rendu Telegram** (échecs regroupés par cause) ; registre des titres mis de côté `data/skipped.json` (raison, date, « réessayer après N jours »).
 - Réglages : `config.json` (catégories de bibliothèque), `data/secrets.env` (clé Emby, jeton Telegram, cookies). Page Réglages avec dB, rognage automatique, délai de réessai, Telegram.
 - Service `mouflopening.service`, venv dans `/opt/mouflopening/venv`. Tests : `python3 -m unittest discover -s tests` (nombreux).
 
-## MouFlanga (`app.py`, `archives.py`, v1.0+)
+## MouFlanga (`app.py`, `archives.py`, v2.0)
 - Bibliothèque : chaque sous-dossier du dossier des mangas (réglage `MANGA_DIR`, défaut `/mnt/mouflosyno/Manga`) est une série ; chaque `.cbz` / `.cbr` / `.zip` / `.rar` est un chapitre ou un tome. Les `.cbr` sont souvent des ZIP : on regarde le contenu, pas l'extension (`archives.py` ; vrais RAR via `rarfile` + `bsdtar`).
 - Couverture = première page du premier fichier (ou `cover.jpg`), mise en cache dans `data/covers`. Progression dans `data/progress.json` (chapitres lus, page en cours).
 - Lecteur `/lire` : une page ou défilement, sens manga ou occidental, reprise à la page, chapitre suivant automatique. Les chemins demandés sont vérifiés : tout ce qui sort du dossier des mangas (`../`, lien symbolique) est refusé.
@@ -88,3 +88,10 @@ Source : `docs/claude-opt.md` du dépôt MouFlanga, recopié dans `/opt/CLAUDE.m
 5. Prévenir, puis pousser sur `main` ; contrôler dans `/var/log/<nom>-deploy.log` que le déploiement a réussi.
 - Ne jamais lancer `pkill -f` ou `pgrep -f` avec un motif présent dans la même commande : cela peut tuer le shell lui-même.
 - Si le kit d'interface partagé change, le recopier dans les quatre dépôts et pousser les quatre.
+
+## Comptes (octobre 2026)
+- **MouFlanga** : rôle « lecteur » (lecture seule, `auth.LECTEUR_OK`, progression `data/progression/<id>.json`), demandes 📮, séries suivies, torrents (Prowlarr + qBittorrent).
+- **MouFloster / MouFlopening** : rôle « copain » (`comptes.py` identique dans les deux, `auth.COPAIN_OK` / `COPAIN_PREFIXES` remplis par app.py). MouFloster : posters dans `_copains/<id>`, envoi vers l'Emby DU copain (`emby.serveur(...)`), posters de l'admin en lecture seule. MouFlopening : page `/copain` (`copain_themes.py`), génériques de l'admin ou validés (ThemerrDB, AnimeThemes), jetons serveur.
+- Adresses d'Emby des copains : jamais le réseau local ni les domaines de l'admin (`comptes.adresse_permise`).
+- Versions : `BASE_VERSION` + commits depuis `DEPART_VERSION` (MouFlanga 2.0, MouFloster 1.0) ; MouFlopening lit le CHANGELOG ([1.0.0]).
+- NAS : les fichiers partagés par qBittorrent ne peuvent être ni renommés ni effacés depuis MouFluxer (et certains gros fichiers copiés non plus) : placer directement sous le nom final.
