@@ -31,3 +31,20 @@ body.hide-ui .foot { transform:translateY(100%); position:absolute; left:0; righ
 body.rtl .foot input[type=range] { direction:rtl; }
 @media (max-width:700px) { .rbtn { padding:9px 9px; } #prevCh, #nextCh { font-size:0; } #prevCh::before { content:"⏮"; font-size:1rem; } #nextCh::before { content:"⏭"; font-size:1rem; } .rtitle small { display:none; } .rcount { font-size:.8rem; } }
 #scroll .suite { display:block; margin:24px auto 60px; padding:14px 22px; font:inherit; font-weight:600; border:0; border-radius:6px; background:#52b54b; color:#fff; cursor:pointer; max-width:90%; }
+
+/* Zoom, doubles pages, annonce du chapitre, aide */
+.stage:not(.mode-scroll) { touch-action: pan-y; }
+.stage.zoome { touch-action: none; overflow: hidden; }
+.single img { transform-origin: center center; will-change: transform; }
+.single img.moitie, .stage.fit-height .single img.moitie { object-fit: cover; max-width: none; max-height: none; }
+.annonce { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); background: rgba(0,0,0,.8); color: #fff; padding: 8px 14px; border-radius: 16px; font-size: .9rem; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 4; max-width: 90%; text-align: center; }
+.annonce.show { opacity: 1; }
+.aide { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.75); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.aide[hidden] { display: none; }
+.aide-boite { background: #1b1b1b; border: 1px solid #333; border-radius: 10px; padding: 16px 18px; max-width: 520px; max-height: 88vh; overflow: auto; line-height: 1.45; font-size: .92rem; }
+.aide-boite h2 { margin: 0 0 6px; font-size: 1.15rem; }
+.aide-boite h3 { margin: 14px 0 4px; font-size: .95rem; color: #52b54b; }
+.aide-boite ul { margin: 0; padding-left: 18px; }
+.aide-boite li { margin: 4px 0; }
+.aide-note { color: #aaa; font-size: .85rem; }
+#aideFermer { margin-top: 10px; width: 100%; background: #52b54b; color: #fff; font-weight: 600; }

@@ -9,7 +9,9 @@
   var path = '', debut = 0;     // fichier lu et position de la 1re page du chapitre dans ce fichier
   function pref(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
   function setPref(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
-  var dir = pref('mfDir', 'rtl'), mode = pref('mfMode', 'page'), fit = pref('mfFit', 'height');
+  var dir = pref('mfDir', 'rtl'), mode = pref('mfMode', 'page'), fit = pref('mfFit', 'height'), double = pref('mfDouble', 'decoupe');
+  var demi = 0, versFin = false, large = false;          // doubles pages : moitié affichée (0 = la première à lire)
+  var zoom = {s: 1, x: 0, y: 0};
 
   async function api(url, opts) {
     var res = await fetch(url, opts), data = {};
@@ -29,6 +31,8 @@
     $('optMode').textContent = mode === 'page' ? (small ? '📄' : '📄 Page') : (small ? '📜' : '📜 Défilement');
     $('optFit').textContent = fit === 'width' ? (small ? '↔' : '↔ Largeur') : (small ? '↕' : '↕ Page entière');
     $('optFit').style.display = mode === 'page' ? '' : 'none';
+    $('optDouble').style.display = mode === 'page' ? '' : 'none';
+    $('optDouble').textContent = double === 'decoupe' ? (small ? '◫' : '◫ Coupées') : (small ? '▭' : '▭ Entières');
     $('stage').classList.toggle('mode-scroll', mode === 'scroll');
     $('stage').classList.toggle('fit-height', fit === 'height');
     $('slider').style.direction = dir === 'rtl' && mode === 'page' ? 'rtl' : 'ltr';
@@ -54,7 +58,10 @@
 
   function go(n, scrollTo) {
     if (!count) return;
-    n = Math.max(0, Math.min(count - 1, n)); page = n; updateInfo(); scheduleSave();
+    n = Math.max(0, Math.min(count - 1, n));
+    if (n !== page || !versFin) demi = 0;
+    remiseZoom();
+    page = n; updateInfo(); scheduleSave();
     if (mode === 'page') {
       $('img').src = pageUrl(n);
       $('stage').scrollTop = 0;
@@ -63,8 +70,88 @@
       var el = $('scroll').children[n]; if (el) el.scrollIntoView();
     }
   }
-  function next() { if (page < count - 1) go(page + 1); else if (idx < chapters.length - 1) openChapter(idx + 1); else showToast('Dernier chapitre terminé 🎉'); }
-  function prev() { if (page > 0) go(page - 1); else if (idx > 0) openChapter(idx - 1, true); }
+  function coupee() { return mode === 'page' && large && double === 'decoupe'; }
+  function next() {
+    if (coupee() && demi === 0) { demi = 1; majDouble(); remiseZoom(); return; }   // 2e moitié de la double page
+    if (page < count - 1) go(page + 1); else if (idx < chapters.length - 1) openChapter(idx + 1); else showToast('Dernier chapitre terminé 🎉');
+  }
+  function prev() {
+    if (coupee() && demi === 1) { demi = 0; majDouble(); remiseZoom(); return; }
+    if (page > 0) { versFin = true; go(page - 1); } else if (idx > 0) openChapter(idx - 1, true);
+  }
+
+  // ---------- Doubles pages : une page plus large que haute est montrée moitié par moitié ----------
+  function majDouble() {
+    var im = $('img');
+    large = im.naturalWidth > im.naturalHeight * 1.2;
+    var c = coupee();
+    im.classList.toggle('moitie', c);
+    if (c) {
+      var premiere = dir === 'rtl' ? '100%' : '0%', seconde = dir === 'rtl' ? '0%' : '100%';
+      // Taille d'une moitié, calculée pour tenir dans l'écran sans rien couper
+      var st = $('stage'), w = st.clientWidth, h = st.clientHeight, r = im.naturalWidth / 2 / im.naturalHeight;
+      if (fit === 'height' && w / h > r) w = h * r;
+      im.style.width = w + 'px'; im.style.height = (w / r) + 'px';
+      im.style.objectPosition = (demi === 0 ? premiere : seconde) + ' 50%';
+    } else { im.style.width = ''; im.style.height = ''; im.style.objectPosition = ''; }
+  }
+
+  // ---------- Zoom (deux doigts, deux appuis au centre) ----------
+  function appliquerZoom(anime) {
+    var im = $('img');
+    im.style.transition = anime ? 'transform .18s' : 'none';
+    if (zoom.s > 1) {
+      var mx = im.clientWidth * (zoom.s - 1) / 2, my = im.clientHeight * (zoom.s - 1) / 2;
+      zoom.x = Math.max(-mx, Math.min(mx, zoom.x)); zoom.y = Math.max(-my, Math.min(my, zoom.y));
+      im.style.transform = 'translate(' + zoom.x + 'px,' + zoom.y + 'px) scale(' + zoom.s + ')';
+    } else { im.style.transform = ''; zoom = {s: 1, x: 0, y: 0}; }
+    $('stage').classList.toggle('zoome', zoom.s > 1);
+  }
+  function remiseZoom() { zoom = {s: 1, x: 0, y: 0}; appliquerZoom(false); }
+  function zoomerA(cx, cy) {
+    var r = $('img').getBoundingClientRect(), s = 2.5;
+    var dx = cx - (r.left + r.width / 2), dy = cy - (r.top + r.height / 2);
+    zoom = {s: s, x: dx * (1 - s), y: dy * (1 - s)};
+    appliquerZoom(true);
+  }
+
+  // ---------- Gestes : glisser pour tourner, pincer pour zoomer, un doigt pour se déplacer une fois zoomé ----------
+  var t0 = null, geste = 0;
+  function dist(a, b) { return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+  $('stage').addEventListener('touchstart', function (e) {
+    if (mode !== 'page') return;
+    var t = e.touches;
+    if (t.length === 2) t0 = {pince: true, d: dist(t[0], t[1]), s: zoom.s, x: zoom.x, y: zoom.y,
+                              mx: (t[0].clientX + t[1].clientX) / 2, my: (t[0].clientY + t[1].clientY) / 2};
+    else if (t.length === 1) t0 = {x0: t[0].clientX, y0: t[0].clientY, zx: zoom.x, zy: zoom.y, temps: Date.now()};
+  }, {passive: true});
+  $('stage').addEventListener('touchmove', function (e) {
+    if (mode !== 'page' || !t0) return;
+    var t = e.touches;
+    if (t0.pince && t.length === 2) {
+      e.preventDefault();
+      zoom.s = Math.max(1, Math.min(4, t0.s * dist(t[0], t[1]) / t0.d));
+      zoom.x = t0.x + ((t[0].clientX + t[1].clientX) / 2 - t0.mx);
+      zoom.y = t0.y + ((t[0].clientY + t[1].clientY) / 2 - t0.my);
+      appliquerZoom(false); geste = Date.now();
+    } else if (!t0.pince && t.length === 1 && zoom.s > 1) {
+      e.preventDefault();
+      zoom.x = t0.zx + (t[0].clientX - t0.x0); zoom.y = t0.zy + (t[0].clientY - t0.y0);
+      appliquerZoom(false); geste = Date.now();
+    }
+  }, {passive: false});
+  $('stage').addEventListener('touchend', function (e) {
+    if (mode !== 'page' || !t0) return;
+    if (t0.pince) { if (zoom.s < 1.1) remiseZoom(); t0 = null; return; }
+    var t = e.changedTouches[0], dx = t.clientX - t0.x0, dy = t.clientY - t0.y0;
+    if (zoom.s === 1 && Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy) && Date.now() - t0.temps < 700) {
+      geste = Date.now();
+      // Doigt vers la droite = on « tire » la page de gauche : suivante en sens manga, précédente en sens occidental
+      if (dx > 0) { dir === 'rtl' ? next() : prev(); } else { dir === 'rtl' ? prev() : next(); }
+    }
+    t0 = null;
+  });
+  function gesteRecent() { return Date.now() - geste < 450 || zoom.s > 1; }
   function showToast(t) { showMsg(''); var b = $('rCount'); var old = b.textContent; b.textContent = t; setTimeout(function () { b.textContent = old; }, 2500); }
 
   // Changement de chapitre (et de tome) sans recharger la page : on enchaîne comme dans un livre
@@ -85,6 +172,8 @@
       count = info.count;
     }
     history.replaceState(null, '', '/lire?s=' + encodeURIComponent(seriesId) + '&c=' + encodeURIComponent(cle));
+    var an = $('annonce'); an.textContent = (c.groupe ? c.groupe + ' · ' : '') + c.title; an.classList.add('show');
+    clearTimeout(an._t); an._t = setTimeout(function () { an.classList.remove('show'); }, 1800);
     page = Math.max(0, Math.min(count - 1, pageVoulue));
     showMsg('');
     if (mode === 'scroll') buildScroll();
@@ -144,15 +233,43 @@
   }
 
   // ----- Commandes -----
-  $('zoneL').addEventListener('click', function () { dir === 'rtl' ? next() : prev(); });
-  $('zoneR').addEventListener('click', function () { dir === 'rtl' ? prev() : next(); });
-  $('single').addEventListener('click', function () { document.body.classList.toggle('hide-ui'); });
+  $('zoneL').addEventListener('click', function () { if (!gesteRecent()) { dir === 'rtl' ? next() : prev(); } });
+  $('zoneR').addEventListener('click', function () { if (!gesteRecent()) { dir === 'rtl' ? prev() : next(); } });
+  // Centre : un appui cache ou montre les barres ; deux appuis rapprochés zooment (ou dézooment)
+  var dernierAppui = 0, appuiTimer = null;
+  $('single').addEventListener('click', function (e) {
+    if (Date.now() - geste < 450) return;
+    if (Date.now() - dernierAppui < 300) {
+      clearTimeout(appuiTimer); dernierAppui = 0;
+      if (zoom.s > 1) { zoom.s = 1; appliquerZoom(true); } else zoomerA(e.clientX, e.clientY);
+      return;
+    }
+    dernierAppui = Date.now();
+    appuiTimer = setTimeout(function () { if (zoom.s === 1) document.body.classList.toggle('hide-ui'); }, 300);
+  });
+  $('img').addEventListener('load', function () {
+    if (versFin) { large = $('img').naturalWidth > $('img').naturalHeight * 1.2; if (coupee()) demi = 1; versFin = false; }
+    majDouble();
+  });
+  $('optDouble').addEventListener('click', function () { double = double === 'decoupe' ? 'entiere' : 'decoupe'; setPref('mfDouble', double); demi = 0; applyOptions(); majDouble(); });
+  // Aide : boutons et gestes (montrée d'office la première fois)
+  function aide(ouvrir) { $('aide').hidden = !ouvrir; if (!ouvrir) setPref('mfAideVue', '1'); }
+  $('optAide').addEventListener('click', function () { aide(true); });
+  $('aideFermer').addEventListener('click', function () { aide(false); });
+  $('aide').addEventListener('click', function (e) { if (e.target === $('aide')) aide(false); });
+  if (!pref('mfAideVue', '')) aide(true);
+  // L'écran reste allumé pendant la lecture
+  var verrouEcran = null;
+  async function garderEcran() { try { if ('wakeLock' in navigator && !document.hidden) verrouEcran = await navigator.wakeLock.request('screen'); } catch (e) {} }
+  garderEcran();
+  window.addEventListener('resize', function () { majDouble(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) garderEcran(); });
   $('scroll').addEventListener('click', function () { document.body.classList.toggle('hide-ui'); });
   $('prevCh').addEventListener('click', function () { if (idx > 0) openChapter(idx - 1); });
   $('nextCh').addEventListener('click', function () { if (idx < chapters.length - 1) openChapter(idx + 1); });
   $('slider').addEventListener('input', function () { go(+$('slider').value - 1); });
-  $('optDir').addEventListener('click', function () { dir = dir === 'rtl' ? 'ltr' : 'rtl'; setPref('mfDir', dir); applyOptions(); });
-  $('optFit').addEventListener('click', function () { fit = fit === 'width' ? 'height' : 'width'; setPref('mfFit', fit); applyOptions(); });
+  $('optDir').addEventListener('click', function () { dir = dir === 'rtl' ? 'ltr' : 'rtl'; setPref('mfDir', dir); applyOptions(); majDouble(); });
+  $('optFit').addEventListener('click', function () { fit = fit === 'width' ? 'height' : 'width'; setPref('mfFit', fit); applyOptions(); majDouble(); });
   $('optMode').addEventListener('click', function () {
     mode = mode === 'page' ? 'scroll' : 'page'; setPref('mfMode', mode); applyOptions();
     if (mode === 'scroll') { buildScroll(); go(page); } else { $('scroll').innerHTML = ''; go(page); }

@@ -18,13 +18,40 @@
     <button class="rbtn" id="optMode" title="Une page à la fois ou défilement">📄 Page</button>
     <button class="rbtn" id="optDir" title="Sens de lecture">⟵ Manga</button>
     <button class="rbtn" id="optFit" title="Ajustement de l'image">↔ Largeur</button>
+    <button class="rbtn" id="optDouble" title="Doubles pages : découpées en deux ou entières">◫</button>
     <button class="rbtn" id="optFull" title="Plein écran">⛶</button>
+    <button class="rbtn" id="optAide" title="Aide : boutons et gestes">❔</button>
 </div>
 <div id="stage" class="stage" tabindex="0">
     <div id="msg" class="rmsg"></div>
     <div id="single" class="single"><img id="img" alt="" draggable="false"></div>
     <div id="scroll" class="scroll"></div>
     <div id="zoneL" class="zone left"></div><div id="zoneR" class="zone right"></div>
+    <div id="annonce" class="annonce"></div>
+</div>
+<div id="aide" class="aide" hidden>
+    <div class="aide-boite">
+        <h2>Comment lire</h2>
+        <h3>Les boutons du haut</h3>
+        <ul>
+            <li><b>📄 / 📜</b> : une page à la fois, ou toutes les pages à la suite en défilant.</li>
+            <li><b>⟵ / ⟶</b> : sens de lecture. ⟵ = manga japonais (de droite à gauche), ⟶ = sens occidental.</li>
+            <li><b>↕ / ↔</b> : la page entière dans l'écran, ou la largeur de l'écran (on fait défiler la page vers le bas).</li>
+            <li><b>◫</b> : doubles pages découpées en deux moitiés (pratique sur téléphone), ou affichées entières.</li>
+            <li><b>⛶</b> : plein écran.</li>
+            <li><b>13 / 172</b> : page actuelle du chapitre ; la barre du bas permet d'aller directement à une page.</li>
+            <li><b>⏮ ⏭</b> (en bas) : chapitre précédent ou suivant.</li>
+        </ul>
+        <h3>Les gestes</h3>
+        <ul>
+            <li><b>Appui à gauche ou à droite</b>, ou <b>glisser</b> le doigt : page suivante ou précédente (dans le sens de lecture).</li>
+            <li><b>Appui au centre</b> : cacher ou montrer les barres.</li>
+            <li><b>Deux appuis au centre</b> ou <b>écarter deux doigts</b> : zoom ; un doigt pour se déplacer ; deux appuis pour revenir.</li>
+            <li>À la fin d'un chapitre, la page suivante ouvre le chapitre d'après, puis le tome d'après.</li>
+        </ul>
+        <p class="aide-note">Ta position est retenue : tu reprendras là où tu t'es arrêté. L'écran reste allumé pendant la lecture.</p>
+        <button class="rbtn" id="aideFermer">J'ai compris</button>
+    </div>
 </div>
 <div id="foot" class="foot">
     <button class="rbtn" id="prevCh">⏮ Chapitre précédent</button>
