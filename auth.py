@@ -165,7 +165,7 @@ LOGIN_HTML = """<!DOCTYPE html>
 </head>
 <body class="mou-login">
 <main class="box">
-    <h1 class="mou-title big"><img src="/icons/mouflanga.svg" alt=""><span><span class="w">MouFl</span><span class="g">oster</span></span></h1>
+    <h1 class="mou-title big"><img src="/icons/mouflanga.svg" alt=""><span><span class="w">MouFl</span><span class="g">anga</span></span></h1>
     <div class="sub">Lecteur de mangas</div>
     {% if not configured %}
         <div class="error">Aucun identifiant n'est encore défini sur ce serveur.</div>
