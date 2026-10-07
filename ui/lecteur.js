@@ -70,7 +70,9 @@
       var el = $('scroll').children[n]; if (el) el.scrollIntoView();
     }
   }
-  function coupee() { return mode === 'page' && large && double === 'decoupe'; }
+  // Doubles pages découpées seulement en portrait : téléphone tourné en paysage = double page entière
+  function portrait() { var st = $('stage'); return st.clientHeight > st.clientWidth; }
+  function coupee() { return mode === 'page' && large && double === 'decoupe' && portrait(); }
   function next() {
     if (coupee() && demi === 0) { demi = 1; majDouble(); remiseZoom(); return; }   // 2e moitié de la double page
     if (page < count - 1) go(page + 1); else if (idx < chapters.length - 1) openChapter(idx + 1); else showToast('Dernier chapitre terminé 🎉');
