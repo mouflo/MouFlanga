@@ -242,17 +242,25 @@ _JS_CAPTCHA_PRESENT = r"""() => {
 _JS_ZONE_CAPTCHA = r"""() => {
   const imgs = [...document.querySelectorAll('img')].filter(i => (i.currentSrc || i.src || '').startsWith('data:image/jpeg') && i.getBoundingClientRect().width > 100);
   if (imgs.length < 2) return null;
-  let n = imgs[0], r = null;
+  let blk = null;
+  let n = imgs[0];
   for (let k = 0; k < 8 && n.parentElement; k++) {
     n = n.parentElement;
     const b = n.getBoundingClientRect();
-    if (/Vérification humaine|Valider/i.test(n.innerText || '') && b.height > 150 && b.width < innerWidth - 20) { r = b; break; }
+    if (/Vérification humaine|Valider/i.test(n.innerText || '') && b.height > 150 && b.width < innerWidth - 20) { blk = n; break; }
   }
-  if (!r) {
+  const mesure = () => {
+    if (blk) return blk.getBoundingClientRect();
     const bs = imgs.map(i => i.getBoundingClientRect());
     const x1 = Math.min(...bs.map(b => b.left)) - 20, y1 = Math.min(...bs.map(b => b.top)) - 80;
     const x2 = Math.max(...bs.map(b => b.right)) + 20, y2 = Math.max(...bs.map(b => b.bottom)) + 90;
-    r = {x: x1, y: y1, width: x2 - x1, height: y2 - y1};
+    return {x: x1, y: y1, width: x2 - x1, height: y2 - y1};
+  };
+  let r = mesure();
+  // Le bloc (bouton « Valider l'ordre » compris) dépasse de la fenêtre : on fait défiler la page jusqu'à lui
+  if (r.y < 0 || r.y + r.height > innerHeight) {
+    (blk || imgs[0]).scrollIntoView({block: r.height <= innerHeight ? 'center' : 'start', inline: 'nearest'});
+    r = mesure();
   }
   const x = Math.max(0, Math.floor(r.x)), y = Math.max(0, Math.floor(r.y));
   const w = Math.min(innerWidth - x, Math.ceil(r.width)), h = Math.min(innerHeight - y, Math.ceil(r.height));

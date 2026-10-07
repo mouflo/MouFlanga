@@ -56,7 +56,8 @@
   function sorted(list, toutes) {
     if (!toutes) {                                   // « toutes » = toute la bibliothèque, seul le tri compte (flèches ‹ ›)
       var q = sansAccents($('search').value.trim());
-      list = list.filter(function (s) { return !q || sansAccents(s.title).indexOf(q) >= 0; });
+      var qc = compact(q);                              // « belzebub » trouve « Beelzebub » (lettres doublées ignorées)
+      list = list.filter(function (s) { return !q || sansAccents(s.title).indexOf(q) >= 0 || (qc.length >= 3 && compact(s.title).indexOf(qc) >= 0); });
       if (lettre && !q) list = list.filter(function (s) { return lettreDe(s.title) === lettre; });
       ['lecture', 'parution'].forEach(function (k) {
         var g = FILTRES[k].garde[choixFiltre[k]]; if (g) list = list.filter(g);
@@ -76,6 +77,7 @@
 
   // Recherche sans accents ni majuscules, et index des lettres (comme la page Télécharger)
   function sansAccents(t) { return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+  function compact(t) { return sansAccents(t).replace(/(.)\1+/g, '$1'); }
   function lettreDe(t) { var c = sansAccents(t).charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : '#'; }
   var lettre = '';
   function drawLettres() {
