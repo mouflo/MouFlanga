@@ -935,6 +935,8 @@ def _ranger_en_tomes(name, info, garder_en_cours=False):
         for f in files:
             info_f = tomes_cbz.lire_info(f) if f.suffix.lower() == ".cbz" else None
             if info_f is None:
+                if _numero_tome(_title_of(f)) is not None or _a_importer(f):
+                    continue                      # tome complet (« 20th Century Boys - Tome 01 ») : jamais pris pour un chapitre
                 num = _numero_chapitre(_title_of(f))
                 if num is not None:
                     par_tome.setdefault(tomes.tome_de(num, info), []).append((num, f))
@@ -943,6 +945,14 @@ def _ranger_en_tomes(name, info, garder_en_cours=False):
                     t = tomes.tome_de(c["num"], info)
                     if t is not None:
                         depuis_hors.setdefault(f, []).append((t, c))
+        for t in list(par_tome):                 # deux fichiers avec le même numéro : on ne fusionne rien, on les laisse
+            vus = {}
+            for num, f in par_tome[t]:
+                vus.setdefault(num, []).append(f)
+            doublons = {n for n, fs in vus.items() if len(fs) > 1}
+            if doublons:
+                logger.warning("Rangement de %s : numéros en double %s laissés tels quels", name, sorted(doublons))
+                par_tome[t] = [(n, f) for n, f in par_tome[t] if n not in doublons]
         etat["total"] = sum(len(v) for v in par_tome.values()) + sum(len(v) for v in depuis_hors.values())
         renommes = {}
         for t, liste in par_tome.items():          # un tome à la fois (mémoire raisonnable)
@@ -1430,6 +1440,12 @@ def _travail_file():
                 deplaces.append(cible)
                 _noter_choix(src.name, g.get("propose", nom), nom)
             msg = _lancer_import(nom, attendre=True, lots_forces=deplaces)
+            if "⚠" not in msg and "unittest" not in sys.modules:   # compte rendu complet de la série, comme pour un torrent
+                try:
+                    import notifier
+                    notifier.envoyer(_rapport_serie(nom, ", ".join(Path(a).name for a in g["archives"]), origine="📦 Archive"))
+                except Exception as e:
+                    logger.warning("Compte rendu de %s : %s", nom, e)
             restes = [x.name for x in deplaces if x.parent == MANGA_DIR and x.exists()]
             if restes:                               # pas effaçable par le serveur : retenue comme « déjà importée »
                 faites = _read_json(DATA_DIR / "archives-importees.json", {})
@@ -1642,7 +1658,7 @@ def api_suivies():
     return jsonify({"ok": False, "error": "Action inconnue"}), 400
 
 
-def _rapport_serie(nom, titre_torrent):
+def _rapport_serie(nom, titre_torrent, origine="🧲 Torrent"):
     """Compte rendu Telegram d'une série arrivée par torrent : import, édition, parution, auteurs, éditeurs, générique,
     synopsis, demande d'un lecteur, surveillance. Les infos manquantes sont cherchées tout de suite."""
     import edition
@@ -1686,7 +1702,7 @@ def _rapport_serie(nom, titre_torrent):
     vol = st.get("volumes") or (max(connus) if connus else None)
     manquants = [t for t in range(1, (vol or tome_max or 0) + 1) if numeros and t not in numeros]
     lignes = [f"📗 MouFlanga : nouvelle série prête — {nom}", "§",
-              f"🧲 Torrent : {titre_torrent[:100]}",
+              f"{origine} : {titre_torrent[:100]}",
               f"📚 {_compte(entrees)}{plage} · {taille:.1f} Go".replace(".", ","),
               ("🏷 " + " · ".join(x for x in (a.get("source"), a.get("resolution")) if x)) if a.get("source") or a.get("resolution") else "",
               f"📅 Parution : {fi.get('debut', '?')} → {fi.get('fin') or 'en cours'}" if fi.get("debut") else "",

@@ -776,3 +776,20 @@ class GeneriquesTest(unittest.TestCase):
             {"type": "OP", "sequence": 1, "slug": "OP1", "animethemeentries": [{"videos": [{"audio": {"link": "op1.ogg"}}]}]}]}]}
         with mock.patch.object(generiques._session, "get", return_value=mock.Mock(json=lambda: th)):
             self.assertEqual(generiques.opening_1(1), "op1.ogg")
+
+
+class RangementTomesCompletsTest(unittest.TestCase):
+    def test_tomes_complets_jamais_pris_pour_des_chapitres(self):
+        """« 20th Century Boys - Tome 01 » : le « 20 » n'est pas un chapitre ; les tomes ne vont pas dans « Hors tome »."""
+        with tempfile.TemporaryDirectory() as t:
+            import app as A
+            racine = Path(t) / "mangas"; A.MANGA_DIR = racine; A.PROGRESS_FILE = Path(t) / "p.json"
+            for n in (1, 2):
+                f = racine / "20th Century Boys" / f"Tome {n:02d}" / f"20th Century Boys - Tome {n:02d}.cbz"
+                f.parent.mkdir(parents=True)
+                with zipfile.ZipFile(f, "w") as z:
+                    z.writestr("001.jpg", _jpeg((n, 0, 0)))
+            info = {"source": "essai", "tomes": {float(c): 1 for c in range(1, 30)}, "titres": {}}
+            self.assertEqual(A._ranger_en_tomes("20th Century Boys", info), 0)
+            restes = sorted(p.name for p in (racine / "20th Century Boys").rglob("*.cbz"))
+            self.assertEqual(restes, ["20th Century Boys - Tome 01.cbz", "20th Century Boys - Tome 02.cbz"])
