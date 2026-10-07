@@ -84,7 +84,7 @@
     $('lettres').hidden = !!q || series.length < 12;
     // Alphabet complet (pour un alignement régulier) ; les lettres sans série sont grisées
     var alphabet = ['#'].concat('ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''));
-    $('lettres').innerHTML = '<button type="button" class="toutes' + (lettre ? '' : ' actif') + '" data-lettre="">Toutes</button>' +
+    $('lettres').innerHTML = '<button type="button" class="toutes' + (lettre ? '' : ' actif') + '" data-lettre="" title="Toutes les lettres" aria-label="Toutes les lettres">✱</button>' +
       alphabet.map(function (l) {
         var ok = toutes.indexOf(l) >= 0;
         return '<button type="button"' + (ok ? ' data-lettre="' + l + '"' : ' disabled') + (l === lettre ? ' class="actif"' : '') + '>' + l + '</button>';
