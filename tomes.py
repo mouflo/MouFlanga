@@ -393,7 +393,8 @@ def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
     m = _choisir(medias, serie, tome_max)
     st = {"date": time.time(), "statut": m["status"] if m else None, "volumes": m.get("volumes") if m else None,
           "chapitres": m.get("chapters") if m else None,
-          "titre": (m["title"].get("romaji") or m["title"].get("english")) if m else None}
+          "titre": (m["title"].get("romaji") or m["title"].get("english")) if m else None,
+          "titre_en": m["title"].get("english") if m else None, "anilist": m.get("id") if m else None}
     st["resume"], st["resume_langue"] = _resume(m) if m else ("", "")
     # enregistrement à côté de la répartition des tomes (même fichier)
     DOSSIER.mkdir(parents=True, exist_ok=True)
@@ -406,3 +407,95 @@ def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
     tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
     tmp.replace(_fichier(serie))
     return st if st["statut"] else None
+
+
+# ---------------------------------------------------------------- Fiche détaillée (bouton ℹ️)
+
+FICHE_DUREE = 30 * 86400
+_MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
+_GENRES = {"Action": "action", "Adventure": "aventure", "Comedy": "comédie", "Drama": "drame", "Fantasy": "fantasy",
+           "Horror": "horreur", "Mystery": "mystère", "Psychological": "psychologique", "Romance": "romance",
+           "Sci-Fi": "science-fiction", "Slice of Life": "tranche de vie", "Sports": "sport", "Supernatural": "surnaturel",
+           "Thriller": "thriller", "Mecha": "mecha", "Music": "musique", "Ecchi": "ecchi", "Mahou Shoujo": "magical girl"}
+
+
+def _infobox(titre_page: str) -> dict:
+    """Champs utiles de l'infobox Wikipédia (première occurrence = partie manga)."""
+    r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "parse", "page": titre_page, "prop": "wikitext",
+                                                                     "format": "json", "redirects": 1}, timeout=15).json()
+    w = r.get("parse", {}).get("wikitext", {}).get("*", "")
+    out = {}
+    for cle in ("auteur", "scénariste", "dessinateur", "genre", "éditeur", "éditeur_francophone", "prépublication"):
+        m = re.search(r"^\s*\|\s*" + cle + r"\s*=\s*(.+)$", w, re.M)
+        if m:
+            v = re.sub(r"\{\{[^}]*\}\}|<ref.*?(</ref>|/>)|<[^>]+>", "", m.group(1))
+            v = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", r"\1", v).strip(" ,")
+            if v:
+                out[cle] = v
+    return out
+
+
+def _page_wikipedia(titres) -> str:
+    for titre in [t for t in titres if t]:
+        try:
+            r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "query", "list": "search", "srsearch": f"{titre} manga",
+                                                                             "srlimit": 3, "format": "json", "formatversion": 2}, timeout=15).json()
+            for res in r.get("query", {}).get("search", []):
+                if _simple(titre).split()[0] in _simple(res["title"]):
+                    return res["title"]
+        except Exception:
+            continue
+    return ""
+
+
+def fiche(serie: str, forcer=False) -> dict:
+    """Dates de parution, auteurs, genres, éditeurs (AniList + Wikipédia FR) ; gardé 30 jours dans data/tomes/<série>.json."""
+    garde = _charger(serie) or {}
+    f = garde.get("fiche")
+    if f and not forcer and time.time() - f.get("date", 0) < FICHE_DUREE:
+        return f
+    st = garde.get("statut_officiel") or {}
+    if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans identifiant) : on la refait une fois
+        st = statut_officiel(serie, forcer=True) or st
+    out = {"date": time.time()}
+    if st.get("anilist"):
+        q = ("query($i:Int){Media(id:$i){startDate{year month} endDate{year month} status genres title{native romaji english} "
+             "staff(perPage:8){edges{role node{name{full}}}}}}")
+        try:
+            m = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"i": st["anilist"]}}, timeout=15).json()["data"]["Media"]
+            date = lambda d: (f"{_MOIS[d['month'] - 1]} " if d.get("month") else "") + str(d["year"]) if d and d.get("year") else ""
+            out.update(debut=date(m.get("startDate")), fin=date(m.get("endDate")), statut=m.get("status"),
+                       titre_original=(m.get("title") or {}).get("native") or "", romaji=(m.get("title") or {}).get("romaji") or "",
+                       genres=", ".join(_GENRES.get(g, g.lower()) for g in m.get("genres") or []))
+            roles = {}
+            for e in ((m.get("staff") or {}).get("edges") or []):
+                role = e.get("role") or ""
+                cle = "scenario" if "Story" in role else "dessin" if "Art" in role else None
+                if cle:
+                    roles.setdefault(cle, []).append(e["node"]["name"]["full"])
+            out.update({k: ", ".join(dict.fromkeys(v)) for k, v in roles.items()})
+        except Exception as e:
+            logger.info("Fiche AniList de %s : %s", serie, e.__class__.__name__)
+    try:
+        page = _page_wikipedia([st.get("titre"), st.get("titre_en"), serie.split(" : ")[0]])
+        if page:
+            ib = _infobox(page)
+            out["wikipedia"] = page
+            out["scenario"] = ib.get("auteur") or ib.get("scénariste") or out.get("scenario", "")
+            out["dessin"] = ib.get("dessinateur") or out.get("dessin", "")
+            out["genres"] = ib.get("genre") or out.get("genres", "")
+            out["editeur_jp"] = ib.get("éditeur", "")
+            out["editeur_fr"] = ib.get("éditeur_francophone", "")
+            out["magazine"] = ib.get("prépublication", "")
+    except Exception as e:
+        logger.info("Fiche Wikipédia de %s : %s", serie, e.__class__.__name__)
+    try:
+        brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        brut = {}
+    brut["fiche"] = out
+    DOSSIER.mkdir(parents=True, exist_ok=True)
+    tmp = _fichier(serie).with_suffix(".tmp")
+    tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(_fichier(serie))
+    return out

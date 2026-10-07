@@ -195,14 +195,13 @@
     var img = $('sCover'), info = document.querySelector('.series-info'), head = document.querySelector('.series-head');
     if (!head || !head.offsetWidth) return;
     info.style.minHeight = '';
-    var max = head.clientWidth * 0.38, min = 90;
+    var max = head.clientWidth * 0.42, min = 90;
     var w = min;
     for (var k = 0; k < 5; k++) {                          // la largeur de la couverture change la hauteur des infos
       w = Math.max(min, Math.min(max, info.offsetHeight / 1.5));
       img.style.width = w + 'px'; img.style.height = (w * 1.5) + 'px';
     }
-    // Infos plus hautes que la couverture (titre très long) : la couverture s'allonge un peu (bords légèrement rognés)
-    var h = Math.max(w * 1.5, info.offsetHeight);
+    var h = w * 1.5;                                       // jamais rognée (cadre des posters MouFloster gardé entier)
     img.style.height = h + 'px';
     info.style.minHeight = h + 'px';                       // couverture plus haute : le bouton descend en bas
   }
@@ -217,7 +216,26 @@
     });
   }).observe(document.querySelector('.series-info'));
 
-  var lecteurGenerique = null;
+  var lecteurGenerique = null, dernierAuto = null;
+  function jouerGenerique() {
+    lecteurGenerique = new Audio('/api/generique?id=' + encodeURIComponent(current.id));
+    lecteurGenerique.serie = current.id; lecteurGenerique.volume = 0.7;
+    lecteurGenerique.addEventListener('ended', arreterGenerique);
+    lecteurGenerique.play().catch(function () { arreterGenerique(); });
+    $('sEcouter').textContent = '⏸'; $('sEcouter').classList.add('joue');
+  }
+  // Bouton 🔊 / 🔇 dans l'en-tête : lecture automatique des génériques à l'ouverture d'une fiche
+  function boutonAuto() {
+    var actions = document.querySelector('.mou-actions');
+    if (!actions) { setTimeout(boutonAuto, 200); return; }
+    if ($('btnAutoGen')) return;
+    var b = document.createElement('button');
+    b.type = 'button'; b.id = 'btnAutoGen'; b.className = 'mou-btn ghost small';
+    var maj = function () { var on = pref('mfAutoGenerique', '1') === '1'; b.textContent = on ? '🔊' : '🔇'; b.title = on ? 'Génériques joués à l\'ouverture d\'une fiche (appuie pour couper)' : 'Lecture automatique des génériques coupée'; };
+    b.addEventListener('click', function () { setPref('mfAutoGenerique', pref('mfAutoGenerique', '1') === '1' ? '0' : '1'); maj(); if (pref('mfAutoGenerique', '1') !== '1') arreterGenerique(); });
+    maj(); actions.insertBefore(b, actions.firstChild);
+  }
+  boutonAuto();
   function arreterGenerique() {
     if (lecteurGenerique) { lecteurGenerique.pause(); lecteurGenerique = null; }
     $('sEcouter').textContent = '🎵'; $('sEcouter').classList.remove('joue');
@@ -278,6 +296,9 @@
       '&de=MouFlanga&retour=' + encodeURIComponent(location.origin + location.pathname + '#' + encodeURIComponent(s.id));
     $('sEcouter').hidden = !(s.anime && s.anime.generique);
     if (lecteurGenerique && lecteurGenerique.serie !== s.id) arreterGenerique();   // une autre série : on coupe
+    if (s.anime && s.anime.generique && !lecteurGenerique && pref('mfAutoGenerique', '1') === '1' && dernierAuto !== s.id) {
+      dernierAuto = s.id; jouerGenerique();                // comme Emby : le générique part à l'ouverture de la fiche
+    }
     fermerMenus();
     ajusterCouverture();
     // Série ajoutée à la main : proposition de rangement (nom propre, un dossier par tome)
@@ -498,6 +519,22 @@
       note('sMsg', r.message, 'ok');
     }
     $('sPitchModif').addEventListener('click', function () { editionResume(true); });
+    $('sInfos').addEventListener('click', async function () {
+      $('infosTitre').textContent = 'ℹ️ ' + current.title; $('infosCorps').innerHTML = '<div class="dem-sous">Recherche des infos…</div>'; $('infosVue').hidden = false;
+      var f = await api('/api/fiche?id=' + encodeURIComponent(current.id));
+      var ed = f.edition || {}, st = {RELEASING: 'en cours', FINISHED: 'terminée', HIATUS: 'en pause', CANCELLED: 'arrêtée'}[f.statut] || '';
+      var lignes = [
+        ['Titre original', [f.titre_original, f.romaji].filter(Boolean).join(' · ')],
+        ['Parution', f.debut ? f.debut + (f.fin ? ' → ' + f.fin : ' → ' + (st || '…')) + (f.fin && st ? ' (' + st + ')' : '') : st],
+        ['Scénario', f.scenario], ['Dessin', f.dessin && f.dessin !== f.scenario ? f.dessin : (f.dessin ? '(même auteur)' : '')],
+        ['Genres', f.genres], ['Éditeur japonais', f.editeur_jp], ['Éditeur français', f.editeur_fr],
+        ['Version', (f.versions || []).join(', ')], ['Source', [ed.source ? ed.source + (ed.devine ? ' (deviné)' : '') : '', ed.resolution].filter(Boolean).join(' · ')]
+      ].filter(function (l) { return l[1]; });
+      $('infosCorps').innerHTML = (lignes.length ? '<dl>' + lignes.map(function (l) { return '<dt>' + l[0] + '</dt><dd>' + esc(l[1]) + '</dd>'; }).join('') + '</dl>'
+        : '<div class="dem-sous">Aucune info trouvée.</div>') + (f.wikipedia ? '<a class="infos-lien" href="https://fr.wikipedia.org/wiki/' + encodeURIComponent(f.wikipedia) + '" target="_blank" rel="noopener">Wikipédia ↗</a>' : '');
+    });
+    $('infosFermer').addEventListener('click', function () { $('infosVue').hidden = true; });
+    $('infosVue').addEventListener('click', function (e) { if (e.target === $('infosVue')) $('infosVue').hidden = true; });
     $('sSurveiller').addEventListener('click', async function () {
       fermerMenus();
       var r = await post('/api/suivies', {action: 'surveiller', nom: current.id, actif: !(current.suivi && current.suivi.surveiller)});
@@ -523,11 +560,7 @@
     });
     $('sEcouter').addEventListener('click', function () {
       if (lecteurGenerique) { arreterGenerique(); return; }
-      lecteurGenerique = new Audio('/api/generique?id=' + encodeURIComponent(current.id));
-      lecteurGenerique.serie = current.id;
-      lecteurGenerique.addEventListener('ended', arreterGenerique);
-      lecteurGenerique.play().catch(function () { arreterGenerique(); note('sMsg', 'Lecture du générique impossible.'); });
-      $('sEcouter').textContent = '⏸'; $('sEcouter').classList.add('joue');
+      jouerGenerique();
     });
     $('sPitchAnnuler').addEventListener('click', function () { editionResume(false); });
     $('sPitchOk').addEventListener('click', function () { enregistrerResume($('sPitchZone').value); });

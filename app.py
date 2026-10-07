@@ -1736,7 +1736,8 @@ def _anime_de(name):
             _ANIMES["dossiers"] = []
         _ANIMES["date"] = time.time()
     st = (tomes._charger(name) or {}).get("statut_officiel") or {}
-    cles = {k for k in (_cle_titre(name), _cle_titre(st.get("titre") or "")) if len(k) >= 3}
+    cles = {k for k in (_cle_titre(name), _cle_titre(st.get("titre") or ""), _cle_titre(st.get("titre_en") or ""),
+                        *(_cle_titre(x) for x in name.split(" : "))) if len(k) >= 3}
     exacts = [d for d in _ANIMES["dossiers"] if _cle_titre(d.name) in cles]
     return min(exacts, key=lambda d: len(d.name)) if exacts else None
 
@@ -1793,6 +1794,31 @@ def api_utilisateurs():
     auth.ecrire_utilisateurs(d)
     logger.info("Utilisateurs : %s « %s »", action, uid)
     return jsonify({"ok": True, "message": message})
+
+
+_EDITIONS = [("colossale", "Édition colossale"), ("collector", "Collector"), ("perfect", "Perfect Edition"), ("deluxe", "Deluxe"),
+             ("kanzenban", "Kanzenban"), ("ultimate", "Ultimate"), ("double", "Édition double"), ("originale", "Édition originale"),
+             ("intégrale", "Intégrale"), ("integrale", "Intégrale")]
+
+
+@app.route("/api/fiche")
+def api_fiche():
+    """Bouton ℹ️ : dates de parution, auteurs, genres, éditeurs (AniList + Wikipédia), version de l'édition et source."""
+    name = request.args.get("id", "")
+    files = _scan().get(name)
+    if files is None or name == "(Sans série)":
+        return jsonify({"error": "Série introuvable"}), 404
+    try:
+        f = tomes.fiche(name)
+    except Exception as e:
+        logger.warning("Fiche de %s : %s", name, e)
+        f = {}
+    import edition
+    ed = edition.lire(MANGA_DIR / name)
+    texte = (name + " " + " ".join(ed.get("archives", [])) + " " + " ".join(x.name for x in files[:30])).lower()
+    versions = list(dict.fromkeys(v for k, v in _EDITIONS if k in texte))
+    return jsonify({**{k: v for k, v in f.items() if k != "date"}, "versions": versions,
+                    "edition": _infos_edition(name, files)})
 
 
 @app.route("/api/generique")

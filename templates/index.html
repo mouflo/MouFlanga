@@ -20,6 +20,8 @@
             <a href="/telecharger" class="mou-btn" style="display: inline-block; margin-right: 8px;">📥 Télécharger des mangas</a>
             <button type="button" class="mou-btn ghost" id="btnDemandes">{% if role == 'lecteur' %}📮 Demander un manga{% else %}➕ Ajouter une série{% endif %}<span class="pastille" id="nbDemandes" hidden></span></button>
         </div>
+        <div class="dem-fond" id="infosVue" hidden><div class="dem-boite"><div class="dem-tete"><h2 id="infosTitre">ℹ️ Infos</h2>
+            <button type="button" class="ghost" id="infosFermer" aria-label="Fermer">✕</button></div><div id="infosCorps" class="infos-corps"></div></div></div>
         <div class="dem-fond" id="demVue" hidden>
             <div class="dem-boite">
                 <div class="dem-tete"><h2>{% if role == 'lecteur' %}📮 Demander un manga{% else %}➕ Ajouter une série{% endif %}</h2><button type="button" class="ghost" id="demFermer" aria-label="Fermer">✕</button></div>
@@ -89,7 +91,7 @@
                     </div>
                 </div>
             </div>
-            <div class="resume" id="sPitch"><div class="resume-titre"><span class="resume-nom">📖 Synopsis</span><button class="resume-modif secondary" id="sEcouter" hidden title="Écouter le générique de l'anime" aria-label="Écouter le générique">🎵</button><button class="resume-modif secondary" id="sPitchModif" title="Modifier le synopsis" aria-label="Modifier le synopsis">✏️</button></div><div class="resume-texte" id="sPitchTexte" title="Appuie pour tout lire"></div>
+            <div class="resume" id="sPitch"><div class="resume-titre"><span class="resume-nom">📖 Synopsis</span><button class="resume-modif secondary" id="sInfos" title="Infos sur la série" aria-label="Infos sur la série">ℹ️</button><button class="resume-modif secondary" id="sEcouter" hidden title="Écouter le générique de l'anime" aria-label="Écouter le générique">🎵</button><button class="resume-modif secondary" id="sPitchModif" title="Modifier le synopsis" aria-label="Modifier le synopsis">✏️</button></div><div class="resume-texte" id="sPitchTexte" title="Appuie pour tout lire"></div>
                 <div id="sPitchEdit" hidden><textarea id="sPitchZone" class="mou-field resume-zone" rows="8" maxlength="5000" placeholder="Écris le synopsis de la série…"></textarea>
                     <div class="actions resume-actions"><button id="sPitchOk">💾 Enregistrer</button><button class="secondary" id="sPitchAnnuler">Annuler</button><button class="secondary" id="sPitchAuto" title="Effacer ton texte et reprendre le synopsis trouvé sur Internet">↺ Automatique</button></div>
                     <div class="resume-aide">Pour copier un synopsis : <a id="sPitchNautiljon" target="_blank" rel="noopener">🔎 Nautiljon</a> (appui long sur le texte → Copier, puis colle-le ici).</div></div></div>

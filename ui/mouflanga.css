@@ -222,3 +222,9 @@ body.lecteur #sSource { display:none !important; }
 .prop .dem-info b { white-space:normal; font-size:.85rem; overflow-wrap:anywhere; }
 body.mou-skin #sVerifier { margin-top:8px; padding:6px 10px; font-size:.82rem; width:auto; }
 body.lecteur #sSurveiller, body.lecteur #sProps { display:none !important; }
+
+/* ℹ️ Infos de la série */
+.infos-corps dl { display:grid; grid-template-columns:auto 1fr; gap:6px 12px; margin:10px 0; font-size:.9rem; }
+.infos-corps dt { color:var(--muted); }
+.infos-corps dd { margin:0; overflow-wrap:anywhere; }
+.infos-lien { font-size:.85rem; color:var(--accent, #52b54b); }
