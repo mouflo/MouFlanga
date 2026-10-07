@@ -1325,11 +1325,10 @@ def _titre_officiel(t):
         q = "query($s:String){Page(perPage:6){media(search:$s,type:MANGA){title{romaji english} synonyms}}}"
         r = tomes._SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": t}}, timeout=10)
         for m in (r.json().get("data") or {}).get("Page", {}).get("media") or []:
-            for c in (m["title"].get("english"), m["title"].get("romaji"), *(m.get("synonyms") or [])):
-                if c and _cle_nom(c.rstrip(" .!。")) == _cle_nom(t):
-                    trouve = c.rstrip(" .。")
-                    break
-            if trouve:
+            egaux = [c.rstrip(" .。") for c in (m["title"].get("english"), m["title"].get("romaji"), *(m.get("synonyms") or []))
+                     if c and _cle_nom(c.rstrip(" .!。")) == _cle_nom(t)]
+            if egaux:                                        # « Akame ga Kill! Zero » plutôt que « Akame ga KILL! ZERO »
+                trouve = min(egaux, key=lambda c: sum(x.isupper() for x in c) / max(1, sum(x.isalpha() for x in c)))
                 break
     except Exception as e:
         logger.info("AniList (nom officiel) : %s", e.__class__.__name__)
@@ -1358,7 +1357,22 @@ def _nom_depuis_archive(nom_fichier, existantes):
     if t == t.lower() or (t[:1].isupper() and t[1:] == t[1:].lower() and " " in t):
         t = _majuscules(t.lower())
     appris = _appris(nom_fichier, t)
-    t = _nom_serie(appris if appris != t else _titre_officiel(t))
+    if appris != t:
+        t = _nom_serie(appris)
+    else:
+        # « Red Eyes Sword - Akame Ga Kill » : chaque partie est essayée, d'abord contre les séries déjà là, puis sur AniList
+        parties = [t] + [x.strip() for x in re.split(r"\s+-\s+", t) if len(x.strip()) > 2] if " - " in t else [t]
+        deja = next((e for c in parties for e in existantes if _cle_nom(e) == _cle_nom(c)), None)
+        if deja:
+            return deja
+        officiel = next((o for c in parties for o in [_titre_officiel(c)] if o != c), None)
+        t = _nom_serie(officiel or t)
+    # Suite d'une série déjà là (« Akame ga Kill! Zero » et « Akame ga Kill ! ») → « Akame ga Kill ! : Zero »
+    mots = t.split()
+    for e in sorted(existantes, key=len, reverse=True):
+        for k in range(1, len(mots)):
+            if _cle_nom(" ".join(mots[:k])) == _cle_nom(e) and _cle_nom(" ".join(mots[k:])):
+                return _nom_serie(f"{e} : {' '.join(mots[k:]).lstrip(':-– ')}")
     for e in existantes:                                   # série déjà dans la bibliothèque (ex. Gamaran)
         if _cle_nom(e) == _cle_nom(t):
             return e
@@ -1673,6 +1687,17 @@ def _rapport_serie(nom, titre_torrent):
 
 
 torrents._ETAT["rapport"] = _rapport_serie
+torrents._ETAT["nom_serie"] = lambda nom: _nom_depuis_archive(nom + ".zip", sorted(n for n in _scan() if n != "(Sans série)"))
+
+
+def _remplacer_auto(nom, titre):
+    """Torrent ajouté à la main dans une série déjà là : il remplace les tomes s'il est Digital et la série ne l'est pas."""
+    if nom not in _scan() or "Digital" not in torrents.badges(titre):
+        return False
+    return (_infos_suivi(nom).get("source") or "") != "Digital"
+
+
+torrents._ETAT["remplacer_auto"] = _remplacer_auto
 
 
 @app.route("/api/torrents/chercher")

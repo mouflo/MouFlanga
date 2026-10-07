@@ -31,6 +31,18 @@ class TorrentsTest(unittest.TestCase):
         os.environ["QBIT_PASSWORD_B64"] = base64.b64encode('a"b$c`d\\e'.encode()).decode()
         self.assertEqual(torrents.reglages()["qbit_mdp"], 'a"b$c`d\\e')
 
+    def test_adoption_d_un_torrent_ajoute_a_la_main(self):
+        class Q(FauxQbit):
+            def info(self, **p): return [{"hash": "h9", "name": "Bakuman.20.Tomes.FR.CBZ", "progress": 0.4, "tags": ""},
+                                         {"hash": "h8", "name": "Deja suivi", "tags": "mouflanga, mf-abc"}]
+        torrents._ETAT["nom_serie"] = lambda n: "Bakuman"
+        q = Q([]); torrents.adopter(q)
+        j = torrents._lire()
+        self.assertEqual([(x["serie"], x["progression"]) for x in j], [("Bakuman", 40)])
+        self.assertEqual(q.appels[0][0], "torrents/addTags")
+        torrents.adopter(Q([]))                         # pas de double reprise (l'étiquette est posée côté qBittorrent)
+        torrents._ETAT["nom_serie"] = None
+
     def test_badges_et_chemins(self):
         b = torrents.badges("Air Gear T01-T37 Integrale FRENCH CBZ Digital")
         self.assertEqual(b, ["🇫🇷 FR", "Digital", "Intégrale", "T1–37"])

@@ -238,15 +238,37 @@ def surveiller(importer_serie, envoyer, manga_dir):
         _ecrire(d)
     while True:
         time.sleep(60)
-        en_cours = [j for j in _lire() if j["etat"] in ("telechargement", "import")]
-        if not en_cours or not configure():
+        if not configure():
             continue
         try:
             q = Qbit()
+            adopter(q)
         except Exception as e:
             logger.warning("Suivi des torrents : %s", e)
             continue
-        traiter(q, en_cours, importer_serie, envoyer, manga_dir)
+        en_cours = [j for j in _lire() if j["etat"] in ("telechargement", "import")]
+        if en_cours:
+            traiter(q, en_cours, importer_serie, envoyer, manga_dir)
+
+
+def adopter(q):
+    """Torrents ajoutés à la main dans qBittorrent avec la catégorie « mouflanga » : suivis et importés comme les autres.
+    Le nom de la série est déduit du nom du torrent (même nettoyage que l'import des archives, série existante reconnue)."""
+    for t in q.info(category=CATEGORIE):
+        etiquettes = [x.strip() for x in (t.get("tags") or "").split(",")]
+        if any(x.startswith("mf-") for x in etiquettes):
+            continue
+        jid = uuid.uuid4().hex[:10]
+        nom = _ETAT["nom_serie"](t.get("name") or "") if _ETAT.get("nom_serie") else (t.get("name") or "manga")
+        q.appel("torrents/addTags", hashes=t["hash"], tags=f"mouflanga,mf-{jid}")
+        with _verrou:
+            d = _lire()
+            remplacer = bool(_ETAT.get("remplacer_auto") and _ETAT["remplacer_auto"](nom, t.get("name") or ""))
+            d.append({"id": jid, "titre": t.get("name") or "?", "serie": nom, "remplacer": remplacer, "etat": "telechargement",
+                      "progression": round((t.get("progress") or 0) * 100), "debut": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                      "message": "Ajouté à la main dans qBittorrent"})
+            _ecrire(d)
+        logger.info("Torrent ajouté à la main repris : %s → série « %s »", t.get("name"), nom)
 
 
 def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
