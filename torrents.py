@@ -33,8 +33,20 @@ _verrou = threading.Lock()
 def reglages():
     g = lambda k, d="": os.getenv(k, d).strip()
     return {"prowlarr": g("PROWLARR_URL").rstrip("/"), "prowlarr_cle": g("PROWLARR_API_KEY"),
-            "qbit": g("QBIT_URL").rstrip("/"), "qbit_user": g("QBIT_USER"), "qbit_mdp": g("QBIT_PASSWORD"),
+            "qbit": g("QBIT_URL").rstrip("/"), "qbit_user": g("QBIT_USER"), "qbit_mdp": _mdp(),
             "nok": g("TORRENTS_NOK"), "ok": g("TORRENTS_OK"), "chemins": g("TORRENTS_CHEMINS")}
+
+
+def _mdp():
+    """Mot de passe qBittorrent : rangé codé en base64 (QBIT_PASSWORD_B64) pour accepter tous les caractères."""
+    import base64
+    b = os.getenv("QBIT_PASSWORD_B64", "").strip()
+    if b:
+        try:
+            return base64.b64decode(b).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            pass
+    return os.getenv("QBIT_PASSWORD", "")
 
 
 def configure():

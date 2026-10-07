@@ -1452,6 +1452,10 @@ def api_settings_torrents():
         v = str(body[cle]).strip().rstrip("/") if cle not in ("qbit_mdp",) else str(body[cle])
         if cle in ("prowlarr_cle", "qbit_mdp") and not v:
             continue                              # champ secret laissé vide : on garde l'ancien
+        if cle == "qbit_mdp":                     # tous les caractères acceptés : rangé codé (base64)
+            import base64
+            env, v = "QBIT_PASSWORD_B64", base64.b64encode(v.encode("utf-8")).decode("ascii")
+            write_secret(DATA_DIR / "secrets.env", "QBIT_PASSWORD", "")
         if set('"$`\\\n\r') & set(v):
             return jsonify({"ok": False, "error": "Caractère interdit (\" $ ` \\) dans un champ."}), 400
         if cle in ("prowlarr", "qbit") and v and not v.startswith(("http://", "https://")):

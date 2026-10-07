@@ -25,6 +25,11 @@ class TorrentsTest(unittest.TestCase):
     def tearDown(self):
         os.environ.clear(); os.environ.update(self._env); self.tmp.cleanup()
 
+    def test_mot_de_passe_avec_caracteres_speciaux(self):
+        import base64
+        os.environ["QBIT_PASSWORD_B64"] = base64.b64encode('a"b$c`d\\e'.encode()).decode()
+        self.assertEqual(torrents.reglages()["qbit_mdp"], 'a"b$c`d\\e')
+
     def test_badges_et_chemins(self):
         b = torrents.badges("Air Gear T01-T37 Integrale FRENCH CBZ Digital")
         self.assertEqual(b, ["🇫🇷 FR", "Digital", "Intégrale", "T1–37"])
