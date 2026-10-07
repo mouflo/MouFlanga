@@ -240,9 +240,20 @@ body.mou-skin .tog.tinfo { background:none; width:auto; }
 body.mou-skin .lettres button { min-width:0; padding:4px 0; font-size:.75rem; border-radius:4px; }
 body.mou-skin .lettres button:disabled { opacity:.3; cursor:default; }
 
-/* ‹ › série précédente / suivante : toujours visibles, au milieu des bords */
-.nav-serie { position:fixed; top:50%; transform:translateY(-50%); z-index:40; width:34px; height:56px; padding:0; border:0;
-  background:rgba(20,20,20,.72); color:#fff; font-size:1.8rem; line-height:1; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.5); }
-body.mou-skin .nav-serie, body.mou-skin .nav-serie:hover { width:30px; padding:0; font-weight:400; background:rgba(20,20,20,.6); color:#fff; }
-.nav-serie.prec { left:0; border-radius:0 10px 10px 0; } .nav-serie.suiv { right:0; border-radius:10px 0 0 10px; }
+/* ‹ › série précédente / suivante (🎛 Affichage : « bas » avec le nom, « cotes » fines, ou aucune) — vert transparent */
+.nav-serie { position:fixed; z-index:40; padding:0; border:1px solid rgba(255,255,255,.18); color:#fff; cursor:pointer;
+  background:rgba(82,181,75,.28); box-shadow:0 2px 10px rgba(0,0,0,.6); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+body.mou-skin .nav-serie, body.mou-skin .nav-serie:hover { background:rgba(82,181,75,.28); color:#fff; font-weight:400; }
 .nav-serie[hidden] { display:none; }
+.nav-serie .fl { flex:none; font-weight:700; }
+.nav-serie .nm { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+body.nav-cotes .nav-serie { top:50%; transform:translateY(-50%); width:18px; height:72px; display:flex; align-items:center; justify-content:center; font-size:1.3rem; }
+body.mou-skin.nav-cotes .nav-serie { width:18px; padding:0; }
+body.nav-cotes .nav-serie.prec { left:0; border-radius:0 9px 9px 0; } body.nav-cotes .nav-serie.suiv { right:0; border-radius:9px 0 0 9px; }
+body.nav-bas .nav-serie { bottom:max(14px, env(safe-area-inset-bottom)); height:36px; max-width:40vw; display:flex; align-items:center; gap:5px;
+  padding:0 12px; border-radius:18px; font-size:.78rem; }
+body.mou-skin.nav-bas .nav-serie { width:auto; padding:0 12px; }
+body.nav-bas .nav-serie .fl { font-size:1rem; }
+body.nav-bas .nav-serie.prec { left:10px; } body.nav-bas .nav-serie.suiv { right:10px; }
+body.nav-bas #seriesView .chapters { padding-bottom:56px; }   /* le bas de la liste reste atteignable */
+.aff-champ { display:flex; flex-direction:column; gap:4px; margin:10px 0; font-size:.88rem; color:var(--muted); }

@@ -203,9 +203,13 @@
   }
   async function majNavSeries() {
     if (!series.length) { var r = await api('/api/library'); series = r.series || []; }
-    var v = voisinsSeries();
-    $('serPrec').hidden = !v.prec; $('serSuiv').hidden = !v.suiv;
-    $('serPrec').title = v.prec ? '‹ ' + v.prec.title : ''; $('serSuiv').title = v.suiv ? v.suiv.title + ' ›' : '';
+    var v = voisinsSeries(), style = pref('mfNavStyle', 'bas');
+    document.body.classList.toggle('nav-bas', style === 'bas'); document.body.classList.toggle('nav-cotes', style === 'cotes');
+    $('serPrec').hidden = !v.prec || style === 'aucune'; $('serSuiv').hidden = !v.suiv || style === 'aucune';
+    $('serPrec').title = v.prec ? v.prec.title : ''; $('serSuiv').title = v.suiv ? v.suiv.title : '';
+    // « bas » : la flèche à part du nom (le nom long est coupé par « … », la flèche reste visible)
+    $('serPrec').innerHTML = '<span class="fl">‹</span>' + (style === 'bas' && v.prec ? '<span class="nm">' + esc(v.prec.title) + '</span>' : '');
+    $('serSuiv').innerHTML = (style === 'bas' && v.suiv ? '<span class="nm">' + esc(v.suiv.title) + '</span>' : '') + '<span class="fl">›</span>';
   }
 
   // Couverture de la même hauteur que la colonne d'infos : bords du haut et du bas alignés
@@ -272,6 +276,12 @@
     var maj = function () { var on = pref('mfAutoGenerique', '1') === '1'; b.textContent = on ? '🔊' : '🔇'; b.title = on ? 'Génériques joués à l\'ouverture d\'une fiche (appuie pour couper)' : 'Lecture automatique des génériques coupée'; };
     b.addEventListener('click', function () { setPref('mfAutoGenerique', pref('mfAutoGenerique', '1') === '1' ? '0' : '1'); maj(); if (pref('mfAutoGenerique', '1') !== '1') arreterGenerique(); });
     maj(); actions.insertBefore(b, actions.firstChild);
+    // 🎛 Affichage (admin et lecteurs) : style des flèches entre séries, générique automatique
+    var r = document.createElement('button');
+    r.type = 'button'; r.id = 'btnAffichage'; r.className = 'mou-btn ghost small'; r.textContent = '🎛'; r.title = 'Affichage';
+    r.addEventListener('click', function () { $('affNav').value = pref('mfNavStyle', 'bas'); $('affAuto').value = pref('mfAutoGenerique', '1'); $('affVue').hidden = false; });
+    actions.insertBefore(r, b.nextSibling);
+    window._majBoutonAuto = maj;
   }
   boutonAuto();
   function arreterGenerique() {
@@ -562,6 +572,10 @@
     }
     $('sPitchModif').addEventListener('click', function () { editionResume(true); });
     $('serPrec').addEventListener('click', function () { var v = voisinsSeries(); if (v.prec) openSeries(v.prec.id); });
+    $('affFermer').addEventListener('click', function () { $('affVue').hidden = true; });
+    $('affVue').addEventListener('click', function (e) { if (e.target === $('affVue')) $('affVue').hidden = true; });
+    $('affNav').addEventListener('change', function () { setPref('mfNavStyle', $('affNav').value); if (current) majNavSeries(); });
+    $('affAuto').addEventListener('change', function () { setPref('mfAutoGenerique', $('affAuto').value); if (window._majBoutonAuto) window._majBoutonAuto(); if ($('affAuto').value !== '1') arreterGenerique(); });
     $('serSuiv').addEventListener('click', function () { var v = voisinsSeries(); if (v.suiv) openSeries(v.suiv.id); });
     $('sInfos').addEventListener('click', async function () {
       $('infosTitre').textContent = 'ℹ️ ' + current.title; $('infosCorps').innerHTML = '<div class="dem-sous">Recherche des infos…</div>'; $('infosVue').hidden = false;

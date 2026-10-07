@@ -147,6 +147,10 @@
             <select id="prefMode"><option value="page">Une page à la fois</option><option value="scroll">Défilement vertical</option></select></div>
         <div class="field"><label for="prefFit">Ajustement</label>
             <select id="prefFit"><option value="height">Page entière (à la hauteur)</option><option value="width">À la largeur</option></select></div>
+        <div class="field"><label for="prefNav">Flèches entre les séries (fiche d'un manga)</label>
+            <select id="prefNav"><option value="bas">En bas, avec le nom de la série</option><option value="cotes">Fines, sur les côtés</option><option value="aucune">Aucune</option></select></div>
+        <div class="field"><label for="prefAuto">Générique à l'ouverture d'une fiche</label>
+            <select id="prefAuto"><option value="1">Joué tout seul</option><option value="0">Seulement avec le bouton 🎵</option></select></div>
         <div id="prefMsg"></div>
     </div>
 </div>
@@ -316,7 +320,7 @@ loadCle();
     $('orgInfo').textContent = o.choix ? o.choix + ' choix de nom retenu(s) pour mieux proposer.' : 'Aucun choix retenu pour l\'instant.';
     $('orgAuto').addEventListener('change', async () => { const r = await post('/api/settings/organiser-auto', {actif: $('orgAuto').checked}); say('orgMsg', r.message || r.error, r.ok); });
 })();
-const PREFS = {dir: ['mfDir', 'rtl'], mode: ['mfMode', 'page'], fit: ['mfFit', 'height']};
+const PREFS = {dir: ['mfDir', 'rtl'], mode: ['mfMode', 'page'], fit: ['mfFit', 'height'], nav: ['mfNavStyle', 'bas'], auto: ['mfAutoGenerique', '1']};
 function getPref(k) { try { return localStorage.getItem(PREFS[k][0]) || PREFS[k][1]; } catch (e) { return PREFS[k][1]; } }
 for (const k of Object.keys(PREFS)) {
     const el = $('pref' + k[0].toUpperCase() + k.slice(1));
