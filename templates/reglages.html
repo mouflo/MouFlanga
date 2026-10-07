@@ -109,6 +109,10 @@
         <div class="field"><label for="usrMdp">Mot de passe (8 caractères minimum)</label><input type="text" id="usrMdp" autocomplete="new-password" autocapitalize="off" spellcheck="false"></div>
         <div class="row"><button class="btn" id="usrAjouter">➕ Créer le compte</button></div>
         <div id="usrMsg"></div>
+        <div class="field" style="margin-top:16px"><label for="demFreq">📮 Rappel Telegram des demandes en attente</label>
+            <div class="row nowrap"><select id="demFreq"><option value="jour">Chaque jour</option><option value="semaine">Chaque semaine</option><option value="jamais">Jamais</option></select>
+            <select id="demHeure"></select><button class="btn" id="demRappelSave">Enregistrer</button></div></div>
+        <div id="demRappelMsg"></div>
     </div>
 
     <div class="panel">
@@ -148,6 +152,9 @@ $('usrListe').addEventListener('click', async e => {
     say('usrMsg', r.message || r.error, r.ok); loadUsr();
 });
 loadUsr();
+$('demHeure').innerHTML = Array.from({length: 24}, (_, h) => `<option value="${h}">à ${h} h</option>`).join('');
+api('/api/demandes').then(r => { if (r.rappel) { $('demFreq').value = r.rappel.frequence; $('demHeure').value = r.rappel.heure; } });
+simpleSave('demRappelSave', 'demRappelMsg', '/api/demandes', () => ({action: 'rappel', frequence: $('demFreq').value, heure: $('demHeure').value}));
 
 async function loadPaths() {
     const p = await api('/api/settings/paths');

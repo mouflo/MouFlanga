@@ -179,3 +179,26 @@ body.lecteur a[href="/telecharger"], body.lecteur #bandeauImport, body.lecteur #
 body.lecteur #sTomes, body.lecteur #sRenommer, body.lecteur #sGenerique, body.lecteur #sDelete, body.lecteur #sPitchModif,
 body.lecteur .cover-edit, body.lecteur [data-del], body.lecteur #sOrga, body.lecteur #menuCover { display:none !important; }
 body.lecteur .cover-btn, body.lecteur a.missing-line { pointer-events:none; }
+
+/* 📮 Demandes */
+#btnDemandes { position:relative; }
+#btnDemandes[hidden] { display:none; }
+.pastille { display:inline-block; min-width:18px; margin-left:6px; padding:0 5px; border-radius:9px; background:#e0b25c; color:#000; font-size:.75rem; font-weight:700; text-align:center; }
+.pastille[hidden] { display:none; }
+.dem-fond { position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.7); display:flex; align-items:flex-start; justify-content:center; padding:16px; overflow:auto; }
+.dem-fond[hidden] { display:none; }
+.dem-boite { width:100%; max-width:560px; background:var(--surface, #1e1f22); border:1px solid var(--line, #333); border-radius:10px; padding:14px 16px; }
+.dem-tete { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.dem-tete h2 { margin:0; font-size:1.1rem; }
+.dem-sous { color:var(--muted); font-size:.85rem; margin:8px 0; line-height:1.4; }
+.dem-titre { font-size:.75rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--accent, #52b54b); margin:16px 0 4px; }
+#demRecherche { width:100%; box-sizing:border-box; margin:4px 0 6px; }
+.dem-ligne { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line, #2c2c2c); }
+.dem-ligne img, .dem-vide { width:42px; height:60px; object-fit:cover; border-radius:4px; background:#2a2a2a; flex:none; }
+.dem-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.dem-info b { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dem-info small { color:var(--muted); font-size:.75rem; overflow:hidden; text-overflow:ellipsis; }
+.dem-statut { font-size:.78rem; color:var(--muted); }
+.dem-ligne.accepte .dem-statut { color:#6fcf73; } .dem-ligne.refuse .dem-statut { color:#e06c6c; }
+.dem-act { display:flex; gap:6px; flex:none; }
+body.mou-skin .dem-act button { padding:6px 10px; font-size:.82rem; width:auto; }

@@ -18,6 +18,20 @@
     <div id="listView">
         <div style="margin-bottom: 16px;">
             <a href="/telecharger" class="mou-btn" style="display: inline-block; margin-right: 8px;">📥 Télécharger des mangas</a>
+            <button type="button" class="mou-btn ghost" id="btnDemandes">📮 {% if role == 'lecteur' %}Demander un manga{% else %}Demandes{% endif %}<span class="pastille" id="nbDemandes" hidden></span></button>
+        </div>
+        <div class="dem-fond" id="demVue" hidden>
+            <div class="dem-boite">
+                <div class="dem-tete"><h2>📮 {% if role == 'lecteur' %}Demander un manga{% else %}Demandes des lecteurs{% endif %}</h2><button type="button" class="ghost" id="demFermer" aria-label="Fermer">✕</button></div>
+                {% if role == 'lecteur' %}
+                <div class="dem-sous">Cherche le manga que tu aimerais lire : la demande est envoyée à l'admin, qui l'ajoute s'il le trouve.</div>
+                <input type="search" id="demRecherche" placeholder="🔍 Nom du manga…" autocomplete="off" spellcheck="false" enterkeyhint="search">
+                <div id="demResultats"></div>
+                <h3 class="dem-titre">Mes demandes</h3>
+                {% endif %}
+                <div id="demListe"></div>
+                <div id="demMsg"></div>
+            </div>
         </div>
         <a href="/importer" class="bandeau-import" id="bandeauImport" hidden></a>
         <div class="panel">

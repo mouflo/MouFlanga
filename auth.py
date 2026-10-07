@@ -29,7 +29,8 @@ USERS_FILE = BASE_DIR / "data" / "utilisateurs.json"     # comptes « lecteur »
 # Ce qu'un lecteur a le droit de faire : lire, rien d'autre (tout le reste est refusé par le serveur)
 LECTEUR_OK = {("GET", "/"), ("GET", "/lire"), ("GET", "/api/library"), ("GET", "/api/series"), ("GET", "/api/cover"),
               ("GET", "/api/pages"), ("GET", "/api/page"), ("POST", "/api/progress"), ("POST", "/api/mark"),
-              ("GET", "/api/generique"), ("POST", "/api/clientlog")}
+              ("GET", "/api/generique"), ("POST", "/api/clientlog"),
+              ("GET", "/api/demandes"), ("GET", "/api/demandes/chercher"), ("POST", "/api/demandes")}   # 📮 (admin vérifié dedans)
 
 REMEMBER_DAYS = 30
 MAX_FAILS_IP = 5          # essais ratés par adresse avant blocage

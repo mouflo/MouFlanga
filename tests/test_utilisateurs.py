@@ -24,9 +24,12 @@ class UtilisateursTest(unittest.TestCase):
         A.MANGA_DIR = self.root; A.PROGRESS_FILE = t / "progress.json"
         self._users = auth.USERS_FILE; auth.USERS_FILE = t / "utilisateurs.json"
         A._ANIMES["date"] = 0
+        import demandes
+        self.dem = demandes; self._dem = demandes._ETAT["fichier"]; demandes._ETAT["fichier"] = t / "demandes.json"
 
     def tearDown(self):
         self.auth.USERS_FILE = self._users
+        self.dem._ETAT["fichier"] = self._dem
         for k, v in self._env.items():
             os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
         self.tmp.cleanup()
@@ -63,6 +66,31 @@ class UtilisateursTest(unittest.TestCase):
         r = self.A.app.test_client().post("/login", data={"username": "lea", "password": "lecture-lea"})
         self.assertEqual(r.status_code, 401)
         self.assertEqual(admin.get("/api/utilisateurs").json["utilisateurs"][0]["actif"], False)
+
+
+    def test_demandes(self):
+        from unittest import mock
+        admin = self.connecter("admin", "motdepasse-admin")
+        admin.post("/api/utilisateurs", json={"action": "ajouter", "id": "lea", "mdp": "lecture-lea"})
+        lea = self.connecter("lea", "lecture-lea")
+        trouve = [{"anilist": 42, "titre": "Frieren", "original": "Sousou no Frieren", "couverture": "https://s4.anilist.co/x.jpg",
+                   "annee": 2020, "statut": "en cours", "tomes": 13, "type": ""}]
+        with mock.patch.object(self.dem, "chercher_anilist", return_value=trouve):
+            self.assertEqual(lea.get("/api/demandes/chercher?q=frieren").json["resultats"][0]["deja"], "")
+        envois = []
+        with mock.patch("notifier.envoyer", side_effect=lambda t: envois.append(t)):
+            r = lea.post("/api/demandes", json={"action": "creer", "serie": trouve[0]})
+            self.assertTrue(r.json["ok"], r.json)
+            self.assertEqual(lea.post("/api/demandes", json={"action": "creer", "serie": trouve[0]}).status_code, 409)
+            import time; time.sleep(0.3)
+        self.assertTrue(envois and "lea demande « Frieren »" in envois[0])
+        did = lea.get("/api/demandes").json["demandes"][0]["id"]
+        self.assertEqual(lea.post("/api/demandes", json={"action": "accepter", "id": did}).status_code, 403)
+        self.assertEqual(admin.get("/api/demandes").json["attente"], 1)
+        self.assertTrue(admin.post("/api/demandes", json={"action": "refuser", "id": did, "motif": "introuvable"}).json["ok"])
+        x = lea.get("/api/demandes").json["demandes"][0]
+        self.assertEqual((x["statut"], x["motif"]), ("refuse", "introuvable"))
+        self.assertIn("2 demandes en attente", self.dem._message_rappel([{"titre": "A", "par": "lea", "date": "2026-10-07"}] * 2, ""))
 
 
 if __name__ == "__main__":

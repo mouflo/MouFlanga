@@ -113,7 +113,49 @@
     }).join('');
   }
 
+  // ---------- 📮 Demandes de mangas (lecteur : chercher et demander ; admin : accepter ou refuser) ----------
+  var demResultats = [];
+  var DEM_STATUT = {attente: '⏳ En attente', accepte: '✅ Acceptée', refuse: '❌ Refusée'};
+  async function chargerDemandes() {
+    var r = await api('/api/demandes');
+    var n = r.attente || 0;
+    $('nbDemandes').hidden = !(r.admin && n); $('nbDemandes').textContent = n;
+    if (r.admin) $('btnDemandes').hidden = !(r.demandes || []).length;
+    var l = r.demandes || [];
+    $('demListe').innerHTML = l.length ? l.map(function (x) {
+      return '<div class="dem-ligne ' + x.statut + '">' + (x.couverture ? '<img src="' + esc(x.couverture) + '" alt="" loading="lazy">' : '<span class="dem-vide"></span>') +
+        '<div class="dem-info"><b>' + esc(x.titre) + '</b><small>' + (x.annee ? x.annee + ' · ' : '') + (r.admin ? 'par ' + esc(x.par) + ' · ' : '') + esc(x.date.slice(0, 10)) +
+        '</small><span class="dem-statut">' + DEM_STATUT[x.statut] + (x.motif ? ' — ' + esc(x.motif) : '') + '</span></div><div class="dem-act">' +
+        (x.statut === 'attente' ? (r.admin ? '<button type="button" data-dem="accepter" data-id="' + x.id + '">✅</button><button type="button" class="ghost" data-dem="refuser" data-id="' + x.id + '">❌</button>'
+                                           : '<button type="button" class="ghost" data-dem="retirer" data-id="' + x.id + '">Retirer</button>') : '') + '</div></div>';
+    }).join('') : '<div class="dem-sous">' + (r.admin ? 'Aucune demande pour l\'instant.' : 'Aucune demande pour l\'instant.') + '</div>';
+  }
+  function ouvrirDemandes(ouvrir) {
+    $('demVue').hidden = !ouvrir;
+    if (ouvrir) { chargerDemandes(); if ($('demRecherche')) $('demRecherche').focus(); }
+    else if (location.hash === '#demandes') history.replaceState({}, '', location.pathname);
+  }
+  var demTimer = null;
+  async function chercherDemande() {
+    var q = $('demRecherche').value.trim();
+    if (q.length < 2) { $('demResultats').innerHTML = ''; return; }
+    $('demResultats').innerHTML = '<div class="dem-sous">Recherche…</div>';
+    var r = await api('/api/demandes/chercher?q=' + encodeURIComponent(q));
+    if (r.error) { $('demResultats').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
+    demResultats = r.resultats || [];
+    var dans = series.map(function (s) { return sansAccents(s.title).replace(/[^a-z0-9]/g, ''); });
+    $('demResultats').innerHTML = demResultats.length ? demResultats.map(function (x, i) {
+      var cle = sansAccents(x.titre).replace(/[^a-z0-9]/g, ''), cle2 = sansAccents(x.original).replace(/[^a-z0-9]/g, '');
+      var deja = dans.indexOf(cle) >= 0 || (cle2 && dans.indexOf(cle2) >= 0);
+      return '<div class="dem-ligne">' + (x.couverture ? '<img src="' + esc(x.couverture) + '" alt="" loading="lazy">' : '<span class="dem-vide"></span>') +
+        '<div class="dem-info"><b>' + esc(x.titre) + '</b><small>' + [x.original, x.annee, x.type, x.statut, x.tomes ? x.tomes + ' tome' + (x.tomes > 1 ? 's' : '') : ''].filter(Boolean).map(esc).join(' · ') + '</small></div>' +
+        '<div class="dem-act">' + (deja ? '<span class="dem-statut">📚 Déjà là</span>' : x.deja ? '<span class="dem-statut">' + DEM_STATUT[x.deja] + '</span>'
+          : '<button type="button" data-demander="' + i + '">📮 Demander</button>') + '</div></div>';
+    }).join('') : '<div class="dem-sous">Aucun manga trouvé.</div>';
+  }
+
   async function loadList() {
+    chargerDemandes();
     var r = await api('/api/library');
     series = r.series || [];
     // Archives déposées à la racine du dossier des mangas : lien vers la page d'import
@@ -299,6 +341,26 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     $('search').addEventListener('input', drawGrid);
+    $('btnDemandes').addEventListener('click', function () { ouvrirDemandes(true); });
+    $('demFermer').addEventListener('click', function () { ouvrirDemandes(false); });
+    $('demVue').addEventListener('click', async function (e) {
+      if (e.target === $('demVue')) { ouvrirDemandes(false); return; }
+      var b = e.target.closest('[data-demander]');
+      if (b) {
+        b.disabled = true;
+        var r = await post('/api/demandes', {action: 'creer', serie: demResultats[+b.dataset.demander]});
+        note('demMsg', r.message || r.error, r.ok ? 'ok' : 'err');
+        if (r.ok) { chargerDemandes(); chercherDemande(); } else b.disabled = false;
+        return;
+      }
+      var a = e.target.closest('[data-dem]'); if (!a) return;
+      var corps = {action: a.dataset.dem, id: a.dataset.id};
+      if (corps.action === 'refuser') { var m = prompt('Refuser cette demande ? Motif (facultatif, visible par le lecteur) :', ''); if (m === null) return; corps.motif = m; }
+      var r2 = await post('/api/demandes', corps);
+      note('demMsg', r2.message || r2.error, r2.ok ? 'ok' : 'err');
+      chargerDemandes();
+    });
+    if ($('demRecherche')) $('demRecherche').addEventListener('input', function () { clearTimeout(demTimer); demTimer = setTimeout(chercherDemande, 450); });
     $('filtres').addEventListener('click', function (e) {
       var f = e.target.closest('.filtre'); if (!f) return;
       var menu = f.querySelector('.filtre-menu'), b = e.target.closest('[data-val]');
@@ -457,6 +519,7 @@
   function showList() { arreterGenerique(); $('seriesView').style.display = 'none'; $('listView').style.display = ''; loadList(); }
   function route() {
     var h = decodeURIComponent((location.hash || '').slice(1));
-    if (h) openSeries(h, false); else showList();
+    if (h === 'demandes') { showList(); ouvrirDemandes(true); }          // lien des messages Telegram
+    else if (h) openSeries(h, false); else showList();
   }
 })();
