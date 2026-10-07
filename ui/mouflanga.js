@@ -97,12 +97,13 @@
     // Chapitres manquants : une ligne discrète, seulement s'il en manque
     var nbLus = s.chapters.filter(function (c) { return c.read; }).length;
     $('sMeta').textContent = (s.compte || '') + ' · ' + nbLus + ' lu' + (nbLus > 1 ? 's' : '');
-    $('sPitch').hidden = !s.resume;
-    if (s.resume) {
-      $('sPitchTexte').textContent = s.resume;
-      $('sPitchLangue').textContent = s.resume_langue === 'en' ? ' (en anglais, aucun résumé français trouvé)' : '';
-      $('sPitch').classList.remove('ouvert');
-    }
+    $('sPitchTexte').textContent = s.resume || 'Aucun résumé trouvé sur Internet. Appuie sur « ✏️ Modifier » pour en écrire un.';
+    $('sPitchTexte').classList.toggle('vide', !s.resume);
+    $('sPitchLangue').textContent = s.resume_langue === 'en' ? ' (en anglais, aucun résumé français trouvé)' : s.resume_langue === 'perso' ? ' (écrit à la main)' : '';
+    $('sPitch').classList.remove('ouvert');
+    $('sPitchEdit').hidden = true; $('sPitchTexte').hidden = false; $('sPitchModif').hidden = false;
+    $('sPitchAuto').hidden = s.resume_langue !== 'perso';
+    $('sPitchZone').value = s.resume || '';
     $('sEtat').hidden = !s.etat_texte;
     $('sEtat').className = 'etat-ligne ' + (s.etat || '');
     $('sEtat').textContent = s.etat_texte ? s.etat_texte + (s.etat_source ? ' (d\'après AniList : ' + s.etat_source + ')' : '') : '';
@@ -263,6 +264,23 @@
       note('sMsg', r.message || 'Série renommée.', 'ok');
     });
     $('sPitchTexte').addEventListener('click', function () { $('sPitch').classList.toggle('ouvert'); });
+    // Modifier le résumé : ton texte remplace celui d'Internet (et n'est jamais écrasé par une mise à jour)
+    function editionResume(ouvrir) {
+      $('sPitchEdit').hidden = !ouvrir; $('sPitchTexte').hidden = ouvrir; $('sPitchModif').hidden = ouvrir;
+      if (ouvrir) { $('sPitchZone').value = $('sPitchTexte').classList.contains('vide') ? '' : $('sPitchTexte').textContent; $('sPitchZone').focus(); }
+    }
+    async function enregistrerResume(texte) {
+      var r = await post('/api/resume', {series: current.id, texte: texte});
+      if (!r.ok) { note('sMsg', r.error); return; }
+      await openSeries(current.id, false);
+      note('sMsg', r.message, 'ok');
+    }
+    $('sPitchModif').addEventListener('click', function () { editionResume(true); });
+    $('sPitchAnnuler').addEventListener('click', function () { editionResume(false); });
+    $('sPitchOk').addEventListener('click', function () { enregistrerResume($('sPitchZone').value); });
+    $('sPitchAuto').addEventListener('click', function () {
+      if (confirm('Effacer ton résumé et reprendre celui trouvé sur Internet ?')) enregistrerResume('');
+    });
     $('sTomes').addEventListener('click', async function () {
       if (!confirm('Ranger « ' + current.title + ' » en tomes ?\n\nL\'appli cherche sur Internet (Wikipédia, MangaDex) quels chapitres vont dans quel tome, puis regroupe les chapitres : un fichier par tome, les chapitres pas encore sortis en tome dans « Hors tome ». Ta progression de lecture est gardée ; les anciens fichiers vont dans la corbeille.')) return;
       var r = await post('/api/tomes/ranger', {series: current.id});

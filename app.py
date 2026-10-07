@@ -450,6 +450,9 @@ def api_series():
     en_tomes = any(c["groupe"] for c in chapters)
     etat, etat_texte = _etat_serie(name, chapters) if name != "(Sans série)" else (None, "")
     st = (tomes._charger(name) or {}).get("statut_officiel") or {}
+    perso = _read_json(RESUMES, {}).get(name)
+    if perso:
+        st = dict(st, resume=perso, resume_langue="perso")
     a_ranger = name != "(Sans série)" and any(not c["groupe"] and c["num"] is not None for c in chapters)
     return jsonify({"id": name, "title": name, "chapters": chapters,
                     "current": p.get("current", ""), "page": p.get("page", 0),
@@ -885,6 +888,16 @@ _BRUIT = re.compile(r"\b(?:int[ée]grale?|complete|complet|fr|vf|vostfr|cbz|cbr|
 
 _PARTICULES = {"no", "wa", "ga", "ni", "to", "wo", "de", "na", "e", "of", "the", "a", "an", "and", "in", "on", "de", "du", "des", "la", "le", "les", "et"}
 CHOIX = DATA_DIR / "organiser-choix.json"
+RESUMES = DATA_DIR / "resumes.json"              # résumés écrits ou corrigés à la main : prioritaires sur Internet
+
+
+def _deplacer_resume(name, nouveau):
+    """Le résumé écrit à la main suit la série renommée (en cas de fusion, celui de la série d'arrivée reste)."""
+    perso = _read_json(RESUMES, {})
+    if name in perso and nouveau != name:
+        texte = perso.pop(name)
+        perso.setdefault(nouveau, texte)
+        _write_json(RESUMES, perso)
 
 
 def _majuscules(nom):
@@ -1012,6 +1025,7 @@ def _organiser(name, nouveau):
                     p.update({k: autre[k] for k in ("current", "page", "last") if k in autre})
             data[nouveau] = p
             _write_json(PROGRESS_FILE, data)
+    _deplacer_resume(name, nouveau)
     logger.info("Série organisée : « %s » → « %s » (%d fichier(s) déplacé(s))", name, nouveau, len(deplaces))
     return nouveau
 
@@ -1325,6 +1339,25 @@ def api_renommer():
                         + (f" {doublons} fichier(s) en double mis à la corbeille." if doublons else "")})
     logger.info("Série renommée : « %s » → « %s »", name, nouveau)
     return jsonify({"ok": True, "id": nouveau, "message": "Série renommée."})
+
+
+@app.route("/api/resume", methods=["POST"])
+def api_resume():
+    """Résumé modifié à la main ; texte vide = revenir au résumé trouvé sur Internet."""
+    body = request.get_json(silent=True) or {}
+    name, texte = str(body.get("series", "")), str(body.get("texte", "")).strip()
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if len(texte) > 5000:
+        return jsonify({"ok": False, "error": "Résumé trop long (5 000 caractères au plus)."}), 400
+    perso = _read_json(RESUMES, {})
+    if texte:
+        perso[name] = texte
+    else:
+        perso.pop(name, None)
+    _write_json(RESUMES, perso)
+    logger.info("Résumé de « %s » %s", name, "modifié à la main" if texte else "remis en automatique")
+    return jsonify({"ok": True, "message": "Résumé enregistré." if texte else "Résumé automatique rétabli."})
 
 
 @app.route("/api/tomes/ranger", methods=["POST"])

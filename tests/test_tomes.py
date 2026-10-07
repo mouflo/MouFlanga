@@ -201,6 +201,7 @@ class BibliothequeTest(unittest.TestCase):
         A.MANGA_DIR = self.root
         A.PROGRESS_FILE = t / "progress.json"
         A.CHOIX = t / "choix.json"                       # pas la vraie mémoire des choix
+        A.RESUMES = t / "resumes.json"                   # ni les vrais résumés écrits à la main
         A.PROGRESS_FILE.write_text(json.dumps({"Serie": {
             "current": "Serie/003 - ​Chapitre 3 Titre 3.cbz", "page": 1,
             "read": ["Serie/001 - ​Chapitre 1 Titre 1.cbz", "Serie/002 - ​Chapitre 2 Titre 2.cbz"]}}))
@@ -628,6 +629,17 @@ class RenommerEtOrdreTest(BibliothequeTest):
         s = self.client.get("/api/series?id=Nouvelle Série").json
         self.assertEqual((s["current"], [c["read"] for c in s["chapters"]][:2]), ("#3", [True, True]))
         self.assertEqual(self.client.post("/api/renommer", json={"series": "Nouvelle Série", "nom": "Nouvelle Série"}).status_code, 400)
+
+    def test_resume_modifie_a_la_main(self):
+        r = self.client.post("/api/resume", json={"series": "Serie", "texte": "  Mon résumé.  "})
+        self.assertTrue(r.json["ok"])
+        s = self.client.get("/api/series?id=Serie").json
+        self.assertEqual((s["resume"], s["resume_langue"]), ("Mon résumé.", "perso"))
+        self.client.post("/api/renommer", json={"series": "Serie", "nom": "Autre"})        # le résumé suit
+        self.assertEqual(self.client.get("/api/series?id=Autre").json["resume"], "Mon résumé.")
+        self.client.post("/api/resume", json={"series": "Autre", "texte": ""})              # retour à l'automatique
+        self.assertNotEqual(self.client.get("/api/series?id=Autre").json["resume_langue"], "perso")
+        self.assertEqual(self.client.post("/api/resume", json={"series": "Inconnue", "texte": "x"}).status_code, 404)
 
     def test_renommer_vers_serie_existante_propose_la_fusion(self):
         """Cas d'« Alice-in-borderland » (tomes 1-5, 7) renommée en « Alice in Borderland » (tome 6, et un tome 7 en double)."""

@@ -101,3 +101,9 @@ body.mou-skin .tome-titre, body.mou-skin .tome-titre:hover { background:none; co
 .resume-titre span { font-weight:400; color:var(--muted); font-size:.8rem; }
 .resume-texte { color:var(--muted); font-size:.92rem; line-height:1.5; white-space:pre-line; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; }
 .resume.ouvert .resume-texte { -webkit-line-clamp:unset; display:block; }
+.resume-titre { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.resume-modif { margin-left:auto; padding:4px 10px; font-size:.8rem; }
+.resume-texte.vide { font-style:italic; }
+.resume-texte[hidden], #sPitchEdit[hidden], .resume-modif[hidden] { display:none; }
+.resume-zone { width:100%; box-sizing:border-box; font:inherit; font-size:16px; line-height:1.5; resize:vertical; min-height:160px; }
+.resume-actions { margin-top:8px; flex-wrap:wrap; }
