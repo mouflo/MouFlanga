@@ -343,7 +343,8 @@
     // Au départ, seul le tome en cours de lecture (ou le premier avec des chapitres à lire) est ouvert.
     function ligne(c) {
       return '<div class="chap' + (c.read ? ' read' : '') + (c.key === s.current ? ' cur' : '') + '" data-path="' + esc(c.key) + '">' +
-        '<span class="dot"></span><span class="ct">' + esc(c.title) + (c.sous ? '<small class="ct2">' + esc(c.sous) + '</small>' : '') + '</span><span class="cs">' + taille(c.size_mb) + '</span>' +
+        '<span class="dot"></span><span class="ct">' + esc(c.title) + (c.sous ? '<small class="ct2">' + esc(c.sous) + '</small>' : '') + '</span>' +
+        (c.tome != null ? '<button class="tog tinfo" data-tinfo="' + c.tome + '" title="Infos du tome">ⓘ</button>' : '') + '<span class="cs">' + taille(c.size_mb) + '</span>' +
         '<button class="tog" data-tog="' + esc(c.key) + '" title="Marquer ' + (c.read ? 'non lu' : 'lu') + '">' + (c.read ? '↺' : '✔') + '</button>' +
         '<button class="tog del" data-del="' + esc(c.key) + '" title="Supprimer ce chapitre">🗑</button></div>';
     }
@@ -365,6 +366,7 @@
         '<button class="tome-titre" data-tome="' + esc(g.nom) + '" aria-expanded="' + ouvert + '">' +
         '<span class="fleche">▸</span><span class="tn">📚 ' + esc(g.nom) + (cur ? ' <small>· en cours</small>' : '') +
         (g.titre ? '<small class="tome-nom">« ' + esc(g.titre) + ' »</small>' : '') + '</span>' +
+        (/^Tome \d+/.test(g.nom) ? '<span class="tog tinfo" role="button" data-tinfo="' + parseInt(g.nom.slice(5), 10) + '" title="Infos du tome">ⓘ</span>' : '') +
         '<span class="tc">' + g.chapitres.length + ' ch. · ' + (lus === g.chapitres.length ? 'lu ✔' : lus + ' lu' + (lus > 1 ? 's' : '')) + '</span></button>' +
         '<div class="tome-chaps">' + g.chapitres.map(ligne).join('') + '</div></div>';
     }).join('');
@@ -535,6 +537,17 @@
         : '<div class="dem-sous">Aucune info trouvée.</div>') + (f.wikipedia ? '<a class="infos-lien" href="https://fr.wikipedia.org/wiki/' + encodeURIComponent(f.wikipedia) + '" target="_blank" rel="noopener">Wikipédia ↗</a>' : '');
     });
     $('infosFermer').addEventListener('click', function () { $('infosVue').hidden = true; });
+    // ⓘ d'un tome : titre, sortie en France, couverture, résumé, chapitres (Wikipédia)
+    $('chapters').addEventListener('click', async function (e) {
+      var b = e.target.closest('[data-tinfo]'); if (!b) return;
+      e.stopPropagation(); e.preventDefault();
+      var n = b.dataset.tinfo;
+      $('infosTitre').textContent = 'ℹ️ Tome ' + String(n).padStart(2, '0'); $('infosCorps').innerHTML = '<div class="dem-sous">…</div>'; $('infosVue').hidden = false;
+      var d = await api('/api/tome?id=' + encodeURIComponent(current.id) + '&tome=' + n);
+      var l = [['Titre', d.titre], ['Sortie en France', d.sortie], ['En couverture', d.couverture], ['Résumé', d.resume]].filter(function (x) { return x[1]; });
+      $('infosCorps').innerHTML = (l.length ? '<dl>' + l.map(function (x) { return '<dt>' + x[0] + '</dt><dd>' + esc(x[1]) + '</dd>'; }).join('') + '</dl>' : '<div class="dem-sous">Pas d\'infos sur ce tome (Wikipédia n\'en donne pas).</div>') +
+        ((d.chapitres || []).length ? '<div class="dem-titre">Chapitres</div><ol class="tchap">' + d.chapitres.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') + '</ol>' : '');
+    }, true);
     $('infosVue').addEventListener('click', function (e) { if (e.target === $('infosVue')) $('infosVue').hidden = true; });
     $('sSurveiller').addEventListener('click', async function () {
       fermerMenus();

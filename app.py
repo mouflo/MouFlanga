@@ -1847,6 +1847,18 @@ def api_fiche():
                     "edition": _infos_edition(name, files)})
 
 
+@app.route("/api/tome")
+def api_tome():
+    """Bouton ⓘ d'un tome : titre, sortie en France, personnages en couverture, résumé, chapitres (Wikipédia)."""
+    name = request.args.get("id", "")
+    if name not in _scan():
+        return jsonify({"error": "Série introuvable"}), 404
+    try:
+        return jsonify(tomes.details_tome(name, float(request.args.get("tome", "0"))))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Tome inconnu"}), 400
+
+
 @app.route("/api/generique")
 def api_generique():
     """Écouter le générique de l'anime de la série (fichier rangé par MouFlopening dans la médiathèque Emby)."""

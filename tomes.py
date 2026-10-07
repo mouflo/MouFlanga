@@ -504,6 +504,7 @@ def fiche(serie: str, forcer=False) -> dict:
 # ---------------------------------------------------------------- Titres des tomes (« Romance Dawn »)
 
 def _wiki_propre(v: str) -> str:
+    v = re.sub(r"\{\{\s*(1e|1re|1er|e|er|re)\s*\|([^}]*)\}\}", lambda m: ("1re " if m.group(1).startswith("1") else "e ") + m.group(2), v or "")
     v = re.sub(r"<ref.*?(</ref>|/>)|<[^>]+>", "", v or "", flags=re.S)
     v = re.sub(r"\{\{\s*(?:nowrap|lang|nihongo|japonais)\s*\|(?:[a-z]{2}\|)?([^|}]*)[^}]*\}\}", r"\1", v, flags=re.I)
     v = re.sub(r"\{\{[^}]*\}\}", "", v)
@@ -512,12 +513,52 @@ def _wiki_propre(v: str) -> str:
     return re.sub(r"\s+", " ", v).strip(" .,-–—")
 
 
+def _champs_tomebd(bloc: str) -> dict:
+    """Paramètres d'un modèle TomeBD (valeurs sur plusieurs lignes comprises)."""
+    out = {}
+    for m in re.finditer(r"\n\s*\|\s*([\wé]+)\s*=(.*?)(?=\n\s*\|\s*[\wé]+\s*=|\n\}\}|\Z)", "\n" + bloc, re.S):
+        out.setdefault(m.group(1), m.group(2).strip())
+    return out
+
+
+def _dates(v: str) -> str:
+    return re.sub(r"\{\{\s*date\s*\|([^|}]*)\|([^|}]*)\|([^|}]*)[^}]*\}\}", r"\1 \2 \3", v or "", flags=re.I)
+
+
+def _puces(v: str) -> str:
+    return re.sub(r"^\*\s*", " • ", v or "", flags=re.M)
+
+
+def _liens_listes(pages: list) -> list:
+    """Pages « Liste des chapitres / volumes / tomes de … » liées depuis ces pages Wikipédia (en français)."""
+    out = []
+    for page in [p for p in pages if p][:4]:
+        try:
+            r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "query", "prop": "links", "titles": page, "pllimit": 500,
+                                                                             "plnamespace": 0, "format": "json", "redirects": 1}, timeout=15).json()
+            for pg in (r.get("query", {}).get("pages") or {}).values():
+                out += [l["title"] for l in pg.get("links", []) if re.match(r"Liste des (chapitres|volumes|tomes) d", l["title"])
+                        and "dérivé" not in l["title"] and "hors-série" not in l["title"].lower()]
+        except Exception:
+            continue
+    return list(dict.fromkeys(out))
+
+
+def details_tome(serie: str, tome) -> dict:
+    """Infos d'un tome (titre, sortie en France, couverture, résumé, chapitres) d'après la mémoire de titres_tomes."""
+    t = ((_charger(serie) or {}).get("titres_tomes") or {})
+    d = dict((t.get("details") or {}).get(str(int(tome)), {}))
+    if not d.get("titre") and (t.get("titres") or {}).get(str(int(tome))):
+        d["titre"] = t["titres"][str(int(tome))]
+    return d
+
+
 def titres_tomes(serie: str, forcer=False) -> dict:
     """{numéro de tome (texte): titre} : Wikipédia français (TomeBD, titre_2 = titre français) en priorité,
     sinon Wikipédia anglais (Graphic novel list : LicensedTitle, sinon TranslitTitle). Gardé 30 jours."""
     garde = _charger(serie) or {}
     t = garde.get("titres_tomes")
-    if t and not forcer and time.time() - t.get("date", 0) < FICHE_DUREE:
+    if t and "details" in t and not forcer and time.time() - t.get("date", 0) < FICHE_DUREE:
         return t.get("titres", {})
     st = garde.get("statut_officiel") or {}
     if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans titre anglais) : refaite une fois
@@ -534,7 +575,7 @@ def titres_tomes(serie: str, forcer=False) -> dict:
                     titres[vol.group(1)] = _wiki_propre(tit.group(1))
     except Exception as e:
         logger.info("Titres des tomes (anglais) de %s : %s", serie, e.__class__.__name__)
-    fr = {}
+    fr, details = {}, {}
     try:                                                  # français, prioritaire
         pages = []
         for nom in noms[:3]:
@@ -546,7 +587,10 @@ def titres_tomes(serie: str, forcer=False) -> dict:
                     pages.append(x["title"])
             if pages:
                 break
-        for page in list(dict.fromkeys(pages))[:8]:
+        # Liens de la fiche Wikipédia de la série et des pages « Liste… » qui renvoient vers leurs parties (One Piece : 6 parties)
+        principale = _page_wikipedia([st.get("titre"), st.get("titre_en"), serie.split(" : ")[0]])
+        pages = list(dict.fromkeys(pages + _liens_listes([principale] if principale else []) + _liens_listes(pages)))
+        for page in pages[:12]:
             r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "parse", "page": page, "prop": "wikitext",
                                                                              "format": "json", "redirects": 1}, timeout=15).json()
             w = r.get("parse", {}).get("wikitext", {}).get("*", "")
@@ -557,9 +601,24 @@ def titres_tomes(serie: str, forcer=False) -> dict:
                     langue_fr = m.group(1) if m else "1"
                     continue
                 vol = re.search(r"\|\s*volume\s*=\s*(\d+)", bloc)
-                tit = re.search(r"\|\s*titre_" + langue_fr + r"[ \t]*=[ \t]*([^\n]+)", bloc)
-                if vol and tit and _wiki_propre(tit.group(1)) and vol.group(1) not in fr:
-                    fr[vol.group(1)] = _wiki_propre(tit.group(1))   # 1re édition de la page (pas la « double », la « perfect »)
+                if not vol or vol.group(1) in details:
+                    continue                                  # 1re édition de la page (pas la « double », la « perfect »)
+                champs = _champs_tomebd(bloc)
+                titre = _wiki_propre(champs.get("titre_" + langue_fr, ""))
+                extra = champs.get("extra", "")
+                m_t = re.search(r"Titre du volume\s*:?\s*'*\s*(?:<br\s*/?>)?(.+?)(?:<br|$)", extra, re.S | re.I)
+                if not titre and m_t:
+                    titre = _wiki_propre(m_t.group(1))
+                m_c = re.search(r"Personnages en couverture\s*:?\s*'*\s*(?:<br\s*/?>)?(.+?)(?:<br|$)", extra, re.S | re.I)
+                chap = [(int(n), _wiki_propre(t)) for n, t in re.findall(r"^\*\s*Ch(?:apitre)?\.?\s*(\d+)\s*:\s*(.+)$", champs.get("chapitre", ""), re.M)]
+                resume = re.sub(r"'{3}\s*Résumé\s*:?\s*'{3}", "", champs.get("résumé", ""), flags=re.I)
+                d = {"titre": titre, "sortie": _wiki_propre(_dates(champs.get("sortie_" + langue_fr, ""))),
+                     "couverture": _wiki_propre(m_c.group(1)) if m_c else "",
+                     "resume": _wiki_propre(_puces(resume)),
+                     "chapitres": [f"{n}. {t}" for n, t in chap if t][:40]}
+                details[vol.group(1)] = {k: v for k, v in d.items() if v}
+                if titre:
+                    fr[vol.group(1)] = titre
             time.sleep(0.3)
     except Exception as e:
         logger.info("Titres des tomes (français) de %s : %s", serie, e.__class__.__name__)
@@ -568,7 +627,8 @@ def titres_tomes(serie: str, forcer=False) -> dict:
         brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         brut = {}
-    brut["titres_tomes"] = {"date": time.time() if titres else time.time() - FICHE_DUREE + 86400, "titres": titres}   # rien : retenté demain
+    brut["titres_tomes"] = {"date": time.time() if titres else time.time() - FICHE_DUREE + 86400,   # rien : retenté demain
+                            "titres": titres, "details": details}
     DOSSIER.mkdir(parents=True, exist_ok=True)
     tmp = _fichier(serie).with_suffix(".tmp")
     tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
