@@ -25,7 +25,7 @@
     <div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}" data-sub="Réglages"></div>
     <a class="back" href="/">← Retour aux mangas</a>
 
-    <div class="panel">
+    <div class="panel" data-onglet="Dossiers">
         <h2>📁 Dossiers</h2>
         <div class="sub">Où se trouvent tes mangas : un sous-dossier par série, avec des fichiers .cbz ou .cbr dedans. L'appli redémarre après l'enregistrement (quelques secondes).</div>
         <div class="field"><label for="pathManga">Dossier des mangas</label>
@@ -35,7 +35,7 @@
         <div id="pathsMsg"></div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-onglet="Général">
         <h2>🧭 Navigateur du scraper</h2>
         <div class="sub">Navigateur utilisé pour passer la vérification Cloudflare de Japscan. <b>Chrome</b> est le choix par défaut. <b>Camoufox</b> est un Firefox conçu pour paraître plus naturel : il se télécharge une seule fois (quelques minutes). Si Camoufox ne démarre pas, l'appli revient toute seule à Chrome.</div>
         <div class="field"><label for="nvMoteur">Navigateur</label>
@@ -46,7 +46,7 @@
         <div id="nvMsg"></div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-onglet="Général">
         <h2>🧹 Séries ajoutées à la main</h2>
         <div class="sub">Quand tu copies un manga directement dans le dossier des mangas, l'appli propose de l'organiser (nom propre, un dossier par tome, archives et PDF convertis). Elle apprend de tes choix de noms. Coche la case pour qu'elle le fasse toute seule, sans te demander.</div>
         <div class="field"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="orgAuto" style="width:22px;height:22px;flex:none;margin-top:2px"><span><b>Organiser tout seul</b> les séries ajoutées à la main (vérifié à chaque ouverture de la bibliothèque)</span></label></div>
@@ -54,7 +54,7 @@
         <div id="orgMsg"></div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-onglet="Connexions">
         <h2>🎵 MouFlopening (génériques)</h2>
         <div class="sub">Quand un manga a aussi une version animée dans Emby, son générique peut s'écouter sur la page de la série (bouton 🎵), et le menu « ⋯ » propose « 🎵 Choisir le générique » (ouvre MouFlopening). Indique l'adresse de MouFlopening (et l'adresse perso si tu y accèdes de l'extérieur).</div>
         <div class="field"><label for="mfoUrl">Adresse de MouFlopening sur le réseau local</label><input type="text" id="mfoUrl" placeholder="http://192.168.1.141:8001" autocapitalize="off" spellcheck="false"></div>
@@ -63,7 +63,7 @@
         <div id="mfoUrlMsg"></div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-onglet="Connexions">
         <h2>🎨 MouFloster (posters)</h2>
         <div class="sub">Pour créer la couverture d'une série avec MouFloster puis l'envoyer directement ici. <b>1.</b> Indique l'adresse de MouFloster : un bouton « 🎨 Créer avec MouFloster » apparaît sur la page de chaque série. Si tu y accèdes aussi de l'extérieur (proxy, nom de domaine), mets les deux : l'appli prend l'adresse locale quand tu es chez toi, l'adresse perso sinon. <b>2.</b> Génère une clé API et colle-la dans MouFloster → ⚙️ Réglages → MouFlanga (avec l'adresse de MouFlanga).</div>
         <div class="field"><label for="mfsUrl">Adresse de MouFloster sur le réseau local</label><input type="text" id="mfsUrl" placeholder="http://192.168.1.141:8000" autocapitalize="off" spellcheck="false"></div>
@@ -77,7 +77,7 @@
         <div id="cleMsg"></div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-onglet="Connexions">
         <h2>🔔 Alertes Telegram</h2>
         <div class="sub">Quand Cloudflare demande une vérification pendant un téléchargement, l'appli t'envoie un message Telegram avec le lien de la page « Vérification ». Si une autre appli de ce serveur (MouFloster, MouFlanimeXer, MouFlopening…) utilise déjà Telegram, MouFlanga reprend ses réglages tout seul : il n'y a rien à saisir. Sinon, crée un bot avec <b>@BotFather</b> (<code>/newbot</code>), colle son <b>jeton</b> ci-dessous, envoie « bonjour » au bot et clique sur « Détecter mon identifiant ».</div>
         <div class="tabsinfo" id="tgSource"></div>
@@ -101,7 +101,7 @@
         <div id="tgMsg"></div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-onglet="Comptes">
         <h2>👥 Utilisateurs</h2>
         <div class="sub">Des comptes « lecteur » pour tes proches : ils voient la bibliothèque et lisent, avec leur propre progression. Ils ne peuvent rien télécharger, importer, modifier ni supprimer, et n'ont accès ni aux réglages ni au journal. Toi, tu restes le seul admin.</div>
         <div id="usrListe" class="usr-liste"></div>
@@ -115,7 +115,7 @@
         <div id="demRappelMsg"></div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-onglet="Général">
         <h2>📖 Lecture</h2>
         <div class="sub">Ces choix se font aussi dans le lecteur (boutons en haut) et sont retenus sur cet appareil.</div>
         <div class="field"><label for="prefDir">Sens de lecture</label>
