@@ -748,3 +748,13 @@ class EditionTest(unittest.TestCase):
             self.assertEqual(edition.analyser([t / "hd.cbz"], "")["source"], "Digital")
             self.assertEqual(edition.analyser([t / "double.cbz"], "")["source"], "Scan")
             self.assertEqual(edition.analyser([t / "double.cbz"], "Serie CBZ-Digital")["devine"], False)
+
+
+class NomsArchivesTest(unittest.TestCase):
+    def test_noms_nettoyes(self):
+        import app as A
+        A._titre_officiel = lambda t: {"AirGear": "Air Gear", "Air Gear": "Air Gear"}.get(t, t)   # sans Internet
+        A._appris = lambda dossier, propose: propose
+        self.assertEqual(A._nom_depuis_archive("AirGear.37.Tomes.Integral._FR__CBZ_-Digital-1417.zip", []), "Air Gear")
+        self.assertEqual(A._nom_depuis_archive("Bakuman.20.Tomes.2010.Integral._FR__CBZ_-TONER-PapriKa.zip", []), "Bakuman")
+        self.assertEqual(A._nom_depuis_archive("20th_Century_boys__Intégrale___Digital_1920___CBZ__NOTAG.zip", ["20th Century Boys"]), "20th Century Boys")

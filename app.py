@@ -1034,7 +1034,9 @@ def _plan_organiser(name, files):
     noms = [n for n in noms if n]
     commun = Counter(noms).most_common(1)
     propose = commun[0][0] if commun and commun[0][1] >= max(2, len(files) * 0.6) else (_nettoyer_nom(name) or name)
-    propose = japscan_scraper.nom_sur(_appris(name, _majuscules(propose)))
+    propose = _nom_serie(_appris(name, _majuscules(propose)))
+    if _cle_nom(propose) == _cle_nom(name) and propose.lower() != name.lower():   # seule la ponctuation diffère (« : ») : on garde
+        propose = name
     tomes_fichiers, a_deplacer, chapitres = [], 0, 0
     for f in files:
         if tomes_cbz.lire_info(f) is not None:
@@ -1277,17 +1279,58 @@ def _cle_nom(nom):
     return re.sub(r"[^a-z0-9]+", "", t)
 
 
+_COUPURE = re.compile(r"\s(?:\d{1,3}\s*tomes?|t\d{1,3}\b|tomes?\s*\d|vol(?:ume)?s?\s*\d|int[ée]grale?|complete|fr|french|vf|cbz|cbr|"
+                      r"digital|scans?|(?:19|20)\d\d|\d{3,4}p?|e-?books?)\b", re.I)
+_NOMS_ANILIST = {}
+
+
+def _titre_officiel(t):
+    """Écriture officielle du titre d'après AniList (« AirGear » → « Air Gear », « 20th Century boys » → « 20th Century Boys »),
+    seulement si c'est bien la même suite de lettres ; sinon le nom tel quel. Gardé en mémoire et dans data/noms-anilist.json."""
+    f = DATA_DIR / "noms-anilist.json"
+    if not _NOMS_ANILIST:
+        _NOMS_ANILIST.update(_read_json(f, {}) or {"": ""})
+    if t in _NOMS_ANILIST:
+        return _NOMS_ANILIST[t] or t
+    trouve = ""
+    try:
+        q = "query($s:String){Page(perPage:6){media(search:$s,type:MANGA){title{romaji english} synonyms}}}"
+        r = tomes._SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": t}}, timeout=10)
+        for m in (r.json().get("data") or {}).get("Page", {}).get("media") or []:
+            for c in (m["title"].get("english"), m["title"].get("romaji"), *(m.get("synonyms") or [])):
+                if c and _cle_nom(c.rstrip(" .!。")) == _cle_nom(t):
+                    trouve = c.rstrip(" .。")
+                    break
+            if trouve:
+                break
+    except Exception as e:
+        logger.info("AniList (nom officiel) : %s", e.__class__.__name__)
+        return t
+    _NOMS_ANILIST[t] = trouve
+    _write_json(f, _NOMS_ANILIST)
+    return trouve or t
+
+
 def _nom_depuis_archive(nom_fichier, existantes):
-    """« jojo's bizarre adventure tome 13 a 28 » → « Jojo's Bizarre Adventure » ; une série déjà présente garde son nom."""
+    """« jojo's bizarre adventure tome 13 a 28 » → « Jojo's Bizarre Adventure » ; « AirGear.37.Tomes.Integral._FR__CBZ_-Digital-1417 »
+    → « Air Gear » (tout ce qui suit le premier mot technique est coupé, puis écriture officielle d'AniList) ;
+    une série déjà présente garde son nom."""
     stem = Path(nom_fichier).stem
     t = stem.replace("_", " ")
-    if re.search(r"[A-Za-z]\.[A-Za-z]", t) and t.count(" ") <= 1:     # « Docteur.Slump », « Magi.the.labyrinth.of.magic »
+    if t.count(".") >= 2 or (re.search(r"[A-Za-z]\.[A-Za-z]", t) and t.count(" ") <= 1):   # « Docteur.Slump », « AirGear.37.Tomes… »
         t = t.replace(".", " ")
-    t = _NOMBRE_TOMES.sub(" ", _CROCHETS.sub(" ", t))
+    t = _CROCHETS.sub(" ", t)
+    m = _COUPURE.search(" " + t)
+    if m and m.start() > 1:                                   # le titre est avant le premier mot technique
+        t = (" " + t)[:m.start()]
+    t = _NOMBRE_TOMES.sub(" ", t)
     t = _nettoyer_nom(t) or stem
+    if " " not in t and re.search(r"[a-z][A-Z]", t):           # « AirGear » → « Air Gear »
+        t = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", t)
     if t == t.lower() or (t[:1].isupper() and t[1:] == t[1:].lower() and " " in t):
         t = _majuscules(t.lower())
-    t = japscan_scraper.nom_sur(_appris(nom_fichier, t))
+    appris = _appris(nom_fichier, t)
+    t = _nom_serie(appris if appris != t else _titre_officiel(t))
     for e in existantes:                                   # série déjà dans la bibliothèque (ex. Gamaran)
         if _cle_nom(e) == _cle_nom(t):
             return e

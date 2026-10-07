@@ -38,6 +38,10 @@ def _variantes(titre: str) -> list[str]:
     v = re.sub(r"\s*n[°º]\s*", " No. ", titre, flags=re.I).strip()
     if v not in out:
         out.append(re.sub(r"\s+", " ", v))
+    if " : " in titre:                          # « Frieren : Sousou no Frieren » → chaque partie (la plus longue d'abord)
+        for part in sorted((x.strip() for x in titre.split(" : ")), key=len, reverse=True):
+            if part and part not in out:
+                out.append(part)
     return out
 
 
@@ -291,15 +295,16 @@ STATUT_DUREE = 7 * 86400
 def _choisir(medias, serie, tome_max):
     """Parmi les résultats AniList, celui qui correspond le mieux : même titre, puis nombre de tomes compatible
     avec ce qu'on a (« Kenichi » 61 tomes → « Shijou Saikyou no Deshi Kenichi », pas « Kenichi Tantei Chou »)."""
-    cle = _simple(serie)
+    cles = [c for c in {_simple(serie), *(_simple(x) for x in serie.split(" : "))} if c]
     def note(m):
         titres = [_simple(t) for t in (m["title"].get("romaji"), m["title"].get("english")) if t] + [_simple(x) for x in m.get("synonyms") or []]
-        exact = cle in titres
-        contient = any(cle and cle in t for t in titres)
+        exact = any(c in titres for c in cles)
+        contient = any(c in t for c in cles for t in titres)
         vol = m.get("volumes")
+        assez = not (tome_max and vol and vol < tome_max)        # 1 tome alors qu'on en a 14 : pas la bonne série
         compatible = bool(tome_max and vol and vol >= tome_max)
         proche = -abs((vol or 0) - (tome_max or 0)) if tome_max and vol else -999
-        return (exact, compatible, contient, m.get("format") == "MANGA", proche)
+        return (assez, exact, compatible, contient, m.get("format") == "MANGA", proche)
     return max(medias, key=note) if medias else None
 
 
