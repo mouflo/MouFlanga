@@ -116,6 +116,7 @@ body.mou-skin .tome-titre, body.mou-skin .tome-titre:hover { background:none; co
 .more-box { display:flex; }
 #sMore { min-width:48px; }
 a.missing-line { display:block; text-decoration:none; }
+a.missing-line[hidden] { display:none; }
 a.missing-line:hover { text-decoration:underline; }
 .resume { margin-top:18px; }
 .resume-titre { flex-wrap:nowrap; justify-content:space-between; margin-bottom:6px; }
