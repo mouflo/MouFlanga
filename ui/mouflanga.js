@@ -102,6 +102,10 @@
     }
     $('grid').innerHTML = list.map(function (s) {
       var left = s.chapters - s.read, pct = s.chapters ? Math.round(100 * s.read / s.chapters) : 0;
+      if (s.recherchee) return '<div class="card recherchee" tabindex="0" data-id="' + esc(s.id) + '" data-recherchee="1">' +
+        (s.cover ? '<img class="cv" loading="lazy" alt="" src="' + esc(s.cover) + '">' : '<div class="cv"></div>') +
+        '<span class="etat recherche">📥 Recherchée' + (s.propositions ? ' · ' + s.propositions + ' 🧲' : '') + '</span>' +
+        '<div class="nm">' + esc(s.title) + '</div><div class="st">Appuie pour choisir un torrent</div><div class="bar"><i style="width:0"></i></div></div>';
       return '<div class="card" tabindex="0" data-id="' + esc(s.id) + '">' +
         '<img class="cv" loading="lazy" alt="" src="' + esc(s.cover) + '">' +
         (ETATS[s.etat] ? '<span class="etat ' + s.etat + '" title="' + ETATS[s.etat][1] + '">' + ETATS[s.etat][0] + '</span>' : '') +
@@ -150,7 +154,8 @@
       return '<div class="dem-ligne">' + (x.couverture ? '<img src="' + esc(x.couverture) + '" alt="" loading="lazy">' : '<span class="dem-vide"></span>') +
         '<div class="dem-info"><b>' + esc(x.titre) + '</b><small>' + [x.original, x.annee, x.type, x.statut, x.tomes ? x.tomes + ' tome' + (x.tomes > 1 ? 's' : '') : ''].filter(Boolean).map(esc).join(' · ') + '</small></div>' +
         '<div class="dem-act">' + (deja ? '<span class="dem-statut">📚 Déjà là</span>' : x.deja ? '<span class="dem-statut">' + DEM_STATUT[x.deja] + '</span>'
-          : '<button type="button" data-demander="' + i + '">📮 Demander</button>') + '</div></div>';
+          : (document.body.classList.contains('lecteur') ? '<button type="button" data-demander="' + i + '">📮 Demander</button>'
+                                                          : '<button type="button" data-ajouter="' + i + '">➕ Ajouter</button>')) + '</div></div>';
     }).join('') : '<div class="dem-sous">Aucun manga trouvé.</div>';
   }
 
@@ -248,6 +253,16 @@
     $('sNfo').hidden = !(ed.nfo || (ed.archives || []).length);
     $('sNfoArchives').textContent = (ed.archives || []).length ? 'Archive' + (ed.archives.length > 1 ? 's' : '') + ' d\'origine : ' + ed.archives.join(', ') : '';
     $('sNfoTexte').textContent = ed.nfo || ''; $('sNfoTexte').hidden = !ed.nfo;
+    var sv = s.suivi;
+    $('sSurveiller').textContent = sv && sv.surveiller ? '👁 Ne plus surveiller' : '👁 Surveiller les nouveaux tomes';
+    var props = ((sv && sv.propositions) || []).filter(function (p) { return p.statut === 'attente'; });
+    $('sProps').hidden = !(sv && sv.surveiller) && !props.length;
+    $('sPropsListe').innerHTML = props.length ? props.map(function (p) {
+      var url = '/telecharger?torrent=' + encodeURIComponent(p.titre) + '&serie=' + encodeURIComponent(s.id) + '&proposition=' + p.id + (p.type === 'meilleur' ? '&remplacer=1' : '');
+      return '<div class="prop"><div class="dem-info"><b>' + (p.type === 'meilleur' ? '⬆️ ' : '🆕 ') + esc(p.titre) + '</b><small>' +
+        (p.type === 'meilleur' ? 'Meilleure version' : 'Tomes absents : ' + esc((p.tomes || []).join(', '))) + ' · ' + (p.badges || []).map(esc).join(' · ') + '</small></div>' +
+        '<div class="dem-act"><a class="mou-btn small" href="' + url + '">⬇️</a><button type="button" class="ghost" data-ignorer="' + p.id + '">✕</button></div></div>';
+    }).join('') : '<div class="dem-sous">Rien de nouveau' + (sv && sv.derniere_verif ? ' (vérifié le ' + esc(sv.derniere_verif) + ')' : '') + '.</div>';
     $('sEtat').hidden = !s.etat_texte;
     $('sEtat').className = 'etat-ligne ' + (s.etat || '');
     $('sEtat').textContent = s.etat_texte || '';
@@ -361,6 +376,16 @@
         if (r.ok) { chargerDemandes(); chercherDemande(); } else b.disabled = false;
         return;
       }
+      var aj = e.target.closest('[data-ajouter]');
+      if (aj) {
+        var x = demResultats[+aj.dataset.ajouter];
+        var nom = prompt('Nom de la série dans ta bibliothèque :', x.titre);
+        if (!nom) return;
+        var ra = await post('/api/suivies', {action: 'ajouter', nom: nom, serie: x});
+        note('demMsg', ra.message || ra.error, ra.ok ? 'ok' : 'err');
+        if (ra.ok) loadList();
+        return;
+      }
       var a = e.target.closest('[data-dem]'); if (!a) return;
       var corps = {action: a.dataset.dem, id: a.dataset.id};
       if (corps.action === 'refuser') { var m = prompt('Refuser cette demande ? Motif (facultatif, visible par le lecteur) :', ''); if (m === null) return; corps.motif = m; }
@@ -389,8 +414,12 @@
       var b = e.target.closest('[data-lettre]'); if (!b) return;
       lettre = b.dataset.lettre; drawGrid();
     });
-    $('grid').addEventListener('click', function (e) { var c = e.target.closest('.card'); if (c) openSeries(c.dataset.id); });
-    $('grid').addEventListener('keydown', function (e) { if (e.key === 'Enter') { var c = e.target.closest('.card'); if (c) openSeries(c.dataset.id); } });
+    function ouvrirCarte(c) {
+      if (c.dataset.recherchee) location.href = '/telecharger?torrent=' + encodeURIComponent(c.dataset.id) + '&serie=' + encodeURIComponent(c.dataset.id);
+      else openSeries(c.dataset.id);
+    }
+    $('grid').addEventListener('click', function (e) { var c = e.target.closest('.card'); if (c) ouvrirCarte(c); });
+    $('grid').addEventListener('keydown', function (e) { if (e.key === 'Enter') { var c = e.target.closest('.card'); if (c) ouvrirCarte(c); } });
     $('backList').addEventListener('click', function (e) { e.preventDefault(); history.pushState({}, '', location.pathname); showList(); });
     $('sResume').addEventListener('click', function () { if ($('sResume').dataset.path) readChapter($('sResume').dataset.path); });
     $('chapters').addEventListener('click', async function (e) {
@@ -469,6 +498,21 @@
       note('sMsg', r.message, 'ok');
     }
     $('sPitchModif').addEventListener('click', function () { editionResume(true); });
+    $('sSurveiller').addEventListener('click', async function () {
+      fermerMenus();
+      var r = await post('/api/suivies', {action: 'surveiller', nom: current.id, actif: !(current.suivi && current.suivi.surveiller)});
+      note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err'); if (r.ok) await openSeries(current.id, false);
+    });
+    $('sVerifier').addEventListener('click', async function () {
+      $('sVerifier').disabled = true; note('sMsg', 'Recherche dans Prowlarr… (jusqu\'à une minute)', 'warn');
+      var r = await post('/api/suivies', {action: 'verifier', nom: current.id});
+      $('sVerifier').disabled = false; note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err'); if (r.ok) await openSeries(current.id, false);
+    });
+    $('sPropsListe').addEventListener('click', async function (e) {
+      var b = e.target.closest('[data-ignorer]'); if (!b) return;
+      var r = await post('/api/suivies', {action: 'ignorer', nom: current.id, id: b.dataset.ignorer});
+      if (r.ok) await openSeries(current.id, false);
+    });
     $('sSource').addEventListener('click', async function () {
       fermerMenus();
       var v = prompt('Source de « ' + current.title + ' » : Digital, Scan, Web…\n(laisse vide pour revenir à la détection automatique)', (current.edition || {}).source || '');

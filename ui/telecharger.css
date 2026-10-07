@@ -387,3 +387,4 @@ body.mou-skin .serie-ligne { background: none; color: var(--text, #eee); font-we
 .tor-envoi label { font-size:.8rem; color:var(--muted, #999); flex-basis:100%; }
 .tor-envoi input { flex:1; min-width:0; }
 .tor-ligne.erreur span { color:#ff8a80; } .tor-ligne.fini span { color:#6fcf73; }
+.tor-remp { flex-basis:100%; display:flex; gap:6px; align-items:flex-start; font-size:.78rem; color:var(--muted, #999); }

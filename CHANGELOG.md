@@ -1,5 +1,17 @@
 # Historique des versions
 
+## 2.0 — Lecteurs, torrents et séries suivies (7 octobre 2026)
+- 👥 **Comptes lecteurs** (⚙️ Réglages → Comptes) : lecture seule, vérifiée par le serveur ; progression séparée pour chacun
+- 📮 **Demandes de mangas** par les lecteurs (recherche AniList) ; l'admin accepte ou refuse ; Telegram et rappels réglables tant qu'une demande attend
+- 🧲 **Torrents** : recherche dans Prowlarr (badges FR, Digital, Intégrale, tomes), envoi à qBittorrent (catégorie « mouflanga » créée toute seule, dossiers NOK → OK comme Radarr/Sonarr), import automatique à la fin, message Telegram ; aussi listés dans l'onglet « En cours »
+- ➕ **Séries suivies** comme Sonarr : ajout depuis AniList (ou demande acceptée), affiche grisée « 📥 Recherchée » ; surveillance quotidienne dans Prowlarr : 🆕 tomes absents ou nouveaux, ⬆️ meilleure version (Scan/Web → Digital) ; tout reste à valider à la main, avec rappels
+- ⬆️ **Remplacement par une meilleure version** : l'ancien tome va à la corbeille, la lecture reste marquée
+- 🏷 **Infos de l'édition** : NFO et archive d'origine gardés à l'import ; résolution et source (Digital, Scan, Web) devinées pour chaque série, corrigeables
+- 🔎 **Bibliothèque** : menus cumulables Ma lecture · Parution · Tri (A→Z, Z→A, ajoutées, lues, progression) ; « Il en manque » aussi pour les séries en cours ; ✔ série lue, ⏳ à jour en attente du prochain tome
+- ⚙️ **Réglages en onglets** (Général · Dossiers · Connexions · Comptes), communs aux quatre applis
+- 🎵 Générique de l'anime (MouFlopening) à écouter et à choisir depuis la fiche ; lecteur : zoom, glisser, doubles pages (entières en paysage), aide
+- Noms de séries avec « : » gardés ; import des archives aux noms accentués corrigé ; diverses corrections d'affichage
+
 ## Telegram : un sujet par appli
 - Alerte Telegram « redémarrage inattendu » : si l'appli a planté ou si le serveur a redémarré, un message part dès qu'elle repart (avec les dernières erreurs du journal en cas de plantage) ; case à cocher dans ⚙️ Réglages
 - Messages toujours visibles : quand un message apparaît hors de l'écran après un appui (en haut ou en bas de la page), il s'affiche aussi dans une bulle en bas de l'écran (kit commun `ui/mou-ui.js`)

@@ -4,6 +4,7 @@
     const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
     const taille = o => o >= 1e9 ? (o / 1073741824).toFixed(1).replace(".", ",") + " Go" : Math.round(o / 1048576) + " Mo";
     let res = [], series = [], minuteur = null;
+    const params = new URLSearchParams(location.search);
     const ETATS = {telechargement: "⬇️ Téléchargement", import: "📦 Import", fini: "✅ Importé", erreur: "⚠️ Erreur"};
 
     // Nom de série proposé : texte cherché sans « intégrale », « FR », « T01-T20 »… ; série existante si elle correspond
@@ -45,17 +46,19 @@
             const bloc = c.closest(".tor-res"), i = +c.dataset.choisir;
             if (bloc.querySelector(".tor-envoi")) return;
             bloc.insertAdjacentHTML("beforeend", `<div class="tor-envoi"><label>Ranger dans la série :</label>
-                <input type="text" list="tor-series" value="${esc(nomPropose($("tor-q").value))}" autocapitalize="words">
+                <input type="text" list="tor-series" value="${esc(params.get("serie") || nomPropose($("tor-q").value))}" autocapitalize="words">
+                <label class="tor-remp"><input type="checkbox"${params.get("remplacer") ? " checked" : ""}> Remplacer les tomes déjà présents (meilleure version ; les anciens vont à la corbeille)</label>
                 <button type="button" class="mou-btn" data-envoyer="${i}">Télécharger</button></div>`);
             return;
         }
         const env = e.target.closest("[data-envoyer]");
         if (env) {
-            const x = res[+env.dataset.envoyer], serie = env.parentNode.querySelector("input").value.trim();
+            const x = res[+env.dataset.envoyer], serie = env.parentNode.querySelector('input[type="text"]').value.trim();
+            const remplacer = env.parentNode.querySelector('input[type="checkbox"]').checked;
             if (!serie) return;
             env.disabled = true;
             const r = await (await fetch("/api/torrents", {method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({lien: x.lien, titre: x.titre, serie})})).json();
+                body: JSON.stringify({lien: x.lien, titre: x.titre, serie, remplacer, proposition: params.get("proposition") || ""})})).json();
             env.parentNode.innerHTML = `<div class="note ${r.ok ? "ok" : "err"}">${esc(r.message || r.error)}</div>`;
             etat();
         }

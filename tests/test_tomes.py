@@ -630,6 +630,23 @@ class RenommerEtOrdreTest(BibliothequeTest):
         self.assertEqual((s["current"], [c["read"] for c in s["chapters"]][:2]), ("#3", [True, True]))
         self.assertEqual(self.client.post("/api/renommer", json={"series": "Nouvelle Série", "nom": "Nouvelle Série"}).status_code, 400)
 
+    def test_meilleure_version_remplace_le_tome(self):
+        """Tome Japscan (chapitres 21-22, lus) remplacé par un tome Digital : ancien à la corbeille, tome marqué lu."""
+        d = self.root / "Karate"
+        tomes_cbz.ajouter(d, "Karate", 3, 21.0, "", _pages(2))
+        tomes_cbz.ajouter(d, "Karate", 3, 22.0, "", _pages(2))
+        self.A._write_json(self.A.PROGRESS_FILE, {"Karate": {"read": ["#21", "#22"]}})
+        src = self.root.parent / "NOK" / "Karate T03 Digital"; src.mkdir(parents=True)
+        with zipfile.ZipFile(src / "Karate T03 Digital.cbz", "w") as z:
+            z.writestr("001.jpg", _jpeg((1, 2, 3)))
+        self.A._lancer_import = lambda nom, attendre=False, lots_forces=None: "ok"
+        self.assertEqual(self.A._importer_torrent("Karate", src, remplacer=True), "ok")
+        self.assertTrue(list((self.root / ".corbeille").rglob("Karate - Tome 03.cbz")))
+        cle = "Karate/Tome 03/Karate - Tome 03.cbz"
+        self.assertTrue((self.root / cle).exists())
+        self.assertIsNone(tomes_cbz.lire_info(self.root / cle))
+        self.assertEqual(self.A._read_json(self.A.PROGRESS_FILE, {})["Karate"]["read"], [cle])
+
     def test_generique_de_l_anime(self):
         """« Serie » a un anime « SERIE (2020) » avec theme.mp3 : lien MouFlopening et générique à écouter."""
         animes = self.root.parent / "animes"

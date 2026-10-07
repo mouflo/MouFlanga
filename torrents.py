@@ -193,13 +193,13 @@ def _maj(jid, **kw):
         _ecrire(d)
 
 
-def lancer(lien: str, titre: str, serie: str) -> dict:
+def lancer(lien: str, titre: str, serie: str, remplacer: bool = False) -> dict:
     r = reglages()
     q = Qbit()
     q.preparer_categorie()
     jid = uuid.uuid4().hex[:10]
     q.appel("torrents/add", urls=lien, category=CATEGORIE, tags=f"mouflanga,mf-{jid}", savepath=r["nok"], autoTMM="false")
-    j = {"id": jid, "titre": titre, "serie": serie, "etat": "telechargement", "progression": 0, "debut": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    j = {"id": jid, "titre": titre, "serie": serie, "remplacer": bool(remplacer), "etat": "telechargement", "progression": 0, "debut": datetime.now().strftime("%Y-%m-%d %H:%M"),
          "message": "Envoyé à qBittorrent"}
     with _verrou:
         d = _lire()
@@ -213,28 +213,29 @@ def liste():
     return list(reversed(_lire()))
 
 
-def _copier(source: Path, dest_dir: Path) -> list[Path]:
-    """Copie le contenu du torrent dans le dossier de la série : lien physique si possible (pas de place en plus)."""
+def fichiers_du_torrent(source: Path) -> list[Path]:
     fichiers = [source] if source.is_file() else [f for f in sorted(source.rglob("*")) if f.is_file()]
-    base = source.parent if source.is_file() else source
-    out = []
-    for f in fichiers:
-        if f.suffix.lower() not in EXT_IMPORT:
-            continue
-        cible = dest_dir / f.relative_to(base)
-        if cible.exists():
-            continue
-        cible.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            os.link(f, cible)
-        except OSError:
-            shutil.copy2(f, cible)
-        out.append(cible)
-    return out
+    return [f for f in fichiers if f.suffix.lower() in EXT_IMPORT]
+
+
+def lier(f: Path, cible: Path):
+    """Place un fichier du torrent DIRECTEMENT sous son nom définitif : lien physique (aucune place en plus), sinon copie.
+    Le NAS refuse ensuite de renommer ou d'effacer ces fichiers tant que qBittorrent les partage : on ne les déplace jamais."""
+    cible.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.link(f, cible)
+    except OSError:
+        shutil.copy2(f, cible)
 
 
 def surveiller(importer_serie, envoyer, manga_dir):
     """Boucle (toutes les minutes) : téléchargement fini → copie, import, puis déplacement vers « OK »."""
+    with _verrou:                                 # import coupé par un redémarrage : on le reprend
+        d = _lire()
+        for j in d:
+            if j.get("etat") == "import":
+                j.update(etat="telechargement", message="Reprise après redémarrage")
+        _ecrire(d)
     while True:
         time.sleep(60)
         en_cours = [j for j in _lire() if j["etat"] in ("telechargement", "import")]
@@ -263,13 +264,9 @@ def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
                 if t.get("progress", 0) < 1:
                     _maj(j["id"], progression=round(t.get("progress", 0) * 100), message=t.get("state", ""))
                     continue
-                _maj(j["id"], etat="import", progression=100, message="Copie dans la bibliothèque…")
+                _maj(j["id"], etat="import", progression=100, message="Rangement dans la bibliothèque…")
                 source = chemin_local(t.get("content_path") or str(Path(t["save_path"]) / t["name"]))
-                copies = _copier(source, Path(manga_dir) / j["serie"])
-                if not copies:
-                    raise RuntimeError("aucun fichier de manga dans le torrent")
-                _maj(j["id"], message=f"Import de {len(copies)} fichier(s)…")
-                fin = importer_serie(j["serie"], copies)
+                fin = importer_serie(j["serie"], source, j.get("remplacer", False))
                 if reglages()["ok"]:
                     q.appel("torrents/setLocation", hashes=t["hash"], location=reglages()["ok"])
                 _maj(j["id"], etat="fini", message=fin or "Importé")

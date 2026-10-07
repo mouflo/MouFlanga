@@ -42,7 +42,8 @@ import importer
 import diag
 import japscan_scraper
 
-BASE_VERSION = "1.0"
+BASE_VERSION = "2.0"
+DEPART_VERSION = 120          # nombre de commits au passage en 2.0 : la version repart de 2.0.0
 
 
 def get_version():
@@ -52,7 +53,7 @@ def get_version():
         cwd = str(BASE_DIR)
         count = subprocess.check_output(["git", "rev-list", "--count", "HEAD"], cwd=cwd, text=True, stderr=subprocess.DEVNULL).strip()
         short = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=cwd, text=True, stderr=subprocess.DEVNULL).strip()
-        return f"v{BASE_VERSION}.{count} ({short})"
+        return f"v{BASE_VERSION}.{max(0, int(count) - DEPART_VERSION)} ({short})"
     except Exception:
         return f"v{BASE_VERSION}"
 
@@ -407,6 +408,12 @@ def api_library():
             "last_read": p.get("last", ""), "added": newest,
             "cover": f"/api/cover?id={_q(name)}&v={int(max(newest, _couverture_mtime(name)))}",
         })
+    presentes = {x["id"] for x in out}
+    for nom, x in suivi.lire()["series"].items():          # ➕ séries ajoutées mais encore vides : grisées
+        if nom not in presentes and auth.role() != "lecteur":
+            out.append({"id": nom, "title": nom, "recherchee": True, "chapters": 0, "read": 0, "compte": "📥 Recherchée",
+                        "unite": "tome", "size_mb": 0, "last_read": "", "added": time.time(), "etat": None, "manque": False,
+                        "cover": x.get("couverture") or "", "propositions": sum(p["statut"] == "attente" for p in x.get("propositions", []))})
     _remplir_statuts([x for x in a_remplir if x[0] != "(Sans série)"])
     try:
         racine = sum(1 for f in MANGA_DIR.iterdir() if f.is_file() and importer.est_lot(f) and not f.name.startswith("."))
@@ -544,7 +551,8 @@ def api_series():
                     "cover_v": int(_couverture_mtime(name)),
                     "moufloster": os.getenv("MOUFLOSTER_URL", "").strip(),
                     "moufloster_externe": os.getenv("MOUFLOSTER_URL_EXTERNE", "").strip(),
-                    **_infos_anime(name), "edition": _infos_edition(name, files)})
+                    **_infos_anime(name), "edition": _infos_edition(name, files),
+                    "suivi": suivi.lire()["series"].get(name)})
 
 
 @app.route("/api/cover")
@@ -1201,7 +1209,7 @@ def _lancer_import(nouveau, attendre=False, lots_forces=None):
     Renvoie le message de fin quand « attendre »."""
     lots_forces = [Path(x) for x in (lots_forces or [])]
     files = _scan().get(nouveau) or []
-    lots = [f for f in files if _a_importer(f) or f in lots_forces]
+    lots = [f for f in files if _a_importer(f) or f in lots_forces] + [f for f in lots_forces if f not in files and f.exists()]
     chapitres = any(f not in lots and tomes_cbz.lire_info(f) is None and _numero_tome(f.stem) is None
                     and _numero_chapitre(f.stem) is not None for f in files)
     _RANGEMENTS[nouveau] = {"en_cours": True, "fait": 0, "total": len(lots), "erreur": None, "message": "Préparation…"}
@@ -1221,7 +1229,10 @@ def _lancer_import(nouveau, attendre=False, lots_forces=None):
                     crees += 1
                 else:
                     crees += len(importer.importer_lot(lot, MANGA_DIR / nouveau, nouveau, etat))
-                _vers_corbeille(lot)                     # l'original est gardé 30 jours
+                try:
+                    _vers_corbeille(lot)                 # l'original est gardé 30 jours
+                except OSError as e:                     # fichier encore partagé par qBittorrent : le NAS refuse
+                    logger.info("%s laissé en place (%s)", lot.name, e.strerror or e)
             except Exception as e:
                 logger.warning("Import de %s impossible : %s", lot.name, e)
                 erreurs.append(f"{lot.name} : {e}")
@@ -1392,15 +1403,140 @@ import torrents
 torrents._ETAT["fichier"] = DATA_DIR / "torrents.json"
 
 
-def _importer_torrent(nom, copies):
-    """Contenu d'un torrent copié dans <série>/ : archives extraites, tomes rangés, comme un import habituel."""
-    lots = [c for c in copies if c.suffix.lower() in (".zip", ".rar", ".7z", ".pdf") and c.exists()]
-    fin = _lancer_import(nom, attendre=True, lots_forces=lots)
+def _remplacer_tomes(nom, numeros):
+    """Meilleure version : les tomes déjà présents que le torrent apporte vont à la corbeille (30 jours) ; un tome
+    lu (en entier, ou tous ses chapitres « #n ») reste marqué lu pour chaque personne. Renvoie le nombre remplacé."""
+    dossier, n = MANGA_DIR / nom, 0
+    for t in sorted(numeros):
+        ancien = tomes_cbz.fichier_tome(dossier, nom, t)
+        if not ancien.exists():
+            continue
+        chap = {"#" + (str(int(x["num"])) if float(x["num"]).is_integer() else str(x["num"])) for x in tomes_cbz.chapitres(ancien)} \
+            if tomes_cbz.lire_info(ancien) is not None else set()
+        cle = _rel(ancien)
+        with _progress_lock:
+            for _pf in _fichiers_progression():
+                data = _read_json(_pf, {})
+                p = data.get(nom)
+                if p and (cle in p.get("read", []) or (chap and chap <= set(p.get("read", [])))):
+                    p["read"] = sorted(set(p["read"]) - chap | {cle})
+                    _write_json(_pf, data)
+        _vers_corbeille(ancien)
+        n += 1
+    return n
+
+
+def _importer_torrent(nom, source, remplacer=False):
+    """Contenu d'un torrent → bibliothèque, sans jamais renommer ni effacer ses fichiers (le NAS le refuse tant que
+    qBittorrent partage) : un tome complet est placé directement sous « Tome NN/<série> - Tome NN.cbz », un chapitre
+    à la racine de la série, une archive ou un PDF dans « <série>/.torrent/ » (caché) puis extrait comme un import."""
+    dossier = MANGA_DIR / nom
+    fichiers = torrents.fichiers_du_torrent(Path(source))
+    if not fichiers:
+        raise RuntimeError("aucun fichier de manga dans le torrent")
+    a_tomes = {}
+    for f in fichiers:
+        if f.suffix.lower() in (".cbz", ".cbr") and _numero_tome(f.stem) is not None:
+            a_tomes.setdefault(_numero_tome(f.stem), f)
+    if remplacer:
+        logger.info("Meilleure version de « %s » : %d tome(s) remplacé(s)", nom, _remplacer_tomes(nom, set(a_tomes)))
+    lots, places = [], 0
+    for f in fichiers:
+        ext = f.suffix.lower()
+        if ext in (".cbz", ".cbr"):
+            t = _numero_tome(f.stem)
+            cible = tomes_cbz.fichier_tome(dossier, nom, t).with_suffix(ext) if t is not None and a_tomes.get(t) == f else dossier / f.name
+        elif ext in (".zip", ".rar", ".7z", ".pdf"):
+            cible = dossier / ".torrent" / f.name
+            lots.append(cible)
+        elif ext in (".nfo", ".txt"):
+            cible = dossier / ".torrent" / f.name
+        else:
+            continue
+        if cible.exists():
+            continue
+        torrents.lier(f, cible)
+        places += 1
     try:
-        _organiser(nom, nom)                     # tomes complets rangés dans « Tome NN/<série> - Tome NN.cbz »
+        import edition
+        edition.noter_import(dossier, Path(source).name, dossier / ".torrent")
     except Exception as e:
-        logger.warning("Rangement après torrent (%s) : %s", nom, e)
-    return fin
+        logger.warning("Infos de l'édition du torrent (%s) : %s", nom, e)
+    logger.info("Torrent → « %s » : %d fichier(s) placé(s), %d archive(s) à extraire", nom, places, len(lots))
+    return _lancer_import(nom, attendre=True, lots_forces=lots)
+
+
+# ---------------- ➕ Séries suivies (ajout comme Sonarr, surveillance, surclassement) : admin ----------------
+import suivi
+suivi._ETAT["fichier"] = DATA_DIR / "suivies.json"
+
+
+def _infos_suivi(nom):
+    """Tomes présents et source de l'édition d'une série (pour juger les propositions de torrents)."""
+    files = _scan().get(nom) or []
+    entrees = _entrees(files) if files else []
+    t = {int(e["tome"]) for e in entrees if e.get("tome") is not None}
+    t |= {int(e["groupe"].split()[1]) for e in entrees if (e.get("groupe") or "").startswith("Tome ")}
+    import edition
+    d = edition.lire(MANGA_DIR / nom) if files else {}
+    source = d.get("source_manuelle") or (d.get("analyse") or {}).get("source", "")
+    return {"tomes": t, "source": source}
+
+
+def _accepter_demande(x):
+    nom = _nom_serie(x.get("titre", ""))
+    suivi.ajouter(nom, x, surveiller=True)
+
+
+
+
+@app.route("/api/suivies", methods=["GET", "POST"])
+def api_suivies():
+    if request.method == "GET":
+        return jsonify({"series": suivi.lire()["series"]})
+    body = request.get_json(silent=True) or {}
+    action, nom = str(body.get("action", "")), _nom_serie(str(body.get("nom", "")).strip())
+    if action == "ajouter":
+        if not nom or nom == "sans-titre":
+            return jsonify({"ok": False, "error": "Nom de série manquant"}), 400
+        suivi.ajouter(nom, body.get("serie") or {}, surveiller=body.get("surveiller", True), qualite=body.get("qualite", "Digital"))
+        return jsonify({"ok": True, "nom": nom, "message": f"« {nom} » ajoutée : elle apparaît grisée dans la bibliothèque tant qu'elle est vide."})
+    d = suivi.lire()
+    if nom not in d["series"]:
+        if action == "surveiller" and nom in _scan():
+            st = (tomes._charger(nom) or {}).get("statut_officiel") or {}
+            suivi.ajouter(nom, {"titre": st.get("titre") or ""}, surveiller=bool(body.get("actif", True)))
+            return jsonify({"ok": True, "message": f"« {nom} » est surveillée : vérification chaque jour."})
+        return jsonify({"ok": False, "error": "Série non suivie"}), 404
+    if action == "surveiller":
+        with suivi._verrou:
+            d = suivi.lire(); d["series"][nom]["surveiller"] = bool(body.get("actif")); suivi.ecrire(d)
+        return jsonify({"ok": True, "message": "Surveillance activée : vérification chaque jour." if body.get("actif") else "Surveillance coupée."})
+    if action == "qualite":
+        with suivi._verrou:
+            d = suivi.lire(); d["series"][nom]["qualite"] = "Digital" if body.get("qualite") == "Digital" else "Indifférente"; suivi.ecrire(d)
+        return jsonify({"ok": True, "message": "Qualité visée enregistrée."})
+    if action == "retirer":
+        with suivi._verrou:
+            d = suivi.lire(); d["series"].pop(nom, None); suivi.ecrire(d)
+        return jsonify({"ok": True, "message": f"« {nom} » n'est plus suivie."})
+    if action == "ignorer":
+        with suivi._verrou:
+            d = suivi.lire()
+            for p in d["series"][nom].get("propositions", []):
+                if p["id"] == body.get("id"):
+                    p["statut"] = "ignore"
+            suivi.ecrire(d)
+        return jsonify({"ok": True, "message": "Proposition ignorée."})
+    if action == "verifier":
+        if not torrents.configure():
+            return jsonify({"ok": False, "error": "Prowlarr n'est pas réglé."}), 400
+        try:
+            nouv = suivi.verifier(nom, torrents.chercher, _infos_suivi)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"Recherche impossible : {e}"}), 502
+        return jsonify({"ok": True, "message": f"{len(nouv)} nouvelle(s) proposition(s)." if nouv else "Rien de nouveau pour l'instant."})
+    return jsonify({"ok": False, "error": "Action inconnue"}), 400
 
 
 @app.route("/api/torrents/chercher")
@@ -1421,13 +1557,21 @@ def api_torrents_chercher():
 def api_torrents():
     if request.method == "GET":
         return jsonify({"configure": torrents.configure(), "torrents": torrents.liste()[:30],
-                        "series": sorted(n for n in _scan() if n != "(Sans série)")})
+                        "series": [] if request.args.get("leger") else sorted(n for n in _scan() if n != "(Sans série)")})
     body = request.get_json(silent=True) or {}
     lien, titre, serie = str(body.get("lien", "")), str(body.get("titre", ""))[:200], _nom_serie(str(body.get("serie", "")).strip())
+    remplacer = bool(body.get("remplacer"))
     if not lien.startswith(("http://", "https://", "magnet:")) or not serie or serie == "sans-titre":
         return jsonify({"ok": False, "error": "Choisis le nom de la série."}), 400
     try:
-        torrents.lancer(lien, titre, serie)
+        torrents.lancer(lien, titre, serie, remplacer)
+        if body.get("proposition"):               # proposition de la surveillance : marquée « vue »
+            with suivi._verrou:
+                d = suivi.lire()
+                for p in (d["series"].get(serie) or {}).get("propositions", []):
+                    if p["id"] == body["proposition"]:
+                        p["statut"] = "telecharge"
+                suivi.ecrire(d)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
     return jsonify({"ok": True, "message": f"Envoyé à qBittorrent : il sera importé dans « {serie} » à la fin du téléchargement."})
@@ -1502,6 +1646,7 @@ def api_renommer():
             doublons = sum(1 for f in (MANGA_DIR / name).rglob("*") if f.is_file())
             _vers_corbeille(MANGA_DIR / name)
         _noter_choix(name, name, nouveau)
+        suivi.renommer(name, nouveau)
     except OSError as e:
         return jsonify({"ok": False, "error": f"Renommage impossible : {e}"}), 500
     if fusion:
@@ -2085,6 +2230,8 @@ redemarrage.init_app(app, BASE_DIR)
 import demandes         # 📮 demandes de mangas des lecteurs, rappels Telegram
 demandes.init_app(app, DATA_DIR, lambda t: __import__("notifier").envoyer(t), auth.role, auth.utilisateur,
                   lambda: os.getenv("APP_URL", "").strip(), demarrer=False)
+demandes._ETAT["accepte"] = _accepter_demande
+demandes._ETAT["autres"] = lambda: [f"• {n} : {p['titre'][:80]}" for n, p in suivi.en_attente()]
 
 
 @app.route("/api/health")
@@ -2097,6 +2244,8 @@ if __name__ == "__main__":
     print(f"MouFlanga {APP_VERSION} : http://0.0.0.0:{port}", file=sys.stderr)
     import notifier
     redemarrage.verifier(BASE_DIR, "MouFlanga", DATA_DIR / "mouflanga.log", lambda t: notifier.envoyer(t))
+    threading.Thread(target=suivi.boucle, args=(torrents.chercher, _infos_suivi, lambda t: notifier.envoyer(t),
+                                                lambda: os.getenv("APP_URL", "").strip(), torrents.configure), daemon=True).start()
     threading.Thread(target=torrents.surveiller, args=(_importer_torrent, lambda t: notifier.envoyer(t), MANGA_DIR), daemon=True).start()
     threading.Thread(target=demandes._boucle_rappels, args=(lambda t: notifier.envoyer(t), lambda: os.getenv("APP_URL", "").strip()),
                      daemon=True).start()

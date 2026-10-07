@@ -18,17 +18,19 @@
     <div id="listView">
         <div style="margin-bottom: 16px;">
             <a href="/telecharger" class="mou-btn" style="display: inline-block; margin-right: 8px;">📥 Télécharger des mangas</a>
-            <button type="button" class="mou-btn ghost" id="btnDemandes">📮 {% if role == 'lecteur' %}Demander un manga{% else %}Demandes{% endif %}<span class="pastille" id="nbDemandes" hidden></span></button>
+            <button type="button" class="mou-btn ghost" id="btnDemandes">{% if role == 'lecteur' %}📮 Demander un manga{% else %}➕ Ajouter une série{% endif %}<span class="pastille" id="nbDemandes" hidden></span></button>
         </div>
         <div class="dem-fond" id="demVue" hidden>
             <div class="dem-boite">
-                <div class="dem-tete"><h2>📮 {% if role == 'lecteur' %}Demander un manga{% else %}Demandes des lecteurs{% endif %}</h2><button type="button" class="ghost" id="demFermer" aria-label="Fermer">✕</button></div>
+                <div class="dem-tete"><h2>{% if role == 'lecteur' %}📮 Demander un manga{% else %}➕ Ajouter une série{% endif %}</h2><button type="button" class="ghost" id="demFermer" aria-label="Fermer">✕</button></div>
                 {% if role == 'lecteur' %}
                 <div class="dem-sous">Cherche le manga que tu aimerais lire : la demande est envoyée à l'admin, qui l'ajoute s'il le trouve.</div>
+                {% else %}
+                <div class="dem-sous">Cherche une série (AniList) : elle apparaît grisée dans la bibliothèque, surveillée chaque jour dans Prowlarr ; appuie sur son affiche pour choisir un torrent.</div>
+                {% endif %}
                 <input type="search" id="demRecherche" placeholder="🔍 Nom du manga…" autocomplete="off" spellcheck="false" enterkeyhint="search">
                 <div id="demResultats"></div>
-                <h3 class="dem-titre">Mes demandes</h3>
-                {% endif %}
+                <h3 class="dem-titre">{% if role == 'lecteur' %}Mes demandes{% else %}📮 Demandes des lecteurs{% endif %}</h3>
                 <div id="demListe"></div>
                 <div id="demMsg"></div>
             </div>
@@ -78,6 +80,7 @@
                                 <button id="sAllUnread">↺ Tout marquer non lu</button>
                                 <button id="sTomes" hidden>📚 Ranger en tomes</button>
                                 <button id="sRenommer">✏️ Renommer la série</button>
+                                <button id="sSurveiller">👁 Surveiller les nouveaux tomes</button>
                                 <button id="sSource">🏷 Corriger la source (Digital, Scan…)</button>
                                 <a id="sGenerique" hidden title="Ouvre MouFlopening sur l’anime de cette série">🎵 Choisir le générique</a>
                                 <button class="danger" id="sDelete">🗑 Supprimer la série</button>
@@ -90,6 +93,8 @@
                 <div id="sPitchEdit" hidden><textarea id="sPitchZone" class="mou-field resume-zone" rows="8" maxlength="5000" placeholder="Écris le synopsis de la série…"></textarea>
                     <div class="actions resume-actions"><button id="sPitchOk">💾 Enregistrer</button><button class="secondary" id="sPitchAnnuler">Annuler</button><button class="secondary" id="sPitchAuto" title="Effacer ton texte et reprendre le synopsis trouvé sur Internet">↺ Automatique</button></div>
                     <div class="resume-aide">Pour copier un synopsis : <a id="sPitchNautiljon" target="_blank" rel="noopener">🔎 Nautiljon</a> (appui long sur le texte → Copier, puis colle-le ici).</div></div></div>
+            <div class="propositions" id="sProps" hidden><div class="dem-titre">🧲 Propositions de torrents</div><div id="sPropsListe"></div>
+                <button type="button" class="ghost" id="sVerifier">🔎 Chercher maintenant</button></div>
             <details class="nfo" id="sNfo" hidden><summary>📄 Infos de l'édition</summary><div id="sNfoArchives" class="nfo-arch"></div><pre id="sNfoTexte"></pre></details>
             <div class="progres" id="sProgres" hidden></div>
             <div class="organiser" id="sOrga" hidden>

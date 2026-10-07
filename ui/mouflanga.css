@@ -211,3 +211,14 @@ body.mou-skin .dem-act button { padding:6px 10px; font-size:.82rem; width:auto; 
 .nfo-arch { color:var(--muted); font-size:.78rem; margin:6px 0; overflow-wrap:anywhere; }
 .nfo pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.72rem; line-height:1.3; background:#111; border-radius:6px; padding:8px; max-height:50vh; overflow:auto; }
 body.lecteur #sSource { display:none !important; }
+
+/* ➕ Séries recherchées (grisées) et propositions de torrents */
+.card.recherchee .cv { filter:grayscale(1) brightness(.55); }
+.card.recherchee .nm, .card.recherchee .st { opacity:.7; }
+.card .etat.recherche { background:#555; }
+.propositions { margin-top:14px; }
+.propositions[hidden] { display:none; }
+.prop { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--line, #2c2c2c); }
+.prop .dem-info b { white-space:normal; font-size:.85rem; overflow-wrap:anywhere; }
+body.mou-skin #sVerifier { margin-top:8px; padding:6px 10px; font-size:.82rem; width:auto; }
+body.lecteur #sSurveiller, body.lecteur #sProps { display:none !important; }

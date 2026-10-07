@@ -407,17 +407,26 @@ async function loadJobs() {
         const resp = await fetch("/api/japscan/jobs");
         const data = await resp.json();
         const jobs = (data.jobs || []);
+        // Torrents (Prowlarr → qBittorrent) : affichés aussi ici
+        let tor = [];
+        try { tor = ((await (await fetch("/api/torrents?leger=1")).json()).torrents || []).slice(0, 15); } catch (e) {}
+        const ETATS_TOR = {telechargement: "⬇️ Téléchargement", import: "📦 Import", fini: "✅ Importé", erreur: "⚠️ Erreur"};
+        const htmlTor = tor.length ? '<h3 style="font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent,#52b54b);margin:18px 0 4px">🧲 Torrents</h3>'
+            + tor.map(t => `<div class="job-item" style="background: var(--card); border-radius: 8px; padding: 12px 16px; margin: 12px 0;">
+                <strong>${echapper(t.serie)}</strong> — ${ETATS_TOR[t.etat] || echapper(t.etat)}
+                ${t.etat === "telechargement" ? `<div class="progress-bar" style="margin: 8px 0;"><div class="progress-fill" style="width: ${t.progression || 0}%"></div></div>` : "<br>"}
+                <small>${echapper(t.titre)}</small><br><small>${t.etat === "telechargement" ? (t.progression || 0) + " % · " : ""}${echapper(t.message || "")}</small></div>`).join("") : "";
 
         // Pastille sur l'onglet quand un téléchargement tourne
-        const nb = jobs.filter(j => j.status === "running").length;
+        const nb = jobs.filter(j => j.status === "running").length + tor.filter(t => t.etat === "telechargement" || t.etat === "import").length;
         const onglet = document.querySelector('.tab[data-tab="jobs"]');
         if (onglet) onglet.textContent = nb ? `⏳ En cours (${nb})` : "⏳ En cours";
 
         if (jobs.length === 0) {
-            list.innerHTML = '<p style="color: var(--muted);">Aucun téléchargement en cours.</p>';
+            list.innerHTML = (htmlTor ? "" : '<p style="color: var(--muted);">Aucun téléchargement en cours.</p>') + htmlTor;
             return;
         }
-        list.innerHTML = jobs.map(j => {
+        list.innerHTML = (htmlTor ? '<h3 style="font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent,#52b54b);margin:8px 0 4px">📚 Japscan</h3>' : "") + jobs.map(j => {
             const pct = j.total > 0 ? Math.round(j.progress / j.total * 100) : 0;
             const bouton = j.status === "running"
                 ? `<button class="mou-btn secondary" data-annuler="${echapper(j.id)}" type="button">Annuler</button>` : "";
@@ -432,7 +441,7 @@ async function loadJobs() {
                 <small>${j.progress} / ${j.total} chapitres · ${j.downloaded} fichier(s) créé(s) · ${j.failed} sans page</small><br>
                 ${actuel}${erreur}${bouton}
             </div>`;
-        }).join("");
+        }).join("") + htmlTor;
         list.querySelectorAll("[data-annuler]").forEach(b => b.addEventListener("click", async () => {
             b.disabled = true;
             await fetch(`/api/japscan/job/${b.dataset.annuler}/annuler`, { method: "POST" });

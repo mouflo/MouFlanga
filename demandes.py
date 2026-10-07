@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 STATUTS = {"FINISHED": "terminée", "RELEASING": "en cours", "NOT_YET_RELEASED": "pas encore sortie",
            "CANCELLED": "arrêtée", "HIATUS": "en pause"}
-_ETAT = {"fichier": Path("demandes.json")}
+_ETAT = {"fichier": Path("demandes.json"), "autres": lambda: [], "accepte": lambda x: None}
 _verrou = threading.Lock()
 
 
@@ -74,8 +74,9 @@ def _boucle_rappels(envoyer, adresse):
             with _verrou:
                 d = _lire()
                 rp, attente = d["rappel"], [x for x in d["demandes"] if x["statut"] == "attente"]
+                autres = _ETAT["autres"]()           # propositions de torrents (séries suivies) sans réponse
                 maintenant = datetime.now()
-                if not attente or rp.get("frequence") == "jamais" or maintenant.hour < int(rp.get("heure", 19)):
+                if not (attente or autres) or rp.get("frequence") == "jamais" or maintenant.hour < int(rp.get("heure", 19)):
                     continue
                 dernier = rp.get("dernier") or "2000-01-01"
                 ecart = 7 if rp.get("frequence") == "semaine" else 1
@@ -83,7 +84,9 @@ def _boucle_rappels(envoyer, adresse):
                     continue
                 rp["dernier"] = maintenant.strftime("%Y-%m-%d")
                 _ecrire(d)
-            envoyer(_message_rappel(attente, adresse()))
+            envoyer(_message_rappel(attente, adresse()) if attente else "📮 MouFlanga : rappel" + ("\n" + adresse().rstrip("/") if adresse() else ""))
+            if autres:
+                envoyer("🧲 MouFlanga : propositions de torrents sans réponse\n" + "\n".join(autres[:15]))
             logger.info("Rappel des demandes envoyé (%d en attente)", len(attente))
         except Exception as e:
             logger.warning("Rappel des demandes impossible : %s", e)
@@ -168,6 +171,12 @@ def init_app(app, data_dir, envoyer, role, utilisateur, adresse, demarrer=True):
                 x["traitee"] = datetime.now().strftime("%Y-%m-%d %H:%M")
                 _ecrire(d)
                 message = f"« {x['titre']} » : " + ("acceptée." if action == "accepter" else "refusée.")
+                if action == "accepter":
+                    try:
+                        _ETAT["accepte"](x)       # ajoutée aux séries recherchées (grisée dans la bibliothèque)
+                        message += " Ajoutée aux séries recherchées."
+                    except Exception as e:
+                        logger.warning("Ajout de la série acceptée impossible : %s", e)
             elif action == "rappel":
                 if not admin:
                     return jsonify({"ok": False, "error": "Réservé à l'admin"}), 403

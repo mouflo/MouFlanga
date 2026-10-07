@@ -26,10 +26,13 @@ class UtilisateursTest(unittest.TestCase):
         A._ANIMES["date"] = 0
         import demandes
         self.dem = demandes; self._dem = demandes._ETAT["fichier"]; demandes._ETAT["fichier"] = t / "demandes.json"
+        import suivi
+        self.suivi = suivi; self._suivi = suivi._ETAT["fichier"]; suivi._ETAT["fichier"] = t / "suivies.json"
 
     def tearDown(self):
         self.auth.USERS_FILE = self._users
         self.dem._ETAT["fichier"] = self._dem
+        self.suivi._ETAT["fichier"] = self._suivi
         for k, v in self._env.items():
             os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
         self.tmp.cleanup()
@@ -90,6 +93,17 @@ class UtilisateursTest(unittest.TestCase):
         self.assertTrue(admin.post("/api/demandes", json={"action": "refuser", "id": did, "motif": "introuvable"}).json["ok"])
         x = lea.get("/api/demandes").json["demandes"][0]
         self.assertEqual((x["statut"], x["motif"]), ("refuse", "introuvable"))
+        # accepter = série ajoutée aux recherchées (grisée chez l'admin, invisible pour le lecteur)
+        did2 = None
+        with mock.patch("notifier.envoyer", side_effect=lambda t: None):
+            lea.post("/api/demandes", json={"action": "creer", "serie": dict(trouve[0], anilist=43, titre="Blue Lock")})
+            import time; time.sleep(0.2)
+        did2 = [x for x in admin.get("/api/demandes").json["demandes"] if x["titre"] == "Blue Lock"][0]["id"]
+        self.assertIn("recherchées", admin.post("/api/demandes", json={"action": "accepter", "id": did2}).json["message"])
+        grises = [s for s in admin.get("/api/library").json["series"] if s.get("recherchee")]
+        self.assertEqual([s["id"] for s in grises], ["Blue Lock"])
+        self.assertFalse([s for s in lea.get("/api/library").json["series"] if s.get("recherchee")])
+        self.assertEqual(lea.post("/api/suivies", json={"action": "retirer", "nom": "Blue Lock"}).status_code, 403)
         self.assertIn("2 demandes en attente", self.dem._message_rappel([{"titre": "A", "par": "lea", "date": "2026-10-07"}] * 2, ""))
 
 

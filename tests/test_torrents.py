@@ -45,13 +45,29 @@ class TorrentsTest(unittest.TestCase):
         torrents.traiter(q, torrents._lire(), None, messages.append, biblio)
         self.assertEqual(torrents._lire()[0]["progression"], 50)
         q = FauxQbit([{"progress": 1, "hash": "h1", "content_path": str(nok), "state": "uploading"}])
-        torrents.traiter(q, torrents._lire(), lambda s, c: importes.append((s, c)) or "1 tome", messages.append, biblio)
-        copie = biblio / "Air Gear" / "sub" / "Air Gear T01.cbz"
-        self.assertTrue(copie.exists()); self.assertFalse((biblio / "Air Gear" / "lisezmoi.exe").exists())
-        self.assertEqual(os.stat(copie).st_ino, os.stat(nok / "sub" / "Air Gear T01.cbz").st_ino)   # lien physique
-        self.assertEqual(importes[0][0], "Air Gear")
+        torrents.traiter(q, torrents._lire(), lambda s, src, r=False: importes.append((s, src)) or "1 tome", messages.append, biblio)
+        self.assertEqual(importes[0], ("Air Gear", nok))
+        self.assertEqual([f.name for f in torrents.fichiers_du_torrent(nok)], ["Air Gear T01.cbz"])
+        torrents.lier(nok / "sub" / "Air Gear T01.cbz", biblio / "x" / "T01.cbz")
+        self.assertEqual(os.stat(biblio / "x" / "T01.cbz").st_ino, os.stat(nok / "sub" / "Air Gear T01.cbz").st_ino)   # lien physique
         self.assertEqual(q.appels, [("torrents/setLocation", {"hashes": "h1", "location": "/ok"})])
         self.assertEqual(torrents._lire()[0]["etat"], "fini"); self.assertIn("importé", messages[0])
+
+
+
+class SuiviTest(unittest.TestCase):
+    def test_tomes_et_propositions(self):
+        import suivi
+        self.assertEqual(suivi.tomes_du_titre("Frieren.[T01.T14].FR.[CBZ]"), set(range(1, 15)))
+        self.assertEqual(suivi.tomes_du_titre("Dandadan Tome 19 FR"), {19})
+        self.assertEqual(suivi.tomes_du_titre("Air Gear Tomes 1 à 37 FRENCH"), set(range(1, 38)))
+        res = [{"titre": "Dandadan T19 FR Digital", "badges": ["🇫🇷 FR", "Digital"]},
+               {"titre": "Dandadan T01-T18 FR Digital", "badges": ["🇫🇷 FR", "Digital", "T1–18"]},
+               {"titre": "Dandadan T01-T18 VO", "badges": []}]
+        p = suivi.propositions_pour("Dandadan", {"tomes": set(range(1, 19)), "source": "Web (chapitres)", "qualite": "Digital"}, res, [])
+        self.assertEqual([(x["type"], x["tomes"]) for x in p], [("nouveau", [19]), ("meilleur", [])])
+        self.assertEqual(suivi.propositions_pour("Dandadan", {"tomes": set(range(1, 19)), "source": "Digital", "qualite": "Digital"},
+                                                 res, ["Dandadan T19 FR Digital"]), [])
 
 
 if __name__ == "__main__":

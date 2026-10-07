@@ -56,6 +56,12 @@ Pour installer l'appli sur le serveur et la remettre en route après une panne, 
 - ⚙️ **Réglages** : dossier des mangas (avec un explorateur de dossiers) et préférences de lecture
 - 🔄 **Mise à jour automatique** : le serveur vérifie GitHub chaque minute et se met à jour tout seul
 
+## 🆕 Nouveautés de la 2.0
+- **👥 Comptes lecteurs** : tes proches lisent avec leur propre progression, sans pouvoir rien modifier ; ils peuvent **📮 demander un manga**.
+- **🧲 Torrents** : page Télécharger → 🧲 Torrents. Recherche dans **Prowlarr**, envoi à **qBittorrent** (catégorie « mouflanga »), import automatique dans la bibliothèque, puis le torrent continue à partager. Réglages → Connexions : adresses, clé API de Prowlarr, identifiant de qBittorrent, dossiers d'arrivée et de partage (et une correspondance de chemins si qBittorrent ne voit pas les mêmes dossiers).
+- **➕ Séries suivies** (comme Sonarr) : ajoute une série depuis AniList, elle apparaît grisée ; MouFlanga surveille Prowlarr chaque jour et propose les tomes manquants ou une meilleure version (Digital), à valider d'un appui.
+- **🏷 Édition** : résolution et source (Digital, Scan, Web) de chaque série, NFO gardé à l'import.
+
 ## 📁 Comment ranger les fichiers
 
 ```
