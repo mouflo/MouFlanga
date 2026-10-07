@@ -1288,6 +1288,12 @@ def _lancer_import(nouveau, attendre=False, lots_forces=None):
             msg = f"Série organisée, mais rangement des chapitres impossible : {e}"
         if erreurs:
             msg += " ⚠ Non importé : " + " · ".join(erreurs)
+        if "unittest" not in sys.modules:           # générique de l'anime (OP1) cherché tout de suite pour la série importée
+            try:
+                if not _theme_de(_anime_de(nouveau)):
+                    generiques.pour_serie(nouveau, MANGA_DIR / nouveau, _manga_id(nouveau))
+            except Exception as e:
+                logger.info("Générique de %s après import : %s", nouveau, e)
         etat.update(en_cours=False, message=msg)
         return msg
     if attendre:
