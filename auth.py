@@ -24,6 +24,12 @@ from werkzeug.security import check_password_hash, generate_password_hash
 BASE_DIR = Path(__file__).parent
 SECRETS_FILE = BASE_DIR / "data" / "secrets.env"
 KEY_FILE = BASE_DIR / "data" / "session_key"
+USERS_FILE = BASE_DIR / "data" / "utilisateurs.json"     # comptes « lecteur » (l'admin reste dans secrets.env)
+
+# Ce qu'un lecteur a le droit de faire : lire, rien d'autre (tout le reste est refusé par le serveur)
+LECTEUR_OK = {("GET", "/"), ("GET", "/lire"), ("GET", "/api/library"), ("GET", "/api/series"), ("GET", "/api/cover"),
+              ("GET", "/api/pages"), ("GET", "/api/page"), ("POST", "/api/progress"), ("POST", "/api/mark"),
+              ("GET", "/api/generique"), ("POST", "/api/clientlog")}
 
 REMEMBER_DAYS = 30
 MAX_FAILS_IP = 5          # essais ratés par adresse avant blocage
@@ -54,6 +60,46 @@ def configured():
 def _fingerprint():
     """Change quand le mot de passe change: toutes les anciennes sessions deviennent invalides"""
     return hashlib.sha256(_hash().encode()).hexdigest()[:16]
+
+
+def _fp(h):
+    return hashlib.sha256((h or "").encode()).hexdigest()[:16]
+
+
+def lire_utilisateurs():
+    import json
+    try:
+        d = json.loads(USERS_FILE.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def ecrire_utilisateurs(d):
+    import json
+    USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = USERS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, USERS_FILE)
+
+
+def role():
+    """« admin », « lecteur » ou None (pas connecté). Un compte désactivé ou dont le mot de passe a changé est déconnecté."""
+    if not configured():
+        return None
+    u, f = session.get("u"), session.get("f", "")
+    if session.get("r", "admin") == "admin":
+        return "admin" if u == _user() and hmac.compare_digest(f, _fingerprint()) else None
+    d = lire_utilisateurs().get(u or "")
+    if d and d.get("actif", True) and hmac.compare_digest(f, _fp(d.get("hash"))):
+        return "lecteur"
+    return None
+
+
+def utilisateur():
+    """Identifiant de la personne connectée (None si personne)."""
+    return session.get("u") if role() else None
 
 
 def _secret_key():
@@ -112,7 +158,7 @@ LOGIN_HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Connexion · MouFloster</title>
+<title>Connexion · MouFlanga</title>
 <link rel="icon" type="image/svg+xml" href="/icons/mouflanga.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
 <link rel="stylesheet" href="/ui/mou-ui.css">
 </head>
@@ -196,7 +242,7 @@ def init_app(app, version=""):
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     def is_logged_in():
-        return bool(configured() and session.get("u") == _user() and hmac.compare_digest(session.get("f", ""), _fingerprint()))
+        return role() is not None
 
     @app.route("/icons/<path:name>")
     def app_icons(name):
@@ -223,8 +269,16 @@ def init_app(app, version=""):
             return None
         if request.path == "/api/occupe" and (request.remote_addr or "") in ("127.0.0.1", "::1"):
             return None
-        if is_logged_in():
+        r = role()
+        if r == "admin":
             return None
+        if r == "lecteur":
+            if (request.method, request.path) in LECTEUR_OK or (request.method == "HEAD" and ("GET", request.path) in LECTEUR_OK):
+                _vu(session.get("u"))
+                return None
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Ton compte permet seulement de lire."}), 403
+            return redirect("/")
         if request.path.startswith("/api/"):
             return jsonify({"error": "Session expirée : reconnecte-toi."}), 401
         target = request.full_path.rstrip("?") if request.method == "GET" else "/"
@@ -248,12 +302,20 @@ def init_app(app, version=""):
         # Les deux vérifications sont toujours faites (temps constant, on ne révèle pas lequel est faux)
         user_ok = hmac.compare_digest(username.encode(), _user().encode())
         pass_ok = check_password_hash(_hash(), password)
-        if user_ok and pass_ok:
+        lecteur = None
+        if not user_ok:
+            d = lire_utilisateurs().get(username)
+            ok = check_password_hash(d["hash"], password) if d and d.get("hash") else check_password_hash(_hash(), password + "\0")
+            lecteur = d if d and ok and d.get("actif", True) else None
+        if (user_ok and pass_ok) or lecteur:
             _clear_fails(ip)
             session.clear()
-            session["u"] = _user()
-            session["f"] = _fingerprint()
+            session["u"] = _user() if lecteur is None else username
+            session["f"] = _fingerprint() if lecteur is None else _fp(lecteur["hash"])
+            session["r"] = "admin" if lecteur is None else "lecteur"
             session.permanent = request.form.get("remember") == "1"
+            if lecteur is not None:
+                _vu(username, force=True)
             return redirect(_safe_next(request.form.get("next", "")))
 
         _register_fail(ip)
@@ -275,6 +337,21 @@ def init_app(app, version=""):
         resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("Referrer-Policy", "same-origin")
         return resp
+
+
+_VUS = {}
+
+
+def _vu(u, force=False):
+    """Dernière visite d'un lecteur (écrite au plus une fois par heure)."""
+    if not u or (not force and time.time() - _VUS.get(u, 0) < 3600):
+        return
+    _VUS[u] = time.time()
+    with _lock:
+        d = lire_utilisateurs()
+        if u in d:
+            d[u]["derniere"] = time.strftime("%Y-%m-%d %H:%M")
+            ecrire_utilisateurs(d)
 
 
 def _quote(value):

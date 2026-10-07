@@ -70,6 +70,23 @@ import auth
 auth.init_app(app, APP_VERSION)
 
 PROGRESS_FILE = DATA_DIR / "progress.json"
+
+
+def _fichier_progression():
+    """Progression de la personne connectée : l'admin garde data/progress.json, chaque lecteur a son fichier."""
+    from flask import has_request_context
+    if has_request_context():
+        import auth as _auth
+        if _auth.role() == "lecteur":
+            nom = re.sub(r"[^A-Za-z0-9._@+-]", "_", _auth.utilisateur() or "inconnu")
+            return PROGRESS_FILE.parent / "progression" / f"{nom}.json"
+    return PROGRESS_FILE
+
+
+def _fichiers_progression():
+    """Toutes les progressions (renommage, suppression, rangement : chaque lecteur suit aussi)."""
+    d = PROGRESS_FILE.parent / "progression"
+    return [PROGRESS_FILE] + (sorted(d.glob("*.json")) if d.is_dir() else [])
 COVER_DIR = DATA_DIR / "covers"
 _progress_lock = threading.Lock()
 
@@ -86,6 +103,7 @@ def _read_json(path, default):
 
 
 def _write_json(path, data):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)      # ex. data/progression/ au 1er lecteur
     tmp = Path(path).with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, path)
@@ -249,12 +267,12 @@ def _title_of(p: Path):
 
 @app.route("/")
 def index():
-    return render_template("index.html", version=APP_VERSION)
+    return render_template("index.html", version=APP_VERSION, role=auth.role(), moi=auth.utilisateur())
 
 
 @app.route("/lire")
 def reader():
-    return render_template("lecteur.html", version=APP_VERSION)
+    return render_template("lecteur.html", version=APP_VERSION, role=auth.role())
 
 
 # ----------------------------------------------------------------------------
@@ -361,7 +379,7 @@ def api_library():
     if not MANGA_DIR.is_dir():
         return jsonify({"error": f"Dossier des mangas introuvable : {MANGA_DIR} (le partage est-il monté ? voir ⚙️ Réglages)", "series": []}), 200
     _organiser_auto()
-    progress = _read_json(PROGRESS_FILE, {})
+    progress = _read_json(_fichier_progression(), {})
     out, a_remplir = [], []
     for name, files in _scan().items():
         p = progress.get(name, {})
@@ -468,7 +486,7 @@ def api_series():
     files = _scan().get(name)
     if files is None:
         return jsonify({"error": "Série introuvable"}), 404
-    p = _read_json(PROGRESS_FILE, {}).get(name, {})
+    p = _read_json(_fichier_progression(), {}).get(name, {})
     read = set(p.get("read", []))
     chapters = [{**e, "read": e["key"] in read} for e in _entrees(files)]
     nums_tomes = [c.get("tome") for c in chapters if c.get("tome") is not None]
@@ -642,14 +660,14 @@ def api_progress():
     except (TypeError, ValueError):
         page = 0
     with _progress_lock:
-        data = _read_json(PROGRESS_FILE, {})
+        data = _read_json(_fichier_progression(), {})
         p = data.setdefault(series, {})
         p["current"], p["page"], p["last"] = rel, page, datetime.now().strftime("%Y-%m-%d %H:%M")
         read = set(p.get("read", []))
         if body.get("finished"):
             read.add(rel)
         p["read"] = sorted(read)
-        _write_json(PROGRESS_FILE, data)
+        _write_json(_fichier_progression(), data)
     return jsonify({"ok": True})
 
 
@@ -665,7 +683,7 @@ def api_mark():
     valid = {e["key"] for e in _entrees(files)}
     targets = list(valid) if body.get("all") else [str(body.get("path", ""))]
     with _progress_lock:
-        data = _read_json(PROGRESS_FILE, {})
+        data = _read_json(_fichier_progression(), {})
         p = data.setdefault(series, {})
         read = set(p.get("read", []))
         for t in targets:
@@ -675,7 +693,7 @@ def api_mark():
         if not value and body.get("all"):
             p.pop("current", None)
             p["page"] = 0
-        _write_json(PROGRESS_FILE, data)
+        _write_json(_fichier_progression(), data)
     return jsonify({"ok": True})
 
 
@@ -751,17 +769,18 @@ def api_delete():
     logger.info("Mis à la corbeille : %s (%d fichier(s))", series if body.get("all") else next(iter(retires)), len(retires))
 
     with _progress_lock:
-        data = _read_json(PROGRESS_FILE, {})
-        p = data.get(series)
-        if p is not None:
-            if body.get("all"):
-                data.pop(series)
-            else:
-                p["read"] = [r for r in p.get("read", []) if r not in retires]
-                if p.get("current") in retires:
-                    p.pop("current", None)
-                    p["page"] = 0
-            _write_json(PROGRESS_FILE, data)
+        for _pf in _fichiers_progression():          # admin et chaque lecteur
+            data = _read_json(_pf, {})
+            p = data.get(series)
+            if p is not None:
+                if body.get("all"):
+                    data.pop(series)
+                else:
+                    p["read"] = [r for r in p.get("read", []) if r not in retires]
+                    if p.get("current") in retires:
+                        p.pop("current", None)
+                        p["page"] = 0
+                _write_json(_pf, data)
     _vider_corbeille()
     return jsonify({"ok": True, "supprimes": len(retires), "jours": CORBEILLE_JOURS})
 
@@ -799,15 +818,16 @@ def _dossier_serie(titre):
         return anciens[0]
     logger.info("Dossier « %s » renommé « %s »", anciens[0].name, nom)
     with _progress_lock:
-        data = _read_json(PROGRESS_FILE, {})
-        if anciens[0].name in data:
-            p = data.pop(anciens[0].name)
-            avant = anciens[0].name + "/"
-            p["read"] = [nom + "/" + r[len(avant):] if r.startswith(avant) else r for r in p.get("read", [])]
-            if str(p.get("current", "")).startswith(avant):
-                p["current"] = nom + "/" + p["current"][len(avant):]
-            data[nom] = p
-            _write_json(PROGRESS_FILE, data)
+        for _pf in _fichiers_progression():          # admin et chaque lecteur
+            data = _read_json(_pf, {})
+            if anciens[0].name in data:
+                p = data.pop(anciens[0].name)
+                avant = anciens[0].name + "/"
+                p["read"] = [nom + "/" + r[len(avant):] if r.startswith(avant) else r for r in p.get("read", [])]
+                if str(p.get("current", "")).startswith(avant):
+                    p["current"] = nom + "/" + p["current"][len(avant):]
+                data[nom] = p
+                _write_json(_pf, data)
     return cible
 
 
@@ -883,13 +903,14 @@ def _ranger_en_tomes(name, info, garder_en_cours=False):
             tomes_cbz.retirer(f, {c["num"] for _, c in liste})
         if renommes:
             with _progress_lock:
-                data = _read_json(PROGRESS_FILE, {})
-                p = data.get(name)
-                if p:
-                    p["read"] = sorted({renommes.get(r, r) for r in p.get("read", [])})
-                    if p.get("current") in renommes:
-                        p["current"], p["page"] = renommes[p["current"]], p.get("page", 0)
-                    _write_json(PROGRESS_FILE, data)
+                for _pf in _fichiers_progression():          # admin et chaque lecteur
+                    data = _read_json(_pf, {})
+                    p = data.get(name)
+                    if p:
+                        p["read"] = sorted({renommes.get(r, r) for r in p.get("read", [])})
+                        if p.get("current") in renommes:
+                            p["current"], p["page"] = renommes[p["current"]], p.get("page", 0)
+                        _write_json(_pf, data)
         if etat["total"]:
             logger.info("Série « %s » rangée en tomes : %d chapitre(s) (%s)", name, etat["total"], info.get("source"))
         return etat["total"]
@@ -1051,20 +1072,21 @@ def _organiser(name, nouveau):
         except OSError:
             pass
     with _progress_lock:
-        data = _read_json(PROGRESS_FILE, {})
-        p = data.pop(name, None) if nouveau != name else data.get(name)
-        if p is not None:
-            conv = lambda r: deplaces.get(r, r)
-            p["read"] = sorted({conv(r) for r in p.get("read", [])})
-            if p.get("current"):
-                p["current"] = conv(p["current"])
-            autre = data.get(nouveau) if nouveau != name else None
-            if autre:                                    # fusion avec une série existante : lus réunis, lecture la plus récente
-                p["read"] = sorted(set(p["read"]) | set(autre.get("read", [])))
-                if (autre.get("last") or "") > (p.get("last") or ""):
-                    p.update({k: autre[k] for k in ("current", "page", "last") if k in autre})
-            data[nouveau] = p
-            _write_json(PROGRESS_FILE, data)
+        for _pf in _fichiers_progression():          # admin et chaque lecteur
+            data = _read_json(_pf, {})
+            p = data.pop(name, None) if nouveau != name else data.get(name)
+            if p is not None:
+                conv = lambda r: deplaces.get(r, r)
+                p["read"] = sorted({conv(r) for r in p.get("read", [])})
+                if p.get("current"):
+                    p["current"] = conv(p["current"])
+                autre = data.get(nouveau) if nouveau != name else None
+                if autre:                                    # fusion avec une série existante : lus réunis, lecture la plus récente
+                    p["read"] = sorted(set(p["read"]) | set(autre.get("read", [])))
+                    if (autre.get("last") or "") > (p.get("last") or ""):
+                        p.update({k: autre[k] for k in ("current", "page", "last") if k in autre})
+                data[nouveau] = p
+                _write_json(_pf, data)
     _deplacer_resume(name, nouveau)
     logger.info("Série organisée : « %s » → « %s » (%d fichier(s) déplacé(s))", name, nouveau, len(deplaces))
     return nouveau
@@ -1434,6 +1456,46 @@ def _theme_de(dossier):
         return sons[0] if sons else None
     except OSError:
         return None
+
+
+# ---------------- Comptes « lecteur » (admin seulement : les lecteurs n'ont pas accès à ces routes) ----------------
+_ID_LECTEUR = re.compile(r"[A-Za-z0-9._@+-]{2,64}")
+
+
+@app.route("/api/utilisateurs", methods=["GET", "POST"])
+def api_utilisateurs():
+    from werkzeug.security import generate_password_hash
+    if request.method == "GET":
+        d = auth.lire_utilisateurs()
+        return jsonify({"utilisateurs": [{"id": k, "actif": v.get("actif", True), "cree": v.get("cree", ""), "derniere": v.get("derniere", "")}
+                                         for k, v in sorted(d.items(), key=lambda x: x[0].lower())]})
+    body = request.get_json(silent=True) or {}
+    action, uid, mdp = str(body.get("action", "")), str(body.get("id", "")).strip(), str(body.get("mdp", ""))
+    d = auth.lire_utilisateurs()
+    if action == "ajouter":
+        if not _ID_LECTEUR.fullmatch(uid):
+            return jsonify({"ok": False, "error": "Identifiant : 2 à 64 caractères (lettres, chiffres, . _ @ + -), sans espace ni accent."}), 400
+        if uid in d or uid == os.getenv("APP_USER", ""):
+            return jsonify({"ok": False, "error": f"L'identifiant « {uid} » est déjà pris."}), 409
+    elif uid not in d:
+        return jsonify({"ok": False, "error": "Compte introuvable"}), 404
+    if action in ("ajouter", "motdepasse"):
+        if len(mdp) < 8:
+            return jsonify({"ok": False, "error": "Mot de passe trop court (8 caractères minimum)."}), 400
+        d.setdefault(uid, {"actif": True, "cree": datetime.now().strftime("%Y-%m-%d")})["hash"] = generate_password_hash(mdp)
+        message = f"Compte « {uid} » créé : il peut se connecter et lire." if action == "ajouter" else \
+                  f"Mot de passe de « {uid} » changé (ses anciennes connexions sont fermées)."
+    elif action == "activer":
+        d[uid]["actif"] = bool(body.get("actif"))
+        message = f"Compte « {uid} » " + ("réactivé." if d[uid]["actif"] else "désactivé : il ne peut plus se connecter.")
+    elif action == "supprimer":
+        d.pop(uid)
+        message = f"Compte « {uid} » supprimé (sa progression de lecture est gardée au cas où)."
+    else:
+        return jsonify({"ok": False, "error": "Action inconnue"}), 400
+    auth.ecrire_utilisateurs(d)
+    logger.info("Utilisateurs : %s « %s »", action, uid)
+    return jsonify({"ok": True, "message": message})
 
 
 @app.route("/api/generique")

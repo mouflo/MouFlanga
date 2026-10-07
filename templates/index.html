@@ -11,7 +11,7 @@
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
 <script src="/ui/mouflanga.js?v={{ version|urlencode }}" defer></script>
 </head>
-<body class="mou-skin">
+<body class="mou-skin{% if role == 'lecteur' %} lecteur{% endif %}">
 <div class="container">
     <div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}" data-sub="Bibliothèque et lecteur de mangas" data-settings="1"></div>
 

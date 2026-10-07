@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="/ui/lecteur.css?v={{ version|urlencode }}">
 <script src="/ui/lecteur.js?v={{ version|urlencode }}" defer></script>
 </head>
-<body class="reader-body">
+<body class="reader-body{% if role == 'lecteur' %} lecteur{% endif %}">
 <div id="bar" class="bar">
     <a href="/" id="rBack" class="rbtn" title="Retour à la série">← Retour</a>
     <div class="rtitle"><span id="rSeries"></span><small id="rChapter"></small></div>

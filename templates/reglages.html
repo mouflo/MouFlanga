@@ -9,6 +9,15 @@
 <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
 <link rel="stylesheet" href="/ui/mou-settings.css?v={{ version|urlencode }}">
+<style>
+.usr-liste { margin:6px 0 10px; }
+.usr { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px; padding:8px 0; border-bottom:1px solid var(--line, #333); }
+.usr.off { opacity:.6; }
+.usr-nom { font-weight:600; display:flex; flex-direction:column; }
+.usr-nom small { font-weight:400; color:var(--muted, #999); font-size:.78rem; }
+.usr-act { display:flex; gap:6px; }
+.usr-act .danger { color:#e06c6c; }
+</style>
 <script src="/ui/mou-settings.js?v={{ version|urlencode }}"></script>
 </head>
 <body>
@@ -93,6 +102,16 @@
     </div>
 
     <div class="panel">
+        <h2>👥 Utilisateurs</h2>
+        <div class="sub">Des comptes « lecteur » pour tes proches : ils voient la bibliothèque et lisent, avec leur propre progression. Ils ne peuvent rien télécharger, importer, modifier ni supprimer, et n'ont accès ni aux réglages ni au journal. Toi, tu restes le seul admin.</div>
+        <div id="usrListe" class="usr-liste"></div>
+        <div class="field"><label for="usrId">Identifiant du nouveau lecteur</label><input type="text" id="usrId" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ex. lea"></div>
+        <div class="field"><label for="usrMdp">Mot de passe (8 caractères minimum)</label><input type="text" id="usrMdp" autocomplete="new-password" autocapitalize="off" spellcheck="false"></div>
+        <div class="row"><button class="btn" id="usrAjouter">➕ Créer le compte</button></div>
+        <div id="usrMsg"></div>
+    </div>
+
+    <div class="panel">
         <h2>📖 Lecture</h2>
         <div class="sub">Ces choix se font aussi dans le lecteur (boutons en haut) et sont retenus sur cet appareil.</div>
         <div class="field"><label for="prefDir">Sens de lecture</label>
@@ -105,6 +124,31 @@
     </div>
 </div>
 <script>
+// ---------- Utilisateurs (comptes lecteur) ----------
+async function loadUsr() {
+    const r = await api('/api/utilisateurs'), l = r.utilisateurs || [];
+    $('usrListe').innerHTML = l.length ? l.map(u => `<div class="usr${u.actif ? '' : ' off'}"><div class="usr-nom">👤 ${esc(u.id)}${u.actif ? '' : ' <small>(désactivé)</small>'}<small>${u.derniere ? 'vu le ' + esc(u.derniere) : 'jamais connecté'}</small></div>
+        <div class="usr-act"><button class="btn ghost small" data-u="${esc(u.id)}" data-a="motdepasse">🔑 Mot de passe</button>
+        <button class="btn ghost small" data-u="${esc(u.id)}" data-a="activer" data-v="${u.actif ? '' : '1'}">${u.actif ? '⏸ Désactiver' : '▶ Réactiver'}</button>
+        <button class="btn ghost small danger" data-u="${esc(u.id)}" data-a="supprimer">🗑</button></div></div>`).join('')
+        : '<div class="state">Aucun compte lecteur pour l\'instant.</div>';
+}
+$('usrAjouter').addEventListener('click', async () => {
+    const r = await post('/api/utilisateurs', {action: 'ajouter', id: $('usrId').value, mdp: $('usrMdp').value});
+    say('usrMsg', r.message || r.error, r.ok);
+    if (r.ok) { $('usrId').value = ''; $('usrMdp').value = ''; loadUsr(); }
+});
+$('usrListe').addEventListener('click', async e => {
+    const b = e.target.closest('[data-a]'); if (!b) return;
+    const u = b.dataset.u, a = b.dataset.a, corps = {action: a, id: u};
+    if (a === 'motdepasse') { const m = prompt('Nouveau mot de passe pour « ' + u + ' » (8 caractères minimum) :'); if (!m) return; corps.mdp = m; }
+    if (a === 'supprimer' && !confirm('Supprimer le compte « ' + u + ' » ? Il ne pourra plus se connecter.')) return;
+    if (a === 'activer') corps.actif = !!b.dataset.v;
+    const r = await post('/api/utilisateurs', corps);
+    say('usrMsg', r.message || r.error, r.ok); loadUsr();
+});
+loadUsr();
+
 async function loadPaths() {
     const p = await api('/api/settings/paths');
     $('pathManga').value = p.manga || '';

@@ -173,3 +173,9 @@ body.mou-skin .filtre-menu button.on { color:#fff; font-weight:600; background:r
 .filtre-resume[hidden] { display:none; }
 body.mou-skin #filtreRaz { background:none; border:0; padding:0; color:var(--accent, #52b54b); font-size:.8rem; font-weight:600; }
 .card .lue.attente { background:#1f5fa8; }
+
+/* Compte lecteur : seulement lire (le serveur refuse le reste ; ici on cache les boutons) */
+body.lecteur a[href="/telecharger"], body.lecteur #bandeauImport, body.lecteur #mouSettingsOpen, body.lecteur #mouLogOpen,
+body.lecteur #sTomes, body.lecteur #sRenommer, body.lecteur #sGenerique, body.lecteur #sDelete, body.lecteur #sPitchModif,
+body.lecteur .cover-edit, body.lecteur [data-del], body.lecteur #sOrga, body.lecteur #menuCover { display:none !important; }
+body.lecteur .cover-btn, body.lecteur a.missing-line { pointer-events:none; }
