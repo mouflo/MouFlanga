@@ -253,10 +253,14 @@
       var nom = prompt('Nouveau nom de la série :', current.title);
       if (!nom || nom.trim() === current.title) return;
       var r = await post('/api/renommer', {series: current.id, nom: nom.trim()});
+      if (!r.ok && r.existe) {
+        if (!confirm(r.error + '\n\nFusionner les deux ? Les tomes et chapitres de « ' + current.title + ' » rejoignent « ' + nom.trim() + ' », ta progression de lecture est gardée ; les fichiers déjà présents des deux côtés vont à la corbeille (30 jours).')) return;
+        r = await post('/api/renommer', {series: current.id, nom: nom.trim(), fusionner: true});
+      }
       if (!r.ok) { note('sMsg', r.error); return; }
       history.replaceState({s: r.id}, '', '#' + encodeURIComponent(r.id));
       await openSeries(r.id, false);
-      note('sMsg', 'Série renommée.', 'ok');
+      note('sMsg', r.message || 'Série renommée.', 'ok');
     });
     $('sPitchTexte').addEventListener('click', function () { $('sPitch').classList.toggle('ouvert'); });
     $('sTomes').addEventListener('click', async function () {

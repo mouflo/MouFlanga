@@ -960,7 +960,7 @@ def _organiser(name, nouveau):
     ancien_dossier, dossier = MANGA_DIR / name, MANGA_DIR / nouveau
     if nouveau != name and dossier.exists() and not dossier.is_dir():
         raise ValueError(f"« {nouveau} » existe déjà et n'est pas un dossier")
-    deplaces = {}
+    deplaces, en_double = {}, set()
     for f in files:
         if _a_importer(f) or tomes_cbz.lire_info(f) is not None:
             cible = dossier / f.relative_to(ancien_dossier)
@@ -974,6 +974,7 @@ def _organiser(name, nouveau):
             continue
         if cible.exists():
             logger.warning("Organiser : %s existe déjà, %s laissé en place", cible, f.name)
+            en_double.add(f)
             continue
         cible.parent.mkdir(parents=True, exist_ok=True)
         f.rename(cible)
@@ -981,7 +982,7 @@ def _organiser(name, nouveau):
     # Le reste du dossier (couverture, images…) suit, puis les dossiers vidés disparaissent
     if nouveau != name and ancien_dossier.is_dir():
         for reste in sorted(ancien_dossier.rglob("*"), key=lambda p: -len(p.parts)):
-            if reste.is_file():
+            if reste.is_file() and reste not in en_double:
                 cible = dossier / reste.relative_to(ancien_dossier)
                 if not cible.exists():
                     cible.parent.mkdir(parents=True, exist_ok=True)
@@ -1004,6 +1005,11 @@ def _organiser(name, nouveau):
             p["read"] = sorted({conv(r) for r in p.get("read", [])})
             if p.get("current"):
                 p["current"] = conv(p["current"])
+            autre = data.get(nouveau) if nouveau != name else None
+            if autre:                                    # fusion avec une série existante : lus réunis, lecture la plus récente
+                p["read"] = sorted(set(p["read"]) | set(autre.get("read", [])))
+                if (autre.get("last") or "") > (p.get("last") or ""):
+                    p.update({k: autre[k] for k in ("current", "page", "last") if k in autre})
             data[nouveau] = p
             _write_json(PROGRESS_FILE, data)
     logger.info("Série organisée : « %s » → « %s » (%d fichier(s) déplacé(s))", name, nouveau, len(deplaces))
@@ -1289,25 +1295,36 @@ def api_renommer():
         return jsonify({"ok": False, "error": "Série introuvable"}), 404
     if not nouveau or nouveau.startswith(".") or nouveau == name:
         return jsonify({"ok": False, "error": "Nouveau nom invalide ou identique."}), 400
-    if nouveau in _scan() or (MANGA_DIR / nouveau).exists():
-        return jsonify({"ok": False, "error": f"Une série « {nouveau} » existe déjà."}), 409
-    if (_RANGEMENTS.get(name) or {}).get("en_cours") or any(
-            j.get("status") == "running" and japscan_scraper.nom_sur(japscan_scraper.titre_serie(j.get("title") or "")) == name
-            for j in japscan_scraper.download_jobs.values()):
+    fusion = nouveau in _scan() or (MANGA_DIR / nouveau).exists()
+    if fusion and not body.get("fusionner"):
+        return jsonify({"ok": False, "existe": True, "error": f"Une série « {nouveau} » existe déjà."}), 409
+    if fusion and not (MANGA_DIR / nouveau).is_dir():
+        return jsonify({"ok": False, "error": f"« {nouveau} » existe déjà et n'est pas un dossier."}), 409
+    if any((_RANGEMENTS.get(n) or {}).get("en_cours") or any(
+            j.get("status") == "running" and japscan_scraper.nom_sur(japscan_scraper.titre_serie(j.get("title") or "")) == n
+            for j in japscan_scraper.download_jobs.values()) for n in (name, nouveau)):
         return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
     try:
         nouveau = _organiser(name, nouveau)
         for f in (MANGA_DIR / nouveau).rglob("*.cbz"):        # « Ancien nom - Tome 03.cbz » → « Nouveau nom - Tome 03.cbz »
-            if f.name.startswith(name + " - "):
+            if f.name.startswith(name + " - ") and not f.with_name(nouveau + f.name[len(name):]).exists():
                 f.rename(f.with_name(nouveau + f.name[len(name):]))
         ancien_cache, nouveau_cache = tomes._fichier(name), tomes._fichier(nouveau)
         if ancien_cache.exists() and not nouveau_cache.exists():
             ancien_cache.rename(nouveau_cache)
+        doublons = 0
+        if fusion and (MANGA_DIR / name).is_dir():     # restent les fichiers déjà présents dans l'autre série : corbeille
+            doublons = sum(1 for f in (MANGA_DIR / name).rglob("*") if f.is_file())
+            _vers_corbeille(MANGA_DIR / name)
         _noter_choix(name, name, nouveau)
     except OSError as e:
         return jsonify({"ok": False, "error": f"Renommage impossible : {e}"}), 500
+    if fusion:
+        logger.info("Série fusionnée : « %s » → « %s » (%d doublon(s) à la corbeille)", name, nouveau, doublons)
+        return jsonify({"ok": True, "id": nouveau, "message": f"Séries fusionnées dans « {nouveau} »."
+                        + (f" {doublons} fichier(s) en double mis à la corbeille." if doublons else "")})
     logger.info("Série renommée : « %s » → « %s »", name, nouveau)
-    return jsonify({"ok": True, "id": nouveau})
+    return jsonify({"ok": True, "id": nouveau, "message": "Série renommée."})
 
 
 @app.route("/api/tomes/ranger", methods=["POST"])

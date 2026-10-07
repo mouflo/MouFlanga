@@ -622,9 +622,34 @@ class RenommerEtOrdreTest(BibliothequeTest):
     def test_renommer(self):
         self.A._ranger_en_tomes("Serie", self.info)
         r = self.client.post("/api/renommer", json={"series": "Serie", "nom": "Nouvelle Série"})
-        self.assertEqual(r.json, {"ok": True, "id": "Nouvelle Série"})
+        self.assertEqual((r.json["ok"], r.json["id"]), (True, "Nouvelle Série"))
         noms = sorted(p.name for p in (self.root / "Nouvelle Série").rglob("*.cbz"))
         self.assertEqual(noms, ["Nouvelle Série - Hors tome.cbz", "Nouvelle Série - Tome 01.cbz", "Nouvelle Série - Tome 02.cbz"])
         s = self.client.get("/api/series?id=Nouvelle Série").json
         self.assertEqual((s["current"], [c["read"] for c in s["chapters"]][:2]), ("#3", [True, True]))
         self.assertEqual(self.client.post("/api/renommer", json={"series": "Nouvelle Série", "nom": "Nouvelle Série"}).status_code, 400)
+
+    def test_renommer_vers_serie_existante_propose_la_fusion(self):
+        """Cas d'« Alice-in-borderland » (tomes 1-5, 7) renommée en « Alice in Borderland » (tome 6, et un tome 7 en double)."""
+        for serie, ts in (("Alice-in-borderland", (1, 7)), ("Alice in Borderland", (6, 7))):
+            for t in ts:
+                f = self.root / serie / f"Tome {t:02d}" / f"{serie} - Tome {t:02d}.cbz"
+                f.parent.mkdir(parents=True)
+                with zipfile.ZipFile(f, "w") as z:
+                    z.writestr("001.jpg", _jpeg((t, 0, 0)))
+        self.A._write_json(self.A.PROGRESS_FILE, {
+            "Alice-in-borderland": {"read": ["Alice-in-borderland/Tome 01/Alice-in-borderland - Tome 01.cbz"], "last": "2026-10-01 10:00"},
+            "Alice in Borderland": {"read": [], "current": "Alice in Borderland/Tome 06/Alice in Borderland - Tome 06.cbz", "page": 4, "last": "2026-10-05 10:00"}})
+        r = self.client.post("/api/renommer", json={"series": "Alice-in-borderland", "nom": "Alice in Borderland"})
+        self.assertEqual((r.status_code, r.json.get("existe")), (409, True))
+        r = self.client.post("/api/renommer", json={"series": "Alice-in-borderland", "nom": "Alice in Borderland", "fusionner": True})
+        self.assertTrue(r.json["ok"], r.json)
+        self.assertIn("1 fichier(s) en double", r.json["message"])
+        self.assertFalse((self.root / "Alice-in-borderland").exists())
+        noms = sorted(p.name for p in (self.root / "Alice in Borderland").rglob("*.cbz"))
+        self.assertEqual(noms, ["Alice in Borderland - Tome 01.cbz", "Alice in Borderland - Tome 06.cbz", "Alice in Borderland - Tome 07.cbz"])
+        self.assertEqual(len(list((self.root / ".corbeille").rglob("*.cbz"))), 1)
+        prog = self.A._read_json(self.A.PROGRESS_FILE, {})
+        self.assertNotIn("Alice-in-borderland", prog)
+        p = prog["Alice in Borderland"]
+        self.assertEqual((p["read"], p["page"]), (["Alice in Borderland/Tome 01/Alice in Borderland - Tome 01.cbz"], 4))
