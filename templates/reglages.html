@@ -131,6 +131,14 @@
     </div>
 
     <div class="panel" data-onglet="Général">
+        <h2>🎵 Génériques des mangas</h2>
+        <div class="sub">Pour chaque manga qui a une version animée, l'appli récupère le premier opening (saison 1, OP1) d'après AniList et AnimeThemes, même si tu n'as pas l'anime : il se joue à l'ouverture de la fiche. Le générique de l'anime choisi avec MouFlopening reste prioritaire. Les nouvelles séries sont vérifiées toutes seules toutes les 6 heures.</div>
+        <div class="state" id="genEtat"></div>
+        <div class="row"><button class="btn" id="genGo">🎵 Chercher pour toute la bibliothèque</button><button class="btn ghost" id="genForcer">↻ Tout revérifier</button></div>
+        <div id="genMsg"></div>
+    </div>
+
+    <div class="panel" data-onglet="Général">
         <h2>📖 Lecture</h2>
         <div class="sub">Ces choix se font aussi dans le lecteur (boutons en haut) et sont retenus sur cet appareil.</div>
         <div class="field"><label for="prefDir">Sens de lecture</label>
@@ -191,6 +199,19 @@ $('torTest').addEventListener('click', async () => {
     $('torMsg').innerHTML = '<div class="note ' + ((r.lignes || []).some(l => l.startsWith('❌')) ? 'err' : 'ok') + '">' + (r.lignes || [r.error]).map(esc).join('<br>') + '</div>';
 });
 loadTor();
+
+// ---------- 🎵 Génériques des mangas ----------
+async function loadGen() {
+    const g = await api('/api/generiques');
+    $('genEtat').textContent = g.en_cours ? `⏳ ${g.fait} / ${g.total} : ${g.message}` : `${g.avec || 0} série(s) avec un générique trouvé · ${g.sans || 0} sans anime connu` + (g.message ? ' · ' + g.message : '');
+    if (g.en_cours) setTimeout(loadGen, 3000);
+}
+$('genGo').addEventListener('click', async () => { const r = await post('/api/generiques', {}); say('genMsg', r.message || r.error, r.ok); loadGen(); });
+$('genForcer').addEventListener('click', async () => {
+    if (!confirm('Revérifier toutes les séries, même celles déjà traitées ? (quelques minutes)')) return;
+    const r = await post('/api/generiques', {forcer: true}); say('genMsg', r.message || r.error, r.ok); loadGen();
+});
+loadGen();
 
 async function loadPaths() {
     const p = await api('/api/settings/paths');

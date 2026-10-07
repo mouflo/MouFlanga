@@ -758,3 +758,21 @@ class NomsArchivesTest(unittest.TestCase):
         self.assertEqual(A._nom_depuis_archive("AirGear.37.Tomes.Integral._FR__CBZ_-Digital-1417.zip", []), "Air Gear")
         self.assertEqual(A._nom_depuis_archive("Bakuman.20.Tomes.2010.Integral._FR__CBZ_-TONER-PapriKa.zip", []), "Bakuman")
         self.assertEqual(A._nom_depuis_archive("20th_Century_boys__Intégrale___Digital_1920___CBZ__NOTAG.zip", ["20th Century Boys"]), "20th Century Boys")
+
+
+class GeneriquesTest(unittest.TestCase):
+    def test_choix_de_l_anime_et_de_l_opening(self):
+        import generiques
+        from unittest import mock
+        rel = {"data": {"Media": {"relations": {"edges": [
+            {"relationType": "ADAPTATION", "node": {"id": 2, "type": "ANIME", "format": "TV", "title": {"romaji": "S2"}, "startDate": {"year": 2026}}},
+            {"relationType": "ADAPTATION", "node": {"id": 1, "type": "ANIME", "format": "TV", "title": {"romaji": "S1"}, "startDate": {"year": 2023}}},
+            {"relationType": "ADAPTATION", "node": {"id": 3, "type": "ANIME", "format": "MOVIE", "title": {"romaji": "Film"}, "startDate": {"year": 2020}}}]}}}}
+        with mock.patch.object(generiques._session, "post", return_value=mock.Mock(status_code=200, json=lambda: rel)):
+            self.assertEqual(generiques.anime_du_manga(9), (1, "S1"))
+        th = {"anime": [{"animethemes": [
+            {"type": "ED", "sequence": 1, "slug": "ED1", "animethemeentries": [{"videos": [{"audio": {"link": "ed.ogg"}}]}]},
+            {"type": "OP", "sequence": 2, "slug": "OP2", "animethemeentries": [{"videos": [{"audio": {"link": "op2.ogg"}}]}]},
+            {"type": "OP", "sequence": 1, "slug": "OP1", "animethemeentries": [{"videos": [{"audio": {"link": "op1.ogg"}}]}]}]}]}
+        with mock.patch.object(generiques._session, "get", return_value=mock.Mock(json=lambda: th)):
+            self.assertEqual(generiques.opening_1(1), "op1.ogg")

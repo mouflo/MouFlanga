@@ -535,7 +535,9 @@ def _infos_anime(name):
     if name == "(Sans série)":
         return {}
     d = _anime_de(name)
-    if not d:
+    if not d:                                    # pas d'anime dans Emby : générique trouvé par generiques.py ?
+        if (MANGA_DIR / name / generiques.FICHIER_SON).is_file():
+            return {"anime": {"dossier": None, "nom": (generiques.lire().get(name) or {}).get("anime", ""), "generique": True}}
         return {}
     return {"anime": {"dossier": str(d), "nom": d.name, "generique": _theme_de(d) is not None},
             "mouflopening": os.getenv("MOUFLOPENING_URL", "").strip(),
@@ -1859,6 +1861,47 @@ def api_tome():
         return jsonify({"error": "Tome inconnu"}), 400
 
 
+# ---------------- 🎵 Génériques des mangas (OP1 de l'anime, même sans l'anime dans Emby) : admin ----------------
+import generiques
+generiques._ETAT["fichier"] = DATA_DIR / "generiques.json"
+
+
+def _manga_id(n):
+    st = (tomes._charger(n) or {}).get("statut_officiel") or {}
+    if not st.get("anilist"):
+        st = tomes.statut_officiel(n, forcer=True) or {}
+    return st.get("anilist")
+
+
+def _lancer_generiques(forcer=False):
+    import notifier
+    series = sorted(n for n in _scan() if n != "(Sans série)")
+    return generiques.tout(series, MANGA_DIR, _manga_id, lambda n: _theme_de(_anime_de(n)) is not None,
+                           lambda t: notifier.envoyer(t), forcer)
+
+
+@app.route("/api/generiques", methods=["GET", "POST"])
+def api_generiques():
+    if request.method == "POST":
+        ok = _lancer_generiques(bool((request.get_json(silent=True) or {}).get("forcer")))
+        return jsonify({"ok": True, "message": "Recherche lancée en arrière-plan." if ok else "Une recherche est déjà en cours."})
+    d = generiques.lire()
+    e = {k: v for k, v in generiques._ETAT.items() if k != "fichier"}
+    return jsonify({**e, "avec": sum(1 for v in d.values() if v.get("statut") == "ok"),
+                    "sans": sum(1 for v in d.values() if v.get("statut") in ("aucun_anime", "aucun_theme"))})
+
+
+def _boucle_generiques():
+    """5 minutes après le démarrage, puis toutes les 6 heures : les séries jamais vérifiées reçoivent leur générique."""
+    time.sleep(300)
+    while True:
+        try:
+            _lancer_generiques()
+        except Exception as e:
+            logger.warning("Génériques automatiques : %s", e)
+        time.sleep(6 * 3600)
+
+
 @app.route("/api/generique")
 def api_generique():
     """Écouter le générique de l'anime de la série (fichier rangé par MouFlopening dans la médiathèque Emby)."""
@@ -1866,6 +1909,8 @@ def api_generique():
     if name not in _scan():
         return jsonify({"error": "Série introuvable"}), 404
     f = _theme_de(_anime_de(name))
+    if not f and (MANGA_DIR / name / generiques.FICHIER_SON).is_file():
+        f = MANGA_DIR / name / generiques.FICHIER_SON          # OP1 de l'anime, posé par generiques.py
     if not f:
         return jsonify({"error": "Pas de générique"}), 404
     return send_file(f, conditional=True, max_age=3600)
@@ -2351,6 +2396,7 @@ if __name__ == "__main__":
     print(f"MouFlanga {APP_VERSION} : http://0.0.0.0:{port}", file=sys.stderr)
     import notifier
     redemarrage.verifier(BASE_DIR, "MouFlanga", DATA_DIR / "mouflanga.log", lambda t: notifier.envoyer(t))
+    threading.Thread(target=_boucle_generiques, daemon=True).start()
     threading.Thread(target=suivi.boucle, args=(torrents.chercher, _infos_suivi, lambda t: notifier.envoyer(t),
                                                 lambda: os.getenv("APP_URL", "").strip(), torrents.configure), daemon=True).start()
     threading.Thread(target=torrents.surveiller, args=(_importer_torrent, lambda t: notifier.envoyer(t), MANGA_DIR), daemon=True).start()
