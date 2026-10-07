@@ -188,11 +188,18 @@ def _mangadex(noms: list[str]) -> dict | None:
             logger.info("MangaDex injoignable (%s)", e.__class__.__name__)
             return None
         tomes = {}
-        for vol, d in (ag.get("volumes") or {}).items():
-            for ch in (d.get("chapters") or {}):
+        vols = ag.get("volumes") or {}
+        # MangaDex renvoie un objet {"1": {...}} ou, parfois, une liste [{"volume": "1", "chapters": ...}]
+        for d in (vols.values() if isinstance(vols, dict) else vols):
+            if not isinstance(d, dict):
+                continue
+            vol = str(d.get("volume") or "none")
+            chs = d.get("chapters") or {}
+            for c in (chs.values() if isinstance(chs, dict) else chs):
+                ch = c.get("chapter") if isinstance(c, dict) else c
                 try:
                     tomes[float(ch)] = int(float(vol)) if vol not in ("none", "") else None
-                except ValueError:
+                except (TypeError, ValueError):
                     continue
         if any(v is not None for v in tomes.values()):
             return {"source": "MangaDex", "tomes": tomes, "titres": {}}

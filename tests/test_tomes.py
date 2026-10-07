@@ -685,3 +685,23 @@ class RenommerEtOrdreTest(BibliothequeTest):
         self.assertNotIn("Alice-in-borderland", prog)
         p = prog["Alice in Borderland"]
         self.assertEqual((p["read"], p["page"]), (["Alice in Borderland/Tome 01/Alice in Borderland - Tome 01.cbz"], 4))
+
+
+class MangadexFormesTest(unittest.TestCase):
+    """MangaDex renvoie les tomes en objet ou en liste (cas de « Kenichi » : plantait avec « float() … dict »)."""
+    def _avec(self, volumes):
+        from unittest import mock
+        rep = [mock.Mock(json=mock.Mock(return_value={"data": [{"id": "x"}]})),
+               mock.Mock(json=mock.Mock(return_value={"volumes": volumes}))]
+        with mock.patch.object(tomes._SESSION, "get", side_effect=rep):
+            return tomes._mangadex(["Essai"])
+
+    def test_objet(self):
+        r = self._avec({"1": {"volume": "1", "chapters": {"1": {"chapter": "1"}, "2": {"chapter": "2"}}},
+                        "none": {"volume": "none", "chapters": {"3": {"chapter": "3"}}}})
+        self.assertEqual(r["tomes"], {1.0: 1, 2.0: 1, 3.0: None})
+
+    def test_liste(self):
+        r = self._avec([{"volume": "1", "chapters": [{"chapter": "1"}, {"chapter": "2"}]},
+                        {"volume": "2", "chapters": {"3": {"chapter": "3"}}}])
+        self.assertEqual(r["tomes"], {1.0: 1, 2.0: 1, 3.0: 2})
