@@ -66,6 +66,7 @@
                 <div class="series-info">
                     <h2 id="sTitle"></h2>
                     <div class="meta" id="sMeta"></div>
+                    <div class="edition-ligne" id="sEdition" hidden></div>
                     <div class="etat-ligne" id="sEtat" hidden></div>
                     <a class="missing-line" id="sMissingLine" hidden title="Chercher les manquants sur Japscan"></a>
                     <div class="actions">
@@ -77,6 +78,7 @@
                                 <button id="sAllUnread">↺ Tout marquer non lu</button>
                                 <button id="sTomes" hidden>📚 Ranger en tomes</button>
                                 <button id="sRenommer">✏️ Renommer la série</button>
+                                <button id="sSource">🏷 Corriger la source (Digital, Scan…)</button>
                                 <a id="sGenerique" hidden title="Ouvre MouFlopening sur l’anime de cette série">🎵 Choisir le générique</a>
                                 <button class="danger" id="sDelete">🗑 Supprimer la série</button>
                             </div>
@@ -88,6 +90,7 @@
                 <div id="sPitchEdit" hidden><textarea id="sPitchZone" class="mou-field resume-zone" rows="8" maxlength="5000" placeholder="Écris le synopsis de la série…"></textarea>
                     <div class="actions resume-actions"><button id="sPitchOk">💾 Enregistrer</button><button class="secondary" id="sPitchAnnuler">Annuler</button><button class="secondary" id="sPitchAuto" title="Effacer ton texte et reprendre le synopsis trouvé sur Internet">↺ Automatique</button></div>
                     <div class="resume-aide">Pour copier un synopsis : <a id="sPitchNautiljon" target="_blank" rel="noopener">🔎 Nautiljon</a> (appui long sur le texte → Copier, puis colle-le ici).</div></div></div>
+            <details class="nfo" id="sNfo" hidden><summary>📄 Infos de l'édition</summary><div id="sNfoArchives" class="nfo-arch"></div><pre id="sNfoTexte"></pre></details>
             <div class="progres" id="sProgres" hidden></div>
             <div class="organiser" id="sOrga" hidden>
                 <div id="sOrgaTexte"></div>

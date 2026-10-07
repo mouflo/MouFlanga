@@ -240,6 +240,14 @@
     $('sPitchEdit').hidden = true; $('sPitchTexte').hidden = false; $('sPitchModif').hidden = false;
     $('sPitchAuto').hidden = s.resume_langue !== 'perso';
     $('sPitchZone').value = s.resume || '';
+    // Édition : « 📐 1600 × 2400 · Digital » (« deviné » si ce n'est ni un NFO, ni le nom de l'archive, ni ton choix)
+    var ed = s.edition || {};
+    var bouts = [ed.resolution ? '📐 ' + ed.resolution : '', ed.source ? ed.source + (ed.devine ? ' (deviné)' : '') : (ed.resolution ? 'source ?' : '')].filter(Boolean);
+    $('sEdition').hidden = !bouts.length; $('sEdition').textContent = bouts.join(' · ');
+    $('sEdition').title = ed.pourquoi ? 'Indice : ' + ed.pourquoi : '';
+    $('sNfo').hidden = !(ed.nfo || (ed.archives || []).length);
+    $('sNfoArchives').textContent = (ed.archives || []).length ? 'Archive' + (ed.archives.length > 1 ? 's' : '') + ' d\'origine : ' + ed.archives.join(', ') : '';
+    $('sNfoTexte').textContent = ed.nfo || ''; $('sNfoTexte').hidden = !ed.nfo;
     $('sEtat').hidden = !s.etat_texte;
     $('sEtat').className = 'etat-ligne ' + (s.etat || '');
     $('sEtat').textContent = s.etat_texte || '';
@@ -461,6 +469,14 @@
       note('sMsg', r.message, 'ok');
     }
     $('sPitchModif').addEventListener('click', function () { editionResume(true); });
+    $('sSource').addEventListener('click', async function () {
+      fermerMenus();
+      var v = prompt('Source de « ' + current.title + ' » : Digital, Scan, Web…\n(laisse vide pour revenir à la détection automatique)', (current.edition || {}).source || '');
+      if (v === null) return;
+      var r = await post('/api/edition', {series: current.id, source: v.trim()});
+      note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err');
+      if (r.ok) await openSeries(current.id, false);
+    });
     $('sEcouter').addEventListener('click', function () {
       if (lecteurGenerique) { arreterGenerique(); return; }
       lecteurGenerique = new Audio('/api/generique?id=' + encodeURIComponent(current.id));

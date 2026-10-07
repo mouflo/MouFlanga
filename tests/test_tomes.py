@@ -712,3 +712,22 @@ class NomSerieTest(unittest.TestCase):
         import app as A
         self.assertEqual(A._nom_serie("L'Attaque des Titans : Before the Fall"), "L'Attaque des Titans : Before the Fall")
         self.assertEqual(A._nom_serie(" a/b*c : "), "a b c")
+
+
+class EditionTest(unittest.TestCase):
+    def test_nfo_et_detection(self):
+        import edition
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as t:
+            t = Path(t); (t / "tmp").mkdir(); (t / "serie").mkdir()
+            (t / "tmp" / "infos.nfo").write_bytes("Source : Digital 1600p\nÉquipe : X".encode("cp1252"))
+            edition.noter_import(t / "serie", "Serie.Integrale.FR.CBZ-Digital.zip", t / "tmp")
+            d = edition.lire(t / "serie")
+            self.assertIn("Équipe : X", d["nfo"]); self.assertEqual(d["archives"], ["Serie.Integrale.FR.CBZ-Digital.zip"])
+            for nom, taille in (("hd.cbz", (1600, 2400)), ("double.cbz", (1400, 1000))):
+                with zipfile.ZipFile(t / nom, "w") as z:
+                    for k in range(4):
+                        b = io.BytesIO(); Image.new("L", taille, 255).save(b, "JPEG"); z.writestr(f"{k:03d}.jpg", b.getvalue())
+            self.assertEqual(edition.analyser([t / "hd.cbz"], "")["source"], "Digital")
+            self.assertEqual(edition.analyser([t / "double.cbz"], "")["source"], "Scan")
+            self.assertEqual(edition.analyser([t / "double.cbz"], "Serie CBZ-Digital")["devine"], False)

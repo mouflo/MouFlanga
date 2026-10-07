@@ -327,6 +327,11 @@ def importer_lot(lot: Path, dossier_serie: Path, serie: str, etat: dict) -> list
         extraire(lot, temp)
         etat.update(message=f"{lot.name} : ouverture des archives et PDF intérieurs…", etape_depuis=time.time())
         deplier(temp)
+        try:                                      # NFO et nom de l'archive : infos de l'édition (fiche de la série)
+            import edition
+            edition.noter_import(dossier_serie, lot.name, temp)
+        except Exception as e:
+            logger.warning("Infos de l'édition non gardées pour %s : %s", lot.name, e)
         series, ecartes = repartir(temp, numero_tome(lot.stem))
         etat.update(sous_fait=0, sous_total=sum(len(v) for v in series.values()), etape_depuis=time.time())
         for nom in sorted(series, key=lambda n: (n != "", n)):

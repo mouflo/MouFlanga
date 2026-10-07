@@ -468,6 +468,35 @@ def _manquants(titres, nums=None):
     return plages, min(nums), max(nums)
 
 
+def _infos_edition(name, files):
+    """Résolution, source (Digital, Scan, web), NFO : voir edition.py (analyse des pages faite une fois, en fond)."""
+    if name == "(Sans série)" or not files:
+        return {}
+    import edition
+    d = edition.infos(MANGA_DIR / name, sorted(files, key=lambda f: f.name), lancer="unittest" not in sys.modules)
+    a = d.get("analyse") or {}
+    source, devine = (d["source_manuelle"], False) if d.get("source_manuelle") else (a.get("source") or "", a.get("devine", True))
+    return {"resolution": a.get("resolution", ""), "source": source, "devine": devine, "pourquoi": a.get("pourquoi", ""),
+            "nfo": d.get("nfo", ""), "archives": d.get("archives", []), "analyse_faite": "analyse" in d}
+
+
+@app.route("/api/edition", methods=["POST"])
+def api_edition():
+    """Corriger à la main la source d'une série (Digital, Scan, Web…) ; vide = revenir à la détection."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name, source = str(body.get("series", "")), str(body.get("source", "")).strip()[:40]
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    d = edition.lire(MANGA_DIR / name)
+    if source:
+        d["source_manuelle"] = source
+    else:
+        d.pop("source_manuelle", None)
+    edition.ecrire(MANGA_DIR / name, d)
+    return jsonify({"ok": True, "message": f"Source : {source}." if source else "Source : détection automatique."})
+
+
 def _infos_anime(name):
     """Anime correspondant (pour le lien vers MouFlopening et le bouton 🎵) ; rien si aucun anime n'est trouvé."""
     if name == "(Sans série)":
@@ -515,7 +544,7 @@ def api_series():
                     "cover_v": int(_couverture_mtime(name)),
                     "moufloster": os.getenv("MOUFLOSTER_URL", "").strip(),
                     "moufloster_externe": os.getenv("MOUFLOSTER_URL_EXTERNE", "").strip(),
-                    **_infos_anime(name)})
+                    **_infos_anime(name), "edition": _infos_edition(name, files)})
 
 
 @app.route("/api/cover")

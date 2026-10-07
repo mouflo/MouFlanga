@@ -202,3 +202,12 @@ body.lecteur .cover-btn, body.lecteur a.missing-line { pointer-events:none; }
 .dem-ligne.accepte .dem-statut { color:#6fcf73; } .dem-ligne.refuse .dem-statut { color:#e06c6c; }
 .dem-act { display:flex; gap:6px; flex:none; }
 body.mou-skin .dem-act button { padding:6px 10px; font-size:.82rem; width:auto; }
+
+/* Infos de l'édition */
+.series-info .edition-ligne { margin:0 0 8px; font-size:.8rem; color:var(--muted); }
+.edition-ligne[hidden], .nfo[hidden] { display:none; }
+.nfo { margin-top:12px; font-size:.85rem; }
+.nfo summary { cursor:pointer; color:var(--muted); }
+.nfo-arch { color:var(--muted); font-size:.78rem; margin:6px 0; overflow-wrap:anywhere; }
+.nfo pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.72rem; line-height:1.3; background:#111; border-radius:6px; padding:8px; max-height:50vh; overflow:auto; }
+body.lecteur #sSource { display:none !important; }
