@@ -9,13 +9,24 @@ function etat(texte, type) {
     $('vState').textContent = texte;
 }
 
+// Vérification passée : retour automatique à la page où elle était (mémorisée par le bandeau de ui/verif-banniere.js)
+function retourApres() {
+    try {
+        const r = JSON.parse(localStorage.getItem('mfRetourVerif') || 'null');
+        if (!r || !r.url || Date.now() - r.t > 2 * 3600 * 1000 || r.url.indexOf('/verification') === 0) return;
+        localStorage.removeItem('mfRetourVerif');
+        etat('✅ Vérification passée. Retour à la page où tu étais…', 'ok');
+        setTimeout(() => { location.href = r.url; }, 2000);
+    } catch (e) { /* stockage bloqué : pas de retour automatique */ }
+}
+
 async function rafraichir() {
     if (occupe || clicEnCours) return;
     occupe = true;
     try {
         const e = await api('/api/japscan/verif/etat');
         if (!e.actif) {
-            if (actif) etat('✅ Vérification passée : le téléchargement reprend.', 'ok');
+            if (actif) { etat('✅ Vérification passée : le téléchargement reprend.', 'ok'); retourApres(); }
             else if (e.groupes) etat('🕒 ' + e.groupes + ' chapitre(s) mis de côté pour un captcha (captchas groupés) : ils arriveront ici à la fin du téléchargement, avec une alerte Telegram. Garde cette page ouverte ou reviens à ce moment-là.', 'warn');
             else etat('Aucune vérification en attente pour le moment. Cette page se mettra à jour toute seule si le site en demande une.', 'warn');
             actif = false; box.hidden = true;

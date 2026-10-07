@@ -558,7 +558,7 @@ class EtatSerieTest(OrganiserTest):
 
     def test_en_cours(self):
         etat, texte = self._etat({"statut": "RELEASING", "volumes": None, "chapitres": None, "titre": "Gintama"})
-        self.assertEqual((etat, texte), ("en_cours", "En cours de parution."))
+        self.assertEqual((etat, texte), ("en_cours", "En cours"))
 
 
 class VolumeTest(unittest.TestCase):
@@ -793,3 +793,28 @@ class RangementTomesCompletsTest(unittest.TestCase):
             self.assertEqual(A._ranger_en_tomes("20th Century Boys", info), 0)
             restes = sorted(p.name for p in (racine / "20th Century Boys").rglob("*.cbz"))
             self.assertEqual(restes, ["20th Century Boys - Tome 01.cbz", "20th Century Boys - Tome 02.cbz"])
+
+
+class DetailsTomeTest(unittest.TestCase):
+    """Fenêtre ⓘ d'un tome : pas de résumé, titres français d'abord, anglais en dernier, jamais de simples numéros."""
+
+    def _details(self, memoire):
+        with mock.patch.object(tomes, "_charger", return_value=memoire):
+            return tomes.details_tome("Gintama", 1)
+
+    def test_pas_de_resume_ni_de_couverture_texte(self):
+        d = self._details({"titres_tomes": {"details": {"1": {"titre": "Tome un", "sortie": "2007", "resume": "Un très long pavé", "couverture": "Gin"}}}})
+        self.assertEqual(d, {"titre": "Tome un", "sortie": "2007"})
+
+    def test_titres_anglais_en_dernier_recours(self):
+        d = self._details({"tomes": {1.0: 1, 2.0: 1}, "titres": {1.0: "Immortal Sugimoto", 2.0: "Second"}})
+        self.assertEqual(d["chapitres"], ["1. Immortal Sugimoto", "2. Second"])
+        self.assertEqual(d["chapitres_langue"], "en")
+
+    def test_simples_numeros_pas_listes(self):
+        d = self._details({"tomes": {8.0: 1, 9.0: 1}, "titres": {}})
+        self.assertNotIn("chapitres", d)
+
+    def test_apostrophe_doublee_corrigee(self):
+        d = self._details({"titres_tomes": {"details": {"1": {"chapitres": ["1. Sugimoto L''Immortel"]}}}})
+        self.assertEqual(d["chapitres"], ["1. Sugimoto L'Immortel"])

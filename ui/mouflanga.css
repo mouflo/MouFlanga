@@ -257,3 +257,23 @@ body.nav-bas .nav-serie .fl { font-size:1rem; }
 body.nav-bas .nav-serie.prec { left:10px; } body.nav-bas .nav-serie.suiv { right:10px; }
 body.nav-bas #seriesView .chapters { padding-bottom:56px; }   /* le bas de la liste reste atteignable */
 .aff-champ { display:flex; flex-direction:column; gap:4px; margin:10px 0; font-size:.88rem; color:var(--muted); }
+
+/* Couverture de la fiche : taille fixe d'une série à l'autre ; titre limité à 3 lignes (complet au toucher) */
+#sCover { width:120px; height:180px; aspect-ratio:2/3; object-fit:cover; }
+.series-info { min-height:180px; }
+#sTitle { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; }
+#sTitle.deplie { display:block; }
+.ed-devine { color:#e0a030; font-weight:600; }
+.ed-sur { color:#6fcf73; font-weight:600; }
+
+/* ⓘ d'un tome : vert quand le tome a des titres de chapitres */
+.tog.tinfo.vert, body.mou-skin .tog.tinfo.vert { color:var(--accent, #52b54b); }
+
+/* Fenêtre ⓘ d'un tome : couverture à gauche, titre et sortie à droite, chapitres en dessous */
+.tome-fiche { display:flex; gap:14px; align-items:flex-start; margin:10px 0; }
+.tome-couv { flex:none; width:110px; height:auto; max-height:200px; border-radius:6px; background:#151515; cursor:zoom-in; }
+.tome-champs { flex:1; min-width:0; }
+.tome-champs .champ { margin-bottom:10px; font-size:.95rem; overflow-wrap:anywhere; }
+.tome-champs .champ small { display:block; color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.03em; }
+.couv-grand { position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,.92); display:flex; align-items:center; justify-content:center; padding:10px; cursor:zoom-out; }
+.couv-grand img { max-width:100%; max-height:100%; border-radius:6px; }

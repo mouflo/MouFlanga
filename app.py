@@ -221,6 +221,19 @@ def _entrees(files):
     repérés par leur première page et leur nombre de pages dans le fichier."""
     out, titres_de = [], {}
 
+    connus_de = {}
+
+    def wiki_fr(serie, t):                       # des titres de chapitres sont-ils connus pour ce tome ? (mémoire seulement)
+        if t is None:
+            return False
+        if serie not in connus_de:
+            info = tomes._charger(serie) or {}
+            ok = {int(k) for k, v in (((info.get("titres_tomes") or {}).get("details")) or {}).items() if v.get("chapitres")}
+            titres = info.get("titres") or {}
+            ok |= {int(v) for n, v in (info.get("tomes") or {}).items() if v is not None and titres.get(n)}
+            connus_de[serie] = ok
+        return int(t) in connus_de[serie]
+
     def titre_tome(serie, t):                    # « Romance Dawn » (mémoire de tomes.titres_tomes, sans aller sur Internet)
         if serie not in titres_de:
             titres_de[serie] = ((tomes._charger(serie) or {}).get("titres_tomes") or {}).get("titres") or {}
@@ -246,7 +259,8 @@ def _entrees(files):
                 couverts, plage = _plage_chapitres(f.relative_to(MANGA_DIR).parts[0], tome)
                 nom_tome = titre_tome(f.relative_to(MANGA_DIR).parts[0], tome)
                 sous = " · ".join(x for x in (f"« {nom_tome} »" if nom_tome else "", plage[:1].upper() + plage[1:] if plage else "") if x)
-                entree.update(num=None, tome=tome, couverts=couverts, title=tomes_cbz.dossier_tome(tome), sous=sous)   # 2e ligne
+                entree.update(num=None, tome=tome, couverts=couverts, title=tomes_cbz.dossier_tome(tome), sous=sous,   # 2e ligne
+                              titres_ch=wiki_fr(f.relative_to(MANGA_DIR).parts[0], tome))
             out.append(entree)
             continue
         try:
@@ -259,6 +273,8 @@ def _entrees(files):
                         "title": f"Chapitre {c['num']:g}" + (f" : {c['titre']}" if c["titre"] else ""),
                         "groupe": tomes_cbz.dossier_tome(info.get("tome")), "debut": c["debut"], "nb": c["nb"],
                         "groupe_titre": titre_tome(f.relative_to(MANGA_DIR).parts[0], info.get("tome")) or "",
+                        "titre_ch": c["titre"],
+                        "titres_ch": bool(c["titre"]) or wiki_fr(f.relative_to(MANGA_DIR).parts[0], info.get("tome")),
                         "size_mb": round(taille * c["nb"] / total / 1048576, 1)})
     if any(e["groupe"] or e.get("tome") is not None for e in out):
         out.sort(key=_ordre_entree)
@@ -328,9 +344,9 @@ def _etat_serie(name, entrees):
     vol = st.get("volumes") or max([t for t in (info.get("tomes") or {}).values() if t is not None] or [0]) or None
     chap = st.get("chapitres") or max(info.get("tomes") or {0: None}) or None
     if statut in ("RELEASING", "NOT_YET_RELEASED"):
-        return "en_cours", "En cours de parution" + (f" ({vol} tomes sortis)" if vol else "") + "."
+        return "en_cours", "En cours" + (f" · {vol} tomes sortis" if vol else "")
     if statut == "HIATUS":
-        return "pause", "Parution en pause."
+        return "pause", "En pause"
     manquants = []
     if vol and tomes_locaux:
         manquants = [t for t in range(1, vol + 1) if t not in tomes_locaux]
@@ -340,13 +356,13 @@ def _etat_serie(name, entrees):
     else:
         complet = False
     total = f"{vol} tomes" if vol else (f"{chap} chapitres" if chap else "")
-    debut = "Série arrêtée" if statut == "CANCELLED" else "Série terminée"
+    debut = "Arrêtée" if statut == "CANCELLED" else "Terminée"
     if complet:
-        return "fini", f"{debut}{f' ({total})' if total else ''} : tout est là ✅"
+        return "fini", f"{debut}{f' · {total}' if total else ''} · tout est là ✅"
     if manquants:
         txt = ", ".join(_plages(manquants))
-        return "incomplet", f"{debut} ({total}) : il te manque {'le tome' if len(manquants) == 1 else 'les tomes'} {txt}."
-    return "incomplet", f"{debut}{f' ({total})' if total else ''} : il manque des chapitres."
+        return "incomplet", f"{debut}{f' · {total}' if total else ''} · il te manque {'le tome' if len(manquants) == 1 else 'les tomes'} {txt}"
+    return "incomplet", f"{debut}{f' · {total}' if total else ''} · il manque des chapitres"
 
 
 def _plages(nums):
@@ -599,10 +615,14 @@ def api_cover():
     if not lisibles:
         return Response(status=404)                      # seulement des archives à importer : rien à montrer encore
     premiere = lisibles[0]
-    first, debut = MANGA_DIR / premiere["path"], premiere["debut"]
+    return _vignette(MANGA_DIR / premiere["path"], premiere["debut"], name)
+
+
+def _vignette(first, debut, nom, grand=False):
+    """Première page d'un fichier (ou d'un chapitre de tome) en vignette JPEG gardée dans data/covers."""
     try:
         st = first.stat()
-        key = hashlib.sha1(f"{first}|{st.st_mtime_ns}|{st.st_size}|{debut}".encode()).hexdigest()[:20]
+        key = hashlib.sha1(f"{first}|{st.st_mtime_ns}|{st.st_size}|{debut}|{'g' if grand else 'p'}".encode()).hexdigest()[:20]
         cached = COVER_DIR / f"{key}.jpg"
         if not cached.is_file():
             from PIL import Image
@@ -611,16 +631,34 @@ def api_cover():
                 return Response(status=404)
             data, _ = archives.read_page(first, debut)
             img = Image.open(io.BytesIO(data)).convert("RGB")
-            img.thumbnail((360, 540))
+            img.thumbnail((1000, 1500) if grand else (360, 540))
             COVER_DIR.mkdir(parents=True, exist_ok=True)
             tmp = cached.with_suffix(".tmp")
-            img.save(tmp, format="JPEG", quality=82)
+            img.save(tmp, format="JPEG", quality=85 if grand else 82)
             os.replace(tmp, cached)
         return send_file(cached, max_age=86400)
     except archives.ArchiveError as e:
-        logger.warning("Couverture impossible pour %s : %s", name, e)
+        logger.warning("Couverture impossible pour %s : %s", nom, e)
     except Exception as e:  # image abîmée, format exotique...
-        logger.warning("Couverture impossible pour %s : %s: %s", name, e.__class__.__name__, e)
+        logger.warning("Couverture impossible pour %s : %s: %s", nom, e.__class__.__name__, e)
+    return Response(status=404)
+
+
+@app.route("/api/tome/couverture")
+def api_tome_couverture():
+    """Couverture d'un tome = première page de son fichier (déjà sur le NAS), petite ou grande (?grand=1)."""
+    name = request.args.get("id", "")
+    files = _scan().get(name)
+    try:
+        tome = int(float(request.args.get("tome", "")))
+    except ValueError:
+        return Response(status=400)
+    if not files:
+        return Response(status=404)
+    groupe = tomes_cbz.dossier_tome(tome)
+    for e in _entrees(files):
+        if not e.get("a_importer") and (e.get("tome") == tome or e.get("groupe") == groupe):
+            return _vignette(MANGA_DIR / e["path"], e["debut"], f"{name} tome {tome}", request.args.get("grand") == "1")
     return Response(status=404)
 
 
@@ -1981,9 +2019,17 @@ def api_tome():
     if name not in _scan():
         return jsonify({"error": "Série introuvable"}), 404
     try:
-        return jsonify(tomes.details_tome(name, float(request.args.get("tome", "0"))))
+        tome = float(request.args.get("tome", "0"))
     except (TypeError, ValueError):
         return jsonify({"error": "Tome inconnu"}), 400
+    d = tomes.details_tome(name, tome)
+    if d.get("chapitres_langue") == "en" or not d.get("chapitres"):      # Wikipédia FR n'a rien : titres FR du tome local avant l'anglais
+        groupe = tomes_cbz.dossier_tome(int(tome))
+        locaux = [f"{e['num']:g}. {e['titre_ch']}" for e in _entrees(_scan().get(name) or [])
+                  if e.get("groupe") == groupe and e.get("titre_ch")]
+        if locaux:
+            d["chapitres"], d["chapitres_langue"] = locaux[:60], ""
+    return jsonify(d)
 
 
 # ---------------- 🎵 Génériques des mangas (OP1 de l'anime, même sans l'anime dans Emby) : admin ----------------

@@ -573,16 +573,19 @@ def _liens_listes(pages: list) -> list:
 
 
 def details_tome(serie: str, tome) -> dict:
-    """Infos d'un tome (titre, sortie en France, couverture, résumé, chapitres) d'après la mémoire de titres_tomes."""
+    """Infos d'un tome (titre, sortie en France, chapitres) d'après la mémoire de titres_tomes.
+    Pas de résumé (trop long) ; les chapitres n'apparaissent que s'ils ont un titre."""
     t = ((_charger(serie) or {}).get("titres_tomes") or {})
-    d = dict((t.get("details") or {}).get(str(int(tome)), {}))
+    d = {k: v for k, v in (t.get("details") or {}).get(str(int(tome)), {}).items() if k not in ("resume", "couverture")}
     if not d.get("chapitres"):                       # pas de liste en français : titres anglais connus pour ce tome
         info = _charger(serie) or {}
-        nums = sorted(n for n, v in (info.get("tomes") or {}).items() if v is not None and int(v) == int(tome))
         titres_ch = info.get("titres") or {}
+        nums = sorted(n for n, v in (info.get("tomes") or {}).items() if v is not None and int(v) == int(tome) and titres_ch.get(n))
         if nums:
-            d["chapitres"] = [f"{n:g}. {titres_ch[n]}" if titres_ch.get(n) else f"{n:g}." for n in nums][:60]
-            d["chapitres_langue"] = "en" if any(titres_ch.get(n) for n in nums) else ""
+            d["chapitres"] = [f"{n:g}. {titres_ch[n]}" for n in nums][:60]
+            d["chapitres_langue"] = "en"
+    if d.get("chapitres"):
+        d["chapitres"] = [re.sub(r"(?<=\w)''(?=\w)", "'", c) for c in d["chapitres"]]
     if not d.get("titre") and (t.get("titres") or {}).get(str(int(tome))):
         d["titre"] = t["titres"][str(int(tome))]
     return d

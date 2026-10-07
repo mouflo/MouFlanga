@@ -1,5 +1,12 @@
 # Historique des versions
 
+## Retouches du 7 octobre 2026 (soir)
+- ⓘ **Fenêtre d'un tome** : la couverture du tome (première page de son fichier, toucher = grand format) à gauche, titre et sortie en France à droite, titres des chapitres dessous ; plus de résumé (trop long). Les titres français passent avant les titres anglais (« titres en anglais » seulement en dernier recours) ; l'apostrophe doublée (« L''Immortel ») est corrigée.
+- ⓘ **Vert ou gris** : vert quand des titres de chapitres existent pour le tome, gris sinon (la fenêtre s'ouvre quand même, avec la couverture).
+- 📐 **Couverture de la fiche en taille fixe** (120 × 180) d'une série à l'autre ; titre limité à 3 lignes (complet au toucher) ; ligne d'état raccourcie (« En cours · 15 tomes sortis ») ; source de l'édition avec « ? » orange (devinée) ou « ✓ » vert (sûre).
+- ‹ › **Flèches entre séries** : elles parcourent toute la bibliothèque dans l'ordre du tri choisi, même si on est arrivé par une lettre, un filtre ou une recherche.
+- 🛡️ **Vérification Japscan** : bandeau « Le site attend ta vérification » et pastille ⚠️ sur « Télécharger » sur toutes les pages ; une fois la vérification passée, retour automatique à la page où tu étais.
+
 ## 2.0 — Lecteurs, torrents et séries suivies (7 octobre 2026)
 - 👥 **Comptes lecteurs** (⚙️ Réglages → Comptes) : lecture seule, vérifiée par le serveur ; progression séparée pour chacun
 - 📮 **Demandes de mangas** par les lecteurs (recherche AniList) ; l'admin accepte ou refuse ; Telegram et rappels réglables tant qu'une demande attend

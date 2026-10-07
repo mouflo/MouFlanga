@@ -53,13 +53,15 @@
   function fermerFiltres(sauf) {
     document.querySelectorAll('#filtres .filtre-menu').forEach(function (m) { if (m !== sauf) m.hidden = true; });
   }
-  function sorted(list) {
-    var q = sansAccents($('search').value.trim());
-    list = list.filter(function (s) { return !q || sansAccents(s.title).indexOf(q) >= 0; });
-    if (lettre && !q) list = list.filter(function (s) { return lettreDe(s.title) === lettre; });
-    ['lecture', 'parution'].forEach(function (k) {
-      var g = FILTRES[k].garde[choixFiltre[k]]; if (g) list = list.filter(g);
-    });
+  function sorted(list, toutes) {
+    if (!toutes) {                                   // « toutes » = toute la bibliothèque, seul le tri compte (flèches ‹ ›)
+      var q = sansAccents($('search').value.trim());
+      list = list.filter(function (s) { return !q || sansAccents(s.title).indexOf(q) >= 0; });
+      if (lettre && !q) list = list.filter(function (s) { return lettreDe(s.title) === lettre; });
+      ['lecture', 'parution'].forEach(function (k) {
+        var g = FILTRES[k].garde[choixFiltre[k]]; if (g) list = list.filter(g);
+      });
+    }
     var titre = function (a, b) { return a.title.localeCompare(b.title, 'fr', {numeric: true}); };
     var pc = function (s) { return s.chapters ? s.read / s.chapters : 0; };
     var by = {
@@ -195,9 +197,9 @@
     majNavSeries();
   }
 
-  // ‹ › : série précédente / suivante, dans l'ordre de la bibliothèque (tri, filtres et lettre en cours)
+  // ‹ › : série précédente / suivante dans TOUTE la bibliothèque, dans l'ordre du tri choisi (lettre, filtres et recherche ne limitent pas)
   function voisinsSeries() {
-    var l = sorted(series.slice()).filter(function (s) { return !s.recherchee; });
+    var l = sorted(series.slice(), true).filter(function (s) { return !s.recherchee; });
     var i = current ? l.findIndex(function (s) { return s.id === current.id; }) : -1;
     return {prec: i > 0 ? l[i - 1] : null, suiv: i >= 0 && i < l.length - 1 ? l[i + 1] : null};
   }
@@ -212,31 +214,6 @@
     $('serSuiv').innerHTML = (style === 'bas' && v.suiv ? '<span class="nm">' + esc(v.suiv.title) + '</span>' : '') + '<span class="fl">›</span>';
   }
 
-  // Couverture de la même hauteur que la colonne d'infos : bords du haut et du bas alignés
-  function ajusterCouverture() {
-    var img = $('sCover'), info = document.querySelector('.series-info'), head = document.querySelector('.series-head');
-    if (!head || !head.offsetWidth) return;
-    info.style.minHeight = '';
-    var max = head.clientWidth * 0.42, min = 90;
-    var w = min;
-    for (var k = 0; k < 5; k++) {                          // la largeur de la couverture change la hauteur des infos
-      w = Math.max(min, Math.min(max, info.offsetHeight / 1.5));
-      img.style.width = w + 'px'; img.style.height = (w * 1.5) + 'px';
-    }
-    var h = w * 1.5;                                       // jamais rognée (cadre des posters MouFloster gardé entier)
-    img.style.height = h + 'px';
-    info.style.minHeight = h + 'px';                       // couverture plus haute : le bouton descend en bas
-  }
-  window.addEventListener('resize', function () { if (current) ajusterCouverture(); });
-  // Le contenu des infos peut changer après coup (police chargée, état de la série, rangement) : on réaligne
-  var reAligner = null;
-  if (window.ResizeObserver) new ResizeObserver(function () {
-    cancelAnimationFrame(reAligner);
-    reAligner = requestAnimationFrame(function () {
-      var img = $('sCover'), info = document.querySelector('.series-info');
-      if (current && info && Math.abs(info.offsetHeight - parseFloat(img.style.height || 0)) > 1) ajusterCouverture();
-    });
-  }).observe(document.querySelector('.series-info'));
 
   var lecteurGenerique = null, dernierAuto = null;
   // Un seul lecteur audio, « débloqué » au premier appui (les téléphones refusent un son lancé sans appui) :
@@ -292,7 +269,7 @@
 
   function drawSeries() {
     var s = current, read = s.chapters.filter(function (c) { return c.read; }).length;
-    $('sTitle').textContent = s.title;
+    $('sTitle').textContent = s.title; $('sTitle').classList.remove('deplie');
     $('sCover').src = '/api/cover?id=' + encodeURIComponent(s.id) + '&v=' + (s.cover_v || 0);
     var perso = s.id !== '(Sans série)';
     $('sCoverPick').hidden = !perso;
@@ -312,10 +289,12 @@
     $('sPitchEdit').hidden = true; $('sPitchTexte').hidden = false; $('sPitchModif').hidden = false;
     $('sPitchAuto').hidden = s.resume_langue !== 'perso';
     $('sPitchZone').value = s.resume || '';
-    // Édition : « 📐 1600 × 2400 · Digital » (« deviné » si ce n'est ni un NFO, ni le nom de l'archive, ni ton choix)
+    // Édition : « 📐 1600 × 2400 · Digital ✓ » (✓ vert si sûr : NFO, nom de l'archive ou ton choix ; ? orange si deviné)
     var ed = s.edition || {};
-    var bouts = [ed.resolution ? '📐 ' + ed.resolution : '', ed.source ? ed.source + (ed.devine ? ' (deviné)' : '') : (ed.resolution ? 'source ?' : '')].filter(Boolean);
-    $('sEdition').hidden = !bouts.length; $('sEdition').textContent = bouts.join(' · ');
+    var src = ed.source ? '<span class="' + (ed.devine ? 'ed-devine' : 'ed-sur') + '">' + esc(ed.source) + (ed.devine ? ' ?' : ' ✓') + '</span>'
+      : (ed.resolution ? '<span class="ed-devine">source ?</span>' : '');
+    var bouts = [ed.resolution ? '📐 ' + esc(ed.resolution) : '', src].filter(Boolean);
+    $('sEdition').hidden = !bouts.length; $('sEdition').innerHTML = bouts.join(' · ');
     $('sEdition').title = ed.pourquoi ? 'Indice : ' + ed.pourquoi : '';
     $('sNfo').hidden = !(ed.nfo || (ed.archives || []).length);
     $('sNfoArchives').textContent = (ed.archives || []).length ? 'Archive' + (ed.archives.length > 1 ? 's' : '') + ' d\'origine : ' + ed.archives.join(', ') : '';
@@ -349,7 +328,6 @@
       dernierAuto = s.id; jouerGenerique(true);            // comme Emby : le générique part à l'ouverture de la fiche
     }
     fermerMenus();
-    ajusterCouverture();
     // Série ajoutée à la main : proposition de rangement (nom propre, un dossier par tome)
     var o = s.organiser;
     $('sOrga').hidden = !o || !!(s.rangement && s.rangement.en_cours);
@@ -393,7 +371,7 @@
     function ligne(c) {
       return '<div class="chap' + (c.read ? ' read' : '') + (c.key === s.current ? ' cur' : '') + '" data-path="' + esc(c.key) + '">' +
         '<span class="dot"></span><span class="ct">' + esc(c.title) + (c.sous ? '<small class="ct2">' + esc(c.sous) + '</small>' : '') + '</span>' +
-        (c.tome != null ? '<button class="tog tinfo" data-tinfo="' + c.tome + '" title="Infos du tome">ⓘ</button>' : '') + '<span class="cs">' + taille(c.size_mb) + '</span>' +
+        (c.tome != null ? '<button class="tog tinfo' + (c.titres_ch ? ' vert' : '') + '" data-tinfo="' + c.tome + '" title="Infos du tome">ⓘ</button>' : '') + '<span class="cs">' + taille(c.size_mb) + '</span>' +
         '<button class="tog" data-tog="' + esc(c.key) + '" title="Marquer ' + (c.read ? 'non lu' : 'lu') + '">' + (c.read ? '↺' : '✔') + '</button>' +
         '<button class="tog del" data-del="' + esc(c.key) + '" title="Supprimer ce chapitre">🗑</button></div>';
     }
@@ -415,7 +393,7 @@
         '<button class="tome-titre" data-tome="' + esc(g.nom) + '" aria-expanded="' + ouvert + '">' +
         '<span class="fleche">▸</span><span class="tn">📚 ' + esc(g.nom) + (cur ? ' <small>· en cours</small>' : '') +
         (g.titre ? '<small class="tome-nom">« ' + esc(g.titre) + ' »</small>' : '') + '</span>' +
-        (/^Tome \d+/.test(g.nom) ? '<span class="tog tinfo" role="button" data-tinfo="' + parseInt(g.nom.slice(5), 10) + '" title="Infos du tome">ⓘ</span>' : '') +
+        (/^Tome \d+/.test(g.nom) ? '<span class="tog tinfo' + (g.chapitres.some(function (c) { return c.titres_ch; }) ? ' vert' : '') + '" role="button" data-tinfo="' + parseInt(g.nom.slice(5), 10) + '" title="Infos du tome">ⓘ</span>' : '') +
         '<span class="tc">' + g.chapitres.length + ' ch. · ' + (lus === g.chapitres.length ? 'lu ✔' : lus + ' lu' + (lus > 1 ? 's' : '')) + '</span></button>' +
         '<div class="tome-chaps">' + g.chapitres.map(ligne).join('') + '</div></div>';
     }).join('');
@@ -591,6 +569,7 @@
       $('infosCorps').innerHTML = (lignes.length ? '<dl>' + lignes.map(function (l) { return '<dt>' + l[0] + '</dt><dd>' + esc(l[1]) + '</dd>'; }).join('') + '</dl>'
         : '<div class="dem-sous">Aucune info trouvée.</div>') + (f.wikipedia ? '<a class="infos-lien" href="https://fr.wikipedia.org/wiki/' + encodeURIComponent(f.wikipedia) + '" target="_blank" rel="noopener">Wikipédia ↗</a>' : '');
     });
+    $('sTitle').addEventListener('click', function () { this.classList.toggle('deplie'); });         // titre complet au toucher
     $('infosFermer').addEventListener('click', function () { $('infosVue').hidden = true; });
     // ⓘ d'un tome : titre, sortie en France, couverture, résumé, chapitres (Wikipédia)
     $('chapters').addEventListener('click', async function (e) {
@@ -599,11 +578,24 @@
       var n = b.dataset.tinfo;
       $('infosTitre').textContent = 'ℹ️ Tome ' + String(n).padStart(2, '0'); $('infosCorps').innerHTML = '<div class="dem-sous">…</div>'; $('infosVue').hidden = false;
       var d = await api('/api/tome?id=' + encodeURIComponent(current.id) + '&tome=' + n);
-      var l = [['Titre', d.titre], ['Sortie en France', d.sortie], ['En couverture', d.couverture], ['Résumé', d.resume]].filter(function (x) { return x[1]; });
-      $('infosCorps').innerHTML = (l.length ? '<dl>' + l.map(function (x) { return '<dt>' + x[0] + '</dt><dd>' + esc(x[1]) + '</dd>'; }).join('') + '</dl>' : '<div class="dem-sous">Pas d\'infos sur ce tome (Wikipédia n\'en donne pas).</div>') +
-        ((d.chapitres || []).length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') + '</div><ol class="tchap">' + d.chapitres.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') + '</ol>' : '');
+      var cov = '/api/tome/couverture?id=' + encodeURIComponent(current.id) + '&tome=' + n;
+      var champs = [['Titre', d.titre], ['Sortie en France', d.sortie]].filter(function (x) { return x[1]; });
+      var chap = d.chapitres || [];
+      $('infosCorps').innerHTML = '<div class="tome-fiche"><img class="tome-couv" src="' + cov + '" alt="" data-grand="' + cov + '&grand=1">' +
+        '<div class="tome-champs">' + (champs.length ? champs.map(function (x) { return '<div class="champ"><small>' + x[0] + '</small><div>' + esc(x[1]) + '</div></div>'; }).join('')
+          : (chap.length ? '' : '<div class="dem-sous">Pas d\'infos sur ce tome.</div>')) + '</div></div>' +
+        (chap.length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') + '</ol>' : '');
+      var im = $('infosCorps').querySelector('.tome-couv');
+      if (im) im.addEventListener('error', function () { im.style.display = 'none'; });
     }, true);
     $('infosVue').addEventListener('click', function (e) { if (e.target === $('infosVue')) $('infosVue').hidden = true; });
+    $('infosCorps').addEventListener('click', function (e) {              // toucher la couverture du tome = grand format
+      var im = e.target.closest('.tome-couv'); if (!im) return;
+      var o = document.createElement('div'); o.className = 'couv-grand';
+      o.innerHTML = '<img src="' + im.dataset.grand + '" alt="">';
+      o.addEventListener('click', function () { o.remove(); });
+      document.body.appendChild(o);
+    });
     $('sSurveiller').addEventListener('click', async function () {
       fermerMenus();
       var r = await post('/api/suivies', {action: 'surveiller', nom: current.id, actif: !(current.suivi && current.suivi.surveiller)});

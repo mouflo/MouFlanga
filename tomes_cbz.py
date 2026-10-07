@@ -89,7 +89,7 @@ def chapitres(path: Path) -> list[dict]:
         if out and out[-1]["num"] == n:
             out[-1]["nb"] += 1
         else:
-            out.append({"num": n, "titre": titres.get(n, ""), "debut": i, "nb": 1})
+            out.append({"num": n, "titre": re.sub(r"(?<=\w)''(?=\w)", "'", titres.get(n, "")), "debut": i, "nb": 1})
     return out
 
 
