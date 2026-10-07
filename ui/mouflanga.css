@@ -107,3 +107,24 @@ body.mou-skin .tome-titre, body.mou-skin .tome-titre:hover { background:none; co
 .resume-texte[hidden], #sPitchEdit[hidden], .resume-modif[hidden] { display:none; }
 .resume-zone { width:100%; box-sizing:border-box; font:inherit; font-size:16px; line-height:1.5; resize:vertical; min-height:160px; }
 .resume-actions { margin-top:8px; flex-wrap:wrap; }
+
+/* Page série : tout aligné sur la colonne d'infos */
+#sTitle { font-size:1.3rem; line-height:1.25; margin:0 0 6px; overflow-wrap:anywhere; }
+.series-info .meta, .series-info .etat-ligne, .series-info .missing-line { margin:0 0 8px; font-size:.85rem; line-height:1.4; }
+.series-info .actions { align-items:stretch; margin-top:4px; }
+#sResume { white-space:nowrap; flex:1; }
+.more-box { display:flex; }
+#sMore { min-width:48px; }
+a.missing-line { display:block; text-decoration:none; }
+a.missing-line:hover { text-decoration:underline; }
+.resume { margin-top:18px; }
+.resume-titre { flex-wrap:nowrap; justify-content:space-between; margin-bottom:6px; }
+.resume-modif { margin-left:0; padding:6px 12px; font-size:.9rem; }
+.resume-aide { margin-top:8px; font-size:.82rem; color:var(--muted); }
+.resume-aide a { color:var(--accent, #52b54b); }
+/* Bibliothèque : index des lettres */
+.lettres { display:flex; flex-wrap:wrap; gap:4px; margin:-4px 0 12px; }
+.lettres[hidden] { display:none; }
+.lettres button { min-width:34px; padding:6px 8px; border:0; border-radius:6px; background:var(--field, #2a2a2a); color:var(--text, #eee); font:inherit; font-weight:600; cursor:pointer; }
+body.mou-skin .lettres button { padding:6px 8px; font-weight:600; background:var(--field, #2a2a2a); color:var(--text, #eee); }
+body.mou-skin .lettres button.actif, .lettres button.actif { background:var(--accent, #52b54b); color:#fff; }

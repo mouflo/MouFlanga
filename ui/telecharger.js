@@ -54,6 +54,7 @@ async function loadMangas(forcer) {
 
         state.mangas = data.mangas;
         renderMangas();
+        ouvrirDepuisLien();
         const note = $("liste-note");
         const cat = data.catalogue;
         if (note) note.textContent = `${data.mangas.length} séries : dernières sorties${data.cache_minutes ? ` (il y a ${data.cache_minutes} min)` : ""}, tes recherches`
@@ -94,6 +95,20 @@ async function rechercherJapscan() {
     } catch (e) {
         list.innerHTML = `<div class="loading" style="color: #ff6b6b;">Erreur : ${echapper(e.message)}</div>`;
     }
+}
+
+// Arrivée depuis la bibliothèque (« ⚠ Manquants ») : /telecharger?q=<série> ouvre directement la série
+let lienTraite = false;
+function ouvrirDepuisLien() {
+    const q = new URLSearchParams(location.search).get("q");
+    if (!q || lienTraite) return;
+    lienTraite = true;
+    const cle = t => sansAccents(t).replace(/[^a-z0-9]/g, "");
+    const exact = state.mangas.filter(m => cle(m.title) === cle(q));
+    $("manga-search").value = q; boutonRecherche();
+    if (exact.length === 1) { renderMangas(); selectedManga = exact[0]; loadChapters(); return; }
+    if (state.mangas.some(m => sansAccents(m.title).includes(sansAccents(q)))) renderMangas();
+    else rechercherJapscan();
 }
 
 function ligneSerie(m) {

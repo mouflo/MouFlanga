@@ -26,8 +26,9 @@
   var series = [], current = null, suiviRangement = null, tomesOuverts = {};
 
   function sorted(list) {
-    var q = $('search').value.trim().toLowerCase(), how = $('sort').value;
-    list = list.filter(function (s) { return !q || s.title.toLowerCase().indexOf(q) >= 0; });
+    var q = sansAccents($('search').value.trim()), how = $('sort').value;
+    list = list.filter(function (s) { return !q || sansAccents(s.title).indexOf(q) >= 0; });
+    if (lettre && !q) list = list.filter(function (s) { return lettreDe(s.title) === lettre; });
     var by = {
       title: function (a, b) { return a.title.localeCompare(b.title, 'fr', {numeric: true}); },
       recent: function (a, b) { return (b.last_read || '').localeCompare(a.last_read || '') || by.title(a, b); },
@@ -37,7 +38,22 @@
     return list.sort(by[how] || by.title);
   }
 
+  // Recherche sans accents ni majuscules, et index des lettres (comme la page Télécharger)
+  function sansAccents(t) { return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+  function lettreDe(t) { var c = sansAccents(t).charAt(0).toUpperCase(); return /[A-Z]/.test(c) ? c : '#'; }
+  var lettre = '';
+  function drawLettres() {
+    var q = $('search').value.trim(), toutes = [];
+    series.forEach(function (s) { var l = lettreDe(s.title); if (toutes.indexOf(l) < 0) toutes.push(l); });
+    toutes.sort(function (a, b) { return a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b); });
+    if (lettre && toutes.indexOf(lettre) < 0) lettre = '';
+    $('lettres').hidden = !!q || series.length < 12;
+    $('lettres').innerHTML = '<button type="button" data-lettre=""' + (lettre ? '' : ' class="actif"') + '>Toutes</button>' +
+      toutes.map(function (l) { return '<button type="button" data-lettre="' + l + '"' + (l === lettre ? ' class="actif"' : '') + '>' + l + '</button>'; }).join('');
+  }
+
   function drawGrid() {
+    drawLettres();
     var list = sorted(series.slice());
     if (!series.length) { $('grid').innerHTML = ''; return; }
     if (!list.length) { $('grid').innerHTML = '<div class="empty">Aucune série ne correspond à « ' + esc($('search').value) + ' ».</div>'; return; }
@@ -97,18 +113,21 @@
     // Chapitres manquants : une ligne discrète, seulement s'il en manque
     var nbLus = s.chapters.filter(function (c) { return c.read; }).length;
     $('sMeta').textContent = (s.compte || '') + ' · ' + nbLus + ' lu' + (nbLus > 1 ? 's' : '');
-    $('sPitchTexte').textContent = s.resume || 'Aucun résumé trouvé sur Internet. Appuie sur « ✏️ Modifier » pour en écrire un.';
+    $('sPitchTexte').textContent = s.resume || 'Aucun synopsis trouvé sur Internet. Appuie sur ✏️ pour en écrire un.';
     $('sPitchTexte').classList.toggle('vide', !s.resume);
-    $('sPitchLangue').textContent = s.resume_langue === 'en' ? ' (en anglais, aucun résumé français trouvé)' : s.resume_langue === 'perso' ? ' (écrit à la main)' : '';
+    $('sPitchNautiljon').href = 'https://www.nautiljon.com/search.php?q=' + encodeURIComponent(s.title);
     $('sPitch').classList.remove('ouvert');
     $('sPitchEdit').hidden = true; $('sPitchTexte').hidden = false; $('sPitchModif').hidden = false;
     $('sPitchAuto').hidden = s.resume_langue !== 'perso';
     $('sPitchZone').value = s.resume || '';
     $('sEtat').hidden = !s.etat_texte;
     $('sEtat').className = 'etat-ligne ' + (s.etat || '');
-    $('sEtat').textContent = s.etat_texte ? s.etat_texte + (s.etat_source ? ' (d\'après AniList : ' + s.etat_source + ')' : '') : '';
+    $('sEtat').textContent = s.etat_texte || '';
     $('sMissingLine').hidden = !(s.manquants && s.manquants.length);
-    if (s.manquants && s.manquants.length) $('sMissingLine').textContent = '⚠ ' + (s.type_manquants === 'tomes' ? 'Tomes manquants' : 'Manquants') + ' : ' + s.manquants.join(', ');
+    if (s.manquants && s.manquants.length) {
+      $('sMissingLine').textContent = '⚠ ' + (s.type_manquants === 'tomes' ? 'Tomes manquants' : 'Manquants') + ' : ' + s.manquants.join(', ') + ' ›';
+      $('sMissingLine').href = '/telecharger?q=' + encodeURIComponent(s.title);   // la page Télécharger ouvre la série sur Japscan
+    }
     fermerMenus();
     // Série ajoutée à la main : proposition de rangement (nom propre, un dossier par tome)
     var o = s.organiser;
@@ -194,8 +213,12 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     $('search').addEventListener('input', drawGrid);
-    $('sort').value = pref('mfSort', 'recent');
-    $('sort').addEventListener('change', function () { setPref('mfSort', $('sort').value); drawGrid(); });
+    $('sort').value = pref('mfTri', 'title');
+    $('sort').addEventListener('change', function () { setPref('mfTri', $('sort').value); drawGrid(); });
+    $('lettres').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-lettre]'); if (!b) return;
+      lettre = b.dataset.lettre; drawGrid();
+    });
     $('grid').addEventListener('click', function (e) { var c = e.target.closest('.card'); if (c) openSeries(c.dataset.id); });
     $('grid').addEventListener('keydown', function (e) { if (e.key === 'Enter') { var c = e.target.closest('.card'); if (c) openSeries(c.dataset.id); } });
     $('backList').addEventListener('click', function (e) { e.preventDefault(); history.pushState({}, '', location.pathname); showList(); });
@@ -279,7 +302,7 @@
     $('sPitchAnnuler').addEventListener('click', function () { editionResume(false); });
     $('sPitchOk').addEventListener('click', function () { enregistrerResume($('sPitchZone').value); });
     $('sPitchAuto').addEventListener('click', function () {
-      if (confirm('Effacer ton résumé et reprendre celui trouvé sur Internet ?')) enregistrerResume('');
+      if (confirm('Effacer ton synopsis et reprendre celui trouvé sur Internet ?')) enregistrerResume('');
     });
     $('sTomes').addEventListener('click', async function () {
       if (!confirm('Ranger « ' + current.title + ' » en tomes ?\n\nL\'appli cherche sur Internet (Wikipédia, MangaDex) quels chapitres vont dans quel tome, puis regroupe les chapitres : un fichier par tome, les chapitres pas encore sortis en tome dans « Hors tome ». Ta progression de lecture est gardée ; les anciens fichiers vont dans la corbeille.')) return;
