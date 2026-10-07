@@ -103,7 +103,9 @@ def init_app(app, base_dir, version_fn, series_fn, couverture_fn, enregistrer_fn
         fin = os.getenv("MOUFLANGA_CLE_API_FIN", "").strip()
         return jsonify({"configured": configuree(), "hint": ("…" + fin) if fin and configuree() else "",
                         "moufloster": os.getenv("MOUFLOSTER_URL", "").strip(),
-                        "moufloster_externe": os.getenv("MOUFLOSTER_URL_EXTERNE", "").strip()})
+                        "moufloster_externe": os.getenv("MOUFLOSTER_URL_EXTERNE", "").strip(),
+                        "mouflopening": os.getenv("MOUFLOPENING_URL", "").strip(),
+                        "mouflopening_externe": os.getenv("MOUFLOPENING_URL_EXTERNE", "").strip()})
 
     @app.route("/api/settings/cle-api", methods=["POST"])
     def cle_api_action():
@@ -125,12 +127,14 @@ def init_app(app, base_dir, version_fn, series_fn, couverture_fn, enregistrer_fn
         return jsonify({"ok": False, "error": "Action inconnue"}), 400
 
     @app.route("/api/settings/moufloster", methods=["POST"])
+    @app.route("/api/settings/mouflopening", methods=["POST"], endpoint="mouflopening_adresse")
     def moufloster_adresse():
         # Deux adresses : celle du réseau local (rapide) et l'adresse perso (proxy, depuis l'extérieur).
         # La page choisit selon la façon dont on est connecté à MouFlanga.
         body = request.get_json(silent=True) or {}
-        adresses = {"MOUFLOSTER_URL": str(body.get("url", "")).strip().rstrip("/"),
-                    "MOUFLOSTER_URL_EXTERNE": str(body.get("url_externe", "")).strip().rstrip("/")}
+        appli = "MOUFLOPENING" if request.path.endswith("mouflopening") else "MOUFLOSTER"
+        adresses = {f"{appli}_URL": str(body.get("url", "")).strip().rstrip("/"),
+                    f"{appli}_URL_EXTERNE": str(body.get("url_externe", "")).strip().rstrip("/")}
         for url in adresses.values():
             if url and (not url.startswith(("http://", "https://")) or set('"$`\\ \n\r') & set(url)):
                 return jsonify({"ok": False, "error": f"Adresse invalide : « {url} » (elle commence par http:// ou https://)"}), 400
@@ -138,5 +142,5 @@ def init_app(app, base_dir, version_fn, series_fn, couverture_fn, enregistrer_fn
             write_secret(fichier_secrets, nom, url)
             os.environ[nom] = url
         if not any(adresses.values()):
-            return jsonify({"ok": True, "message": "Adresses effacées : le bouton MouFloster est caché."})
+            return jsonify({"ok": True, "message": "Adresses effacées : le lien vers " + ("MouFlopening" if appli == "MOUFLOPENING" else "MouFloster") + " est caché."})
         return jsonify({"ok": True, "message": "Adresses enregistrées."})

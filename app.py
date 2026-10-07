@@ -431,6 +431,18 @@ def _manquants(titres, nums=None):
     return plages, min(nums), max(nums)
 
 
+def _infos_anime(name):
+    """Anime correspondant (pour le lien vers MouFlopening et le bouton 🎵) ; rien si aucun anime n'est trouvé."""
+    if name == "(Sans série)":
+        return {}
+    d = _anime_de(name)
+    if not d:
+        return {}
+    return {"anime": {"dossier": str(d), "nom": d.name, "generique": _theme_de(d) is not None},
+            "mouflopening": os.getenv("MOUFLOPENING_URL", "").strip(),
+            "mouflopening_externe": os.getenv("MOUFLOPENING_URL_EXTERNE", "").strip()}
+
+
 @app.route("/api/series")
 def api_series():
     name = request.args.get("id", "")
@@ -465,7 +477,8 @@ def api_series():
                     "cover_perso": name != "(Sans série)" and (MANGA_DIR / name / COUVERTURE_PERSO).is_file(),
                     "cover_v": int(_couverture_mtime(name)),
                     "moufloster": os.getenv("MOUFLOSTER_URL", "").strip(),
-                    "moufloster_externe": os.getenv("MOUFLOSTER_URL_EXTERNE", "").strip()})
+                    "moufloster_externe": os.getenv("MOUFLOSTER_URL_EXTERNE", "").strip(),
+                    **_infos_anime(name)})
 
 
 @app.route("/api/cover")
@@ -1339,6 +1352,73 @@ def api_renommer():
                         + (f" {doublons} fichier(s) en double mis à la corbeille." if doublons else "")})
     logger.info("Série renommée : « %s » → « %s »", name, nouveau)
     return jsonify({"ok": True, "id": nouveau, "message": "Série renommée."})
+
+
+# ---------------- Générique de l'anime (MouFlopening) ----------------
+_ANIMES = {"date": 0.0, "dossiers": []}
+_EXTS_THEME = (".mp3", ".flac", ".ogg", ".opus", ".m4a", ".wav", ".aac")
+
+
+def _dossier_animes():
+    """Dossier des animes d'Emby : réglage MOUFLOPENING_ANIMES, sinon celui de MouFlopening (même serveur)."""
+    d = os.getenv("MOUFLOPENING_ANIMES", "").strip()
+    if not d:
+        try:
+            d = (json.loads(Path("/opt/mouflopening/config.json").read_text(encoding="utf-8")).get("library") or {}).get("paths", [""])[0]
+        except (OSError, ValueError, IndexError, AttributeError):
+            d = ""
+    return Path(d) if d else None
+
+
+def _cle_titre(t):
+    """« DAN DA DAN (2024) » et « Dandadan » donnent la même clé : sans année, accents, espaces ni ponctuation."""
+    import unicodedata
+    t = re.sub(r"\(\d{4}\)|\[[^\]]*\]", "", t or "")
+    t = "".join(c for c in unicodedata.normalize("NFD", t) if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]", "", t.lower())
+
+
+def _anime_de(name):
+    """Dossier de l'anime qui correspond à la série (même titre, ou titre officiel AniList), ou None."""
+    racine = _dossier_animes()
+    if not racine:
+        return None
+    if time.time() - _ANIMES["date"] > 600:
+        try:
+            _ANIMES["dossiers"] = [d for d in racine.iterdir() if d.is_dir() and not d.name.startswith((".", "@"))]
+        except OSError:
+            _ANIMES["dossiers"] = []
+        _ANIMES["date"] = time.time()
+    st = (tomes._charger(name) or {}).get("statut_officiel") or {}
+    cles = {k for k in (_cle_titre(name), _cle_titre(st.get("titre") or "")) if len(k) >= 3}
+    exacts = [d for d in _ANIMES["dossiers"] if _cle_titre(d.name) in cles]
+    return min(exacts, key=lambda d: len(d.name)) if exacts else None
+
+
+def _theme_de(dossier):
+    """Fichier du générique d'un dossier d'anime (theme.mp3… ou 1er fichier de theme-music/)."""
+    if not dossier:
+        return None
+    for ext in _EXTS_THEME:
+        if (dossier / f"theme{ext}").is_file():
+            return dossier / f"theme{ext}"
+    try:
+        sons = sorted(f for f in (dossier / "theme-music").iterdir() if f.suffix.lower() in _EXTS_THEME)
+        return sons[0] if sons else None
+    except OSError:
+        return None
+
+
+@app.route("/api/generique")
+def api_generique():
+    """Écouter le générique de l'anime de la série (fichier rangé par MouFlopening dans la médiathèque Emby)."""
+    name = request.args.get("id", "")
+    if name not in _scan():
+        return jsonify({"error": "Série introuvable"}), 404
+    f = _theme_de(_anime_de(name))
+    if not f:
+        return jsonify({"error": "Pas de générique"}), 404
+    return send_file(f, conditional=True, max_age=3600)
 
 
 @app.route("/api/resume", methods=["POST"])

@@ -630,6 +630,26 @@ class RenommerEtOrdreTest(BibliothequeTest):
         self.assertEqual((s["current"], [c["read"] for c in s["chapters"]][:2]), ("#3", [True, True]))
         self.assertEqual(self.client.post("/api/renommer", json={"series": "Nouvelle Série", "nom": "Nouvelle Série"}).status_code, 400)
 
+    def test_generique_de_l_anime(self):
+        """« Serie » a un anime « SERIE (2020) » avec theme.mp3 : lien MouFlopening et générique à écouter."""
+        animes = self.root.parent / "animes"
+        (animes / "SERIE (2020)").mkdir(parents=True)
+        (animes / "SERIE (2020)" / "theme.mp3").write_bytes(b"ID3son")
+        (animes / "Autre chose").mkdir()
+        os.environ["MOUFLOPENING_ANIMES"] = str(animes)
+        self.A._ANIMES["date"] = 0
+        try:
+            self.assertEqual(self.A._cle_titre("DAN DA DAN (2024)"), self.A._cle_titre("Dandadan"))
+            s = self.client.get("/api/series?id=Serie").json
+            self.assertEqual((s["anime"]["nom"], s["anime"]["generique"]), ("SERIE (2020)", True))
+            r = self.client.get("/api/generique?id=Serie")
+            self.assertEqual((r.status_code, r.data), (200, b"ID3son"))
+            r.close()
+            self.assertEqual(self.client.get("/api/generique?id=Inconnue").status_code, 404)
+        finally:
+            os.environ.pop("MOUFLOPENING_ANIMES", None)
+            self.A._ANIMES["date"] = 0
+
     def test_resume_modifie_a_la_main(self):
         r = self.client.post("/api/resume", json={"series": "Serie", "texte": "  Mon résumé.  "})
         self.assertTrue(r.json["ok"])

@@ -125,6 +125,12 @@
     });
   }).observe(document.querySelector('.series-info'));
 
+  var lecteurGenerique = null;
+  function arreterGenerique() {
+    if (lecteurGenerique) { lecteurGenerique.pause(); lecteurGenerique = null; }
+    $('sEcouter').textContent = '🎵'; $('sEcouter').classList.remove('joue');
+  }
+
   function drawSeries() {
     var s = current, read = s.chapters.filter(function (c) { return c.read; }).length;
     $('sTitle').textContent = s.title;
@@ -155,6 +161,13 @@
       $('sMissingLine').textContent = '⚠ ' + (s.type_manquants === 'tomes' ? 'Tomes manquants' : 'Manquants') + ' : ' + s.manquants.join(', ') + ' ›';
       $('sMissingLine').href = '/telecharger?q=' + encodeURIComponent(s.title);   // la page Télécharger ouvre la série sur Japscan
     }
+    // Version animée dans Emby : lien discret vers MouFlopening (menu « ⋯ ») et bouton 🎵 pour écouter le générique
+    var mfo = adresseMoufloster({moufloster: s.mouflopening, moufloster_externe: s.mouflopening_externe});
+    $('sGenerique').hidden = !(s.anime && mfo);
+    if (s.anime && mfo) $('sGenerique').href = mfo.replace(/\/$/, '') + '/?dossier=' + encodeURIComponent(s.anime.dossier) +
+      '&de=MouFlanga&retour=' + encodeURIComponent(location.origin + location.pathname + '#' + encodeURIComponent(s.id));
+    $('sEcouter').hidden = !(s.anime && s.anime.generique);
+    if (lecteurGenerique && lecteurGenerique.serie !== s.id) arreterGenerique();   // une autre série : on coupe
     fermerMenus();
     ajusterCouverture();
     // Série ajoutée à la main : proposition de rangement (nom propre, un dossier par tome)
@@ -327,6 +340,14 @@
       note('sMsg', r.message, 'ok');
     }
     $('sPitchModif').addEventListener('click', function () { editionResume(true); });
+    $('sEcouter').addEventListener('click', function () {
+      if (lecteurGenerique) { arreterGenerique(); return; }
+      lecteurGenerique = new Audio('/api/generique?id=' + encodeURIComponent(current.id));
+      lecteurGenerique.serie = current.id;
+      lecteurGenerique.addEventListener('ended', arreterGenerique);
+      lecteurGenerique.play().catch(function () { arreterGenerique(); note('sMsg', 'Lecture du générique impossible.'); });
+      $('sEcouter').textContent = '⏸'; $('sEcouter').classList.add('joue');
+    });
     $('sPitchAnnuler').addEventListener('click', function () { editionResume(false); });
     $('sPitchOk').addEventListener('click', function () { enregistrerResume($('sPitchZone').value); });
     $('sPitchAuto').addEventListener('click', function () {
@@ -374,7 +395,7 @@
 
   function fermerMenus() { $('menuCover').hidden = true; $('menuMore').hidden = true; }
 
-  function showList() { $('seriesView').style.display = 'none'; $('listView').style.display = ''; loadList(); }
+  function showList() { arreterGenerique(); $('seriesView').style.display = 'none'; $('listView').style.display = ''; loadList(); }
   function route() {
     var h = decodeURIComponent((location.hash || '').slice(1));
     if (h) openSeries(h, false); else showList();

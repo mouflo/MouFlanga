@@ -17,6 +17,7 @@ Appli Flask (bibliothèque et lecteur de mangas) + scraper Japscan. Dossier `/op
 - Couverture : `cover.jpg` dans le dossier de la série (prioritaire), choisie par `/api/cover/choisir`, retirée par `/api/cover/automatique`. Chapitres manquants : trous dans les numéros lus dans les noms de fichiers (`_numero_chapitre`).
 - Séries Japscan : la liste du site pointe vers le dernier chapitre (« Dandadan 247 ») → `titre_serie()` retire ce numéro ; `_dossier_serie()` renomme l'ancien dossier « Titre N ». Page Télécharger : `deja` = chapitre déjà présent (même nom de fichier après « NNN - »).
 
+- Générique de l'anime : `_anime_de()` cherche dans le dossier des animes (`MOUFLOPENING_ANIMES`, sinon `library.paths` de `/opt/mouflopening/config.json`) un dossier au même titre (`_cle_titre` : sans année, accents ni ponctuation ; ou titre AniList). Bouton 🎵 (`/api/generique`) et « 🎵 Choisir le générique » (menu ⋯) → `<mouflopening>/?dossier=…&de=MouFlanga&retour=…` (adresses `MOUFLOPENING_URL` / `_EXTERNE`, Réglages).
 - Accès des autres applis (`api_externe.py`) : `/api/externe/series`, `/api/externe/couverture` (GET/POST), en-tête `X-Cle-API` ; clé générée dans ⚙️ Réglages (`MOUFLANGA_CLE_API_SHA256` + 4 derniers caractères) ; ces routes passent hors de l'écran de connexion (`auth.py`). Bouton « Créer avec MouFloster » : `MOUFLOSTER_URL` → `<moufloster>/?mouflanga=<série>&q=…&retour=…`.
 
 ## Liste Japscan

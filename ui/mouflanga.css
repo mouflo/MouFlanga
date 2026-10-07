@@ -138,3 +138,9 @@ body.mou-skin .lettres button.actif, .lettres button.actif { background:var(--ac
 #sResume { min-width:0; padding:8px 6px; font-size:.9rem; white-space:normal; line-height:1.25; }
 #sMore { min-width:38px; padding:8px 8px; }
 @media (max-width:800px) { #sTitle { font-size:1.1rem; } }
+
+/* Générique de l'anime : petit bouton 🎵 à côté du ✏️ du synopsis */
+.resume-titre .resume-nom { margin-right:auto; font-weight:700; color:inherit; font-size:inherit; }
+.resume-titre .resume-modif + .resume-modif { margin-left:6px; }
+#sEcouter[hidden] { display:none; }
+body.mou-skin #sEcouter.joue { background:var(--accent, #52b54b); color:#fff; }
