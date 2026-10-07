@@ -346,6 +346,20 @@ def _resume(m, serie=""):
     return _texte_propre(m.get("description") or ""), ("en" if m.get("description") else "")
 
 
+def page_correspond(page: str, noms) -> bool:
+    """La page Wikipédia est-elle bien celle de la série ? Tous les mots d'un des noms doivent figurer dans son titre
+    (« Arago » → « Arago (manga) » oui ; « Akame ga Kill! Zero » → « Red Eyes Sword: Akame ga Kill! » non : c'est la
+    série principale). Les parties d'un nom « Série : Suite » comptent, sauf celle qui est une autre série de la bibliothèque."""
+    mots_page = set(_simple(page).split())
+    autres = {_simple(x) for x in SERIES_EXISTANTES()}
+    candidats = []
+    for n in [x for x in noms if x]:
+        candidats.append(n)
+        if " : " in n:
+            candidats += [x for x in n.split(" : ") if _simple(x) and _simple(x) not in autres]
+    return any(_simple(c).split() and set(_simple(c).split()) <= mots_page for c in candidats)
+
+
 def _wikipedia_fr(m, serie=""):
     """Introduction de l'article Wikipédia en français sur la série (si c'est bien un article de manga). Le nom du dossier
     (souvent le titre français : « Arago ») passe avant les titres d'AniList (« AR∀GO »)."""
@@ -355,7 +369,7 @@ def _wikipedia_fr(m, serie=""):
                 "action": "query", "list": "search", "srsearch": f"{titre} manga", "srlimit": 3,
                 "format": "json", "formatversion": 2}, timeout=15).json()
             for res in r.get("query", {}).get("search", []):
-                if _simple(titre).split()[0] not in _simple(res["title"]):
+                if not page_correspond(res["title"], [titre, serie]):
                     continue
                 d = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={
                     "action": "query", "prop": "extracts", "explaintext": 1, "titles": res["title"],
@@ -451,7 +465,7 @@ def _page_wikipedia(titres) -> str:
             r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "query", "list": "search", "srsearch": f"{titre} manga",
                                                                              "srlimit": 3, "format": "json", "formatversion": 2}, timeout=15).json()
             for res in r.get("query", {}).get("search", []):
-                if _simple(titre).split()[0] in _simple(res["title"]):
+                if page_correspond(res["title"], titres):
                     return res["title"]
         except Exception:
             continue
@@ -487,8 +501,10 @@ def fiche(serie: str, forcer=False) -> dict:
             out.update({k: ", ".join(dict.fromkeys(v)) for k, v in roles.items()})
         except Exception as e:
             logger.info("Fiche AniList de %s : %s", serie, e.__class__.__name__)
+    for k in ("wikipedia", "editeur_jp", "editeur_fr", "magazine"):   # refaits d'après la bonne page (ou vides)
+        out.pop(k, None)
     try:
-        page = _page_wikipedia([serie, st.get("titre"), st.get("titre_en"), serie.split(" : ")[0]])
+        page = _page_wikipedia([serie, st.get("titre"), st.get("titre_en")])
         if page:
             ib = _infobox(page)
             out["wikipedia"] = page
@@ -607,7 +623,7 @@ def titres_tomes(serie: str, forcer=False) -> dict:
             if pages:
                 break
         # Liens de la fiche Wikipédia de la série et des pages « Liste… » qui renvoient vers leurs parties (One Piece : 6 parties)
-        principale = _page_wikipedia([serie, st.get("titre"), st.get("titre_en"), serie.split(" : ")[0]])
+        principale = _page_wikipedia([serie, st.get("titre"), st.get("titre_en")])
         pages = list(dict.fromkeys(pages + _liens_listes([principale] if principale else []) + _liens_listes(pages)))
         for page in pages[:12]:
             r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "parse", "page": page, "prop": "wikitext",
