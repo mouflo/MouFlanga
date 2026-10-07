@@ -1698,6 +1698,7 @@ def _remplacer_auto(nom, titre):
 
 
 torrents._ETAT["remplacer_auto"] = _remplacer_auto
+tomes.SERIES_EXISTANTES = lambda: [n for n in _scan() if n != "(Sans série)"]
 
 
 @app.route("/api/torrents/chercher")

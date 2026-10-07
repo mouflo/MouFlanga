@@ -32,6 +32,9 @@ def _simple(texte: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", texte).strip()
 
 
+SERIES_EXISTANTES = lambda: ()               # noms des séries de la bibliothèque (rempli par app.py)
+
+
 def _variantes(titre: str) -> list[str]:
     """Le nom tel quel, puis quelques écritures courantes (« N°8 » → « No. 8 »)."""
     out = [titre.strip()]
@@ -39,8 +42,9 @@ def _variantes(titre: str) -> list[str]:
     if v not in out:
         out.append(re.sub(r"\s+", " ", v))
     if " : " in titre:                          # « Frieren : Sousou no Frieren » → chaque partie (la plus longue d'abord)
+        autres = {_simple(x) for x in SERIES_EXISTANTES() if x != titre}
         for part in sorted((x.strip() for x in titre.split(" : ")), key=len, reverse=True):
-            if part and part not in out:
+            if part and part not in out and _simple(part) not in autres and (len(part.split()) >= 2 or len(part) >= 6):   # « Frieren » oui, « Zero » tout seul non
                 out.append(part)
     return out
 
@@ -183,10 +187,14 @@ def _wikipedia(noms: list[str]) -> dict | None:
 def _mangadex(noms: list[str]) -> dict | None:
     for nom in noms:
         try:
-            r = _SESSION.get("https://api.mangadex.org/manga", params={"title": nom, "limit": 1}, timeout=15).json()
+            r = _SESSION.get("https://api.mangadex.org/manga", params={"title": nom, "limit": 5}, timeout=15).json()
             if not r.get("data"):
                 continue
-            ident = r["data"][0]["id"]
+            def titres_md(d):                       # titre principal et autres titres de la fiche MangaDex
+                a = d.get("attributes") or {}
+                return [*(a.get("title") or {}).values(), *(v for x in a.get("altTitles") or [] for v in x.values())]
+            # « Akame ga Kill! Zero » : la fiche au titre identique, pas la série principale renvoyée en premier
+            ident = next((d["id"] for d in r["data"] if any(_simple(t) == _simple(nom) for t in titres_md(d))), r["data"][0]["id"])
             ag = _SESSION.get(f"https://api.mangadex.org/manga/{ident}/aggregate", timeout=20).json()
         except Exception as e:
             logger.info("MangaDex injoignable (%s)", e.__class__.__name__)
@@ -248,7 +256,8 @@ def chercher(serie: str, forcer: bool = False) -> dict | None:
     garde = _charger(serie)
     if garde and not forcer and time.time() - garde.get("date", 0) < DUREE:
         return garde if garde.get("tomes") else None
-    noms = _variantes(serie)
+    st = (_charger(serie) or {}).get("statut_officiel") or {}
+    noms = list(dict.fromkeys([x for x in (st.get("titre"), st.get("titre_en")) if x] + _variantes(serie)))   # titre AniList d'abord
     try:
         info = _wikipedia(noms)
         if info is None:
