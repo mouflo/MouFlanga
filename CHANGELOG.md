@@ -8,6 +8,7 @@
 - 🛡️ **Vérification Japscan** : bandeau « Le site attend ta vérification » et pastille ⚠️ sur « Télécharger » sur toutes les pages ; une fois la vérification passée, retour automatique à la page où tu étais (même si tu l'as ouverte depuis l'alerte Telegram : la dernière page vue est retenue).
 - 🛡️ **Captcha Japscan** : la vue de la page Vérification défile toute seule jusqu'au bloc du captcha, bouton « Valider l'ordre » compris.
 - 🔍 **Recherche tolérante** : les lettres doublées sont ignorées (« Belzébub » trouve « Beelzebub »).
+- 🗑 **Suppression d'une série** : elle n'est plus suivie non plus (avant, elle restait affichée en grisé « Recherchée »).
 
 ## 2.0 — Lecteurs, torrents et séries suivies (7 octobre 2026)
 - 👥 **Comptes lecteurs** (⚙️ Réglages → Comptes) : lecture seule, vérifiée par le serveur ; progression séparée pour chacun

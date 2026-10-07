@@ -54,6 +54,16 @@ def ajouter(nom, serie=None, surveiller=True, qualite="Digital"):
     return x
 
 
+def retirer(nom):
+    """Série supprimée de la bibliothèque : on arrête de la suivre (sinon elle reste affichée en grisé)."""
+    with _verrou:
+        d = lire()
+        if d["series"].pop(nom, None) is not None:
+            ecrire(d)
+            return True
+    return False
+
+
 def renommer(ancien, nouveau):
     with _verrou:
         d = lire()

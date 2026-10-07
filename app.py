@@ -871,6 +871,8 @@ def api_delete():
         logger.warning("Suppression impossible dans %s : %s", series, e)
         return jsonify({"ok": False, "error": f"Suppression impossible : {e.strerror or e}"}), 500
     logger.info("Mis à la corbeille : %s (%d fichier(s))", series if body.get("all") else next(iter(retires)), len(retires))
+    if body.get("all") and suivi.retirer(series):
+        logger.info("« %s » n'est plus suivie (série supprimée)", series)
 
     with _progress_lock:
         for _pf in _fichiers_progression():          # admin et chaque lecteur
