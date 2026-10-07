@@ -19,6 +19,11 @@ from pathlib import Path
 import archives
 import tomes_cbz
 
+# Le serveur tourne en langue « C » : bsdtar sauterait alors les fichiers aux noms accentués (« Édition », « L’Attaque »)
+# avec « Pathname cannot be converted from UTF-8 ». Les outils lancés d'ici travaillent donc en UTF-8.
+if "UTF-8" not in (os.environ.get("LC_ALL") or os.environ.get("LC_CTYPE") or os.environ.get("LANG") or "").upper().replace("UTF8", "UTF-8"):
+    os.environ["LC_ALL"] = "C.UTF-8"
+
 logger = logging.getLogger(__name__)
 LOTS = (".rar", ".zip", ".7z")                 # archives « paquet » (les .cbz / .cbr sont des tomes ou chapitres)
 IMAGES = archives.IMAGE_EXT

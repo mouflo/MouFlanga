@@ -979,6 +979,14 @@ def _plan_organiser(name, files):
             "dernier_tome": max(tomes_fichiers) if tomes_fichiers else None}
 
 
+def _nom_serie(texte, defaut="sans-titre"):
+    """Nom de série choisi à la main : comme nom_sur, mais garde « : » (« L'Attaque des Titans : Before the Fall »),
+    que le NAS accepte (partage NFS). Les noms venant de Japscan gardent l'ancienne règle (dossiers déjà créés)."""
+    texte = re.sub(r'[\\/*?"<>|\x00-\x1f]', " ", texte or "")
+    texte = re.sub(r"\s+", " ", texte).strip(" .:")
+    return texte[:120] or defaut
+
+
 def _organiser(name, nouveau):
     """Renomme la série et range ses fichiers : tomes complets dans « Tome NN/<Série> - Tome NN.cbz » (simples
     déplacements), chapitres regroupés en tomes ensuite. La progression de lecture suit. Renvoie le nouveau nom."""
@@ -1091,7 +1099,7 @@ def api_organiser():
     files = _scan().get(name)
     if files is None or name == "(Sans série)":
         return jsonify({"ok": False, "error": "Série introuvable"}), 404
-    nouveau = japscan_scraper.nom_sur(str(body.get("nom", "")).strip())
+    nouveau = _nom_serie(str(body.get("nom", "")).strip())
     if not nouveau or nouveau.startswith(".") or nouveau in (".corbeille", "(Sans série)"):
         return jsonify({"ok": False, "error": "Nom de série invalide"}), 400
     if nouveau != name and nouveau in _scan():
@@ -1230,7 +1238,7 @@ def _travail_file():
                 break
             g = _FILE_IMPORT["attente"].pop(0)
             _FILE_IMPORT["en_cours"] = g["nom"]
-        nom = japscan_scraper.nom_sur(g["nom"])
+        nom = _nom_serie(g["nom"])
         try:
             dossier = MANGA_DIR / nom
             dossier.mkdir(exist_ok=True)
@@ -1267,7 +1275,7 @@ def api_import_racine():
         groupes = (request.get_json(silent=True) or {}).get("groupes") or []
         ajout = []
         for g in groupes:
-            nom = japscan_scraper.nom_sur(str(g.get("nom", "")).strip())
+            nom = _nom_serie(str(g.get("nom", "")).strip())
             arch = [Path(str(a)).name for a in g.get("archives") or [] if (MANGA_DIR / Path(str(a)).name).is_file()]
             if nom and not nom.startswith(".") and arch:
                 ajout.append({"nom": nom, "propose": str(g.get("propose") or nom), "archives": arch})
@@ -1317,7 +1325,7 @@ def api_renommer():
     """« ✏️ Renommer la série » : dossier, fichiers de tome, progression, couverture et infos gardées suivent."""
     body = request.get_json(silent=True) or {}
     name = str(body.get("series", ""))
-    nouveau = japscan_scraper.nom_sur(str(body.get("nom", "")).strip())
+    nouveau = _nom_serie(str(body.get("nom", "")).strip())
     if name not in _scan() or name == "(Sans série)":
         return jsonify({"ok": False, "error": "Série introuvable"}), 404
     if not nouveau or nouveau.startswith(".") or nouveau == name:

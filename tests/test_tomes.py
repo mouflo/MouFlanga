@@ -705,3 +705,10 @@ class MangadexFormesTest(unittest.TestCase):
         r = self._avec([{"volume": "1", "chapters": [{"chapter": "1"}, {"chapter": "2"}]},
                         {"volume": "2", "chapters": {"3": {"chapter": "3"}}}])
         self.assertEqual(r["tomes"], {1.0: 1, 2.0: 1, 3.0: 2})
+
+
+class NomSerieTest(unittest.TestCase):
+    def test_deux_points_gardes(self):
+        import app as A
+        self.assertEqual(A._nom_serie("L'Attaque des Titans : Before the Fall"), "L'Attaque des Titans : Before the Fall")
+        self.assertEqual(A._nom_serie(" a/b*c : "), "a b c")
