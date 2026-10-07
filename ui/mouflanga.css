@@ -234,3 +234,9 @@ body.lecteur #sSurveiller, body.lecteur #sProps { display:none !important; }
 .tog.tinfo { background:none; color:var(--muted); font-size:.95rem; padding:4px 6px; cursor:pointer; }
 body.mou-skin .tog.tinfo { background:none; width:auto; }
 .tchap { margin:4px 0 0; padding-left:0; list-style:none; font-size:.82rem; line-height:1.5; max-height:40vh; overflow:auto; }
+
+/* Index des lettres : grille régulière, alphabet complet (lettres sans série grisées) */
+.lettres { display:grid; grid-template-columns:repeat(auto-fill, minmax(36px, 1fr)); gap:5px; }
+.lettres button.toutes { grid-column:span 2; }
+body.mou-skin .lettres button { min-width:0; padding:7px 0; }
+body.mou-skin .lettres button:disabled { opacity:.3; cursor:default; }

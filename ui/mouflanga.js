@@ -82,8 +82,13 @@
     toutes.sort(function (a, b) { return a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b); });
     if (lettre && toutes.indexOf(lettre) < 0) lettre = '';
     $('lettres').hidden = !!q || series.length < 12;
-    $('lettres').innerHTML = '<button type="button" data-lettre=""' + (lettre ? '' : ' class="actif"') + '>Toutes</button>' +
-      toutes.map(function (l) { return '<button type="button" data-lettre="' + l + '"' + (l === lettre ? ' class="actif"' : '') + '>' + l + '</button>'; }).join('');
+    // Alphabet complet (pour un alignement régulier) ; les lettres sans série sont grisées
+    var alphabet = ['#'].concat('ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''));
+    $('lettres').innerHTML = '<button type="button" class="toutes' + (lettre ? '' : ' actif') + '" data-lettre="">Toutes</button>' +
+      alphabet.map(function (l) {
+        var ok = toutes.indexOf(l) >= 0;
+        return '<button type="button"' + (ok ? ' data-lettre="' + l + '"' : ' disabled') + (l === lettre ? ' class="actif"' : '') + '>' + l + '</button>';
+      }).join('');
   }
 
   function drawGrid() {
@@ -124,7 +129,6 @@
     var r = await api('/api/demandes');
     var n = r.attente || 0;
     $('nbDemandes').hidden = !(r.admin && n); $('nbDemandes').textContent = n;
-    if (r.admin) $('btnDemandes').hidden = !(r.demandes || []).length;
     var l = r.demandes || [];
     $('demListe').innerHTML = l.length ? l.map(function (x) {
       return '<div class="dem-ligne ' + x.statut + '">' + (x.couverture ? '<img src="' + esc(x.couverture) + '" alt="" loading="lazy">' : '<span class="dem-vide"></span>') +
