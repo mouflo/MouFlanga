@@ -17,7 +17,7 @@ import shutil
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -193,13 +193,37 @@ def _maj(jid, **kw):
         _ecrire(d)
 
 
-def lancer(lien: str, titre: str, serie: str, remplacer: bool = False) -> dict:
+def demander_choix(jid, tomes) -> str:
+    """Message d'une tâche « à valider » : les tomes qui existent déjà, et la question posée."""
+    liste = ", ".join(f"{t:02d}" for t in sorted(tomes))
+    return f"Tomes déjà présents : {liste}. À toi de choisir."
+
+
+def decider_torrent(jid, remplacer: bool):
+    _maj(jid, remplacer=remplacer, etat="telechargement",
+         message="Choix enregistré : remplacer les tomes" if remplacer else "Choix enregistré : ajouter les manquants")
+
+
+def rappeler_a_valider(envoyer):
+    """Une tâche en attente de choix est rappelée une fois par jour (Telegram), jusqu'à la décision."""
+    fmt = "%Y-%m-%d %H:%M"
+    maintenant = datetime.now()
+    for j in _lire():
+        if j.get("etat") != "a_valider":
+            continue
+        if maintenant - datetime.strptime(j.get("rappel_le") or j["debut"], fmt) < timedelta(hours=24):
+            continue
+        envoyer(f"🧲 MouFlanga : « {j['serie']} » attend ton choix (remplacer tout ou ajouter les manquants) dans Télécharger.")
+        _maj(j["id"], rappel_le=maintenant.strftime(fmt))
+
+
+def lancer(lien: str, titre: str, serie: str, remplacer: bool | None = None) -> dict:
     r = reglages()
     q = Qbit()
     q.preparer_categorie()
     jid = uuid.uuid4().hex[:10]
     q.appel("torrents/add", urls=lien, category=CATEGORIE, tags=f"mouflanga,mf-{jid}", savepath=r["nok"], autoTMM="false")
-    j = {"id": jid, "titre": titre, "serie": serie, "remplacer": bool(remplacer), "etat": "telechargement", "progression": 0, "debut": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    j = {"id": jid, "titre": titre, "serie": serie, "remplacer": remplacer, "etat": "telechargement", "progression": 0, "debut": datetime.now().strftime("%Y-%m-%d %H:%M"),
          "message": "Envoyé à qBittorrent"}
     with _verrou:
         d = _lire()
@@ -249,6 +273,7 @@ def surveiller(importer_serie, envoyer, manga_dir):
         en_cours = [j for j in _lire() if j["etat"] in ("telechargement", "import")]
         if en_cours:
             traiter(q, en_cours, importer_serie, envoyer, manga_dir)
+        rappeler_a_valider(envoyer)
 
 
 def adopter(q):
@@ -263,7 +288,7 @@ def adopter(q):
         q.appel("torrents/addTags", hashes=t["hash"], tags=f"mouflanga,mf-{jid}")
         with _verrou:
             d = _lire()
-            remplacer = bool(_ETAT.get("remplacer_auto") and _ETAT["remplacer_auto"](nom, t.get("name") or ""))
+            remplacer = True if _ETAT.get("remplacer_auto") and _ETAT["remplacer_auto"](nom, t.get("name") or "") else None
             d.append({"id": jid, "titre": t.get("name") or "?", "serie": nom, "remplacer": remplacer, "etat": "telechargement",
                       "progression": round((t.get("progress") or 0) * 100), "debut": datetime.now().strftime("%Y-%m-%d %H:%M"),
                       "message": "Ajouté à la main dans qBittorrent"})
@@ -286,9 +311,17 @@ def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
                 if t.get("progress", 0) < 1:
                     _maj(j["id"], progression=round(t.get("progress", 0) * 100), message=t.get("state", ""))
                     continue
-                _maj(j["id"], etat="import", progression=100, message="Rangement dans la bibliothèque…")
                 source = chemin_local(t.get("content_path") or str(Path(t["save_path"]) / t["name"]))
-                fin = importer_serie(j["serie"], source, j.get("remplacer", False))
+                if j.get("remplacer") is None and _ETAT.get("doublons"):
+                    deja = _ETAT["doublons"](j["serie"], source)
+                    if deja:
+                        msg = demander_choix(j["id"], deja)
+                        _maj(j["id"], etat="a_valider", progression=100, message=msg)
+                        envoyer(f"🧲 MouFlanga : « {j['serie']} » contient déjà des tomes ({msg}). "
+                                "Choisis dans Télécharger : remplacer tout ou ajouter les manquants.")
+                        continue
+                _maj(j["id"], etat="import", progression=100, message="Rangement dans la bibliothèque…")
+                fin = importer_serie(j["serie"], source, bool(j.get("remplacer")))
                 if reglages()["ok"]:
                     q.appel("torrents/setLocation", hashes=t["hash"], location=reglages()["ok"])
                 _maj(j["id"], etat="fini", message=(fin or "Importé").split("\n")[0][:200])

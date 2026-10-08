@@ -1,5 +1,11 @@
 # Historique des versions
 
+## Choix avant remplacement (8 octobre 2026)
+- ❓ **Tomes déjà présents** : un torrent ou un rangement à la main qui contient des tomes déjà là ne remplace plus rien tout seul. La tâche passe « À valider » dans Télécharger, avec deux boutons : remplacer tous les tomes (confirmation, anciens tomes à la corbeille 30 jours) ou ajouter seulement les manquants.
+- 🔔 Rappel Telegram à l'arrivée d'une tâche à valider, puis une fois par jour tant qu'il n'y a pas de choix.
+- 🗂 Bouton Organiser : les tomes en double sont signalés au lieu d'être laissés en silence.
+- ✖ Case « Remplacer les tomes déjà présents » du formulaire de torrent supprimée (remplacée par ce choix).
+
 ## Retouches du 7 octobre 2026 (soir)
 - ⓘ **Fenêtre d'un tome** : la couverture du tome (première page de son fichier, toucher = grand format) à gauche, titre et sortie en France à droite, titres des chapitres dessous ; plus de résumé (trop long). Les titres français passent avant les titres anglais (« titres en anglais » seulement en dernier recours) ; l'apostrophe doublée (« L''Immortel ») est corrigée.
 - ⓘ **Vert ou gris** : vert quand des titres de chapitres existent pour le tome, gris sinon (la fenêtre s'ouvre quand même, avec la couverture).

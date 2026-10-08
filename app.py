@@ -17,6 +17,7 @@ import socket
 import sys
 import threading
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -1152,8 +1153,9 @@ def _organiser(name, nouveau):
     ancien_dossier, dossier = MANGA_DIR / name, MANGA_DIR / nouveau
     if nouveau != name and dossier.exists() and not dossier.is_dir():
         raise ValueError(f"« {nouveau} » existe déjà et n'est pas un dossier")
-    deplaces, en_double = {}, set()
+    deplaces, en_double, doublons = {}, set(), []
     for f in files:
+        t = None
         if _a_importer(f) or tomes_cbz.lire_info(f) is not None:
             cible = dossier / f.relative_to(ancien_dossier)
         else:
@@ -1167,6 +1169,8 @@ def _organiser(name, nouveau):
         if cible.exists():
             logger.warning("Organiser : %s existe déjà, %s laissé en place", cible, f.name)
             en_double.add(f)
+            if t is not None and not _meme_fichier(f, cible):
+                doublons.append((f, cible, t))
             continue
         cible.parent.mkdir(parents=True, exist_ok=True)
         f.rename(cible)
@@ -1206,8 +1210,69 @@ def _organiser(name, nouveau):
                 data[nouveau] = p
                 _write_json(_pf, data)
     _deplacer_resume(name, nouveau)
+    if doublons:
+        _signaler_doublons(nouveau, doublons)
     logger.info("Série organisée : « %s » → « %s » (%d fichier(s) déplacé(s))", name, nouveau, len(deplaces))
     return nouveau
+
+
+def _meme_fichier(a, b):
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def _signaler_doublons(serie, paires):
+    """Tomes rangés à la main alors qu'un tome identique existe déjà : une tâche « à valider » dans Télécharger."""
+    maintenant = datetime.now().strftime("%Y-%m-%d %H:%M")
+    with torrents._verrou:
+        d = [j for j in torrents._lire() if not (j.get("manuel") and j.get("serie") == serie and j.get("etat") == "a_valider")]
+        anciennes = [p for j in torrents._lire() if j.get("manuel") and j.get("serie") == serie and j.get("etat") == "a_valider"
+                     for p in j.get("paires", [])]
+        vus = {tuple(p[:2]) for p in anciennes}
+        paires_tout = anciennes + [[_rel(f), _rel(c), t] for f, c, t in paires if (_rel(f), _rel(c)) not in vus]
+        tomes = {p[2] for p in paires_tout}
+        d.append({"id": uuid.uuid4().hex[:10], "titre": "Rangé à la main", "serie": serie, "remplacer": None, "etat": "a_valider",
+                  "manuel": True, "paires": paires_tout, "progression": 100, "debut": maintenant, "rappel_le": maintenant,
+                  "message": torrents.demander_choix(None, tomes)})
+        torrents._ecrire(d)
+    import notifier
+    notifier.envoyer(f"📚 MouFlanga : « {serie} » contient déjà des tomes. Choisis dans Télécharger : remplacer tout ou ajouter les manquants.")
+
+
+def _appliquer_rangement(j, remplacer):
+    """Décision sur un rangement à la main : remplacer met les anciens tomes à la corbeille puis place les nouveaux."""
+    if not remplacer:
+        return "Tomes déjà présents conservés : les doublons restent dans le dossier."
+    n = 0
+    for src, cible, t in j["paires"]:
+        s, c = MANGA_DIR / src, MANGA_DIR / cible
+        if not s.is_file():
+            continue
+        n += _remplacer_tomes(j["serie"], {t})
+        c.parent.mkdir(parents=True, exist_ok=True)
+        s.rename(c)
+    return f"{n} tome(s) remplacé(s) ; les anciens sont dans la corbeille (30 jours)."
+
+
+@app.route("/api/torrents/decider", methods=["POST"])
+def api_torrents_decider():
+    body = request.get_json(silent=True) or {}
+    jid, remplacer = str(body.get("id", "")), bool(body.get("remplacer"))
+    j = next((x for x in torrents._lire() if x.get("id") == jid and x.get("etat") == "a_valider"), None)
+    if j is None:
+        return jsonify({"ok": False, "error": "Rien à valider ici (déjà traité ?)."}), 404
+    if not j.get("manuel"):
+        torrents.decider_torrent(jid, remplacer)
+        return jsonify({"ok": True, "message": "Choix enregistré : l'import reprend."})
+    try:
+        fin = _appliquer_rangement(j, remplacer)
+    except OSError as e:
+        logger.warning("Choix sur « %s » impossible : %s", j["serie"], e)
+        return jsonify({"ok": False, "error": f"Impossible d'appliquer le choix : {e}"}), 500
+    torrents._maj(jid, remplacer=remplacer, etat="fini", message=fin)
+    return jsonify({"ok": True, "message": fin})
 
 
 _AUTO = {"dernier": 0.0}
@@ -1772,6 +1837,21 @@ def _remplacer_auto(nom, titre):
 
 
 torrents._ETAT["remplacer_auto"] = _remplacer_auto
+
+
+def _tomes_deja_la(nom, source):
+    """Numéros des tomes du torrent qui existent déjà dans la série (un même fichier, lien physique, ne compte pas)."""
+    dossier, deja = MANGA_DIR / nom, set()
+    for f in torrents.fichiers_du_torrent(Path(source)):
+        t = _numero_tome(f.stem) if f.suffix.lower() in (".cbz", ".cbr") else None
+        if t is not None:
+            ancien = tomes_cbz.fichier_tome(dossier, nom, t)
+            if ancien.is_file() and not _meme_fichier(ancien, f):
+                deja.add(t)
+    return deja
+
+
+torrents._ETAT["doublons"] = _tomes_deja_la
 tomes.SERIES_EXISTANTES = lambda: [n for n in _scan() if n != "(Sans série)"]
 
 
@@ -1796,7 +1876,7 @@ def api_torrents():
                         "series": [] if request.args.get("leger") else sorted(n for n in _scan() if n != "(Sans série)")})
     body = request.get_json(silent=True) or {}
     lien, titre, serie = str(body.get("lien", "")), str(body.get("titre", ""))[:200], _nom_serie(str(body.get("serie", "")).strip())
-    remplacer = bool(body.get("remplacer"))
+    remplacer = body["remplacer"] if isinstance(body.get("remplacer"), bool) else None
     if not lien.startswith(("http://", "https://", "magnet:")) or not serie or serie == "sans-titre":
         return jsonify({"ok": False, "error": "Choisis le nom de la série."}), 400
     try:

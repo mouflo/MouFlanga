@@ -5,7 +5,7 @@
     const taille = o => o >= 1e9 ? (o / 1073741824).toFixed(1).replace(".", ",") + " Go" : Math.round(o / 1048576) + " Mo";
     let res = [], series = [], minuteur = null;
     const params = new URLSearchParams(location.search);
-    const ETATS = {telechargement: "⬇️ Téléchargement", import: "📦 Import", fini: "✅ Importé", erreur: "⚠️ Erreur"};
+    const ETATS = {telechargement: "⬇️ Téléchargement", import: "📦 Import", fini: "✅ Importé", erreur: "⚠️ Erreur", a_valider: "❓ À valider"};
 
     // Nom de série proposé : texte cherché sans « intégrale », « FR », « T01-T20 »… ; série existante si elle correspond
     function nomPropose(q) {
@@ -20,7 +20,9 @@
         $("tor-series").innerHTML = series.map(s => `<option value="${esc(s)}">`).join("");
         const l = r.torrents || [];
         $("tor-liste").innerHTML = l.length ? l.map(j => `<div class="tor-ligne ${j.etat}"><div class="tor-info"><b>${esc(j.serie)}</b><small>${esc(j.titre)}</small>
-            <span>${ETATS[j.etat] || j.etat}${j.etat === "telechargement" ? " " + (j.progression || 0) + " %" : ""} · ${esc(j.message || "")}</span></div></div>`).join("")
+            <span>${ETATS[j.etat] || j.etat}${j.etat === "telechargement" ? " " + (j.progression || 0) + " %" : ""} · ${esc(j.message || "")}</span></div>${j.etat === "a_valider" ? `<div class="tor-choix">
+                <button type="button" class="mou-btn" data-decider="${esc(j.id)}" data-remplacer="1">Remplacer tous les tomes</button>
+                <button type="button" class="mou-btn" data-decider="${esc(j.id)}" data-remplacer="0">Ajouter seulement les manquants</button></div>` : ""}</div>`).join("")
             : '<p class="sub">Aucun téléchargement pour l\'instant.</p>';
         clearTimeout(minuteur);
         if (l.some(j => j.etat === "telechargement" || j.etat === "import")) minuteur = setTimeout(etat, 15000);
@@ -47,19 +49,28 @@
             if (bloc.querySelector(".tor-envoi")) return;
             bloc.insertAdjacentHTML("beforeend", `<div class="tor-envoi"><label>Ranger dans la série :</label>
                 <input type="text" list="tor-series" value="${esc(params.get("serie") || nomPropose($("tor-q").value))}" autocapitalize="words">
-                <label class="tor-remp"><input type="checkbox"${params.get("remplacer") ? " checked" : ""}> Remplacer les tomes déjà présents (meilleure version ; les anciens vont à la corbeille)</label>
                 <button type="button" class="mou-btn" data-envoyer="${i}">Télécharger</button></div>`);
             return;
         }
         const env = e.target.closest("[data-envoyer]");
         if (env) {
             const x = res[+env.dataset.envoyer], serie = env.parentNode.querySelector('input[type="text"]').value.trim();
-            const remplacer = env.parentNode.querySelector('input[type="checkbox"]').checked;
             if (!serie) return;
             env.disabled = true;
             const r = await (await fetch("/api/torrents", {method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({lien: x.lien, titre: x.titre, serie, remplacer, proposition: params.get("proposition") || ""})})).json();
+                body: JSON.stringify({lien: x.lien, titre: x.titre, serie, proposition: params.get("proposition") || ""})})).json();
             env.parentNode.innerHTML = `<div class="note ${r.ok ? "ok" : "err"}">${esc(r.message || r.error)}</div>`;
+            etat();
+            return;
+        }
+        const dec = e.target.closest("[data-decider]");
+        if (dec) {
+            const remplacer = dec.dataset.remplacer === "1", bloc = dec.closest(".tor-choix");
+            if (remplacer && !confirm("Les tomes actuels iront à la corbeille (30 jours). Continuer ?")) return;
+            bloc.querySelectorAll("button").forEach(b => b.disabled = true);
+            const r = await (await fetch("/api/torrents/decider", {method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({id: dec.dataset.decider, remplacer})})).json();
+            bloc.innerHTML = `<div class="note ${r.ok ? "ok" : "err"}">${esc(r.message || r.error)}</div>`;
             etat();
         }
     });

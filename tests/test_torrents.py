@@ -66,6 +66,58 @@ class TorrentsTest(unittest.TestCase):
         self.assertEqual(q.appels, [("torrents/setLocation", {"hashes": "h1", "location": "/ok"})])
         self.assertEqual(torrents._lire()[0]["etat"], "fini"); self.assertIn("importé", messages[0])
 
+    def test_tomes_deja_presents_demandent_un_choix(self):
+        nok = self.t / "NOK" / "Buyuden"; nok.mkdir(parents=True)
+        (nok / "Buyuden - Tome 01.cbz").write_bytes(b"x")
+        torrents._ecrire([{"id": "b1", "titre": "Buyuden FR", "serie": "Buyuden", "etat": "telechargement", "remplacer": None}])
+        torrents._ETAT["doublons"] = lambda serie, source: {1}
+        try:
+            importes, messages = [], []
+            q = FauxQbit([{"progress": 1, "hash": "h2", "content_path": str(nok), "state": "uploading"}])
+            torrents.traiter(q, torrents._lire(), lambda *a: importes.append(a), messages.append, self.t / "mangas")
+        finally:
+            torrents._ETAT.pop("doublons", None)
+        self.assertEqual(importes, [])
+        job = torrents._lire()[0]
+        self.assertEqual(job["etat"], "a_valider")
+        self.assertIn("01", job["message"]); self.assertIn("À toi de choisir", job["message"])
+        self.assertIn("Télécharger", messages[0])
+
+    def test_choix_puis_import_avec_le_remplacement_demande(self):
+        nok = self.t / "NOK" / "Buyuden"; nok.mkdir(parents=True)
+        (nok / "Buyuden - Tome 01.cbz").write_bytes(b"x")
+        torrents._ecrire([{"id": "b2", "titre": "Buyuden FR", "serie": "Buyuden", "etat": "a_valider", "remplacer": None}])
+        torrents.decider_torrent("b2", True)
+        self.assertEqual(torrents._lire()[0]["remplacer"], True)
+        self.assertEqual(torrents._lire()[0]["etat"], "telechargement")
+        importes = []
+        q = FauxQbit([{"progress": 1, "hash": "h3", "content_path": str(nok), "state": "uploading"}])
+        torrents.traiter(q, torrents._lire(), lambda s, src, r=False: importes.append(r) or "ok", lambda m: None, self.t / "mangas")
+        self.assertEqual(importes, [True])
+
+    def test_sans_doublon_import_direct_sans_question(self):
+        nok = self.t / "NOK" / "Neuf"; nok.mkdir(parents=True)
+        (nok / "Neuf - Tome 01.cbz").write_bytes(b"x")
+        torrents._ecrire([{"id": "n1", "titre": "Neuf", "serie": "Neuf", "etat": "telechargement", "remplacer": None}])
+        torrents._ETAT["doublons"] = lambda serie, source: set()
+        try:
+            importes = []
+            q = FauxQbit([{"progress": 1, "hash": "h4", "content_path": str(nok), "state": "uploading"}])
+            torrents.traiter(q, torrents._lire(), lambda s, src, r=False: importes.append(r) or "ok", lambda m: None, self.t / "mangas")
+        finally:
+            torrents._ETAT.pop("doublons", None)
+        self.assertEqual(importes, [False])
+
+    def test_rappel_quotidien_des_choix_en_attente(self):
+        from datetime import datetime, timedelta
+        vieux = (datetime.now() - timedelta(hours=25)).strftime("%Y-%m-%d %H:%M")
+        torrents._ecrire([{"id": "r1", "titre": "x", "serie": "Rappel", "etat": "a_valider", "debut": vieux, "rappel_le": vieux}])
+        messages = []
+        torrents.rappeler_a_valider(messages.append)
+        torrents.rappeler_a_valider(messages.append)          # pas deux fois le même jour
+        self.assertEqual(len(messages), 1)
+        self.assertIn("Rappel", messages[0])
+
 
 
 class SuiviTest(unittest.TestCase):
