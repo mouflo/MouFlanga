@@ -33,9 +33,10 @@
       garde: {lecture: function (s) { return s.read > 0 && s.read < s.chapters; }, nonlu: function (s) { return !s.read; }, lu: lue}},
     parution: {titre: '🗞 Parution', choix: [['', 'Toutes'], ['fini', 'Complètes'], ['manque', 'Il en manque'], ['parution', 'En cours de parution', 'En parution']],
       garde: {fini: function (s) { return s.etat === 'fini'; }, manque: function (s) { return !!s.manque; }, parution: enParution}},
-    tri: {titre: '↕ Tri', choix: [['az', 'A → Z'], ['za', 'Z → A'], ['added', 'Ajoutées récemment', 'Ajoutées'], ['recent', 'Lues récemment', 'Lues réc.'], ['progression', 'Progression'], ['auteur', 'Auteur', 'Auteur'], ['editeur', 'Éditeur', 'Éditeur']]}
+    univers: {titre: '🌌 Univers', choix: [['', 'Tous']]},
+    tri: {titre: '↕ Tri', choix: [['az', 'A → Z'], ['za', 'Z → A'], ['added', 'Ajoutées récemment', 'Ajoutées'], ['recent', 'Lues récemment', 'Lues réc.'], ['progression', 'Progression'], ['univers', 'Univers (ordre de lecture)', 'Univers'], ['auteur', 'Auteur', 'Auteur'], ['editeur', 'Éditeur', 'Éditeur']]}
   };
-  var choixFiltre = {lecture: pref('mfLecture', ''), parution: pref('mfParution', ''), tri: pref('mfTri2', 'az')};
+  var choixFiltre = {lecture: pref('mfLecture', ''), parution: pref('mfParution', ''), univers: '', tri: pref('mfTri2', 'az')};
   Object.keys(FILTRES).forEach(function (k) {     // ancien choix qui n'existe plus : valeur par défaut
     if (!FILTRES[k].choix.some(function (c) { return c[0] === choixFiltre[k]; })) choixFiltre[k] = FILTRES[k].choix[0][0];
   });
@@ -57,8 +58,9 @@
     if (!toutes) {                                   // « toutes » = toute la bibliothèque, seul le tri compte (flèches ‹ ›)
       var q = sansAccents($('search').value.trim());
       var qc = compact(q);                              // « belzebub » trouve « Beelzebub » (lettres doublées ignorées)
-      list = list.filter(function (s) { return !q || sansAccents(s.title + ' ' + (s.auteur || '') + ' ' + (s.editeur || '')).indexOf(q) >= 0 || (qc.length >= 3 && compact(s.title).indexOf(qc) >= 0); });   // recherche aussi par auteur et éditeur
+      list = list.filter(function (s) { return !q || sansAccents(s.title + ' ' + (s.auteur || '') + ' ' + (s.editeur || '') + ' ' + (s.univers || '')).indexOf(q) >= 0 || (qc.length >= 3 && compact(s.title).indexOf(qc) >= 0); });   // recherche aussi par auteur et éditeur
       if (lettre && !q) list = list.filter(function (s) { return lettreDe(s.title) === lettre; });
+      if (choixFiltre.univers) list = list.filter(function (s) { return s.univers === choixFiltre.univers; });
       ['lecture', 'parution'].forEach(function (k) {
         var g = FILTRES[k].garde[choixFiltre[k]]; if (g) list = list.filter(g);
       });
@@ -71,6 +73,11 @@
       recent: function (a, b) { return (b.last_read || '').localeCompare(a.last_read || '') || titre(a, b); },
       added: function (a, b) { return b.added - a.added || titre(a, b); },
       progression: function (a, b) { return pc(b) - pc(a) || titre(a, b); },
+      univers: function (a, b) {                       // d'abord les univers (par nom), dans l'ordre de lecture, puis le reste
+        if (!a.univers !== !b.univers) return a.univers ? -1 : 1;
+        return (a.univers || '').localeCompare(b.univers || '', 'fr')
+          || ((a.ordre_univers || 9999) - (b.ordre_univers || 9999)) || titre(a, b);
+      },
       auteur: function (a, b) { return (a.auteur || '\uffff').localeCompare(b.auteur || '\uffff', 'fr') || titre(a, b); },
       editeur: function (a, b) { return (a.editeur || '\uffff').localeCompare(b.editeur || '\uffff', 'fr') || titre(a, b); }
     };
@@ -98,15 +105,20 @@
   }
 
   function drawGrid() {
+    var noms = [];
+    series.forEach(function (s) { if (s.univers && noms.indexOf(s.univers) < 0) noms.push(s.univers); });
+    noms.sort(function (a, b) { return a.localeCompare(b, 'fr'); });
+    FILTRES.univers.choix = [['', 'Tous']].concat(noms.map(function (n) { return [n, n]; }));
+    if (choixFiltre.univers && noms.indexOf(choixFiltre.univers) < 0) choixFiltre.univers = '';
     drawLettres(); drawFiltres();
     var list = sorted(series.slice());
     // « 12 séries · ✕ Tout remettre » dès qu'un filtre réduit la liste
-    var filtre = choixFiltre.lecture || choixFiltre.parution || lettre;
+    var filtre = choixFiltre.lecture || choixFiltre.parution || choixFiltre.univers || lettre;
     $('filtreResume').hidden = !filtre || !series.length;
     $('filtreResume').innerHTML = list.length + ' série' + (list.length > 1 ? 's' : '') + ' · <button type="button" id="filtreRaz">✕ Tout remettre</button>';
     if (!series.length) { $('grid').innerHTML = ''; return; }
     if (!list.length) {
-      var quoi = [choixFiltre.lecture && libelle('lecture').toLowerCase(), choixFiltre.parution && libelle('parution').toLowerCase()].filter(Boolean).join(' et ');
+      var quoi = [choixFiltre.lecture && libelle('lecture').toLowerCase(), choixFiltre.parution && libelle('parution').toLowerCase(), choixFiltre.univers && 'dans l\'univers « ' + choixFiltre.univers + ' »'].filter(Boolean).join(' et ');
       $('grid').innerHTML = '<div class="empty">' + ($('search').value.trim() ? 'Aucune série ne correspond à « ' + esc($('search').value) + ' ».'
         : 'Aucune série' + (quoi ? ' ' + esc(quoi) : '') + (lettre ? ' à la lettre ' + esc(lettre) : '') + '.') + '</div>';
       return;
@@ -553,6 +565,21 @@
     var l = e.target.closest && e.target.closest('.tchap-lien');
     if (l) { e.preventDefault(); readChapter(l.dataset.cle); }
   });
+  $('sUnivers').addEventListener('click', async function () {
+      var actuel = current.univers || '';
+      var nom = prompt('Univers de « ' + current.title + ' » (ex. Seven Deadly Sins). Laisse vide pour la sortir de son univers :', actuel);
+      if (nom === null) return;
+      nom = nom.trim();
+      var ordre = '', description = '';
+      if (nom) {
+        ordre = prompt('Rang de lecture dans l\'univers (1, 2, 3…) — facultatif :', current.ordre_univers || '') || '';
+        description = prompt('Description de l\'univers (facultatif, gardée une fois pour toutes) :', '') || '';
+      }
+      var r = await post('/api/univers', {series: current.id, univers: nom, ordre: ordre.trim(), description: description.trim()});
+      note('listMsg', r.message || r.error, r.ok ? 'ok' : 'err');
+      if (r.ok) loadList();
+    });
+
   $('sIdentifier').addEventListener('click', async function () {
       var serie = current.id, r = await post('/api/identifier', {series: serie});
       if (!r.ok) { note('listMsg', r.error); return; }
@@ -627,6 +654,7 @@
         ['Parution', f.debut ? f.debut + (f.fin ? ' → ' + f.fin : ' → ' + (st || '…')) + (f.fin && st ? ' (' + st + ')' : '') : st],
         ['Scénario', f.scenario], ['Dessin', f.dessin && f.dessin !== f.scenario ? f.dessin : (f.dessin ? '(même auteur)' : '')],
         ['Genres', f.genres], ['Éditeur japonais', f.editeur_jp], ['Éditeur français', f.editeur_fr], ['Autres éditeurs (MangaUpdates)', f.editeurs_mu], ['Volumes (MangaUpdates)', f.volumes_mu ? String(f.volumes_mu) : ''], ['Sources consultées', (f.sources || []).join(', ')],
+        ['Univers', f.univers ? f.univers + (f.ordre_univers ? ' · tome ' + f.ordre_univers + ' de la lecture' : '') : ''], ['Autres œuvres de l\'univers', (f.membres_univers || []).join(' → ')],
         ['Trouvée sur', f.source_suivi], ['Version', (f.versions || []).join(', ')], ['Source', [ed.source ? ed.source + (ed.devine ? ' (deviné)' : '') : '', ed.resolution].filter(Boolean).join(' · ')]
       ].filter(function (l) { return l[1]; });
       $('infosCorps').innerHTML = (lignes.length ? '<dl>' + lignes.map(function (l) { return '<dt>' + l[0] + '</dt><dd>' + esc(l[1]) + '</dd>'; }).join('') + '</dl>'

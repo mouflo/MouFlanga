@@ -439,7 +439,7 @@ def api_library():
             "size_mb": round(total_size / 1048576, 1),
             "last_read": p.get("last", ""), "added": newest,
             "cover": f"/api/cover?id={_q(name)}&v={int(max(newest, _couverture_mtime(name)))}",
-            **_auteur_editeur(name),
+            **_auteur_editeur(name), **_univers_de(name),
         })
     presentes = {x["id"] for x in out}
     for nom, x in suivi.lire()["series"].items():          # ➕ séries ajoutées mais encore vides : grisées
@@ -464,6 +464,63 @@ def _auteur_editeur(name):
     s = suivi.lire()["series"].get(name) or {}          # série ajoutée à la main : ses infos sont dans le suivi
     return {"auteur": f.get("scenario") or f.get("dessin") or s.get("auteur") or "",
             "editeur": f.get("editeur_fr") or f.get("editeur_jp") or s.get("editeur") or ""}
+
+
+def _univers_de(name):
+    """Univers d'une série (ex. « Seven Deadly Sins ») et son rang de lecture : dans le fichier d'infos de la série."""
+    if name == "(Sans série)":
+        return {"univers": "", "ordre_univers": None}
+    import edition
+    d = edition.lire(MANGA_DIR / name)
+    return {"univers": d.get("univers") or "", "ordre_univers": d.get("ordre_univers")}
+
+
+UNIVERS_FICHIER = DATA_DIR / "univers.json"          # description de chaque univers (une seule fois par univers)
+
+
+@app.route("/api/univers", methods=["GET", "POST"])
+def api_univers():
+    """🌌 Univers : GET liste les univers et leurs séries (ordre de lecture) ; POST rattache une série à un univers
+    (univers vide = la détacher). Admin seulement."""
+    import edition
+    if request.method == "GET":
+        descriptions = _read_json(UNIVERS_FICHIER, {})
+        groupes = {}
+        for name in _scan():
+            if name == "(Sans série)":
+                continue
+            u = _univers_de(name)
+            if u["univers"]:
+                groupes.setdefault(u["univers"], []).append({"id": name, "title": name, "ordre": u["ordre_univers"]})
+        return jsonify({"univers": [{"nom": n, "description": descriptions.get(n, ""),
+                                     "series": sorted(v, key=lambda x: (x["ordre"] is None, x["ordre"] or 0, x["title"]))}
+                                    for n, v in sorted(groupes.items())]})
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    univers = str(body.get("univers", "")).strip()
+    dossier = MANGA_DIR / name
+    d = edition.lire(dossier)
+    if not univers:
+        d.pop("univers", None)
+        d.pop("ordre_univers", None)
+        edition.ecrire(dossier, d)
+        return jsonify({"ok": True, "message": f"« {name} » n'est plus dans un univers."})
+    if any(c in univers for c in '"$`\\\n\r'):
+        return jsonify({"ok": False, "error": "Nom d'univers : caractères interdits (\" $ ` \\)."}), 400
+    try:
+        ordre = int(str(body.get("ordre") or "0").strip() or 0) or None
+    except ValueError:
+        return jsonify({"ok": False, "error": "L'ordre de lecture doit être un nombre entier (1, 2, 3…)."}), 400
+    d["univers"], d["ordre_univers"] = univers, ordre
+    edition.ecrire(dossier, d)
+    descriptions = _read_json(UNIVERS_FICHIER, {})
+    description = str(body.get("description") or "").strip()
+    if description:
+        descriptions[univers] = description
+        UNIVERS_FICHIER.write_text(json.dumps(descriptions, ensure_ascii=False, indent=1), encoding="utf-8")
+    return jsonify({"ok": True, "message": f"« {name} » est dans l'univers « {univers} »" + (f", tome {ordre} de la lecture." if ordre else ".")})
 
 
 def _q(text):
@@ -2277,9 +2334,12 @@ def api_fiche():
     texte = (name + " " + " ".join(ed.get("archives", [])) + " " + " ".join(x.name for x in files[:30])).lower()
     versions = list(dict.fromkeys(v for k, v in _EDITIONS if k in texte))
     s = suivi.lire()["series"].get(name) or {}
+    u = _univers_de(name)
+    membres = sorted((x for x in _scan() if x != name and _univers_de(x)["univers"] == u["univers"]), key=lambda x: (_univers_de(x)["ordre_univers"] or 0, x)) if u["univers"] else []
     return jsonify({**{k: v for k, v in f.items() if k != "date"}, "versions": versions,
                     "edition": _infos_edition(name, files),
-                    "source_suivi": s.get("source", ""), "lien_source": s.get("lien", "")})
+                    "source_suivi": s.get("source", ""), "lien_source": s.get("lien", ""),
+                    "univers": u["univers"], "ordre_univers": u["ordre_univers"], "membres_univers": membres})
 
 
 @app.route("/api/tome")

@@ -1,5 +1,11 @@
 # Historique des versions
 
+## Univers (9 octobre 2026)
+- 🌌 Plusieurs œuvres peuvent être regroupées dans un **univers** (ex. Seven Deadly Sins : la série principale, Four Knights, Seven Days, Original Sin, HS). Chaque série garde son dossier, sa fiche et sa progression.
+- ⋯ → **🌌 Univers de la série** : nom de l'univers, rang de lecture (1, 2, 3…), description facultative (gardée une fois).
+- Filtre **🌌 Univers** dans la bibliothèque, tri **Univers (ordre de lecture)**, et recherche par nom d'univers.
+- La fiche ⓘ indique l'univers, le rang de la série et les autres œuvres, dans l'ordre de lecture.
+
 ## JoJo et éditeurs (9 octobre 2026)
 - 📚 JoJo's Bizarre Adventure : le nombre de tomes attendu est celui de la série complète (131), pas celui de la 8e partie retenue par AniList (27).
 - 🏢 L'éditeur de la fiche n'affiche plus les dates entre parenthèses (« J'ai lu · Tonkam »).
