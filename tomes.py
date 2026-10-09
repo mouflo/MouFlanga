@@ -559,6 +559,12 @@ def verifier_cle_google(cle: str) -> tuple[bool, str]:
     return False, f"Google Books a répondu {r.status_code}"
 
 
+def _editeurs_propres(v: str) -> str:
+    """« J'ai lu (2002-2005)Tonkam (depuis 2007) » → « J'ai lu · Tonkam » : les dates entre parenthèses partent."""
+    v = re.sub(r"\s*\([^)]*\)\s*", " · ", v or "")
+    return " · ".join(x.strip() for x in v.split("·") if x.strip())
+
+
 def fiche(serie: str, forcer=False) -> dict:
     """Dates de parution, auteurs, genres, éditeurs (AniList + Wikipédia FR) ; gardé 30 jours dans data/tomes/<série>.json."""
     garde = _charger(serie) or {}
@@ -599,8 +605,8 @@ def fiche(serie: str, forcer=False) -> dict:
             out["scenario"] = (", ".join(dict.fromkeys(roles.get("scenario", []))) if roles.get("scenario") else "") or ib.get("auteur") or ib.get("scénariste") or out.get("scenario", "")
             out["dessin"] = (", ".join(dict.fromkeys(roles.get("dessin", []))) if roles.get("dessin") else "") or ib.get("dessinateur") or out.get("dessin", "")
             out["genres"] = ib.get("genre") or out.get("genres", "")
-            out["editeur_jp"] = ib.get("éditeur", "")
-            out["editeur_fr"] = ib.get("éditeur_francophone", "")
+            out["editeur_jp"] = _editeurs_propres(ib.get("éditeur", ""))
+            out["editeur_fr"] = _editeurs_propres(ib.get("éditeur_francophone", ""))
             out["magazine"] = ib.get("prépublication", "")
     except Exception as e:
         logger.info("Fiche Wikipédia de %s : %s", serie, e.__class__.__name__)

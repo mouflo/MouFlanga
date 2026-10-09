@@ -1,5 +1,9 @@
 # Historique des versions
 
+## JoJo et éditeurs (9 octobre 2026)
+- 📚 JoJo's Bizarre Adventure : le nombre de tomes attendu est celui de la série complète (131), pas celui de la 8e partie retenue par AniList (27).
+- 🏢 L'éditeur de la fiche n'affiche plus les dates entre parenthèses (« J'ai lu · Tonkam »).
+
 ## Avancement de la ré-identification (9 octobre 2026)
 - 🔄 Relancer l'identification ouvre une fenêtre qui suit chaque étape en direct : cache, tomes, statut AniList, fiche (sources qui ont répondu, éditeur trouvé). Une étape en erreur est signalée sans bloquer les autres ; on peut fermer la fenêtre, le travail continue.
 
