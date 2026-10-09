@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Hors-série regroupés (9 octobre 2026)
+- 📚 Les hors-série d'une série (HS, Data Book, artbook, one-shot) sont regroupés dans un groupe « Hors-série » en haut de la liste des chapitres, repliable comme un tome. Exemple : One Piece (Blue, Red, Yellow).
+
 ## Rapidité et retour (9 octobre 2026)
 - ⚡ La bibliothèque s'ouvre plus vite (environ 0,8 s au lieu de 2,2 s) : le cache de lecture des fichiers de tome ne se vide plus à chaque ouverture.
 - ↩️ Sur la page des couvertures, « Retour à la série » ramène à la fiche de la série, pas au menu principal.

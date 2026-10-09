@@ -200,8 +200,28 @@ def _tome_de_entree(e):
     return int(g.split()[1]) if g.startswith("Tome ") else None
 
 
+HORS_SERIE = "Hors-série"
+_MOTS_HORS_SERIE = re.compile(r"\bHS\b|hors[ -]?s[ée]rie|data[ -]?book|art[ -]?book|one[ -]?shot", re.I)
+
+
+def _est_hors_serie(titre):
+    """« One Piece HS - Blue (Oda) (2005) … » : un hors-série, Data Book, artbook ou one-shot (nom du fichier)."""
+    return bool(_MOTS_HORS_SERIE.search(titre or ""))
+
+
+def _titre_hors_serie(titre):
+    """« One Piece HS - Blue (Oda) (2005) [Digital-1920] (PRiNTER-PapriKa+) » → « Blue (Oda) »."""
+    court = re.sub(r"^.*?(?:\bHS\b|hors[ -]?s[ée]rie|data[ -]?book|art[ -]?book|one[ -]?shot)\s*[-–:]?\s*", "", titre, count=1, flags=re.I)
+    court = re.sub(r"\s*\[[^\]]*\]", "", court)                                             # [Digital-1920] [Manga FR]
+    court = re.sub(r"\s*\([^)]*(?:papri|printer|digital|manga fr|scan)[^)]*\)", "", court, flags=re.I)  # (PRiNTER-PapriKa+)
+    court = court.strip()
+    return court or titre
+
+
 def _ordre_entree(e):
-    """Tomes dans l'ordre (tome complet ou tome à chapitres), puis chapitres « hors tome », puis le reste."""
+    """Hors-série en premier, puis tomes dans l'ordre (tome complet ou tome à chapitres), puis chapitres « hors tome », puis le reste."""
+    if e.get("groupe") == HORS_SERIE:
+        return (-1, 0, 0)
     t = _tome_de_entree(e)
     if t is not None:
         return (0, t, e.get("num") or 0)
@@ -257,7 +277,9 @@ def _entrees(files):
             entree = {"key": rel, "path": rel, "title": titre, "num": _numero_chapitre(titre), "groupe": None,
                       "debut": 0, "nb": None, "size_mb": round(taille / 1048576, 1)}
             tome = _numero_tome(titre)
-            if tome is not None:
+            if tome is None and _est_hors_serie(titre):
+                entree.update(groupe=HORS_SERIE, title=_titre_hors_serie(titre))
+            elif tome is not None:
                 # Tome complet (un fichier = un tome) : affiché « Tome 03 · chapitres 17 à 25 »
                 couverts, plage = _plage_chapitres(f.relative_to(MANGA_DIR).parts[0], tome)
                 nom_tome = titre_tome(f.relative_to(MANGA_DIR).parts[0], tome)
