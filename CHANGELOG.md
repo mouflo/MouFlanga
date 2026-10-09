@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Renommage sur dossier seul (9 octobre 2026)
+- ✏️ Renommer une série dont les fichiers viennent d'un torrent : seul le dossier est renommé (le NAS refuse de renommer les fichiers partagés avec qBittorrent). Les fichiers gardent leur nom, la progression de lecture suit.
+
 ## Relance de l'identification (9 octobre 2026)
 - 🔄 **Relancer l'identification** dans le menu ⋯ : efface le cache de la série et refait la recherche (tomes, statut, fiche) avec le nom actuel.
 - ✏️ Un renommage relance l'identification tout seul.

@@ -1146,6 +1146,47 @@ def _nom_serie(texte, defaut="sans-titre"):
     return texte[:120] or defaut
 
 
+def _fichiers_partages(name):
+    """Fichiers liés à une autre copie (torrent qBittorrent) : le NAS refuse de les renommer ou de les déplacer."""
+    racine = MANGA_DIR / name
+    if not racine.is_dir():
+        return []
+    return [f for f in racine.rglob("*") if f.is_file() and f.stat().st_nlink > 1]
+
+
+def _renommer_dossier_seul(name, nouveau):
+    """Renomme seulement le dossier (le NAS l'accepte) : les fichiers gardent leur nom, la progression suit les chemins."""
+    ancien, dossier = MANGA_DIR / name, MANGA_DIR / nouveau
+    if dossier.exists():
+        raise ValueError(f"« {nouveau} » existe déjà")
+    ancien.rename(dossier)
+    deplaces = {_rel(ancien / f.relative_to(dossier)): _rel(f) for f in dossier.rglob("*") if f.is_file()}
+    _suivre_renommage(name, nouveau, deplaces)
+    logger.info("Série renommée (dossier seul, fichiers liés au torrent gardés) : « %s » → « %s »", name, nouveau)
+    return nouveau
+
+
+def _suivre_renommage(name, nouveau, deplaces):
+    """La progression de lecture et les séries de reprise suivent le nouveau nom et les nouveaux chemins."""
+    with _progress_lock:
+        for _pf in _fichiers_progression():          # admin et chaque lecteur
+            data = _read_json(_pf, {})
+            p = data.pop(name, None) if nouveau != name else data.get(name)
+            if p is not None:
+                conv = lambda r: deplaces.get(r, r)
+                p["read"] = sorted({conv(r) for r in p.get("read", [])})
+                if p.get("current"):
+                    p["current"] = conv(p["current"])
+                autre = data.get(nouveau) if nouveau != name else None
+                if autre:                                    # fusion avec une série existante : lus réunis, lecture la plus récente
+                    p["read"] = sorted(set(p["read"]) | set(autre.get("read", [])))
+                    if (autre.get("last") or "") > (p.get("last") or ""):
+                        p.update({k: autre[k] for k in ("current", "page", "last") if k in autre})
+                data[nouveau] = p
+                _write_json(_pf, data)
+    _deplacer_resume(name, nouveau)
+
+
 def _organiser(name, nouveau):
     """Renomme la série et range ses fichiers : tomes complets dans « Tome NN/<Série> - Tome NN.cbz » (simples
     déplacements), chapitres regroupés en tomes ensuite. La progression de lecture suit. Renvoie le nouveau nom."""
@@ -1153,6 +1194,8 @@ def _organiser(name, nouveau):
     ancien_dossier, dossier = MANGA_DIR / name, MANGA_DIR / nouveau
     if nouveau != name and dossier.exists() and not dossier.is_dir():
         raise ValueError(f"« {nouveau} » existe déjà et n'est pas un dossier")
+    if nouveau != name and _fichiers_partages(name):
+        return _renommer_dossier_seul(name, nouveau)
     deplaces, en_double, doublons = {}, set(), []
     for f in files:
         t = None
@@ -1193,23 +1236,7 @@ def _organiser(name, nouveau):
             ancien_dossier.rmdir()
         except OSError:
             pass
-    with _progress_lock:
-        for _pf in _fichiers_progression():          # admin et chaque lecteur
-            data = _read_json(_pf, {})
-            p = data.pop(name, None) if nouveau != name else data.get(name)
-            if p is not None:
-                conv = lambda r: deplaces.get(r, r)
-                p["read"] = sorted({conv(r) for r in p.get("read", [])})
-                if p.get("current"):
-                    p["current"] = conv(p["current"])
-                autre = data.get(nouveau) if nouveau != name else None
-                if autre:                                    # fusion avec une série existante : lus réunis, lecture la plus récente
-                    p["read"] = sorted(set(p["read"]) | set(autre.get("read", [])))
-                    if (autre.get("last") or "") > (p.get("last") or ""):
-                        p.update({k: autre[k] for k in ("current", "page", "last") if k in autre})
-                data[nouveau] = p
-                _write_json(_pf, data)
-    _deplacer_resume(name, nouveau)
+    _suivre_renommage(name, nouveau, deplaces)
     if doublons:
         _signaler_doublons(nouveau, doublons)
     logger.info("Série organisée : « %s » → « %s » (%d fichier(s) déplacé(s))", name, nouveau, len(deplaces))
@@ -1976,9 +2003,10 @@ def api_renommer():
             j.get("status") == "running" and japscan_scraper.nom_sur(japscan_scraper.titre_serie(j.get("title") or "")) == n
             for j in japscan_scraper.download_jobs.values()) for n in (name, nouveau)):
         return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    partage = bool(_fichiers_partages(name))
     try:
         nouveau = _organiser(name, nouveau)
-        for f in (MANGA_DIR / nouveau).rglob("*.cbz"):        # « Ancien nom - Tome 03.cbz » → « Nouveau nom - Tome 03.cbz »
+        for f in ((MANGA_DIR / nouveau).rglob("*.cbz") if not partage else []):        # « Ancien nom - Tome 03.cbz » → « Nouveau nom - Tome 03.cbz »
             if f.name.startswith(name + " - ") and not f.with_name(nouveau + f.name[len(name):]).exists():
                 f.rename(f.with_name(nouveau + f.name[len(name):]))
         tomes.oublier(name)
