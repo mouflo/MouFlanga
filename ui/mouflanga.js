@@ -576,7 +576,7 @@
   $('sCouvertures').addEventListener('click', function () { location.href = '/couvertures?id=' + encodeURIComponent(current.id); });
 
   // 🔎 Identification d'un hors-série : résultats AniList / MangaDex, saisie à la main, ou retrait
-  var hsCandidats = [], hsCle = '';
+  var hsCandidats = [], hsCle = '', hsDernier = null;
   function ouvrirHorsSerie(cle, titre) {
     hsCle = cle;
     $('infosTitre').textContent = '🔎 Hors-série : ' + titre;
@@ -585,17 +585,24 @@
     api('/api/hors-serie/candidats?id=' + encodeURIComponent(current.id) + '&key=' + encodeURIComponent(cle)).then(function (r) {
       if (r.error) { $('infosCorps').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
       hsCandidats = r.candidats || [];
+      hsDernier = r;
+      hsAffiche(r);
+    });
+  }
+  function hsAffiche(r) {
+      var lien = '<div class="ident-lien"><label for="hsLien">Lien d\'une page du hors-série (Glénat, éditeur, boutique…)</label>' +
+        '<input type="url" id="hsLien" placeholder="https://…" autocomplete="off" autocapitalize="off">' +
+        '<button type="button" class="mou-btn" data-hs-lire="1">📖 Lire les infos de cette page</button></div>';
       var actuel = r.identifie ? '<p class="dem-sous">Actuellement : <b>' + esc(r.identifie.titre) + '</b>' +
         (r.identifie.annee ? ' · ' + esc(r.identifie.annee) : '') + (r.identifie.auteur ? ' · ' + esc(r.identifie.auteur) : '') + '</p>' : '';
       var lignes = hsCandidats.map(function (c, i) {
         return '<li class="ident-ligne"><div><b>' + esc(c.titre) + '</b><small>' + [c.annee, c.auteur, c.source, c.statut].filter(Boolean).map(esc).join(' · ') + '</small></div>' +
           '<button type="button" class="mou-btn" data-hs-choix="' + i + '">Choisir</button></li>';
       }).join('');
-      $('infosCorps').innerHTML = actuel + (hsCandidats.length ? '<ul class="ident-liste">' + lignes + '</ul>'
+      $('infosCorps').innerHTML = lien + actuel + (hsCandidats.length ? '<ul class="ident-liste">' + lignes + '</ul>'
         : '<div class="dem-sous">Rien trouvé sur ces sources pour « ' + esc(r.titre) + ' ».</div>') +
         '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-hs-manuel="1">✏️ Saisir le hors-série à la main</button>' +
         (r.identifie ? ' <button type="button" class="mou-btn ghost" data-hs-retirer="1">Retirer l\'identification</button>' : '') + '</div>';
-    });
   }
   async function enregistrerHorsSerie(corps) {
     var r = await post('/api/hors-serie', Object.assign({series: current.id, key: hsCle}, corps));
@@ -603,7 +610,20 @@
     if (r.ok) { $('infosVue').hidden = true; openSeries(current.id, false); }
   }
   $('infosCorps').addEventListener('click', function (e) {
-    var b = e.target.closest('[data-hs-choix],[data-hs-manuel],[data-hs-retirer]'); if (!b) return;
+    var b = e.target.closest('[data-hs-choix],[data-hs-manuel],[data-hs-retirer],[data-hs-lire]'); if (!b) return;
+    if (b.dataset.hsLire) {
+      var adresse = ($('hsLien').value || '').trim();
+      if (!adresse) { note('listMsg', 'Colle d\'abord le lien de la page.', 'err'); return; }
+      b.disabled = true;
+      api('/api/hors-serie/lien?id=' + encodeURIComponent(current.id) + '&key=' + encodeURIComponent(hsCle) + '&url=' + encodeURIComponent(adresse)).then(function (r) {
+        b.disabled = false;
+        if (r.error) { note('listMsg', r.error, 'err'); return; }
+        hsCandidats = [r.candidat].concat(hsCandidats.filter(function (c) { return c.lien !== r.candidat.lien; }));
+        hsAffiche(hsDernier || {titre: r.candidat.titre});
+        note('listMsg', 'Infos lues sur la page : vérifie puis choisis-les.', 'ok');
+      });
+      return;
+    }
     if (b.dataset.hsRetirer) return enregistrerHorsSerie({action: 'retirer'});
     if (b.dataset.hsManuel) {
       var titre = prompt('Titre du hors-série (obligatoire) :', '');
@@ -614,7 +634,7 @@
       return enregistrerHorsSerie({action: 'choisir', titre: titre.trim(), annee: annee.trim(), auteur: auteur.trim(), source: 'Saisie manuelle', lien: lien.trim()});
     }
     var c = hsCandidats[+b.dataset.hsChoix];
-    if (c) enregistrerHorsSerie({action: 'choisir', titre: c.titre, annee: c.annee || '', auteur: c.auteur || '', source: c.source, lien: c.lien || ''});
+    if (c) enregistrerHorsSerie({action: 'choisir', titre: c.titre, annee: c.annee || '', auteur: c.auteur || '', editeur: c.editeur || '', source: c.source, lien: c.lien || ''});
   });
 
 

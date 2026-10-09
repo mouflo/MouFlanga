@@ -896,6 +896,18 @@ def api_hors_serie_candidats():
                     "identifie": hors_serie.lire(_infos_serie(name)).get(key)})
 
 
+@app.route("/api/hors-serie/lien")
+def api_hors_serie_lien():
+    """Lit une page de fiche donnée par l'utilisatrice (Glénat, éditeur, boutique…) : titre, auteur, année, éditeur."""
+    name, key = request.args.get("id", ""), request.args.get("key", "")
+    if name not in _scan() or not _hors_serie_du_fichier(name, key):
+        return jsonify({"error": "Hors-série introuvable"}), 404
+    try:
+        return jsonify({"candidat": hors_serie.lire_page((request.args.get("url") or "").strip())})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
 @app.route("/api/hors-serie", methods=["POST"])
 def api_hors_serie_enregistrer():
     """Garde (ou retire) l'identification d'un hors-série : titre, année, auteur, source et lien."""
@@ -919,6 +931,7 @@ def api_hors_serie_enregistrer():
         annee = str(body.get("annee", "")).strip()
         hs[key] = {"titre": titre, "annee": int(annee) if annee.isdigit() else None,
                    "auteur": str(body.get("auteur", "")).strip()[:200], "source": str(body.get("source", "Saisie manuelle"))[:40],
+                   "editeur": str(body.get("editeur", "")).strip()[:80],
                    "lien": str(body.get("lien", "")).strip() if str(body.get("lien", "")).strip().startswith(("http://", "https://")) else ""}
         msg = f"Hors-série identifié : « {titre} »."
     d["hors_series"] = hs
