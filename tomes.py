@@ -515,7 +515,7 @@ def _google_books(titre: str) -> dict | None:
     if not cle or not titre:
         return None
     try:
-        r = _SESSION.get(GOOGLE_BOOKS, params={"q": f'intitle:"{titre}"', "langRestrict": "fr", "maxResults": 40, "key": cle}, timeout=15)
+        r = _SESSION.get(GOOGLE_BOOKS, params={"q": f"{titre} tome", "langRestrict": "fr", "maxResults": 40, "key": cle}, timeout=15)
         if r.status_code != 200:
             logger.info("Google Books : réponse %s", r.status_code)
             return None
@@ -528,7 +528,7 @@ def _google_books(titre: str) -> dict | None:
         v = it.get("volumeInfo") or {}
         if _simple(titre) not in _simple(v.get("title") or ""):
             continue
-        m = re.search(r"(?:tome|t\.|vol\.?)\s*(\d{1,3})\b", v.get("title") or "", re.I)
+        m = re.search(r"\b(?:tome|t|vol\.?|band)\s*0*(\d{1,3})\b", v.get("title") or "", re.I)
         if m:
             tomes.append(int(m.group(1)))
         editeur = editeur or v.get("publisher") or ""
