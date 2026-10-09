@@ -598,7 +598,7 @@
         ['Titre original', [f.titre_original, f.romaji].filter(Boolean).join(' · ')],
         ['Parution', f.debut ? f.debut + (f.fin ? ' → ' + f.fin : ' → ' + (st || '…')) + (f.fin && st ? ' (' + st + ')' : '') : st],
         ['Scénario', f.scenario], ['Dessin', f.dessin && f.dessin !== f.scenario ? f.dessin : (f.dessin ? '(même auteur)' : '')],
-        ['Genres', f.genres], ['Éditeur japonais', f.editeur_jp], ['Éditeur français', f.editeur_fr],
+        ['Genres', f.genres], ['Éditeur japonais', f.editeur_jp], ['Éditeur français', f.editeur_fr], ['Autres éditeurs (MangaUpdates)', f.editeurs_mu], ['Volumes (MangaUpdates)', f.volumes_mu ? String(f.volumes_mu) : ''], ['Sources consultées', (f.sources || []).join(', ')],
         ['Trouvée sur', f.source_suivi], ['Version', (f.versions || []).join(', ')], ['Source', [ed.source ? ed.source + (ed.devine ? ' (deviné)' : '') : '', ed.resolution].filter(Boolean).join(' · ')]
       ].filter(function (l) { return l[1]; });
       $('infosCorps').innerHTML = (lignes.length ? '<dl>' + lignes.map(function (l) { return '<dt>' + l[0] + '</dt><dd>' + esc(l[1]) + '</dd>'; }).join('') + '</dl>'

@@ -477,6 +477,88 @@ def _page_wikipedia(titres) -> str:
     return ""
 
 
+# ---------------------------------------------------------------- Sources complémentaires (ré-identification)
+
+GOOGLE_BOOKS = "https://www.googleapis.com/books/v1/volumes"
+
+
+def cle_google_books() -> str:
+    """Clé API Google Books (Réglages → 📏 Règles de recherche), lue à chaque appel."""
+    import os
+    return os.getenv("GOOGLE_BOOKS_API_KEY", "").strip()
+
+
+def _mangaupdates(titres: list[str]) -> dict | None:
+    """MangaUpdates (sans clé) : éditeurs (originaux, anglais…), auteurs et nombre de volumes d'après sa fiche."""
+    for titre in dict.fromkeys(t for t in titres if t):
+        try:
+            r = _SESSION.post("https://api.mangaupdates.com/v1/series/search", json={"search": titre, "perpage": 5}, timeout=15).json()
+            trouves = r.get("results") or []
+            if not trouves:
+                continue
+            ident = next((x["record"]["series_id"] for x in trouves if _simple(x["record"].get("title") or "") == _simple(titre)),
+                         trouves[0]["record"]["series_id"])
+            d = _SESSION.get(f"https://api.mangaupdates.com/v1/series/{ident}", timeout=15).json()
+        except Exception as e:
+            logger.info("MangaUpdates pour %s : %s", titre, e.__class__.__name__)
+            continue
+        vol = re.search(r"(\d+)\s*Volumes?", d.get("status") or "", re.I)
+        return {"id": ident, "editeurs": [p.get("publisher_name") for p in d.get("publishers") or [] if p.get("publisher_name")],
+                "auteurs": list(dict.fromkeys(a.get("name") for a in (d.get("authors") or []) if a.get("name"))),
+                "volumes": int(vol.group(1)) if vol else None}
+    return None
+
+
+def _google_books(titre: str) -> dict | None:
+    """Google Books (clé requise) : éditeur et auteur d'une édition française, et le plus grand numéro de tome trouvé."""
+    cle = cle_google_books()
+    if not cle or not titre:
+        return None
+    try:
+        r = _SESSION.get(GOOGLE_BOOKS, params={"q": f'intitle:"{titre}"', "langRestrict": "fr", "maxResults": 40, "key": cle}, timeout=15)
+        if r.status_code != 200:
+            logger.info("Google Books : réponse %s", r.status_code)
+            return None
+        items = r.json().get("items") or []
+    except Exception as e:
+        logger.info("Google Books pour %s : %s", titre, e.__class__.__name__)
+        return None
+    tomes, editeur, auteurs = [], "", []
+    for it in items:
+        v = it.get("volumeInfo") or {}
+        if _simple(titre) not in _simple(v.get("title") or ""):
+            continue
+        m = re.search(r"(?:tome|t\.|vol\.?)\s*(\d{1,3})\b", v.get("title") or "", re.I)
+        if m:
+            tomes.append(int(m.group(1)))
+        editeur = editeur or v.get("publisher") or ""
+        auteurs = auteurs or v.get("authors") or []
+    return {"editeur": editeur, "auteurs": ", ".join(auteurs), "tomes": max(tomes) if tomes else None}
+
+
+def verifier_cle_google(cle: str) -> tuple[bool, str]:
+    """(ok, message) : Google accepte-t-il la clé pour l'API Books ? Ne renvoie jamais la clé."""
+    try:
+        r = _SESSION.get(GOOGLE_BOOKS, params={"q": "one piece", "maxResults": 1, "key": cle}, timeout=10)
+    except requests.exceptions.RequestException:
+        return False, "Google Books injoignable depuis le serveur"
+    if r.status_code == 200:
+        return True, "Clé acceptée par Google Books"
+    raison = ""
+    try:
+        erreurs = (r.json().get("error") or {}).get("errors") or []
+        raison = erreurs[0].get("reason", "") if erreurs else ""
+    except ValueError:
+        pass
+    if r.status_code == 429:
+        return False, "Quota dépassé pour cette clé : réessaie plus tard"
+    if raison == "accessNotConfigured":
+        return False, "L'API Books n'est pas activée dans le projet Google (Google Cloud → Bibliothèque d'API → Books API)"
+    if r.status_code in (400, 403):
+        return False, "Google refuse cette clé (vérifie qu'elle est complète et sans espace)"
+    return False, f"Google Books a répondu {r.status_code}"
+
+
 def fiche(serie: str, forcer=False) -> dict:
     """Dates de parution, auteurs, genres, éditeurs (AniList + Wikipédia FR) ; gardé 30 jours dans data/tomes/<série>.json."""
     garde = _charger(serie) or {}
@@ -522,6 +604,25 @@ def fiche(serie: str, forcer=False) -> dict:
             out["magazine"] = ib.get("prépublication", "")
     except Exception as e:
         logger.info("Fiche Wikipédia de %s : %s", serie, e.__class__.__name__)
+    # Sources complémentaires : MangaUpdates (éditeurs, auteurs, volumes) et Google Books (si une clé est réglée)
+    titres = [serie, st.get("titre"), st.get("titre_en"), out.get("romaji")]
+    mu = _mangaupdates(titres)
+    if mu:
+        out["editeurs_mu"] = ", ".join(mu["editeurs"])
+        out["volumes_mu"] = mu["volumes"]
+        out["mangaupdates"] = mu["id"]
+        if not out.get("scenario") and mu["auteurs"]:
+            out["scenario"] = ", ".join(mu["auteurs"][:3])
+    gb = _google_books(next((x for x in titres if x), ""))
+    if gb:
+        if not out.get("editeur_fr") and gb["editeur"]:
+            out["editeur_fr"] = gb["editeur"]
+        if not out.get("scenario") and gb["auteurs"]:
+            out["scenario"] = gb["auteurs"]
+        if gb["tomes"]:
+            out["tomes_google"] = gb["tomes"]
+    out["sources"] = [s for s, ok in (("AniList", bool(st.get("anilist"))), ("Wikipédia", bool(out.get("wikipedia"))),
+                                     ("MangaUpdates", bool(mu)), ("Google Books", bool(gb))) if ok]
     try:
         brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
     except (OSError, ValueError):

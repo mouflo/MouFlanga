@@ -2648,15 +2648,43 @@ def verification():
 @app.route("/regles")
 def page_regles():
     """📏 Règles de recherche (admin) : profils de version et formats personnalisés, comme dans Sonarr."""
-    onglet = "formats" if request.args.get("onglet") == "formats" else "profils"
+    onglet = request.args.get("onglet") if request.args.get("onglet") in ("formats", "sources") else "profils"
     edit = request.args.get("edit", "")
     cle = "profils" if onglet == "profils" else "formats"
     modif = next((x for x in regles.profils() if x["id"] == edit), None) if edit and cle == "profils" else None
     if edit and cle == "formats":
         modif = next((x for x in regles.formats() if x["id"] == edit), None)
+    cle = tomes.cle_google_books()
     return render_template("regles.html", version=APP_VERSION, onglet=onglet, profils=regles.profils(),
-                           formats=regles.formats(), modif=modif,
+                           formats=regles.formats(), modif=modif, cle_gb=("…" + cle[-4:]) if len(cle) >= 8 else "",
                            ok=request.args.get("ok", ""), erreur=request.args.get("erreur", ""))
+
+
+_CLE_GOOGLE_RE = re.compile(r"^[A-Za-z0-9_-]{20,128}$")
+
+
+@app.route("/regles/google-books", methods=["POST"])
+def regles_google_books():
+    """Clé API Google Books : « Tester » vérifie auprès de Google ; « Enregistrer » ne garde que une clé acceptée."""
+    from secrets_store import write_secret
+    f = request.form
+    cle = f.get("cle", "").strip()
+    retour = "/regles?onglet=sources"
+    if f.get("action") == "retirer":
+        write_secret(DATA_DIR / "secrets.env", "GOOGLE_BOOKS_API_KEY", "")
+        os.environ["GOOGLE_BOOKS_API_KEY"] = ""
+        return redirect(retour + "&ok=" + quote("Clé retirée : Google Books n'est plus interrogé."))
+    if not _CLE_GOOGLE_RE.match(cle):
+        return redirect(retour + "&erreur=" + quote("Clé invalide : lettres, chiffres, tirets et tirets bas seulement (colle-la sans espace)."))
+    ok, msg = tomes.verifier_cle_google(cle)
+    if f.get("action") == "tester":
+        return redirect(retour + ("&ok=" if ok else "&erreur=") + quote(msg))
+    if not ok:
+        return redirect(retour + "&erreur=" + quote(msg + ". Rien n'a été enregistré."))
+    write_secret(DATA_DIR / "secrets.env", "GOOGLE_BOOKS_API_KEY", cle)
+    os.environ["GOOGLE_BOOKS_API_KEY"] = cle
+    logger.info("Clé API Google Books enregistrée depuis la page Règles")
+    return redirect(retour + "&ok=" + quote("Clé enregistrée. " + msg + "."))
 
 
 @app.route("/regles/enregistrer", methods=["POST"])

@@ -44,6 +44,7 @@
         <nav class="regles-onglets">
             <a href="/regles?onglet=profils" class="{{ 'actif' if onglet == 'profils' }}">🧾 Profils de version</a>
             <a href="/regles?onglet=formats" class="{{ 'actif' if onglet == 'formats' }}">🏷 Formats personnalisés</a>
+            <a href="/regles?onglet=sources" class="{{ 'actif' if onglet == 'sources' }}">🔑 Sources</a>
         </nav>
 
         {% if onglet == 'profils' %}
@@ -88,7 +89,7 @@
                 <button type="submit">💾 Enregistrer le profil</button>
             </form>
             {% if modif and onglet == 'profils' %}<p><a href="/regles?onglet=profils">Annuler la modification</a></p>{% endif %}
-        {% else %}
+        {% elif onglet == 'formats' %}
             <p class="note">Un format personnalisé ajoute des <b>points</b> aux torrents dont le titre contient un de ses mots. Les torrents avec le plus de points sont proposés en premier. Un score négatif fait descendre un torrent.</p>
             {% for f in formats %}
                 <div class="regle">
@@ -120,6 +121,22 @@
                 <button type="submit">💾 Enregistrer le format</button>
             </form>
             {% if modif and onglet == 'formats' %}<p><a href="/regles?onglet=formats">Annuler la modification</a></p>{% endif %}
+        {% else %}
+            <h2 style="margin-top: 0;">🔑 Google Books</h2>
+            <p class="note">Quand une série est ré-identifiée (menu ⋯ → 🔄 Relancer l'identification), MouFlanga interroge aussi <b>MangaUpdates</b> (sans clé) et <b>Google Books</b> : éditeur, auteur et nombre de tomes. Google Books demande une clé API gratuite : Google Cloud → Bibliothèque d'API → activer « Books API », puis Identifiants → Créer une clé d'API.</p>
+            <p class="note">Clé actuelle : {{ cle_gb if cle_gb else 'aucune' }}. La clé n'est jamais réaffichée en entier.</p>
+            <form class="formulaire" method="post" action="/regles/google-books">
+                <label for="gbcle">Clé API Google Books</label>
+                <input type="text" id="gbcle" name="cle" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Colle la clé ici">
+                <div class="aide">« Tester » vérifie la clé auprès de Google sans rien enregistrer. « Enregistrer » ne garde qu'une clé acceptée.</div>
+                <button type="submit" name="action" value="tester" class="ghost">🧪 Tester la clé</button>
+                <button type="submit" name="action" value="enregistrer">💾 Enregistrer la clé</button>
+            </form>
+            {% if cle_gb %}
+            <form method="post" action="/regles/google-books" style="margin-top: 10px;" onsubmit="return confirm('Retirer la clé Google Books ?');">
+                <button type="submit" name="action" value="retirer">🗑 Retirer la clé</button>
+            </form>
+            {% endif %}
         {% endif %}
     </div>
 </body>

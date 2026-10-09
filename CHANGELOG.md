@@ -1,5 +1,9 @@
 # Historique des versions
 
+## Sources à la ré-identification et clé Google Books (9 octobre 2026)
+- 🔄 Relancer l'identification interroge aussi **MangaUpdates** (éditeurs, auteurs, nombre de volumes) et **Google Books** (éditeur et auteur d'une édition française, plus grand numéro de tome trouvé). La fiche ⓘ indique les sources consultées.
+- 🔑 Réglages → **📏 Règles de recherche → 🔑 Sources** : saisie de la clé API Google Books, bouton « Tester » qui la vérifie auprès de Google avant d'enregistrer, et « Retirer la clé ». La clé n'est jamais réaffichée en entier.
+
 ## Doublons : ne rien faire (9 octobre 2026)
 - 🚫 Troisième choix « Ne rien faire » sur une demande « déjà présent » (Télécharger) : la demande est fermée et ne revient plus.
 - 🔕 Une notification n'est envoyée que pour un doublon nouveau ; les doublons refusés ou dont le fichier a disparu ne sont plus signalés.
