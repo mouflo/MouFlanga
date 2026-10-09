@@ -1933,6 +1933,30 @@ def page_importer():
     return render_template("importer.html", version=APP_VERSION)
 
 
+def _relancer_identification(serie):
+    """En arrière-plan : refait la recherche (tomes, statut AniList, fiche) de la série, cache effacé avant."""
+    def travail():
+        try:
+            tomes.oublier(serie)
+            tomes.chercher(serie, forcer=True)
+            tomes.statut_officiel(serie, forcer=True)
+            tomes.fiche(serie, forcer=True)
+            logger.info("Identification relancée : « %s »", serie)
+        except Exception as e:
+            logger.warning("Identification de « %s » : %s", serie, e)
+    threading.Thread(target=travail, daemon=True).start()
+
+
+@app.route("/api/identifier", methods=["POST"])
+def api_identifier():
+    """« 🔄 Relancer l'identification » : efface le cache et refait la recherche avec le nom actuel."""
+    name = str((request.get_json(silent=True) or {}).get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    _relancer_identification(name)
+    return jsonify({"ok": True, "message": "Identification relancée : les infos se mettent à jour dans quelques instants."})
+
+
 @app.route("/api/renommer", methods=["POST"])
 def api_renommer():
     """« ✏️ Renommer la série » : dossier, fichiers de tome, progression, couverture et infos gardées suivent."""
@@ -1957,9 +1981,7 @@ def api_renommer():
         for f in (MANGA_DIR / nouveau).rglob("*.cbz"):        # « Ancien nom - Tome 03.cbz » → « Nouveau nom - Tome 03.cbz »
             if f.name.startswith(name + " - ") and not f.with_name(nouveau + f.name[len(name):]).exists():
                 f.rename(f.with_name(nouveau + f.name[len(name):]))
-        ancien_cache, nouveau_cache = tomes._fichier(name), tomes._fichier(nouveau)
-        if ancien_cache.exists() and not nouveau_cache.exists():
-            ancien_cache.rename(nouveau_cache)
+        tomes.oublier(name)
         doublons = 0
         if fusion and (MANGA_DIR / name).is_dir():     # restent les fichiers déjà présents dans l'autre série : corbeille
             doublons = sum(1 for f in (MANGA_DIR / name).rglob("*") if f.is_file())
@@ -1968,6 +1990,7 @@ def api_renommer():
         suivi.renommer(name, nouveau)
     except OSError as e:
         return jsonify({"ok": False, "error": f"Renommage impossible : {e}"}), 500
+    _relancer_identification(nouveau)
     if fusion:
         logger.info("Série fusionnée : « %s » → « %s » (%d doublon(s) à la corbeille)", name, nouveau, doublons)
         return jsonify({"ok": True, "id": nouveau, "message": f"Séries fusionnées dans « {nouveau} »."

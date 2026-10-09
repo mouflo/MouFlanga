@@ -525,6 +525,11 @@
       if (!r.ok) { note('sMsg', r.error); return; }
       await openSeries(current.id, false);
     });
+    $('sIdentifier').addEventListener('click', async function () {
+      var r = await post('/api/identifier', {series: current.id});
+      note('listMsg', r.message || r.error);
+    });
+
     $('sRenommer').addEventListener('click', async function () {
       var nom = prompt('Nouveau nom de la série :', current.title);
       if (!nom || nom.trim() === current.title) return;

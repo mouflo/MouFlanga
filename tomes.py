@@ -240,6 +240,11 @@ def _enregistrer(serie: str, info: dict):
     tmp.replace(_fichier(serie))
 
 
+def oublier(serie: str):
+    """Efface le cache d'identification d'une série : la prochaine consultation refait la recherche."""
+    _fichier(serie).unlink(missing_ok=True)
+
+
 def _charger(serie: str) -> dict | None:
     try:
         d = json.loads(_fichier(serie).read_text(encoding="utf-8"))

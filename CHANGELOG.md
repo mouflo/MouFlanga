@@ -1,5 +1,9 @@
 # Historique des versions
 
+## Relance de l'identification (9 octobre 2026)
+- 🔄 **Relancer l'identification** dans le menu ⋯ : efface le cache de la série et refait la recherche (tomes, statut, fiche) avec le nom actuel.
+- ✏️ Un renommage relance l'identification tout seul.
+
 ## Résolution refaite après remplacement (9 octobre 2026)
 - 🔍 Quand des tomes sont remplacés (à la main ou par un torrent), l'analyse de résolution et de source de la fiche est refaite à l'ouverture suivante.
 
