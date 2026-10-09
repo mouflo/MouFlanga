@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Connexion et liens Telegram (9 octobre 2026)
+- 🔗 Un lien ouvert depuis Telegram (« …/#Série ») ouvre bien la fiche demandée après la connexion : le #fragment est reporté dans la page de connexion.
+
 ## Lot 1 : identification, éditions, Telegram, bandeau (9 octobre 2026)
 - 🔤 Ø traité comme O dans la reconnaissance des noms ; une réécriture (« Code » → « CØDE ») n'apprend plus un mot à retirer.
 - 🏷 Les mentions « Édition de luxe », « deluxe », « collector »… sont retirées du nom de la série et affichées sur la fiche.

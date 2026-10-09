@@ -188,6 +188,13 @@ LOGIN_HTML = """<!DOCTYPE html>
             </div>
             <button type="submit">Se connecter</button>
         </form>
+        <script>
+        /* Le navigateur n'envoie pas le #fragment au serveur : on le reporte dans la page demandée après connexion */
+        (function () {
+            var f = document.querySelector('form[action="/login"]');
+            if (f && location.hash) { f.elements.next.value = (f.elements.next.value || "/") + location.hash; }
+        })();
+        </script>
     {% endif %}
     {% if version %}<div class="ver">{{ version }}</div>{% endif %}
 </main>
