@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Résolution refaite après remplacement (9 octobre 2026)
+- 🔍 Quand des tomes sont remplacés (à la main ou par un torrent), l'analyse de résolution et de source de la fiche est refaite à l'ouverture suivante.
+
 ## Choix avant remplacement (8 octobre 2026)
 - ❓ **Tomes déjà présents** : un torrent ou un rangement à la main qui contient des tomes déjà là ne remplace plus rien tout seul. La tâche passe « À valider » dans Télécharger, avec deux boutons : remplacer tous les tomes (confirmation, anciens tomes à la corbeille 30 jours) ou ajouter seulement les manquants.
 - 🔔 Rappel Telegram à l'arrivée d'une tâche à valider, puis une fois par jour tant qu'il n'y a pas de choix.

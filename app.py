@@ -1647,6 +1647,9 @@ def _remplacer_tomes(nom, numeros):
                     _write_json(_pf, data)
         _vers_corbeille(ancien)
         n += 1
+    if n:
+        import edition
+        edition.invalider(dossier)
     return n
 
 

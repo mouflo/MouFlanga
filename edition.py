@@ -132,6 +132,13 @@ def analyser(fichiers: list[Path], indices_texte: str = "") -> dict:
     return res
 
 
+def invalider(dossier: Path):
+    """Après un remplacement de tomes : la résolution et la source sont à refaire avec les nouveaux fichiers."""
+    d = lire(dossier)
+    if d.pop("analyse", None) is not None:
+        ecrire(dossier, d)
+
+
 def infos(dossier: Path, fichiers: list[Path], lancer=True) -> dict:
     """Infos à afficher ; l'analyse des pages se fait une fois, en arrière-plan (le résultat vient au rechargement)."""
     d = lire(dossier)
