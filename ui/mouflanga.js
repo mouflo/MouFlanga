@@ -389,7 +389,8 @@
     function ligne(c) {
       return '<div class="chap' + (c.read ? ' read' : '') + (c.key === s.current ? ' cur' : '') + '" data-path="' + esc(c.key) + '">' +
         '<span class="dot"></span><span class="ct">' + esc(c.title) + (c.sous ? '<small class="ct2">' + esc(c.sous) + '</small>' : '') + '</span>' +
-        (c.tome != null ? '<button class="tog tinfo' + (c.titres_ch ? ' vert' : '') + '" data-tinfo="' + c.tome + '" title="Infos du tome">ⓘ</button>' : '') + '<span class="cs">' + taille(c.size_mb) + '</span>' +
+        (c.tome != null ? '<button class="tog tinfo' + (c.titres_ch ? ' vert' : '') + '" data-tinfo="' + c.tome + '" title="Infos du tome">ⓘ</button>' : '') +
+        (c.groupe === 'Hors-série' ? '<button class="tog" data-hs="' + esc(c.key) + '" title="Identifier ce hors-série">🔎</button>' : '') + '<span class="cs">' + taille(c.size_mb) + '</span>' +
         '<button class="tog" data-tog="' + esc(c.key) + '" title="Marquer ' + (c.read ? 'non lu' : 'lu') + '">' + (c.read ? '↺' : '✔') + '</button>' +
         '<button class="tog del" data-del="' + esc(c.key) + '" title="Supprimer ce chapitre">🗑</button></div>';
     }
@@ -537,6 +538,13 @@
         else await openSeries(current.id, false);
         return;
       }
+      var hs = e.target.closest('[data-hs]');
+      if (hs) {
+        e.stopPropagation();
+        var rang = hs.closest('.chap'), titre = rang ? (rang.querySelector('.ct') || {}).textContent : '';
+        ouvrirHorsSerie(hs.dataset.hs, titre || 'hors-série');
+        return;
+      }
       var row = e.target.closest('.chap');
       if (row && current.chapters.some(function (c) { return c.key === row.dataset.path && c.a_importer; })) {
         note('sMsg', 'Ce fichier doit d\'abord être converti : appuie sur « 🧹 Organiser » en haut de la page.', 'warn'); return;
@@ -566,6 +574,49 @@
     if (l) { e.preventDefault(); readChapter(l.dataset.cle); }
   });
   $('sCouvertures').addEventListener('click', function () { location.href = '/couvertures?id=' + encodeURIComponent(current.id); });
+
+  // 🔎 Identification d'un hors-série : résultats AniList / MangaDex, saisie à la main, ou retrait
+  var hsCandidats = [], hsCle = '';
+  function ouvrirHorsSerie(cle, titre) {
+    hsCle = cle;
+    $('infosTitre').textContent = '🔎 Hors-série : ' + titre;
+    $('infosCorps').innerHTML = '<div class="dem-sous">Recherche sur AniList et MangaDex…</div>';
+    $('infosVue').hidden = false;
+    api('/api/hors-serie/candidats?id=' + encodeURIComponent(current.id) + '&key=' + encodeURIComponent(cle)).then(function (r) {
+      if (r.error) { $('infosCorps').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
+      hsCandidats = r.candidats || [];
+      var actuel = r.identifie ? '<p class="dem-sous">Actuellement : <b>' + esc(r.identifie.titre) + '</b>' +
+        (r.identifie.annee ? ' · ' + esc(r.identifie.annee) : '') + (r.identifie.auteur ? ' · ' + esc(r.identifie.auteur) : '') + '</p>' : '';
+      var lignes = hsCandidats.map(function (c, i) {
+        return '<li class="ident-ligne"><div><b>' + esc(c.titre) + '</b><small>' + [c.annee, c.auteur, c.source, c.statut].filter(Boolean).map(esc).join(' · ') + '</small></div>' +
+          '<button type="button" class="mou-btn" data-hs-choix="' + i + '">Choisir</button></li>';
+      }).join('');
+      $('infosCorps').innerHTML = actuel + (hsCandidats.length ? '<ul class="ident-liste">' + lignes + '</ul>'
+        : '<div class="dem-sous">Rien trouvé sur ces sources pour « ' + esc(r.titre) + ' ».</div>') +
+        '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-hs-manuel="1">✏️ Saisir le hors-série à la main</button>' +
+        (r.identifie ? ' <button type="button" class="mou-btn ghost" data-hs-retirer="1">Retirer l\'identification</button>' : '') + '</div>';
+    });
+  }
+  async function enregistrerHorsSerie(corps) {
+    var r = await post('/api/hors-serie', Object.assign({series: current.id, key: hsCle}, corps));
+    note('listMsg', r.message || r.error, r.ok ? 'ok' : 'err');
+    if (r.ok) { $('infosVue').hidden = true; openSeries(current.id, false); }
+  }
+  $('infosCorps').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-hs-choix],[data-hs-manuel],[data-hs-retirer]'); if (!b) return;
+    if (b.dataset.hsRetirer) return enregistrerHorsSerie({action: 'retirer'});
+    if (b.dataset.hsManuel) {
+      var titre = prompt('Titre du hors-série (obligatoire) :', '');
+      if (!titre || !titre.trim()) return;
+      var annee = prompt('Année (facultatif) :', '') || '';
+      var auteur = prompt('Auteur (facultatif) :', '') || '';
+      var lien = prompt('Lien vers le site qui le décrit (facultatif) :', '') || '';
+      return enregistrerHorsSerie({action: 'choisir', titre: titre.trim(), annee: annee.trim(), auteur: auteur.trim(), source: 'Saisie manuelle', lien: lien.trim()});
+    }
+    var c = hsCandidats[+b.dataset.hsChoix];
+    if (c) enregistrerHorsSerie({action: 'choisir', titre: c.titre, annee: c.annee || '', auteur: c.auteur || '', source: c.source, lien: c.lien || ''});
+  });
+
 
   $('sUnivers').addEventListener('click', async function () {
       var actuel = current.univers || '';

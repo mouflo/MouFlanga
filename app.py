@@ -219,6 +219,12 @@ def _titre_hors_serie(titre):
     return court or titre
 
 
+def _infos_serie(name):
+    """Fichier d'infos d'une série (une lecture par série et par liste)."""
+    import edition
+    return edition.lire(MANGA_DIR / name)
+
+
 def _ordre_entree(e):
     """Hors-série en premier, puis tomes dans l'ordre (tome complet ou tome à chapitres), puis chapitres « hors tome », puis le reste."""
     if e.get("groupe") == HORS_SERIE:
@@ -280,6 +286,10 @@ def _entrees(files):
             tome = _numero_tome(titre)
             if tome is None and _est_hors_serie(titre):
                 entree.update(groupe=HORS_SERIE, title=_titre_hors_serie(titre))
+                ident = hors_serie.lire(_infos_serie(f.relative_to(MANGA_DIR).parts[0])).get(rel)
+                if ident:                                 # identifié à la main ou sur AniList/MangaDex
+                    entree.update(title=ident.get("titre") or entree["title"], identifie=True,
+                                  sous=" · ".join(str(x) for x in (ident.get("annee"), ident.get("auteur"), ident.get("source")) if x))
             elif tome is not None:
                 # Tome complet (un fichier = un tome) : affiché « Tome 03 · chapitres 17 à 25 »
                 couverts, plage = _plage_chapitres(f.relative_to(MANGA_DIR).parts[0], tome)
@@ -866,6 +876,54 @@ def couvertures_appliquer():
         return _retour_couvertures(name, erreur="Aucune couverture remplacée" + (f" ({echecs} échec(s))." if echecs else "."))
     msg = f"{faits} couverture(s) remplacée(s)" + (f" · {echecs} échec(s)" if echecs else "") + " (les anciennes sont gardées)."
     return _retour_couvertures(name, ok=msg)
+
+
+# ---------------- 🔎 Identification des hors-série (admin) ----------------
+def _hors_serie_du_fichier(name, key):
+    files = _scan().get(name) or []
+    return next((f for f in files if _rel(f) == key and _est_hors_serie(f.stem)), None)
+
+
+@app.route("/api/hors-serie/candidats")
+def api_hors_serie_candidats():
+    """Résultats AniList / MangaDex pour un hors-série, d'après le titre du fichier et le nom de la série."""
+    name, key = request.args.get("id", ""), request.args.get("key", "")
+    if name not in _scan() or not _hors_serie_du_fichier(name, key):
+        return jsonify({"error": "Hors-série introuvable"}), 404
+    titre = _titre_hors_serie(_hors_serie_du_fichier(name, key).stem)
+    titre = re.sub(r"\s*\([^)]*\)", "", titre).strip() or titre        # « Blue (Oda) (2005) » → « Blue »
+    return jsonify({"titre": titre, "candidats": hors_serie.candidats(name, titre),
+                    "identifie": hors_serie.lire(_infos_serie(name)).get(key)})
+
+
+@app.route("/api/hors-serie", methods=["POST"])
+def api_hors_serie_enregistrer():
+    """Garde (ou retire) l'identification d'un hors-série : titre, année, auteur, source et lien."""
+    body = request.get_json(silent=True) or {}
+    name, key = str(body.get("series", "")), str(body.get("key", ""))
+    if name not in _scan() or not _hors_serie_du_fichier(name, key):
+        return jsonify({"ok": False, "error": "Hors-série introuvable"}), 404
+    import edition
+    dossier = MANGA_DIR / name
+    d = edition.lire(dossier)
+    hs = d.get("hors_series") if isinstance(d.get("hors_series"), dict) else {}
+    if body.get("action") == "retirer":
+        hs.pop(key, None)
+        msg = "Identification retirée."
+    else:
+        titre = str(body.get("titre", "")).strip()
+        if not titre:
+            return jsonify({"ok": False, "error": "Le titre est obligatoire."}), 400
+        if any(c in titre for c in '"$`\\\n\r'):
+            return jsonify({"ok": False, "error": "Titre : caractères interdits (\" $ ` \\)."}), 400
+        annee = str(body.get("annee", "")).strip()
+        hs[key] = {"titre": titre, "annee": int(annee) if annee.isdigit() else None,
+                   "auteur": str(body.get("auteur", "")).strip()[:200], "source": str(body.get("source", "Saisie manuelle"))[:40],
+                   "lien": str(body.get("lien", "")).strip() if str(body.get("lien", "")).strip().startswith(("http://", "https://")) else ""}
+        msg = f"Hors-série identifié : « {titre} »."
+    d["hors_series"] = hs
+    edition.ecrire(dossier, d)
+    return jsonify({"ok": True, "message": msg})
 
 
 @app.route("/api/cover/choisir", methods=["POST"])
@@ -1899,6 +1957,7 @@ def api_occupe():
 
 # ---------------- 🧲 Torrents (Prowlarr → qBittorrent → import) : admin seulement ----------------
 import couvertures_tomes
+import hors_serie
 import regles
 import torrents
 torrents._ETAT["fichier"] = DATA_DIR / "torrents.json"

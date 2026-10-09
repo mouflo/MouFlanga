@@ -1,5 +1,10 @@
 # Historique des versions
 
+## Identification des hors-série (9 octobre 2026)
+- 🔎 Chaque hors-série a un bouton 🔎 : l'appli cherche sur AniList, MangaDex et Google Books (avec le nom de la série et de l'auteur), et tu choisis le bon résultat dans la liste.
+- ✏️ Si rien ne convient : saisie à la main (titre, année, auteur, lien). « Retirer l'identification » revient au nom du fichier.
+- Le titre identifié remplace le nom du fichier dans la liste ; le fichier, lui, n'est jamais renommé.
+
 ## Hors-série regroupés (9 octobre 2026)
 - 📚 Les hors-série d'une série (HS, Data Book, artbook, one-shot) sont regroupés dans un groupe « Hors-série » en haut de la liste des chapitres, repliable comme un tome. Exemple : One Piece (Blue, Red, Yellow).
 
