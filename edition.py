@@ -138,14 +138,23 @@ def volumes_du_titre(titre: str):
     return int(m.group(1)) if m else None
 
 
+def edition_du_titre(titre: str):
+    """« Cat's Eye - Édition de luxe [...] » → « Édition de luxe » ; None si aucune mention d'édition."""
+    m = re.search(r"[ée]dition\s+(?:de\s+)?luxe|deluxe|collector|kanzenban|perfect\s+edition|ultimate\s+edition", titre or "", re.I)
+    return m.group(0).strip().capitalize() if m else None
+
+
 def noter_volumes(dossier: Path, titre: str):
-    """Garde le nombre de tomes de l'édition importée (il peut différer de l'édition standard)."""
-    n = volumes_du_titre(titre)
-    if n:
-        d = lire(dossier)
-        if d.get("volumes_attendus") != n:
-            d["volumes_attendus"] = n
-            ecrire(dossier, d)
+    """Garde le nombre de tomes et la mention d'édition de l'import (l'édition peut différer de l'édition standard)."""
+    d = lire(dossier)
+    n, ed = volumes_du_titre(titre), edition_du_titre(titre)
+    changed = False
+    if n and d.get("volumes_attendus") != n:
+        d["volumes_attendus"], changed = n, True
+    if ed and d.get("edition") != ed:
+        d["edition"], changed = ed, True
+    if changed:
+        ecrire(dossier, d)
 
 
 def invalider(dossier: Path):

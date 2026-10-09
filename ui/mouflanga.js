@@ -295,7 +295,7 @@
     var ed = s.edition || {};
     var src = ed.source ? '<span class="' + (ed.devine ? 'ed-devine' : 'ed-sur') + '">' + esc(ed.source) + (ed.devine ? ' ?' : ' ✓') + '</span>'
       : (ed.resolution ? '<span class="ed-devine">source ?</span>' : '');
-    var bouts = [ed.resolution ? '📐 ' + esc(ed.resolution) : '', src].filter(Boolean);
+    var bouts = [ed.edition ? '🏷 ' + esc(ed.edition) : '', ed.resolution ? '📐 ' + esc(ed.resolution) : '', src].filter(Boolean);
     $('sEdition').hidden = !bouts.length; $('sEdition').innerHTML = bouts.join(' · ');
     $('sEdition').title = ed.pourquoi ? 'Indice : ' + ed.pourquoi : '';
     $('sNfo').hidden = !(ed.nfo || (ed.archives || []).length);
@@ -408,6 +408,15 @@
     var h = location.hostname;
     var local = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h) || /\.(local|lan|home)$/.test(h);
     return local ? (s.moufloster || s.moufloster_externe) : (s.moufloster_externe || s.moufloster);
+  }
+
+  // Titre d'un chapitre de la fenêtre ⓘ : cliquable quand le chapitre est dans la série (même numéro, même tome)
+  function lienChapitre(texte, tome) {
+    var propre = String(texte).replace(/[{}]+/g, '');
+    var m = /^([\d.]+)\./.exec(propre);
+    var groupe = 'Tome ' + String(tome).padStart(2, '0');
+    var e = m ? (current.chapters || []).find(function (x) { return Math.abs(x.num - parseFloat(m[1])) < 1e-6 && (x.groupe === groupe || String(x.tome) === String(Number(tome))); }) : null;
+    return e ? '<a href="#" class="tchap-lien" data-cle="' + esc(e.key) + '">' + esc(propre) + '</a>' : esc(propre);
   }
 
   function readChapter(path) {
@@ -525,7 +534,11 @@
       if (!r.ok) { note('sMsg', r.error); return; }
       await openSeries(current.id, false);
     });
-    $('sIdentifier').addEventListener('click', async function () {
+    document.addEventListener('click', function (e) {
+    var l = e.target.closest && e.target.closest('.tchap-lien');
+    if (l) { e.preventDefault(); readChapter(l.dataset.cle); }
+  });
+  $('sIdentifier').addEventListener('click', async function () {
       var r = await post('/api/identifier', {series: current.id});
       note('listMsg', r.message || r.error);
     });
@@ -591,7 +604,7 @@
       $('infosCorps').innerHTML = '<div class="tome-fiche"><img class="tome-couv" src="' + cov + '" alt="" data-grand="' + cov + '&grand=1">' +
         '<div class="tome-champs">' + (champs.length ? champs.map(function (x) { return '<div class="champ"><small>' + x[0] + '</small><div>' + esc(x[1]) + '</div></div>'; }).join('')
           : (chap.length ? '' : '<div class="dem-sous">Pas d\'infos sur ce tome.</div>')) + '</div></div>' +
-        (chap.length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') + '</ol>' : '');
+        (chap.length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c) { return '<li>' + lienChapitre(c, n) + '</li>'; }).join('') + '</ol>' : '');
       var im = $('infosCorps').querySelector('.tome-couv');
       if (im) im.addEventListener('error', function () { im.style.display = 'none'; });
     }, true);
@@ -677,7 +690,18 @@
 
   function fermerMenus() { $('menuCover').hidden = true; $('menuMore').hidden = true; }
 
-  function showList() { arreterGenerique(); $('seriesView').style.display = 'none'; $('listView').style.display = ''; loadList(); }
+  function showList() { arreterGenerique(); $('seriesView').style.display = 'none'; $('listView').style.display = ''; loadList(); verifierChoix(); }
+  // Bandeau : les tâches qui attendent un choix (remplacer tout / ajouter les manquants) — admin seulement
+  async function verifierChoix() {
+    try {
+      var r = await (await fetch('/api/torrents?leger=1')).json();
+      var n = (r.torrents || []).filter(function (t) { return t.etat === 'a_valider'; }).length;
+      var b = $('choixBandeau');
+      if (!b) { b = document.createElement('a'); b.id = 'choixBandeau'; b.className = 'verif-bandeau'; b.href = '/telecharger'; $('listView').prepend(b); }
+      b.hidden = !n;
+      b.textContent = n ? '❓ ' + n + ' choix à faire : remplacer tous les tomes ou ajouter les manquants (ouvrir Télécharger)' : '';
+    } catch (e) { /* lecteur ou réseau indisponible : rien à afficher */ }
+  }
   function route() {
     var h = decodeURIComponent((location.hash || '').slice(1));
     if (h === 'demandes') { showList(); ouvrirDemandes(true); }          // lien des messages Telegram

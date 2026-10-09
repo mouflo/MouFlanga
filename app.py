@@ -535,7 +535,8 @@ def _infos_edition(name, files):
     a = d.get("analyse") or {}
     source, devine = (d["source_manuelle"], False) if d.get("source_manuelle") else (a.get("source") or "", a.get("devine", True))
     return {"resolution": a.get("resolution", ""), "source": source, "devine": devine, "pourquoi": a.get("pourquoi", ""),
-            "nfo": d.get("nfo", ""), "archives": d.get("archives", []), "analyse_faite": "analyse" in d}
+            "nfo": d.get("nfo", ""), "archives": d.get("archives", []), "analyse_faite": "analyse" in d,
+            "edition": d.get("edition", "")}
 
 
 @app.route("/api/edition", methods=["POST"])
@@ -1093,6 +1094,8 @@ def _appris(dossier, propose):
             return c["choisi"]
     retires = {}
     for c in choix:
+        if len(c["choisi"].split()) >= len(c["propose"].split()):      # réécriture (ex. « Code » → « CØDE »), pas un mot retiré
+            continue
         garde = set(c["choisi"].lower().split())
         for mot in set(c["propose"].lower().split()) - garde:
             retires[mot] = retires.get(mot, 0) + 1
@@ -1245,6 +1248,8 @@ def _organiser(name, nouveau):
             pass
     _suivre_renommage(name, nouveau, deplaces)
     if doublons:
+        if nouveau != name:
+            doublons = [(dossier / f.relative_to(ancien_dossier) if f.is_relative_to(ancien_dossier) else f, c, t) for f, c, t in doublons]
         _signaler_doublons(nouveau, doublons)
     logger.info("Série organisée : « %s » → « %s » (%d fichier(s) déplacé(s))", name, nouveau, len(deplaces))
     return nouveau
@@ -1297,6 +1302,9 @@ def api_torrents_decider():
     j = next((x for x in torrents._lire() if x.get("id") == jid and x.get("etat") == "a_valider"), None)
     if j is None:
         return jsonify({"ok": False, "error": "Rien à valider ici (déjà traité ?)."}), 404
+    if j.get("manuel") and not any((MANGA_DIR / src).is_file() for src, _c, _t in j.get("paires", [])):
+        torrents._maj(jid, etat="erreur", message="Fichiers introuvables (dossier renommé ou supprimé) : relance le rangement.")
+        return jsonify({"ok": False, "error": "Ces fichiers ne sont plus à leur place : relance le rangement."}), 409
     if not j.get("manuel"):
         torrents.decider_torrent(jid, remplacer)
         return jsonify({"ok": True, "message": "Choix enregistré : l'import reprend."})
@@ -1454,12 +1462,13 @@ def _lancer_import(nouveau, attendre=False, lots_forces=None):
 
 _FILE_IMPORT = {"en_cours": None, "attente": [], "faits": [], "erreurs": [], "message": ""}
 _FILE_VERROU = threading.Lock()
+_EDITION = re.compile(r"\s*[-–:,]?\s*\b(?:[ée]dition\s+(?:de\s+)?luxe|deluxe|de\s+luxe|collector|kanzenban|perfect\s+edition|ultimate\s+edition)\b", re.I)
 _NOMBRE_TOMES = re.compile(r"\b(?:int[ée]grale\s*)?\d+\s*tomes?\b|\b(?:tomes?|t)\s*\d+\s*(?:[-àa]|a)\s*\d+\b|\bfinal\b", re.I)
 
 
 def _cle_nom(nom):
     import unicodedata
-    t = unicodedata.normalize("NFKD", nom).encode("ascii", "ignore").decode().lower()
+    t = unicodedata.normalize("NFKD", nom.replace("Ø", "O").replace("ø", "o")).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9]+", "", t)
 
 
@@ -1502,7 +1511,7 @@ def _nom_depuis_archive(nom_fichier, existantes):
     t = stem.replace("_", " ")
     if t.count(".") >= 2 or (re.search(r"[A-Za-z]\.[A-Za-z]", t) and t.count(" ") <= 1):   # « Docteur.Slump », « AirGear.37.Tomes… »
         t = t.replace(".", " ")
-    t = _CROCHETS.sub(" ", t)
+    t = _EDITION.sub(" ", _CROCHETS.sub(" ", t))
     m = _COUPURE.search(" " + t)
     if m and m.start() > 1:                                   # le titre est avant le premier mot technique
         t = (" " + t)[:m.start()]
@@ -1741,7 +1750,10 @@ def _infos_suivi(nom):
     import edition
     d = edition.lire(MANGA_DIR / nom) if files else {}
     source = d.get("source_manuelle") or (d.get("analyse") or {}).get("source", "")
-    return {"tomes": t, "source": source}
+    attendus = _volumes_attendus(nom) if files else None
+    complete = bool(attendus) and all(i in t for i in range(1, int(attendus) + 1))
+    en_cours = any(j.get("serie") == nom and j.get("etat") in ("telechargement", "import", "a_valider") for j in torrents._lire())
+    return {"tomes": t, "source": source, "complete": complete, "en_cours": en_cours}
 
 
 def _accepter_demande(x):

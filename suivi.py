@@ -84,6 +84,8 @@ def tomes_du_titre(titre: str) -> set:
 def propositions_pour(nom, info, resultats, deja):
     """info : {"tomes": set des tomes présents, "source": « Scan »…, "qualite": visée}. Renvoie les nouvelles propositions."""
     out, vus = [], set(deja)
+    if info.get("complete") or info.get("en_cours"):          # série terminée ou téléchargement déjà lancé : rien à proposer
+        return out
     possedes = info["tomes"]
     rang = RANG_QUALITE.get(info.get("source") or "", 1)
     for r in resultats:
@@ -106,6 +108,11 @@ def propositions_pour(nom, info, resultats, deja):
         if len(out) >= 5:
             break
     return out
+
+
+def _sans_point(titre):
+    """Telegram transforme « Oda.FR » en lien (domaine) : les points des noms de torrents sont remplacés par des espaces."""
+    return titre.replace(".", " ")
 
 
 def verifier(nom, chercher, infos_serie):
@@ -158,7 +165,8 @@ def boucle(chercher, infos_serie, envoyer, adresse, actif):
                 if nouv:
                     lien = adresse().rstrip("/") + "/#" + __import__("urllib.parse").parse.quote(nom) if adresse() else ""
                     envoyer(f"{'🆕' if nouv[0]['type'] == 'nouveau' else '⬆️'} MouFlanga : {nom} — {len(nouv)} proposition(s)\n"
-                            + "\n".join(f"• {p['titre'][:90]}" for p in nouv) + (f"\n{lien}" if lien else ""))
+                            + "\n".join(f"• « {_sans_point(p['titre'][:90])} »" for p in nouv)
+                            + (f"\n👉 Ouvrir dans MouFlanga : {lien}" if lien else ""))
                 time.sleep(20)                    # sobre avec Prowlarr et les indexeurs
         except Exception as e:
             logger.warning("Surveillance des séries : %s", e)

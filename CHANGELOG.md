@@ -1,5 +1,14 @@
 # Historique des versions
 
+## Lot 1 : identification, éditions, Telegram, bandeau (9 octobre 2026)
+- 🔤 Ø traité comme O dans la reconnaissance des noms ; une réécriture (« Code » → « CØDE ») n'apprend plus un mot à retirer.
+- 🏷 Les mentions « Édition de luxe », « deluxe », « collector »… sont retirées du nom de la série et affichées sur la fiche.
+- 📚 Les doublons d'un rangement à la main gardent le bon chemin après renommage ; une tâche dont les fichiers ont disparu passe en erreur.
+- 🔔 Bandeau « N choix à faire » dans la bibliothèque (administrateur).
+- 📖 Titres de chapitres cliquables dans la fenêtre ⓘ d'un tome ; accolades parasites retirées.
+- 📨 Telegram : noms de torrents sans points (plus de liens faux), lien « Ouvrir dans MouFlanga » explicite.
+- 🚫 Plus de propositions de torrents pour une série complète ou déjà en cours de téléchargement.
+
 ## Renommage sur dossier seul (9 octobre 2026)
 - ✏️ Renommer une série dont les fichiers viennent d'un torrent : seul le dossier est renommé (le NAS refuse de renommer les fichiers partagés avec qBittorrent). Les fichiers gardent leur nom, la progression de lecture suit.
 
