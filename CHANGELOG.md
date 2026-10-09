@@ -1,5 +1,9 @@
 # Historique des versions
 
+## Rapidité et retour (9 octobre 2026)
+- ⚡ La bibliothèque s'ouvre plus vite (environ 0,8 s au lieu de 2,2 s) : le cache de lecture des fichiers de tome ne se vide plus à chaque ouverture.
+- ↩️ Sur la page des couvertures, « Retour à la série » ramène à la fiche de la série, pas au menu principal.
+
 ## Couvertures des tomes (9 octobre 2026)
 - 🖼 ⋯ → **Couvertures des tomes** : une page montre, tome par tome, la couverture actuelle et celles trouvées sur MangaDex (en bonne résolution, français en premier).
 - Remplacement **une par une** ou **toutes d'un coup** (les anciennes sont gardées). « Retirer le remplacement » revient à la première page du fichier.

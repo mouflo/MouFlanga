@@ -71,8 +71,8 @@ def lire_info(path: Path) -> dict | None:
             info = json.loads(zf.read(INFO).decode("utf-8")) if INFO in zf.namelist() else None
     except (OSError, zipfile.BadZipFile, ValueError, KeyError):
         info = None
-    if len(_CACHE) > 512:
-        _CACHE.clear()
+    while len(_CACHE) >= 5000:                 # bibliothèque complète (plus de 2000 tomes) : on retire les plus anciens
+        del _CACHE[next(iter(_CACHE))]
     _CACHE[cle] = info
     return info
 
