@@ -554,9 +554,37 @@
     if (l) { e.preventDefault(); readChapter(l.dataset.cle); }
   });
   $('sIdentifier').addEventListener('click', async function () {
-      var r = await post('/api/identifier', {series: current.id});
-      note('listMsg', r.message || r.error);
+      var serie = current.id, r = await post('/api/identifier', {series: serie});
+      if (!r.ok) { note('listMsg', r.error); return; }
+      suivreIdentification(serie);
     });
+
+    // 🔄 Fenêtre d'avancement : chaque étape de la ré-identification, mise à jour toutes les 1,5 s
+    var ICONE_ETAPE = {attente: '⏳', en_cours: '🔄', ok: '✅', echec: '⚠️'};
+    function suivreIdentification(serie) {
+      var nom = serie;
+      $('infosTitre').textContent = '🔄 Identification : ' + nom;
+      $('infosVue').hidden = false;
+      function dessiner(r) {
+        var lignes = (r.etapes || []).map(function (e) {
+          return '<li class="ident-' + e.etat + '"><span>' + (ICONE_ETAPE[e.etat] || '•') + '</span><div><b>' + esc(e.nom) + '</b>'
+            + (e.detail ? '<small>' + esc(e.detail) + '</small>' : '') + '</div></li>';
+        }).join('');
+        var fin = r.fini ? '<p class="dem-sous"><b>Terminé.</b> La fiche est à jour ; ferme cette fenêtre pour la voir.</p>'
+          : '<p class="dem-sous">En cours… tu peux fermer cette fenêtre, l\'identification continue.</p>';
+        $('infosCorps').innerHTML = '<ul class="ident-liste">' + lignes + '</ul>' + fin;
+      }
+      async function boucle() {
+        if ($('infosVue').hidden) return;                  // fenêtre fermée : on arrête d'interroger
+        var r = await api('/api/identifier/etat?series=' + encodeURIComponent(serie));
+        if (r.error) { $('infosCorps').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
+        dessiner(r);
+        if (r.fini) { loadList(); return; }
+        setTimeout(boucle, 1500);
+      }
+      $('infosCorps').innerHTML = '<div class="dem-sous">Démarrage…</div>';
+      boucle();
+    }
 
     $('sRenommer').addEventListener('click', async function () {
       var nom = prompt('Nouveau nom de la série :', current.title);

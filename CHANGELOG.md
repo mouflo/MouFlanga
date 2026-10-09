@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Avancement de la ré-identification (9 octobre 2026)
+- 🔄 Relancer l'identification ouvre une fenêtre qui suit chaque étape en direct : cache, tomes, statut AniList, fiche (sources qui ont répondu, éditeur trouvé). Une étape en erreur est signalée sans bloquer les autres ; on peut fermer la fenêtre, le travail continue.
+
 ## Sources à la ré-identification et clé Google Books (9 octobre 2026)
 - 🔄 Relancer l'identification interroge aussi **MangaUpdates** (éditeurs, auteurs, nombre de volumes) et **Google Books** (éditeur et auteur d'une édition française, plus grand numéro de tome trouvé). La fiche ⓘ indique les sources consultées.
 - 🔑 Réglages → **📏 Règles de recherche → 🔑 Sources** : saisie de la clé API Google Books, bouton « Tester » qui la vérifie auprès de Google avant d'enregistrer, et « Retirer la clé ». La clé n'est jamais réaffichée en entier.

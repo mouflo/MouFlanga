@@ -2033,18 +2033,77 @@ def page_importer():
     return render_template("importer.html", version=APP_VERSION)
 
 
+_IDENTIFICATIONS = {}          # série -> {"etapes": [...], "fini": bool, "debut": timestamp}
+_IDENT_VERROU = threading.Lock()
+
+
+def _etape(serie, index, etat, detail=""):
+    with _IDENT_VERROU:
+        e = _IDENTIFICATIONS[serie]["etapes"][index]
+        e["etat"], e["detail"] = etat, detail
+
+
 def _relancer_identification(serie):
-    """En arrière-plan : refait la recherche (tomes, statut AniList, fiche) de la série, cache effacé avant."""
+    """En arrière-plan : refait la recherche de la série, cache effacé avant. Chaque étape est notée
+    (en cours, réussie ou en échec, avec son résultat) pour être affichée à l'écran (/api/identifier/etat)."""
+    etapes = [
+        {"nom": "Effacement de l'ancien cache", "etat": "attente", "detail": ""},
+        {"nom": "Tomes : Wikipédia puis MangaDex", "etat": "attente", "detail": ""},
+        {"nom": "Statut : AniList", "etat": "attente", "detail": ""},
+        {"nom": "Fiche : AniList, Wikipédia, MangaUpdates, Google Books", "etat": "attente", "detail": ""},
+    ]
+    with _IDENT_VERROU:
+        _IDENTIFICATIONS[serie] = {"etapes": etapes, "fini": False, "debut": time.time()}
+
     def travail():
-        try:
-            tomes.oublier(serie)
-            tomes.chercher(serie, forcer=True)
-            tomes.statut_officiel(serie, forcer=True)
-            tomes.fiche(serie, forcer=True)
-            logger.info("Identification relancée : « %s »", serie)
-        except Exception as e:
-            logger.warning("Identification de « %s » : %s", serie, e)
+        def lancer(i, fonction):
+            _etape(serie, i, "en_cours")
+            try:
+                return fonction()
+            except Exception as e:
+                logger.warning("Identification de « %s » (étape %d) : %s", serie, i + 1, e)
+                _etape(serie, i, "echec", f"erreur : {e.__class__.__name__}")
+                return None
+
+        lancer(0, lambda: (tomes.oublier(serie), _etape(serie, 0, "ok", "ancien cache effacé")))
+        tome_info = lancer(1, lambda: tomes.chercher(serie, forcer=True))
+        if tome_info:
+            _etape(serie, 1, "ok", f"{len(tome_info.get('tomes') or {})} tome(s) trouvés · source : {tome_info.get('source') or '?'}")
+        elif _etapes_etat(serie, 1) != "echec":
+            _etape(serie, 1, "ok", "aucune liste de tomes trouvée (les tomes locaux restent affichés)")
+        st = lancer(2, lambda: tomes.statut_officiel(serie, forcer=True))
+        if st:
+            _etape(serie, 2, "ok", f"{ {'FINISHED': 'terminée', 'RELEASING': 'en cours', 'HIATUS': 'en pause', 'CANCELLED': 'arrêtée'}.get(st.get('statut'), st.get('statut') or '?') }"
+                                   + (f" · {st['volumes']} tome(s) annoncés" if st.get("volumes") else ""))
+        elif _etapes_etat(serie, 2) != "echec":
+            _etape(serie, 2, "ok", "pas trouvé sur AniList")
+        fi = lancer(3, lambda: tomes.fiche(serie, forcer=True))
+        if fi is not None:
+            sources = ", ".join(fi.get("sources") or []) or "aucune"
+            detail = f"sources qui ont répondu : {sources}"
+            if fi.get("editeur_fr"):
+                detail += f" · éditeur : {fi['editeur_fr']}"
+            _etape(serie, 3, "ok", detail)
+        with _IDENT_VERROU:
+            _IDENTIFICATIONS[serie]["fini"] = True
+        logger.info("Identification relancée : « %s »", serie)
     threading.Thread(target=travail, daemon=True).start()
+
+
+def _etapes_etat(serie, index):
+    with _IDENT_VERROU:
+        return _IDENTIFICATIONS.get(serie, {"etapes": [{}] * 4})["etapes"][index].get("etat")
+
+
+@app.route("/api/identifier/etat")
+def api_identifier_etat():
+    """Où en est la ré-identification de la série : étapes, résultat et fin."""
+    name = request.args.get("series", "")
+    with _IDENT_VERROU:
+        etat = _IDENTIFICATIONS.get(name)
+        if not etat:
+            return jsonify({"presente": False, "etapes": [], "fini": True})
+        return jsonify({"presente": True, "etapes": [dict(e) for e in etat["etapes"]], "fini": etat["fini"]})
 
 
 @app.route("/api/identifier", methods=["POST"])

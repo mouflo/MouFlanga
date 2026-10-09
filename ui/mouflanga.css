@@ -277,3 +277,12 @@ body.nav-bas #seriesView .chapters { padding-bottom:56px; }   /* le bas de la li
 .tome-champs .champ small { display:block; color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.03em; }
 .couv-grand { position:fixed; inset:0; z-index:2000; background:rgba(0,0,0,.92); display:flex; align-items:center; justify-content:center; padding:10px; cursor:zoom-out; }
 .couv-grand img { max-width:100%; max-height:100%; border-radius:6px; }
+
+/* 🔄 Avancement de la ré-identification (fenêtre ℹ) */
+.ident-liste { list-style: none; margin: 0 0 10px; padding: 0; }
+.ident-liste li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid #2c2f36; }
+.ident-liste li > span { width: 1.6em; text-align: center; flex: none; }
+.ident-liste li div { display: flex; flex-direction: column; gap: 2px; }
+.ident-liste small { color: #aaa; line-height: 1.4; }
+.ident-liste .ident-attente { opacity: 0.55; }
+.ident-liste .ident-echec small { color: #ffb4b4; }
