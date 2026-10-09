@@ -21,6 +21,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+import requests
 from flask import Flask, Response, jsonify, redirect, render_template, request, send_file
 from urllib.parse import quote
 
@@ -733,11 +734,115 @@ def api_tome_couverture():
         return Response(status=400)
     if not files:
         return Response(status=404)
+    remplace = couvertures_tomes.remplacement(MANGA_DIR / name, tome)
+    if remplace:                                    # image choisie à la main ou trouvée en ligne (le fichier CBZ n'est pas touché)
+        r = Response(remplace.read_bytes(), mimetype="image/jpeg")
+        r.headers["Cache-Control"] = "no-cache"
+        return r
     groupe = tomes_cbz.dossier_tome(tome)
     for e in _entrees(files):
         if not e.get("a_importer") and (e.get("tome") == tome or e.get("groupe") == groupe):
             return _vignette(MANGA_DIR / e["path"], e["debut"], f"{name} tome {tome}", request.args.get("grand") == "1")
     return Response(status=404)
+
+
+# ---------------- 🖼 Couvertures des tomes : images trouvées en ligne ou envoyées à la main (admin) ----------------
+def _titres_serie(name):
+    cache = tomes._charger(name) or {}
+    st, fi = cache.get("statut_officiel") or {}, cache.get("fiche") or {}
+    return [name, st.get("titre"), st.get("titre_en"), fi.get("romaji"), fi.get("titre_original")]
+
+
+def _tomes_presents(name):
+    return sorted({int(e["tome"]) for e in _entrees(_scan().get(name) or []) if e.get("tome") is not None and not e.get("a_importer")})
+
+
+def _preferees(candidates):
+    """Français d'abord, puis anglais, puis japonais."""
+    ordre = {"fr": 0, "en": 1, "ja": 2}
+    return sorted(candidates, key=lambda c: ordre.get(c.get("langue"), 3))
+
+
+def _retour_couvertures(name, ok="", erreur=""):
+    return redirect("/couvertures?id=" + quote(name) + "&trouvees=oui" + ("&ok=" + quote(ok) if ok else "") + ("&erreur=" + quote(erreur) if erreur else ""))
+
+
+@app.route("/couvertures")
+def page_couvertures():
+    name = request.args.get("id", "")
+    if name not in _scan() or name == "(Sans série)":
+        return Response("Série introuvable", status=404)
+    trouvees = {}
+    try:
+        trouvees = couvertures_tomes.couvertures_en_ligne(name, _titres_serie(name), forcer=request.args.get("chercher") == "1")
+    except Exception as e:
+        logger.warning("Couvertures en ligne de %s : %s", name, e)
+    dossier = MANGA_DIR / name
+    lignes = [{"tome": n, "remplacee": bool(couvertures_tomes.remplacement(dossier, n)), "candidates": _preferees(trouvees.get(n, []))[:3]}
+              for n in _tomes_presents(name)]
+    return render_template("couvertures.html", version=APP_VERSION, nom=name, lignes=lignes,
+                           total_trouvees=sum(1 for x in lignes if x["candidates"]),
+                           ok=request.args.get("ok", ""), erreur=request.args.get("erreur", ""))
+
+
+@app.route("/couvertures/envoyer", methods=["POST"])
+def couvertures_envoyer():
+    name = request.form.get("id", "")
+    if name not in _scan():
+        return Response("Série introuvable", status=404)
+    try:
+        tome = int(request.form.get("tome", ""))
+        image = request.files.get("image")
+        if not image:
+            raise ValueError("Choisis une image.")
+        couvertures_tomes.enregistrer_image(MANGA_DIR / name, tome, image.read())
+    except ValueError as e:
+        return _retour_couvertures(name, erreur=str(e))
+    return _retour_couvertures(name, ok=f"Couverture du tome {tome} remplacée (l'ancienne est gardée).")
+
+
+@app.route("/couvertures/retirer", methods=["POST"])
+def couvertures_retirer():
+    name = request.form.get("id", "")
+    if name not in _scan():
+        return Response("Série introuvable", status=404)
+    try:
+        tome = int(request.form.get("tome", ""))
+    except ValueError:
+        return _retour_couvertures(name, erreur="Tome inconnu.")
+    if couvertures_tomes.retirer(MANGA_DIR / name, tome):
+        return _retour_couvertures(name, ok=f"Tome {tome} : retour à la première page du fichier.")
+    return _retour_couvertures(name, erreur="Ce tome n'a pas de remplacement.")
+
+
+@app.route("/couvertures/appliquer", methods=["POST"])
+def couvertures_appliquer():
+    """Remplace la couverture d'un tome (tome + adresse trouvée), ou de tous les tomes ayant une couverture trouvée (tout=1)."""
+    name = request.form.get("id", "")
+    if name not in _scan():
+        return Response("Série introuvable", status=404)
+    dossier = MANGA_DIR / name
+    if request.form.get("tout") == "1":
+        trouvees = couvertures_tomes.couvertures_en_ligne(name, _titres_serie(name))
+        presents = set(_tomes_presents(name))
+        cibles = [(n, _preferees(c)[0]["url"]) for n, c in trouvees.items() if c and n in presents]
+    else:
+        try:
+            cibles = [(int(request.form.get("tome", "")), request.form.get("url", ""))]
+        except ValueError:
+            return _retour_couvertures(name, erreur="Tome inconnu.")
+    faits, echecs = 0, 0
+    for n, url in cibles:
+        try:
+            couvertures_tomes.enregistrer_image(dossier, n, couvertures_tomes.telecharger(url))
+            faits += 1
+        except (ValueError, requests.RequestException, OSError) as e:
+            logger.warning("Couverture du tome %s de %s : %s", n, name, e)
+            echecs += 1
+    if not faits:
+        return _retour_couvertures(name, erreur="Aucune couverture remplacée" + (f" ({echecs} échec(s))." if echecs else "."))
+    msg = f"{faits} couverture(s) remplacée(s)" + (f" · {echecs} échec(s)" if echecs else "") + " (les anciennes sont gardées)."
+    return _retour_couvertures(name, ok=msg)
 
 
 @app.route("/api/cover/choisir", methods=["POST"])
@@ -1770,6 +1875,7 @@ def api_occupe():
 
 
 # ---------------- 🧲 Torrents (Prowlarr → qBittorrent → import) : admin seulement ----------------
+import couvertures_tomes
 import regles
 import torrents
 torrents._ETAT["fichier"] = DATA_DIR / "torrents.json"

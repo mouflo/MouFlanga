@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Couvertures des tomes · MouFlanga</title>
+    <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+    <link rel="stylesheet" href="/ui/mou-settings.css?v={{ version|urlencode }}">
+    <style>
+        .cv-tete { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+        .cv-ligne { display: grid; grid-template-columns: 1fr; gap: 10px; border: 1px solid #2c2f36; border-radius: 12px; padding: 12px; margin-bottom: 12px; background: #17181c; }
+        @media (min-width: 640px) { .cv-ligne { grid-template-columns: 180px 1fr; } }
+        .cv-tome { font-weight: 600; font-size: 1.05em; }
+        .cv-paires { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+        .cv-case { width: 120px; text-align: center; font-size: 0.85em; color: #aaa; }
+        .cv-case img { width: 120px; height: 170px; object-fit: cover; border-radius: 8px; border: 1px solid #2c2f36; background: #0f1012; display: block; }
+        .cv-case form { margin-top: 6px; }
+        .cv-case button, .cv-case label.fichier { display: inline-block; width: 100%; box-sizing: border-box; padding: 8px; border-radius: 8px; font-size: 14px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; cursor: pointer; text-align: center; }
+        .cv-case button.vert { background: #52b54b; color: #0b0c0e; border-color: #52b54b; font-weight: 600; }
+        .cv-case input[type=file] { display: none; }
+        .cv-langue { color: #888; font-size: 0.8em; margin-top: 2px; }
+        .cv-tout { border: 1px solid #52b54b; border-radius: 12px; padding: 12px; margin: 14px 0; background: #14191a; }
+        .cv-tout button { width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; background: #52b54b; color: #0b0c0e; border: none; font-weight: 600; cursor: pointer; }
+        .msg { padding: 10px 12px; border-radius: 8px; margin: 10px 0; }
+        .msg.ok { background: #14291a; color: #9be3a6; border: 1px solid #2f6b3a; }
+        .msg.err { background: #2a1416; color: #ffb4b4; border: 1px solid #6b2f35; }
+        .cv-retirer button { background: none; border: none; color: #ffb4b4; text-decoration: underline; cursor: pointer; font-size: 14px; margin-top: 8px; }
+        .cv-liens a { display: inline-block; padding: 8px 12px; border-radius: 8px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; text-decoration: none; margin-right: 6px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="cv-tete">
+            <a href="/" class="back">← Retour</a>
+            <h1 style="margin: 0;">🖼 Couvertures des tomes</h1>
+        </div>
+        <p class="sub">{{ nom }}</p>
+        <p class="note">La couverture d'un tome est la première page de son fichier. Quand elle est abîmée ou ne montre pas la couverture (page de titre en noir et blanc, par exemple), on la remplace ici. <b>Le fichier du tome n'est jamais modifié</b> : l'ancienne image est gardée, et « Retirer » revient à la première page.</p>
+
+        {% if ok %}<div class="msg ok">{{ ok }}</div>{% endif %}
+        {% if erreur %}<div class="msg err" role="alert">{{ erreur }}</div>{% endif %}
+
+        <div class="cv-liens" style="margin-bottom: 12px;">
+            <a href="/couvertures?id={{ nom|urlencode }}&chercher=1">🔎 Chercher en ligne (MangaDex)</a>
+        </div>
+
+        {% if total_trouvees %}
+        <form class="cv-tout" method="post" action="/couvertures/appliquer" onsubmit="return confirm('Remplacer les couvertures de tous les tomes par celles trouvées en ligne ? Les anciennes sont gardées.');">
+            <input type="hidden" name="id" value="{{ nom }}">
+            <input type="hidden" name="tout" value="1">
+            <p class="note" style="margin-top: 0;">{{ total_trouvees }} tome(s) ont une couverture trouvée en ligne.</p>
+            <button type="submit">🔄 Remplacer toutes les couvertures trouvées ({{ total_trouvees }})</button>
+        </form>
+        {% endif %}
+
+        {% for l in lignes %}
+        <div class="cv-ligne">
+            <div class="cv-tome">Tome {{ '%02d'|format(l.tome) }}{% if l.remplacee %}<br><span class="cv-langue">remplacée (à la main ou en ligne)</span>{% endif %}</div>
+            <div class="cv-paires">
+                <div class="cv-case">
+                    <img src="/api/tome/couverture?id={{ nom|urlencode }}&tome={{ l.tome }}&grand=1" alt="Actuelle, tome {{ l.tome }}" loading="lazy">
+                    Actuelle
+                    {% if l.remplacee %}
+                    <form class="cv-retirer" method="post" action="/couvertures/retirer">
+                        <input type="hidden" name="id" value="{{ nom }}"><input type="hidden" name="tome" value="{{ l.tome }}">
+                        <button type="submit">Retirer le remplacement</button>
+                    </form>
+                    {% endif %}
+                </div>
+
+                {% for c in l.candidates %}
+                <div class="cv-case">
+                    <img src="{{ c.vignette }}" alt="Trouvée en ligne, tome {{ l.tome }}" loading="lazy">
+                    En ligne
+                    <div class="cv-langue">{{ c.langue or 'langue ?' }}</div>
+                    <form method="post" action="/couvertures/appliquer" onsubmit="return confirm('Remplacer la couverture du tome {{ l.tome }} ?');">
+                        <input type="hidden" name="id" value="{{ nom }}"><input type="hidden" name="tome" value="{{ l.tome }}"><input type="hidden" name="url" value="{{ c.url }}">
+                        <button type="submit" class="vert">Remplacer par celle-ci</button>
+                    </form>
+                </div>
+                {% endfor %}
+
+                <div class="cv-case">
+                    <div style="height: 170px; display: flex; align-items: center; justify-content: center; font-size: 36px;">📷</div>
+                    Mon image
+                    <form method="post" action="/couvertures/envoyer" enctype="multipart/form-data">
+                        <input type="hidden" name="id" value="{{ nom }}"><input type="hidden" name="tome" value="{{ l.tome }}">
+                        <label class="fichier">Choisir une image<input type="file" name="image" accept="image/*" onchange="this.form.submit()"></label>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% else %}
+            <p class="note">Aucun tome trouvé pour cette série.</p>
+        {% endfor %}
+    </div>
+</body>
+</html>

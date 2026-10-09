@@ -565,6 +565,8 @@
     var l = e.target.closest && e.target.closest('.tchap-lien');
     if (l) { e.preventDefault(); readChapter(l.dataset.cle); }
   });
+  $('sCouvertures').addEventListener('click', function () { location.href = '/couvertures?id=' + encodeURIComponent(current.id); });
+
   $('sUnivers').addEventListener('click', async function () {
       var actuel = current.univers || '';
       var nom = prompt('Univers de « ' + current.title + ' » (ex. Seven Deadly Sins). Laisse vide pour la sortir de son univers :', actuel);

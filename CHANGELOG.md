@@ -1,5 +1,11 @@
 # Historique des versions
 
+## Couvertures des tomes (9 octobre 2026)
+- 🖼 ⋯ → **Couvertures des tomes** : une page montre, tome par tome, la couverture actuelle et celles trouvées sur MangaDex (en bonne résolution, français en premier).
+- Remplacement **une par une** ou **toutes d'un coup** (les anciennes sont gardées). « Retirer le remplacement » revient à la première page du fichier.
+- 📷 **Mon image** : envoyer une photo ou une image depuis le téléphone pour un tome précis.
+- Le fichier CBZ de chaque tome n'est jamais modifié : les images sont rangées dans « <série>/.couvertures/ ».
+
 ## Univers (9 octobre 2026)
 - 🌌 Plusieurs œuvres peuvent être regroupées dans un **univers** (ex. Seven Deadly Sins : la série principale, Four Knights, Seven Days, Original Sin, HS). Chaque série garde son dossier, sa fiche et sa progression.
 - ⋯ → **🌌 Univers de la série** : nom de l'univers, rang de lecture (1, 2, 3…), description facultative (gardée une fois).
