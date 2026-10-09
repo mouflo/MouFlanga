@@ -1,5 +1,10 @@
 # Historique des versions
 
+## Provenance des tomes (9 octobre 2026)
+- 🏷 La fenêtre ⓘ d'un tome indique sa **provenance** : l'équipe de scan (lue dans le nom d'origine, ex. « PRiNTER-PapriKa+ ») et l'origine (torrent, rangement).
+- Elle est notée au rangement et à l'import d'un torrent, puis ne change plus toute seule.
+- ✏️ **Noter la provenance** : tu peux saisir l'équipe et l'origine à la main ; cette note ne sera jamais remplacée automatiquement.
+
 ## Lien d'une page pour identifier un hors-série (9 octobre 2026)
 - 🔗 Dans la fenêtre 🔎 d'un hors-série, colle le lien d'une page (Glénat, éditeur, boutique) : l'appli lit le titre, l'auteur, l'année et l'éditeur, et tu valides le résultat comme les autres.
 - Une page qui refuse la lecture automatique (protection anti-robot) ne déclenche rien : l'appli te le dit et tu saisis les infos à la main.

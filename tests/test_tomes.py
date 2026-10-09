@@ -341,7 +341,7 @@ class OrganiserTest(BibliothequeTest):
         self.assertEqual(r.json, {"ok": True, "id": "Gintama"})
         self.assertFalse(self.vrac.exists())
         g = self.root / "Gintama"
-        self.assertEqual(sorted(str(p.relative_to(g)) for p in g.rglob("*") if p.is_file()),
+        self.assertEqual(sorted(str(p.relative_to(g)) for p in g.rglob("*") if p.is_file() and not p.name.startswith(".")),
                          ["Tome 01/Gintama - Tome 01.cbz", "Tome 02/Gintama - Tome 02.cbz",
                           "Tome 04/Gintama - Tome 04.cbz", "cover.jpg"])
         s = self.client.get("/api/series?id=Gintama").json

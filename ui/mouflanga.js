@@ -743,16 +743,28 @@
       $('infosTitre').textContent = 'ℹ️ Tome ' + String(n).padStart(2, '0'); $('infosCorps').innerHTML = '<div class="dem-sous">…</div>'; $('infosVue').hidden = false;
       var d = await api('/api/tome?id=' + encodeURIComponent(current.id) + '&tome=' + n);
       var cov = '/api/tome/couverture?id=' + encodeURIComponent(current.id) + '&tome=' + n;
-      var champs = [['Titre', d.titre], ['Sortie en France', d.sortie]].filter(function (x) { return x[1]; });
+      var prov = d.provenance || {};
+      var provTexte = (prov.equipe ? 'Équipe : ' + prov.equipe + ' · ' : '') + (prov.origine || '') + (prov.manuel ? ' (saisi à la main)' : '');
+      var champs = [['Titre', d.titre], ['Sortie en France', d.sortie], ['Provenance', provTexte.trim() ? provTexte : '']].filter(function (x) { return x[1]; });
       var chap = d.chapitres || [];
       $('infosCorps').innerHTML = '<div class="tome-fiche"><img class="tome-couv" src="' + cov + '" alt="" data-grand="' + cov + '&grand=1">' +
         '<div class="tome-champs">' + (champs.length ? champs.map(function (x) { return '<div class="champ"><small>' + x[0] + '</small><div>' + esc(x[1]) + '</div></div>'; }).join('')
           : (chap.length ? '' : '<div class="dem-sous">Pas d\'infos sur ce tome.</div>')) + '</div></div>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-prov="' + n + '">✏️ Noter la provenance (équipe, origine)</button></div>' +
         (chap.length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c) { return '<li>' + lienChapitre(c, n) + '</li>'; }).join('') + '</ol>' : '');
       var im = $('infosCorps').querySelector('.tome-couv');
       if (im) im.addEventListener('error', function () { im.style.display = 'none'; });
     }, true);
     $('infosVue').addEventListener('click', function (e) { if (e.target === $('infosVue')) $('infosVue').hidden = true; });
+    $('infosCorps').addEventListener('click', async function (e) {         // provenance d'un tome : équipe et origine notées à la main
+      var pv = e.target.closest('[data-prov]'); if (!pv) return;
+      var equipe = prompt('Équipe de scan de ce tome (ex. PapriKa) :', '');
+      if (equipe === null) return;
+      var origine = prompt('Origine (torrent, Japscan, achat…) — facultatif :', '') || '';
+      var r = await post('/api/tome/provenance', {series: current.id, tome: pv.dataset.prov, equipe: equipe.trim(), origine: origine.trim()});
+      note('listMsg', r.message || r.error, r.ok ? 'ok' : 'err');
+      if (r.ok) $('infosVue').hidden = true;
+    });
     $('infosCorps').addEventListener('click', function (e) {              // toucher la couverture du tome = grand format
       var im = e.target.closest('.tome-couv'); if (!im) return;
       var o = document.createElement('div'); o.className = 'couv-grand';

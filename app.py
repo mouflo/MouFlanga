@@ -756,6 +756,30 @@ def _vignette(first, debut, nom, grand=False):
     return Response(status=404)
 
 
+@app.route("/api/tome/provenance", methods=["POST"])
+def api_tome_provenance():
+    """Note à la main d'où vient un tome (équipe, origine) : elle ne sera plus remplacée par une déduction."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    try:
+        tome = int(float(body.get("tome", "")))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Tome inconnu"}), 400
+    equipe, origine = str(body.get("equipe", "")).strip()[:60], str(body.get("origine", "")).strip()[:120]
+    if any(c in equipe + origine for c in '"$`\\\n\r'):
+        return jsonify({"ok": False, "error": "Caractères interdits (\" $ ` \\)."}), 400
+    if not equipe and not origine:
+        return jsonify({"ok": False, "error": "Indique l'équipe ou l'origine."}), 400
+    dossier = MANGA_DIR / name
+    infos = edition.lire(dossier)
+    provenance.noter(infos, tome, equipe, origine or "Saisie à la main", manuel=True, ecrase=True)
+    edition.ecrire(dossier, infos)
+    return jsonify({"ok": True, "message": f"Tome {tome} : provenance enregistrée."})
+
+
 @app.route("/api/tome/couverture")
 def api_tome_couverture():
     """Couverture d'un tome = première page de son fichier (déjà sur le NAS), petite ou grande (?grand=1)."""
@@ -1475,6 +1499,7 @@ def _organiser(name, nouveau):
     if nouveau != name and _fichiers_partages(name):
         return _renommer_dossier_seul(name, nouveau)
     deplaces, en_double, doublons = {}, set(), []
+    a_noter_prov = []                                    # (tome, nom d'origine) : pour la provenance
     for f in files:
         t = None
         if _a_importer(f) or tomes_cbz.lire_info(f) is not None:
@@ -1485,6 +1510,8 @@ def _organiser(name, nouveau):
                 cible = dossier / f.relative_to(ancien_dossier)       # chapitres et fichiers inconnus : même place
             else:
                 cible = dossier / tomes_cbz.dossier_tome(t) / f"{nouveau} - {tomes_cbz.dossier_tome(t)}{f.suffix.lower()}"
+        if t is not None:
+            a_noter_prov.append((t, f.name))
         if cible == f:
             continue
         if cible.exists():
@@ -1515,6 +1542,7 @@ def _organiser(name, nouveau):
         except OSError:
             pass
     _suivre_renommage(name, nouveau, deplaces)
+    _noter_provenances(dossier, a_noter_prov, "Rangé depuis le fichier")
     if doublons:
         if nouveau != name:
             doublons = [(dossier / f.relative_to(ancien_dossier) if f.is_relative_to(ancien_dossier) else f, c, t) for f, c, t in doublons]
@@ -1971,6 +1999,7 @@ def api_occupe():
 # ---------------- 🧲 Torrents (Prowlarr → qBittorrent → import) : admin seulement ----------------
 import couvertures_tomes
 import hors_serie
+import provenance
 import regles
 import torrents
 torrents._ETAT["fichier"] = DATA_DIR / "torrents.json"
@@ -2210,6 +2239,23 @@ torrents._ETAT["doublons"] = _tomes_deja_la
 def _noter_volumes_torrent(serie, titre):
     import edition
     edition.noter_volumes(MANGA_DIR / serie, titre)
+    equipe = provenance.equipe_du_nom(titre)
+    presents = [(e["tome"], titre) for e in _entrees(_scan().get(serie) or []) if e.get("tome") is not None]
+    _noter_provenances(MANGA_DIR / serie, presents, "Torrent", equipe=equipe)
+
+
+def _noter_provenances(dossier, paires, origine, equipe=None):
+    """Garde l'origine des tomes qui n'en ont pas encore : équipe lue dans le nom d'origine (ou le titre du torrent)."""
+    if not paires or not Path(dossier).is_dir():
+        return
+    import edition
+    infos = edition.lire(dossier)
+    change = False
+    for tome, nom in paires:
+        eq = equipe if equipe is not None else provenance.equipe_du_nom(nom)
+        change |= provenance.noter(infos, tome, eq, f"{origine} : {nom}")
+    if change:
+        edition.ecrire(dossier, infos)
 
 
 torrents._ETAT["volumes"] = _noter_volumes_torrent
@@ -2554,6 +2600,13 @@ def api_tome():
     except (TypeError, ValueError):
         return jsonify({"error": "Tome inconnu"}), 400
     d = tomes.details_tome(name, tome)
+    import edition
+    prov = provenance.lire(edition.lire(MANGA_DIR / name)).get(str(int(tome))) or {}
+    if not prov:                                         # pas encore notée : d'après le nom du fichier du tome
+        nom_fichier = next((Path(e["path"]).name for e in _entrees(_scan().get(name) or []) if e.get("tome") == int(tome)), "")
+        if provenance.equipe_du_nom(nom_fichier):
+            prov = {"equipe": provenance.equipe_du_nom(nom_fichier), "origine": f"Nom du fichier : {nom_fichier}", "manuel": False}
+    d["provenance"] = prov
     if d.get("chapitres_langue") == "en" or not d.get("chapitres"):      # Wikipédia FR n'a rien : titres FR du tome local avant l'anglais
         groupe = tomes_cbz.dossier_tome(int(tome))
         locaux = [f"{e['num']:g}. {e['titre_ch']}" for e in _entrees(_scan().get(name) or [])
