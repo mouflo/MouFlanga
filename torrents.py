@@ -22,6 +22,8 @@ from pathlib import Path
 
 import requests
 
+import regles
+
 logger = logging.getLogger(__name__)
 
 CATEGORIE = "mouflanga"
@@ -103,8 +105,10 @@ def chercher(q: str, toutes_categories=False) -> list[dict]:
                     "indexeur": x.get("indexer") or "", "date": (x.get("publishDate") or "")[:10],
                     "page": x.get("infoUrl") or "", "lien": x.get("downloadUrl") or x.get("magnetUrl"),
                     "badges": badges(titre)})
-    # VF d'abord, puis intégrale/digital, puis nombre de sources
-    out.sort(key=lambda x: ("🇫🇷 FR" not in x["badges"], "Intégrale" not in x["badges"], "Digital" not in x["badges"], -x["sources"]))
+    # Règles de recherche (profils) : on écarte ce qu'elles refusent, puis le score des formats personnalisés
+    out = regles.filtrer(out, q)
+    # score des formats d'abord, puis VF, intégrale/digital, et nombre de sources
+    out.sort(key=lambda x: (-x.get("score", 0), "🇫🇷 FR" not in x["badges"], "Intégrale" not in x["badges"], "Digital" not in x["badges"], -x["sources"]))
     return out
 
 

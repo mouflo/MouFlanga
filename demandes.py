@@ -6,7 +6,9 @@ Fichier data/demandes.json. Tant qu'une demande attend, un rappel Telegram group
 import json
 import logging
 import os
+import re
 import threading
+import unicodedata
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -55,6 +57,53 @@ def chercher_anilist(q):
                     "couverture": (m.get("coverImage") or {}).get("medium") or "",
                     "annee": (m.get("startDate") or {}).get("year"), "statut": STATUTS.get(m.get("status"), ""),
                     "tomes": m.get("volumes"), "type": {"KR": "manhwa", "CN": "manhua"}.get(m.get("countryOfOrigin"), "")})
+    return out
+
+
+LANGUES_MANGADEX = {"ja": "manga", "fr": "manga français", "ko": "manhwa", "zh": "manhua", "zh-hk": "manhua"}
+
+
+def _cle_titre(texte):
+    """Titre réduit à des lettres minuscules, pour repérer une même série chez deux sources."""
+    texte = (texte or "").replace("Ø", "O").replace("ø", "o")          # CØDE = CODE, comme dans la reconnaissance des noms
+    return re.sub(r"[^a-z0-9]", "", unicodedata.normalize("NFKD", texte).encode("ascii", "ignore").decode().lower())
+
+
+def chercher_mangadex(q):
+    """MangaDex (API publique, sans clé) : séries correspondant au texte, avec la couverture et la langue d'origine."""
+    r = requests.get("https://api.mangadex.org/manga", params={
+        "title": q, "limit": 8, "includes[]": "cover_art", "order[relevance]": "desc",
+        "contentRating[]": ["safe", "suggestive"]}, headers={"User-Agent": "MouFlanga/2.0"}, timeout=15)
+    r.raise_for_status()
+    out = []
+    for m in r.json().get("data") or []:
+        a = m.get("attributes") or {}
+        titres = a.get("title") or {}
+        titre = titres.get("en") or next(iter(titres.values()), "?")
+        original = titres.get("ja") or titres.get("ja-ro") or ""
+        couv = next((x.get("attributes", {}).get("fileName") for x in m.get("relationships", []) if x.get("type") == "cover_art"), "")
+        try:
+            tomes = int(float(a.get("lastVolume") or 0)) or None
+        except ValueError:
+            tomes = None
+        out.append({"mangadex": m["id"], "titre": titre, "original": original if original != titre else "",
+                    "couverture": f"https://uploads.mangadex.org/covers/{m['id']}/{couv}.256.jpg" if couv else "",
+                    "annee": a.get("year"), "statut": STATUTS.get(a.get("status"), a.get("status") or ""),
+                    "tomes": tomes, "type": LANGUES_MANGADEX.get(a.get("originalLanguage"), ""), "source": "MangaDex"})
+    return out
+
+
+def chercher_mangaupdates(q):
+    """MangaUpdates (sans clé) : titres, années et couvertures ; les éditeurs sont sur la fiche."""
+    r = requests.post("https://api.mangaupdates.com/v1/series/search", json={"search": q, "perpage": 8},
+                      headers={"User-Agent": "MouFlanga/2.0"}, timeout=15)
+    r.raise_for_status()
+    out = []
+    for x in r.json().get("results") or []:
+        m = x.get("record") or {}
+        out.append({"mangaupdates": m.get("series_id"), "titre": m.get("title") or "?", "original": "",
+                    "couverture": ((m.get("image") or {}).get("url") or {}).get("thumb") or "",
+                    "annee": m.get("year"), "statut": "", "tomes": None, "type": "", "source": "MangaUpdates"})
     return out
 
 
@@ -115,15 +164,24 @@ def init_app(app, data_dir, envoyer, role, utilisateur, adresse, demarrer=True):
         q = (request.args.get("q") or "").strip()
         if len(q) < 2:
             return jsonify({"resultats": []})
-        try:
-            res = chercher_anilist(q[:80])
-        except Exception as e:
-            logger.warning("Recherche AniList impossible : %s", e)
-            return jsonify({"error": "La recherche ne répond pas pour le moment, réessaie dans un instant."}), 502
+        res, en_panne = [], []
+        for nom, cherche in (("AniList", chercher_anilist), ("MangaDex", chercher_mangadex), ("MangaUpdates", chercher_mangaupdates)):
+            try:
+                for r in cherche(q[:80]):
+                    r.setdefault("source", nom)
+                    # une même série trouvée chez plusieurs sources : on garde la première (AniList d'abord)
+                    cle = _cle_titre(r["titre"])
+                    if not any(cle and cle == _cle_titre(x["titre"]) for x in res):
+                        res.append(r)
+            except Exception as e:
+                logger.warning("Recherche %s impossible : %s", nom, e)
+                en_panne.append(nom)
+        if not res and en_panne:
+            return jsonify({"error": "La recherche ne répond pas pour le moment (" + ", ".join(en_panne) + "), réessaie dans un instant."}), 502
         deja = {x["anilist"]: x["statut"] for x in _lire()["demandes"] if x["statut"] != "refuse"}
         for r in res:
-            r["deja"] = deja.get(r["anilist"], "")
-        return jsonify({"resultats": res})
+            r["deja"] = deja.get(r.get("anilist"), "")
+        return jsonify({"resultats": res, "indisponibles": en_panne})
 
     @app.route("/api/demandes", methods=["POST"])
     def demandes_action():

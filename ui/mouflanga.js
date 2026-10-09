@@ -33,7 +33,7 @@
       garde: {lecture: function (s) { return s.read > 0 && s.read < s.chapters; }, nonlu: function (s) { return !s.read; }, lu: lue}},
     parution: {titre: '🗞 Parution', choix: [['', 'Toutes'], ['fini', 'Complètes'], ['manque', 'Il en manque'], ['parution', 'En cours de parution', 'En parution']],
       garde: {fini: function (s) { return s.etat === 'fini'; }, manque: function (s) { return !!s.manque; }, parution: enParution}},
-    tri: {titre: '↕ Tri', choix: [['az', 'A → Z'], ['za', 'Z → A'], ['added', 'Ajoutées récemment', 'Ajoutées'], ['recent', 'Lues récemment', 'Lues réc.'], ['progression', 'Progression']]}
+    tri: {titre: '↕ Tri', choix: [['az', 'A → Z'], ['za', 'Z → A'], ['added', 'Ajoutées récemment', 'Ajoutées'], ['recent', 'Lues récemment', 'Lues réc.'], ['progression', 'Progression'], ['auteur', 'Auteur', 'Auteur'], ['editeur', 'Éditeur', 'Éditeur']]}
   };
   var choixFiltre = {lecture: pref('mfLecture', ''), parution: pref('mfParution', ''), tri: pref('mfTri2', 'az')};
   Object.keys(FILTRES).forEach(function (k) {     // ancien choix qui n'existe plus : valeur par défaut
@@ -57,7 +57,7 @@
     if (!toutes) {                                   // « toutes » = toute la bibliothèque, seul le tri compte (flèches ‹ ›)
       var q = sansAccents($('search').value.trim());
       var qc = compact(q);                              // « belzebub » trouve « Beelzebub » (lettres doublées ignorées)
-      list = list.filter(function (s) { return !q || sansAccents(s.title).indexOf(q) >= 0 || (qc.length >= 3 && compact(s.title).indexOf(qc) >= 0); });
+      list = list.filter(function (s) { return !q || sansAccents(s.title + ' ' + (s.auteur || '') + ' ' + (s.editeur || '')).indexOf(q) >= 0 || (qc.length >= 3 && compact(s.title).indexOf(qc) >= 0); });   // recherche aussi par auteur et éditeur
       if (lettre && !q) list = list.filter(function (s) { return lettreDe(s.title) === lettre; });
       ['lecture', 'parution'].forEach(function (k) {
         var g = FILTRES[k].garde[choixFiltre[k]]; if (g) list = list.filter(g);
@@ -70,7 +70,9 @@
       za: function (a, b) { return titre(b, a); },
       recent: function (a, b) { return (b.last_read || '').localeCompare(a.last_read || '') || titre(a, b); },
       added: function (a, b) { return b.added - a.added || titre(a, b); },
-      progression: function (a, b) { return pc(b) - pc(a) || titre(a, b); }
+      progression: function (a, b) { return pc(b) - pc(a) || titre(a, b); },
+      auteur: function (a, b) { return (a.auteur || '\uffff').localeCompare(b.auteur || '\uffff', 'fr') || titre(a, b); },
+      editeur: function (a, b) { return (a.editeur || '\uffff').localeCompare(b.editeur || '\uffff', 'fr') || titre(a, b); }
     };
     return list.sort(by[choixFiltre.tri] || titre);
   }
@@ -160,11 +162,13 @@
       var cle = sansAccents(x.titre).replace(/[^a-z0-9]/g, ''), cle2 = sansAccents(x.original).replace(/[^a-z0-9]/g, '');
       var deja = dans.indexOf(cle) >= 0 || (cle2 && dans.indexOf(cle2) >= 0);
       return '<div class="dem-ligne">' + (x.couverture ? '<img src="' + esc(x.couverture) + '" alt="" loading="lazy">' : '<span class="dem-vide"></span>') +
-        '<div class="dem-info"><b>' + esc(x.titre) + '</b><small>' + [x.original, x.annee, x.type, x.statut, x.tomes ? x.tomes + ' tome' + (x.tomes > 1 ? 's' : '') : ''].filter(Boolean).map(esc).join(' · ') + '</small></div>' +
+        '<div class="dem-info"><b>' + esc(x.titre) + '</b><small>' + [x.source, x.original, x.annee, x.type, x.statut, x.tomes ? x.tomes + ' tome' + (x.tomes > 1 ? 's' : '') : ''].filter(Boolean).map(esc).join(' · ') + '</small></div>' +
         '<div class="dem-act">' + (deja ? '<span class="dem-statut">📚 Déjà là</span>' : x.deja ? '<span class="dem-statut">' + DEM_STATUT[x.deja] + '</span>'
           : (document.body.classList.contains('lecteur') ? '<button type="button" data-demander="' + i + '">📮 Demander</button>'
                                                           : '<button type="button" data-ajouter="' + i + '">➕ Ajouter</button>')) + '</div></div>';
     }).join('') : '<div class="dem-sous">Aucun manga trouvé.</div>';
+    if (r.indisponibles && r.indisponibles.length) $('demResultats').innerHTML += '<div class="dem-sous">Sources sans réponse : ' + esc(r.indisponibles.join(', ')) + '</div>';
+    if (!document.body.classList.contains('lecteur')) $('demResultats').innerHTML += '<div class="dem-sous"><button type="button" data-manuel="1">✏️ Pas trouvé ? Saisir le manga à la main (titre, auteur, éditeur, lien)</button></div>';
   }
 
   async function loadList() {
@@ -438,6 +442,17 @@
         if (r.ok) { chargerDemandes(); chercherDemande(); } else b.disabled = false;
         return;
       }
+      if (e.target.closest('[data-manuel]')) {
+        var titre = prompt('Titre du manga (obligatoire) :', $('demRecherche').value.trim());
+        if (!titre || !titre.trim()) return;
+        var auteur = prompt('Auteur (facultatif) :', '') || '';
+        var editeur = prompt('Éditeur (facultatif) :', '') || '';
+        var lien = prompt('Lien vers le site qui décrit le manga (facultatif) :', '') || '';
+        var rm = await post('/api/suivies', {action: 'ajouter', nom: titre.trim(), serie: {titre: titre.trim(), auteur: auteur.trim(), editeur: editeur.trim(), lien: lien.trim(), source: 'Saisie manuelle'}});
+        note('demMsg', rm.message || rm.error, rm.ok ? 'ok' : 'err');
+        if (rm.ok) loadList();
+        return;
+      }
       var aj = e.target.closest('[data-ajouter]');
       if (aj) {
         var x = demResultats[+aj.dataset.ajouter];
@@ -584,10 +599,10 @@
         ['Parution', f.debut ? f.debut + (f.fin ? ' → ' + f.fin : ' → ' + (st || '…')) + (f.fin && st ? ' (' + st + ')' : '') : st],
         ['Scénario', f.scenario], ['Dessin', f.dessin && f.dessin !== f.scenario ? f.dessin : (f.dessin ? '(même auteur)' : '')],
         ['Genres', f.genres], ['Éditeur japonais', f.editeur_jp], ['Éditeur français', f.editeur_fr],
-        ['Version', (f.versions || []).join(', ')], ['Source', [ed.source ? ed.source + (ed.devine ? ' (deviné)' : '') : '', ed.resolution].filter(Boolean).join(' · ')]
+        ['Trouvée sur', f.source_suivi], ['Version', (f.versions || []).join(', ')], ['Source', [ed.source ? ed.source + (ed.devine ? ' (deviné)' : '') : '', ed.resolution].filter(Boolean).join(' · ')]
       ].filter(function (l) { return l[1]; });
       $('infosCorps').innerHTML = (lignes.length ? '<dl>' + lignes.map(function (l) { return '<dt>' + l[0] + '</dt><dd>' + esc(l[1]) + '</dd>'; }).join('') + '</dl>'
-        : '<div class="dem-sous">Aucune info trouvée.</div>') + (f.wikipedia ? '<a class="infos-lien" href="https://fr.wikipedia.org/wiki/' + encodeURIComponent(f.wikipedia) + '" target="_blank" rel="noopener">Wikipédia ↗</a>' : '');
+        : '<div class="dem-sous">Aucune info trouvée.</div>') + (f.wikipedia ? '<a class="infos-lien" href="https://fr.wikipedia.org/wiki/' + encodeURIComponent(f.wikipedia) + '" target="_blank" rel="noopener">Wikipédia ↗</a>' : '') + (/^https?:\/\//.test(f.lien_source || '') ? '<a class="infos-lien" href="' + esc(f.lien_source) + '" target="_blank" rel="noopener">Site source ↗</a>' : '');
     });
     $('sTitle').addEventListener('click', function () { this.classList.toggle('deplie'); });         // titre complet au toucher
     $('infosFermer').addEventListener('click', function () { $('infosVue').hidden = true; });

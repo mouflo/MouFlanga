@@ -45,7 +45,8 @@ def ajouter(nom, serie=None, surveiller=True, qualite="Digital"):
         d = lire()
         x = d["series"].setdefault(nom, {"ajoutee": datetime.now().strftime("%Y-%m-%d"), "propositions": []})
         x.update(surveiller=bool(surveiller), qualite=qualite or "Digital")
-        for k in ("anilist", "couverture", "annee"):
+        # d'où vient la série (AniList, MangaDex, saisie à la main…) et ce qu'on sait d'elle
+        for k in ("anilist", "mangadex", "mangaupdates", "couverture", "annee", "source", "auteur", "editeur", "lien"):
             if serie.get(k):
                 x[k] = serie[k]
         titres = [t for t in (nom, serie.get("titre"), serie.get("original")) if t]

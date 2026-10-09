@@ -21,7 +21,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template, request, send_file
+from flask import Flask, Response, jsonify, redirect, render_template, request, send_file
+from urllib.parse import quote
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
@@ -438,6 +439,7 @@ def api_library():
             "size_mb": round(total_size / 1048576, 1),
             "last_read": p.get("last", ""), "added": newest,
             "cover": f"/api/cover?id={_q(name)}&v={int(max(newest, _couverture_mtime(name)))}",
+            **_auteur_editeur(name),
         })
     presentes = {x["id"] for x in out}
     for nom, x in suivi.lire()["series"].items():          # ➕ séries ajoutées mais encore vides : grisées
@@ -452,6 +454,16 @@ def api_library():
     except OSError:
         racine = 0
     return jsonify({"series": out, "a_importer": racine, "import_en_cours": _FILE_IMPORT["en_cours"]})
+
+
+def _auteur_editeur(name):
+    """Auteur et éditeur d'après la fiche déjà en cache (aucun appel réseau ici) : pour le tri et la recherche."""
+    if name == "(Sans série)":
+        return {"auteur": "", "editeur": ""}
+    f = (tomes._charger(name) or {}).get("fiche") or {}
+    s = suivi.lire()["series"].get(name) or {}          # série ajoutée à la main : ses infos sont dans le suivi
+    return {"auteur": f.get("scenario") or f.get("dessin") or s.get("auteur") or "",
+            "editeur": f.get("editeur_fr") or f.get("editeur_jp") or s.get("editeur") or ""}
 
 
 def _q(text):
@@ -1666,6 +1678,7 @@ def api_occupe():
 
 
 # ---------------- 🧲 Torrents (Prowlarr → qBittorrent → import) : admin seulement ----------------
+import regles
 import torrents
 torrents._ETAT["fichier"] = DATA_DIR / "torrents.json"
 
@@ -2169,8 +2182,10 @@ def api_fiche():
     ed = edition.lire(MANGA_DIR / name)
     texte = (name + " " + " ".join(ed.get("archives", [])) + " " + " ".join(x.name for x in files[:30])).lower()
     versions = list(dict.fromkeys(v for k, v in _EDITIONS if k in texte))
+    s = suivi.lire()["series"].get(name) or {}
     return jsonify({**{k: v for k, v in f.items() if k != "date"}, "versions": versions,
-                    "edition": _infos_edition(name, files)})
+                    "edition": _infos_edition(name, files),
+                    "source_suivi": s.get("source", ""), "lien_source": s.get("lien", "")})
 
 
 @app.route("/api/tome")
@@ -2593,6 +2608,41 @@ def japscan_verif_clic():
 def verification():
     """Page pour passer la vérification Cloudflare à la main."""
     return render_template("verification.html", version=APP_VERSION)
+
+
+@app.route("/regles")
+def page_regles():
+    """📏 Règles de recherche (admin) : profils de version et formats personnalisés, comme dans Sonarr."""
+    onglet = "formats" if request.args.get("onglet") == "formats" else "profils"
+    edit = request.args.get("edit", "")
+    cle = "profils" if onglet == "profils" else "formats"
+    modif = next((x for x in regles.profils() if x["id"] == edit), None) if edit and cle == "profils" else None
+    if edit and cle == "formats":
+        modif = next((x for x in regles.formats() if x["id"] == edit), None)
+    return render_template("regles.html", version=APP_VERSION, onglet=onglet, profils=regles.profils(),
+                           formats=regles.formats(), modif=modif,
+                           ok=request.args.get("ok", ""), erreur=request.args.get("erreur", ""))
+
+
+@app.route("/regles/enregistrer", methods=["POST"])
+def regles_enregistrer():
+    f = request.form
+    quoi = "format" if f.get("quoi") == "format" else "profil"
+    onglet = "formats" if quoi == "format" else "profils"
+    try:
+        if f.get("supprimer"):
+            regles.supprimer(quoi, f.get("id", ""))
+            msg = "Supprimé."
+        elif quoi == "profil":
+            regles.enregistrer_profil(f.get("id", ""), f.get("nom", ""), bool(f.get("actif")), f.get("doit", ""),
+                                      f.get("ne_doit_pas", ""), f.get("series", ""), f.get("taille_max_go", ""))
+            msg = "Profil enregistré. Les prochaines recherches en tiennent compte."
+        else:
+            regles.enregistrer_format(f.get("id", ""), f.get("nom", ""), f.get("termes", ""), f.get("score", "0"))
+            msg = "Format enregistré. Les prochaines recherches en tiennent compte."
+        return redirect("/regles?onglet=" + onglet + "&ok=" + quote(msg))
+    except ValueError as e:
+        return redirect("/regles?onglet=" + onglet + "&erreur=" + quote(str(e)))
 
 
 @app.route("/telecharger")

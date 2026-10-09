@@ -1,5 +1,13 @@
 # Historique des versions
 
+## Règles de recherche et sources (9 octobre 2026)
+- 📏 **Règles de recherche** (menu de la bibliothèque, administrateur) : deux onglets comme dans Sonarr.
+  - 🧾 **Profils de version** : un profil refuse les torrents qui ne contiennent pas un de ses mots (« doit contenir »), ou qui contiennent un mot interdit (« ne doit pas contenir »). Il peut se limiter à certaines séries et fixer une taille maximale en Go.
+  - 🏷 **Formats personnalisés** : des mots qui ajoutent ou retirent des points ; les torrents avec le plus de points sont proposés en premier.
+- 🔤 Tri et recherche par **auteur** et **éditeur** dans la bibliothèque (d'après la fiche de la série).
+- ➕ **Ajouter une série** : la recherche interroge aussi **MangaDex** (dont les mangas français) et **MangaUpdates**. Les sources sans réponse sont signalées.
+- ✏️ **Saisir un manga à la main** quand il n'est trouvé nulle part : titre, auteur, éditeur et lien vers le site qui le décrit (affiché dans la fiche ⓘ).
+
 ## Connexion et liens Telegram (9 octobre 2026)
 - 🔗 Un lien ouvert depuis Telegram (« …/#Série ») ouvre bien la fiche demandée après la connexion : le #fragment est reporté dans la page de connexion.
 

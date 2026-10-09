@@ -19,6 +19,7 @@
     <div id="listView">
         <div style="margin-bottom: 16px;">
             <a href="/telecharger" class="mou-btn" style="display: inline-block; margin-right: 8px;">📥 Télécharger des mangas</a>
+            {% if role != 'lecteur' %}<a href="/regles" class="mou-btn ghost" style="display: inline-block; margin-right: 8px;">📏 Règles de recherche</a>{% endif %}
             <button type="button" class="mou-btn ghost" id="btnDemandes">{% if role == 'lecteur' %}📮 Demander un manga{% else %}➕ Ajouter une série{% endif %}<span class="pastille" id="nbDemandes" hidden></span></button>
         </div>
         <div class="dem-fond" id="demVue" hidden>

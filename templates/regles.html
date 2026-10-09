@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Règles de recherche · MouFlanga</title>
+    <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+    <link rel="stylesheet" href="/ui/mou-settings.css?v={{ version|urlencode }}">
+    <style>
+        .regles-onglets { display: flex; gap: 8px; margin: 16px 0; flex-wrap: wrap; }
+        .regles-onglets a { padding: 10px 14px; border-radius: 10px; background: #1f2126; color: #ddd; text-decoration: none; border: 1px solid #2c2f36; }
+        .regles-onglets a.actif { background: #52b54b; color: #0b0c0e; border-color: #52b54b; font-weight: 600; }
+        .regle { border: 1px solid #2c2f36; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; background: #17181c; }
+        .regle .nom { font-weight: 600; font-size: 1.05em; }
+        .regle .detail { color: #aaa; font-size: 0.92em; margin-top: 4px; line-height: 1.5; }
+        .regle .actions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .regle .actions a, .regle .actions button { padding: 8px 12px; border-radius: 8px; font-size: 0.95em; }
+        .regle .actions button { background: #3a1f22; color: #ffb4b4; border: 1px solid #6b2f35; cursor: pointer; }
+        .regle .actions a { background: #1f2126; color: #ddd; text-decoration: none; border: 1px solid #2c2f36; }
+        .regle .off { color: #e0a84a; }
+        .formulaire { border: 1px solid #52b54b; border-radius: 12px; padding: 14px; margin: 16px 0; background: #14191a; }
+        .formulaire label { display: block; margin-top: 10px; font-weight: 600; }
+        .formulaire input[type=text], .formulaire input[type=number], .formulaire textarea { width: 100%; box-sizing: border-box; font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid #2c2f36; background: #0f1012; color: #eee; margin-top: 4px; }
+        .formulaire textarea { min-height: 70px; }
+        .formulaire .aide { color: #aaa; font-size: 0.9em; margin-top: 4px; }
+        .formulaire .coche { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+        .formulaire button { margin-top: 14px; width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; background: #52b54b; color: #0b0c0e; border: none; font-weight: 600; }
+        .msg { padding: 10px 12px; border-radius: 8px; margin: 10px 0; }
+        .msg.ok { background: #14291a; color: #9be3a6; border: 1px solid #2f6b3a; }
+        .msg.err { background: #2a1416; color: #ffb4b4; border: 1px solid #6b2f35; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+            <a href="/" class="back">← Retour</a>
+            <h1 style="margin: 0;">📏 Règles de recherche</h1>
+        </div>
+        <p class="note">Ce qui est accepté ou refusé quand MouFlanga cherche un torrent, et dans quel ordre on les propose.</p>
+
+        {% if ok %}<div class="msg ok">{{ ok }}</div>{% endif %}
+        {% if erreur %}<div class="msg err" role="alert">{{ erreur }}</div>{% endif %}
+
+        <nav class="regles-onglets">
+            <a href="/regles?onglet=profils" class="{{ 'actif' if onglet == 'profils' }}">🧾 Profils de version</a>
+            <a href="/regles?onglet=formats" class="{{ 'actif' if onglet == 'formats' }}">🏷 Formats personnalisés</a>
+        </nav>
+
+        {% if onglet == 'profils' %}
+            <p class="note">Un profil <b>refuse</b> les torrents qui ne respectent pas ses conditions. Sans série indiquée, il vaut pour toutes les séries. Les conditions « doit contenir » se valident si le titre contient <b>au moins un</b> des mots ; « ne doit pas contenir » refuse le torrent dès qu'un mot est présent. Ne compte pas les majuscules.</p>
+            {% for p in profils %}
+                <div class="regle">
+                    <div class="nom">{{ p.nom }}{% if not p.actif %} <span class="off">(désactivé)</span>{% endif %}</div>
+                    <div class="detail">
+                        Doit contenir : {{ p.doit|join(', ') or '—' }}<br>
+                        Ne doit pas contenir : {{ p.ne_doit_pas|join(', ') or '—' }}<br>
+                        Séries : {{ p.series|join(', ') or 'toutes' }}{% if p.taille_max_go %}<br>Taille maximale : {{ '%g'|format(p.taille_max_go) }} Go{% endif %}
+                    </div>
+                    <div class="actions">
+                        <a href="/regles?onglet=profils&edit={{ p.id }}">✏️ Modifier</a>
+                        <form method="post" action="/regles/enregistrer" style="margin:0" onsubmit="return confirm('Supprimer ce profil ?');">
+                            <input type="hidden" name="quoi" value="profil"><input type="hidden" name="id" value="{{ p.id }}"><input type="hidden" name="supprimer" value="1">
+                            <button type="submit">🗑 Supprimer</button>
+                        </form>
+                    </div>
+                </div>
+            {% else %}
+                <p class="note">Aucun profil pour l'instant : tous les torrents trouvés sont proposés.</p>
+            {% endfor %}
+
+            <form class="formulaire" method="post" action="/regles/enregistrer">
+                <input type="hidden" name="quoi" value="profil">
+                <input type="hidden" name="id" value="{{ modif.id if modif and onglet == 'profils' else '' }}">
+                <h2 style="margin-top: 0;">{{ 'Modifier le profil' if modif and onglet == 'profils' else 'Nouveau profil' }}</h2>
+                <label for="pnom">Nom</label>
+                <input type="text" id="pnom" name="nom" required value="{{ modif.nom if modif and onglet == 'profils' else '' }}">
+                <label class="coche"><input type="checkbox" name="actif" value="1" {{ 'checked' if not (modif and onglet == 'profils') or modif.actif }}> Activer ce profil</label>
+                <label for="pdoit">Doit contenir</label>
+                <textarea id="pdoit" name="doit">{{ modif.doit|join(', ') if modif and onglet == 'profils' else '' }}</textarea>
+                <div class="aide">Un mot par virgule ou par ligne (au moins un doit être présent).</div>
+                <label for="pne">Ne doit pas contenir</label>
+                <textarea id="pne" name="ne_doit_pas">{{ modif.ne_doit_pas|join(', ') if modif and onglet == 'profils' else '' }}</textarea>
+                <label for="pseries">Séries concernées</label>
+                <textarea id="pseries" name="series">{{ modif.series|join(', ') if modif and onglet == 'profils' else '' }}</textarea>
+                <div class="aide">Vide = toutes les séries. Sinon le nom de la série, par exemple « Kaf ».</div>
+                <label for="ptaille">Taille maximale (Go)</label>
+                <input type="number" id="ptaille" name="taille_max_go" step="0.1" min="0" value="{{ modif.taille_max_go or '' if modif and onglet == 'profils' else '' }}">
+                <button type="submit">💾 Enregistrer le profil</button>
+            </form>
+            {% if modif and onglet == 'profils' %}<p><a href="/regles?onglet=profils">Annuler la modification</a></p>{% endif %}
+        {% else %}
+            <p class="note">Un format personnalisé ajoute des <b>points</b> aux torrents dont le titre contient un de ses mots. Les torrents avec le plus de points sont proposés en premier. Un score négatif fait descendre un torrent.</p>
+            {% for f in formats %}
+                <div class="regle">
+                    <div class="nom">{{ f.nom }} <span class="off">{{ '%+d'|format(f.score) }} pts</span></div>
+                    <div class="detail">Mots : {{ f.termes|join(', ') or '—' }}</div>
+                    <div class="actions">
+                        <a href="/regles?onglet=formats&edit={{ f.id }}">✏️ Modifier</a>
+                        <form method="post" action="/regles/enregistrer" style="margin:0" onsubmit="return confirm('Supprimer ce format ?');">
+                            <input type="hidden" name="quoi" value="format"><input type="hidden" name="id" value="{{ f.id }}"><input type="hidden" name="supprimer" value="1">
+                            <button type="submit">🗑 Supprimer</button>
+                        </form>
+                    </div>
+                </div>
+            {% else %}
+                <p class="note">Aucun format pour l'instant.</p>
+            {% endfor %}
+
+            <form class="formulaire" method="post" action="/regles/enregistrer">
+                <input type="hidden" name="quoi" value="format">
+                <input type="hidden" name="id" value="{{ modif.id if modif and onglet == 'formats' else '' }}">
+                <h2 style="margin-top: 0;">{{ 'Modifier le format' if modif and onglet == 'formats' else 'Nouveau format' }}</h2>
+                <label for="fnom">Nom</label>
+                <input type="text" id="fnom" name="nom" required value="{{ modif.nom if modif and onglet == 'formats' else '' }}">
+                <label for="ftermes">Mots dans le titre</label>
+                <textarea id="ftermes" name="termes">{{ modif.termes|join(', ') if modif and onglet == 'formats' else '' }}</textarea>
+                <div class="aide">Un mot par virgule ou par ligne, par exemple « Tsundere-Raws, SR-71 ».</div>
+                <label for="fscore">Score (points)</label>
+                <input type="number" id="fscore" name="score" step="1" value="{{ modif.score if modif and onglet == 'formats' else 0 }}">
+                <button type="submit">💾 Enregistrer le format</button>
+            </form>
+            {% if modif and onglet == 'formats' %}<p><a href="/regles?onglet=formats">Annuler la modification</a></p>{% endif %}
+        {% endif %}
+    </div>
+</body>
+</html>
