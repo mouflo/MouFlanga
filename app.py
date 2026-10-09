@@ -201,17 +201,18 @@ def _tome_de_entree(e):
 
 
 HORS_SERIE = "Hors-série"
-_MOTS_HORS_SERIE = re.compile(r"\bHS\b|hors[ -]?s[ée]rie|data[ -]?book|art[ -]?book|one[ -]?shot", re.I)
+_MOTS_HORS_SERIE = re.compile(r"\bHS\d*\b|hors[ -]?s[ée]rie|data[ -]?book|art[ -]?book|one[ -]?shot", re.I)
 
 
 def _est_hors_serie(titre):
     """« One Piece HS - Blue (Oda) (2005) … » : un hors-série, Data Book, artbook ou one-shot (nom du fichier)."""
-    return bool(_MOTS_HORS_SERIE.search(titre or ""))
+    return bool(_MOTS_HORS_SERIE.search((titre or "").replace("_", " ")))
 
 
 def _titre_hors_serie(titre):
     """« One Piece HS - Blue (Oda) (2005) [Digital-1920] (PRiNTER-PapriKa+) » → « Blue (Oda) »."""
-    court = re.sub(r"^.*?(?:\bHS\b|hors[ -]?s[ée]rie|data[ -]?book|art[ -]?book|one[ -]?shot)\s*[-–:]?\s*", "", titre, count=1, flags=re.I)
+    titre = (titre or "").replace("_", " ")
+    court = re.sub(r"^.*?(?:\bHS\d*\b|hors[ -]?s[ée]rie|data[ -]?book|art[ -]?book|one[ -]?shot)\s*[-–:]?\s*", "", titre, count=1, flags=re.I)
     court = re.sub(r"\s*\[[^\]]*\]", "", court)                                             # [Digital-1920] [Manga FR]
     court = re.sub(r"\s*\([^)]*(?:papri|printer|digital|manga fr|scan)[^)]*\)", "", court, flags=re.I)  # (PRiNTER-PapriKa+)
     court = court.strip()
