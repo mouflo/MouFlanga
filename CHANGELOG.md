@@ -1,5 +1,9 @@
 # Historique des versions
 
+## Doublons : ne rien faire (9 octobre 2026)
+- 🚫 Troisième choix « Ne rien faire » sur une demande « déjà présent » (Télécharger) : la demande est fermée et ne revient plus.
+- 🔕 Une notification n'est envoyée que pour un doublon nouveau ; les doublons refusés ou dont le fichier a disparu ne sont plus signalés.
+
 ## Règles de recherche et sources (9 octobre 2026)
 - 📏 **Règles de recherche** (menu de la bibliothèque, administrateur) : deux onglets comme dans Sonarr.
   - 🧾 **Profils de version** : un profil refuse les torrents qui ne contiennent pas un de ses mots (« doit contenir »), ou qui contiennent un mot interdit (« ne doit pas contenir »). Il peut se limiter à certaines séries et fixer une taille maximale en Go.

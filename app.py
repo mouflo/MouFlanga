@@ -1274,22 +1274,50 @@ def _meme_fichier(a, b):
         return False
 
 
+DOUBLONS_IGNORES = DATA_DIR / "doublons-ignores.json"
+
+
+def _retenir_doublons_ignores(paires):
+    """« Ne rien faire » : ces paires (source, cible) ne sont plus signalées."""
+    deja = set(_lire_json_liste(DOUBLONS_IGNORES))
+    deja |= {f"{p[0]}|{p[1]}" for p in paires}
+    DOUBLONS_IGNORES.write_text(json.dumps(sorted(deja), ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _lire_json_liste(f):
+    try:
+        d = json.loads(f.read_text(encoding="utf-8"))
+        return d if isinstance(d, list) else []
+    except (OSError, ValueError):
+        return []
+
+
 def _signaler_doublons(serie, paires):
-    """Tomes rangés à la main alors qu'un tome identique existe déjà : une tâche « à valider » dans Télécharger."""
+    """Tomes rangés à la main alors qu'un tome identique existe déjà : une tâche « à valider » dans Télécharger.
+    Ne signale que les vrais doublons nouveaux : ni fichiers disparus, ni paires déjà refusées (« ne rien faire »)."""
     maintenant = datetime.now().strftime("%Y-%m-%d %H:%M")
+    ignores = set(_lire_json_liste(DOUBLONS_IGNORES))
     with torrents._verrou:
         d = [j for j in torrents._lire() if not (j.get("manuel") and j.get("serie") == serie and j.get("etat") == "a_valider")]
         anciennes = [p for j in torrents._lire() if j.get("manuel") and j.get("serie") == serie and j.get("etat") == "a_valider"
                      for p in j.get("paires", [])]
+        anciennes = [p for p in anciennes if (MANGA_DIR / p[0]).is_file() and f"{p[0]}|{p[1]}" not in ignores]
         vus = {tuple(p[:2]) for p in anciennes}
-        paires_tout = anciennes + [[_rel(f), _rel(c), t] for f, c, t in paires if (_rel(f), _rel(c)) not in vus]
+        nouvelles = [[_rel(f), _rel(c), t] for f, c, t in paires
+                     if (_rel(f), _rel(c)) not in vus and f"{_rel(f)}|{_rel(c)}" not in ignores and f.is_file()]
+        paires_tout = anciennes + nouvelles
+        if not paires_tout:
+            torrents._ecrire(d)
+            return
         tomes = {p[2] for p in paires_tout}
         d.append({"id": uuid.uuid4().hex[:10], "titre": "Rangé à la main", "serie": serie, "remplacer": None, "etat": "a_valider",
                   "manuel": True, "paires": paires_tout, "progression": 100, "debut": maintenant, "rappel_le": maintenant,
                   "message": torrents.demander_choix(None, tomes)})
         torrents._ecrire(d)
+    if not nouvelles:                       # rien de neuf : pas de nouvelle notification
+        return
     import notifier
-    notifier.envoyer(f"📚 MouFlanga : « {serie} » contient déjà des tomes. Choisis dans Télécharger : remplacer tout ou ajouter les manquants.")
+    notifier.envoyer(f"📚 MouFlanga : « {serie} » contient déjà des tomes. Choisis dans Télécharger : remplacer tout, ajouter les manquants ou ne rien faire.")
 
 
 def _appliquer_rangement(j, remplacer):
@@ -1310,10 +1338,17 @@ def _appliquer_rangement(j, remplacer):
 @app.route("/api/torrents/decider", methods=["POST"])
 def api_torrents_decider():
     body = request.get_json(silent=True) or {}
-    jid, remplacer = str(body.get("id", "")), bool(body.get("remplacer"))
+    jid, ignorer = str(body.get("id", "")), body.get("remplacer") == "ignorer"
+    remplacer = bool(body.get("remplacer")) and not ignorer
     j = next((x for x in torrents._lire() if x.get("id") == jid and x.get("etat") == "a_valider"), None)
     if j is None:
         return jsonify({"ok": False, "error": "Rien à valider ici (déjà traité ?)."}), 404
+    if ignorer:
+        # Ne rien faire : la tâche est fermée, les doublons restent tels quels et ne sont plus signalés
+        if j.get("manuel"):
+            _retenir_doublons_ignores(j.get("paires", []))
+        torrents._maj(jid, remplacer=None, etat="fini", message="Choix : ne rien faire. Les doublons restent tels quels.")
+        return jsonify({"ok": True, "message": "Rien n'a été changé. Cette demande ne reviendra plus."})
     if j.get("manuel") and not any((MANGA_DIR / src).is_file() for src, _c, _t in j.get("paires", [])):
         torrents._maj(jid, etat="erreur", message="Fichiers introuvables (dossier renommé ou supprimé) : relance le rangement.")
         return jsonify({"ok": False, "error": "Ces fichiers ne sont plus à leur place : relance le rangement."}), 409

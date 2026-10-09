@@ -22,7 +22,8 @@
         $("tor-liste").innerHTML = l.length ? l.map(j => `<div class="tor-ligne ${j.etat}"><div class="tor-info"><b>${esc(j.serie)}</b><small>${esc(j.titre)}</small>
             <span>${ETATS[j.etat] || j.etat}${j.etat === "telechargement" ? " " + (j.progression || 0) + " %" : ""} · ${esc(j.message || "")}</span></div>${j.etat === "a_valider" ? `<div class="tor-choix">
                 <button type="button" class="mou-btn" data-decider="${esc(j.id)}" data-remplacer="1">Remplacer tous les tomes</button>
-                <button type="button" class="mou-btn" data-decider="${esc(j.id)}" data-remplacer="0">Ajouter seulement les manquants</button></div>` : ""}</div>`).join("")
+                <button type="button" class="mou-btn" data-decider="${esc(j.id)}" data-remplacer="0">Ajouter seulement les manquants</button>
+                <button type="button" class="mou-btn ghost" data-decider="${esc(j.id)}" data-remplacer="ignorer">Ne rien faire</button></div>` : ""}</div>`).join("")
             : '<p class="sub">Aucun téléchargement pour l\'instant.</p>';
         clearTimeout(minuteur);
         if (l.some(j => j.etat === "telechargement" || j.etat === "import")) minuteur = setTimeout(etat, 15000);
@@ -65,9 +66,10 @@
         }
         const dec = e.target.closest("[data-decider]");
         if (dec) {
-            const remplacer = dec.dataset.remplacer === "1", bloc = dec.closest(".tor-choix");
-            if (remplacer && !confirm("Les tomes actuels iront à la corbeille (30 jours). Continuer ?")) return;
+            const choix = dec.dataset.remplacer, bloc = dec.closest(".tor-choix");
+            if (choix === "1" && !confirm("Les tomes actuels iront à la corbeille (30 jours). Continuer ?")) return;
             bloc.querySelectorAll("button").forEach(b => b.disabled = true);
+            const remplacer = choix === "ignorer" ? "ignorer" : choix === "1";
             const r = await (await fetch("/api/torrents/decider", {method: "POST", headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({id: dec.dataset.decider, remplacer})})).json();
             bloc.innerHTML = `<div class="note ${r.ok ? "ok" : "err"}">${esc(r.message || r.error)}</div>`;
