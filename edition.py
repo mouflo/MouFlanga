@@ -132,6 +132,22 @@ def analyser(fichiers: list[Path], indices_texte: str = "") -> dict:
     return res
 
 
+def volumes_du_titre(titre: str):
+    """« Cat's Eye - Édition de luxe [Intégrale 15 tomes] » → 15 ; None si le titre ne le dit pas."""
+    m = re.search(r"(\d{1,3})\s*tomes?\b", titre or "", re.I)
+    return int(m.group(1)) if m else None
+
+
+def noter_volumes(dossier: Path, titre: str):
+    """Garde le nombre de tomes de l'édition importée (il peut différer de l'édition standard)."""
+    n = volumes_du_titre(titre)
+    if n:
+        d = lire(dossier)
+        if d.get("volumes_attendus") != n:
+            d["volumes_attendus"] = n
+            ecrire(dossier, d)
+
+
 def invalider(dossier: Path):
     """Après un remplacement de tomes : la résolution et la source sont à refaire avec les nouveaux fichiers."""
     d = lire(dossier)

@@ -325,6 +325,8 @@ def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
                 if reglages()["ok"]:
                     q.appel("torrents/setLocation", hashes=t["hash"], location=reglages()["ok"])
                 _maj(j["id"], etat="fini", message=(fin or "Importé").split("\n")[0][:200])
+                if _ETAT.get("volumes"):
+                    _ETAT["volumes"](j["serie"], j["titre"])
                 rapport = None
                 if _ETAT.get("rapport"):
                     try:

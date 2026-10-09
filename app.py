@@ -319,12 +319,19 @@ def _il_en_manque(name, entrees, etat):
     tomes_locaux = {int(e["tome"]) for e in entrees if e.get("tome") is not None}
     tomes_locaux |= {int(e["groupe"].split()[1]) for e in entrees if (e.get("groupe") or "").startswith("Tome ")}
     st = (tomes._charger(name) or {}).get("statut_officiel") or {}
-    vol = st.get("volumes")
+    vol = _volumes_attendus(name)
     if tomes_locaux:
         fin = max(vol or 0, max(tomes_locaux))
         return any(t not in tomes_locaux for t in range(1, fin + 1))
     nums = [e["num"] for e in entrees if e.get("num") is not None]
     return bool(nums) and bool(_manquants([], nums)[0])
+
+
+def _volumes_attendus(name):
+    """Nombre de tomes de l'édition importée (torrent « Intégrale N tomes ») ; sinon celui d'AniList."""
+    import edition
+    v = edition.lire(MANGA_DIR / name).get("volumes_attendus")
+    return v or ((tomes._charger(name) or {}).get("statut_officiel") or {}).get("volumes")
 
 
 def _etat_serie(name, entrees):
@@ -342,7 +349,7 @@ def _etat_serie(name, entrees):
             tomes_locaux.add(int(e["groupe"].split()[1]))
     chapitres = [e["num"] for e in entrees if e.get("num") is not None]
     info = tomes._charger(name) or {}
-    vol = st.get("volumes") or max([t for t in (info.get("tomes") or {}).values() if t is not None] or [0]) or None
+    vol = _volumes_attendus(name) or max([t for t in (info.get("tomes") or {}).values() if t is not None] or [0]) or None
     chap = st.get("chapitres") or max(info.get("tomes") or {0: None}) or None
     if statut in ("RELEASING", "NOT_YET_RELEASED"):
         return "en_cours", "En cours" + (f" · {vol} tomes sortis" if vol else "")
@@ -1834,7 +1841,7 @@ def _rapport_serie(nom, titre_torrent, origine="🧲 Torrent"):
     plage = f" ({numeros[0]} à {numeros[-1]})" if len(numeros) > 1 else ""
     resume = (_read_json(RESUMES, {}).get(nom) or st.get("resume") or "").strip()
     connus = [int(t) for t in ((tomes._charger(nom) or {}).get("tomes") or {}).values() if t]
-    vol = st.get("volumes") or (max(connus) if connus else None)
+    vol = _volumes_attendus(nom) or (max(connus) if connus else None)
     manquants = [t for t in range(1, (vol or tome_max or 0) + 1) if numeros and t not in numeros]
     lignes = [f"📗 MouFlanga : nouvelle série prête — {nom}", "§",
               f"{origine} : {titre_torrent[:100]}",
@@ -1882,6 +1889,12 @@ def _tomes_deja_la(nom, source):
 
 
 torrents._ETAT["doublons"] = _tomes_deja_la
+def _noter_volumes_torrent(serie, titre):
+    import edition
+    edition.noter_volumes(MANGA_DIR / serie, titre)
+
+
+torrents._ETAT["volumes"] = _noter_volumes_torrent
 tomes.SERIES_EXISTANTES = lambda: [n for n in _scan() if n != "(Sans série)"]
 
 
