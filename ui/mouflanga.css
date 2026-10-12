@@ -314,3 +314,8 @@ body.lecteur #sRattacher { display:none !important; }
 .tor-toujours { display:flex; gap:8px; align-items:center; font-size:.85rem; margin-top:4px; }
 .hs-desc { display:block; margin-top:4px; font-size:.78rem; line-height:1.4; opacity:.85; }
 body.lecteur #sDecouper { display:none !important; }
+.all-apercu { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0; }
+.all-apercu[hidden] { display:none; }
+.all-apercu img { width:100%; border-radius:6px; background:#000; }
+.all-apercu figcaption { text-align:center; font-size:.8rem; opacity:.8; }
+body.lecteur #sAlleger { display:none !important; }

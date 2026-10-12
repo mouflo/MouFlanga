@@ -728,6 +728,48 @@
       rattacher(cible);
     });
 
+    // 🪶 Alléger (sans perte visible) / 🧼 éclaircir le papier : analyse d'abord, puis application après accord
+    var suiviAllege = null;
+    $('sAlleger').addEventListener('click', function () {
+      fermerMenus();
+      $('infosTitre').textContent = '🪶 Alléger « ' + current.title + ' »';
+      $('infosCorps').innerHTML = '<div class="dem-sous">Chaque tome est recompressé à la qualité la plus légère qui reste invisible à l\'écran (vérifiée sur des pages d\'essai). ' +
+        'Les tomes encore partagés par qBittorrent ne sont jamais touchés ; les anciens fichiers vont à la corbeille (30 jours).</div>' +
+        '<div class="ident-actions"><label>Largeur des pages : <select id="allLargeur"><option value="">garder</option><option value="1600" selected>1600 px (tablette)</option><option value="1200">1200 px (téléphone)</option></select></label></div>' +
+        '<div class="ident-actions"><label><input type="checkbox" id="allEclairer"> 🧼 Éclaircir le papier (scans gris ; pages en couleur jamais touchées)</label></div>' +
+        '<div id="allApercu" hidden class="all-apercu"><figure><img alt="" id="allAvant"><figcaption>Avant</figcaption></figure><figure><img alt="" id="allApres"><figcaption>Après</figcaption></figure></div>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser (rien n\'est modifié)</button></div><div id="allRes"></div>';
+      $('infosVue').hidden = false;
+      suivreAllegement();
+    });
+    function optionsAllegement() { return {largeur: $('allLargeur').value, eclairer: $('allEclairer').checked}; }
+    async function suivreAllegement() {
+      clearTimeout(suiviAllege);
+      if ($('infosVue').hidden || !$('allRes')) return;
+      var r = await api('/api/optimiser?series=' + encodeURIComponent(current.id));
+      if (!$('allRes')) return;
+      var lignes = (r.rapport || []).map(function (x) {
+        return '<li>' + esc(x.fichier) + ' <small>' + (x.note ? esc(x.note) : (x.taille_mo + ' Mo · ' + (x.gagne_mo != null ? '−' + x.gagne_mo + ' Mo' : '≈ −' + Math.round(x.gain * 100) + ' %') + ' (qualité ' + x.qualite + ', écart ' + x.psnr + ' dB)')) + '</small></li>';
+      }).join('');
+      $('allRes').innerHTML = (r.en_cours ? '<div class="dem-sous">' + esc(r.message || '') + ' ' + (r.fait || 0) + ' / ' + (r.total || '?') + '</div>' : (r.message ? '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' : '')) +
+        (lignes ? '<ol class="tchap">' + lignes + '</ol>' : '') +
+        (!r.en_cours && r.message && !r.appliquer && r.gain > 0 ? '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="1">🪶 Appliquer à toute la série</button></div>' : '');
+      if (r.en_cours) suiviAllege = setTimeout(suivreAllegement, 3000);
+    }
+    $('infosCorps').addEventListener('change', function (e) {
+      if (e.target.id !== 'allEclairer') return;
+      $('allApercu').hidden = !e.target.checked;
+      if (e.target.checked) { var u = '/api/optimiser/apercu?series=' + encodeURIComponent(current.id) + '&t=' + Date.now(); $('allAvant').src = u + '&avant=1'; $('allApres').src = u; }
+    });
+    $('infosCorps').addEventListener('click', async function (e) {
+      var b = e.target.closest('[data-alleger]'); if (!b) return;
+      var appliquer = b.dataset.alleger === '1';
+      if (appliquer && !confirm('Alléger tous les tomes de « ' + current.title + ' » avec ces réglages ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
+      var r = await post('/api/optimiser', Object.assign({series: current.id, appliquer: appliquer}, optionsAllegement()));
+      if (!r.ok) { alert(r.error || 'Impossible'); return; }
+      setTimeout(suivreAllegement, 800);
+    });
+
     $('sDecouper').addEventListener('click', function () { fermerMenus(); location.href = '/decouper?id=' + encodeURIComponent(current.id); });
 
     // 🔎 Choisir soi-même la fiche AniList (série mal reconnue : Crows, Prisonnier Riku…)

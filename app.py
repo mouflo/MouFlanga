@@ -19,6 +19,7 @@ import threading
 import time
 import uuid
 from datetime import datetime
+import zipfile
 from pathlib import Path
 
 import requests
@@ -947,6 +948,51 @@ def api_decouper_etat():
     if ".." in Path(rel).parts:
         return jsonify({})
     return jsonify(decoupage.etat((MANGA_DIR.resolve() / rel).resolve()))
+
+
+# ---------------- 🪶 Alléger / 🧼 éclaircir les tomes d'une série : admin ----------------
+import optimiser
+
+
+def _fichiers_a_alleger(name):
+    return [f for f in (_scan().get(name) or []) if f.suffix.lower() in (".cbz", ".zip") and not _a_importer(f)]
+
+
+@app.route("/api/optimiser", methods=["GET", "POST"])
+def api_optimiser():
+    """GET : où en est l'analyse ou l'allègement. POST {series, appliquer, eclairer, largeur} : lance l'un ou l'autre."""
+    if request.method == "GET":
+        return jsonify(optimiser.etat(request.args.get("series", "")))
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if _en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours"):
+        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    largeur = int(body["largeur"]) if str(body.get("largeur", "")).isdigit() and int(body["largeur"]) >= 800 else None
+    appliquer, eclairer = bool(body.get("appliquer")), bool(body.get("eclairer"))
+
+    def fini():
+        if appliquer:
+            import edition
+            infos = edition.lire(MANGA_DIR / name)
+            infos["allegement"] = {"date": datetime.now().strftime("%Y-%m-%d"), "largeur": largeur, "eclairci": eclairer}
+            edition.ecrire(MANGA_DIR / name, infos)
+            edition.invalider(MANGA_DIR / name)              # résolution et source refaites d'après les nouveaux fichiers
+    if not optimiser.lancer(name, _fichiers_a_alleger(name), appliquer, _vers_corbeille, eclairer, fini, largeur):
+        return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
+    return jsonify({"ok": True, "message": "Allègement lancé…" if appliquer else "Analyse lancée…"})
+
+
+@app.route("/api/optimiser/apercu")
+def api_optimiser_apercu():
+    """Une page avant / après l'éclaircissement (pour juger à l'œil)."""
+    name = request.args.get("series", "")
+    fichiers = [f for f in _fichiers_a_alleger(name) if zipfile.is_zipfile(f)] if name in _scan() else []
+    if not fichiers:
+        return Response("Introuvable", status=404)
+    avant, apres = optimiser.apercu(fichiers[0], 8, eclairer=True)
+    return Response(avant if request.args.get("avant") else apres, mimetype="image/jpeg")
 
 
 @app.route("/couvertures")
@@ -2199,6 +2245,9 @@ def _travaux_en_cours():
     import sommaire
     with sommaire._VERROU:
         raisons += ["lecture d'un sommaire" for e in sommaire._ETAT.values() if e.get("en_cours")][:1]
+    import optimiser
+    with optimiser._VERROU:
+        raisons += [f"allègement de {n}" for n, e in optimiser._ETAT.items() if e.get("en_cours")]
     return raisons
 
 

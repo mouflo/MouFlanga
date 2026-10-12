@@ -1,5 +1,11 @@
 # Historique des versions
 
+## Alléger et nettoyer les tomes (12 octobre 2026, soir)
+- 🪶 Menu ⋯ → **Alléger ou nettoyer les tomes** : l'appli analyse d'abord, sans rien modifier, et montre le gain par tome. Chaque tome est recompressé à la qualité la plus légère qui reste invisible à l'écran (vérifiée sur des pages d'essai). Les pages peuvent être ramenées à 1600 px (tablette) ou 1200 px (téléphone). Tu appliques ensuite à toute la série.
+- 🧼 **Éclaircir le papier** des scans gris (niveaux automatiques), avec un aperçu avant/après. Les pages en couleur ne sont jamais touchées.
+- Structure des tomes intacte (noms des pages, chapitres, ComicInfo). Fichiers partagés par qBittorrent jamais modifiés. Anciens fichiers à la corbeille (30 jours). Résolution et source recalculées ensuite.
+- Exemple mesuré : Claymore tome 1 (240 Mo, 1920 px) → environ −28 % en 1600 px, sans différence visible.
+
 ## Découper un gros fichier en tomes (12 octobre 2026, soir)
 - ✂️ Menu ⋯ → **Découper un gros fichier en tomes** : un écran avec les miniatures de toutes les pages ; tu touches la première page de chaque tome, puis « Découper ». Un fichier par tome, l'original va à la corbeille une fois tout écrit (ou reste tant que qBittorrent le partage).
 - 📑 Si le fichier contient un sommaire (index.json des sites de lecture, comme Buyuden : 134 chapitres, 13 tomes), les tomes sont déjà placés et chaque tome garde ses chapitres et leurs titres.
