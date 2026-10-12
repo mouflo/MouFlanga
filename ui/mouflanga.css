@@ -217,6 +217,8 @@ body.lecteur #sSource { display:none !important; }
 /* ➕ Séries recherchées (grisées) et propositions de torrents */
 .card.recherchee .cv { filter:grayscale(1) brightness(.55); }
 .card.recherchee .nm, .card.recherchee .st { opacity:.7; }
+.carte-retirer { position:absolute; top:6px; right:6px; z-index:2; width:34px; height:34px; border-radius:50%; border:none; background:rgba(0,0,0,.7); color:#fff; font-size:16px; cursor:pointer; }
+body.lecteur .carte-retirer { display:none; }
 .card .etat.recherche { background:#555; }
 .propositions { margin-top:14px; }
 .propositions[hidden] { display:none; }
@@ -236,6 +238,7 @@ body.lecteur #sSurveiller, body.lecteur #sProps { display:none !important; }
 .tog.tinfo { background:none; color:var(--muted); font-size:.95rem; padding:4px 6px; cursor:pointer; }
 body.mou-skin .tog.tinfo { background:none; width:auto; }
 .tchap { margin:4px 0 0; padding-left:0; list-style:none; font-size:.82rem; line-height:1.5; max-height:40vh; overflow:auto; }
+.tome-resume { margin:4px 0 8px; font-size:.85rem; line-height:1.5; white-space:pre-line; max-height:30vh; overflow:auto; }
 
 /* Index des lettres : grille régulière, alphabet complet (lettres sans série grisées) */
 .lettres { display:grid; grid-template-columns:repeat(14, 1fr); gap:3px; }      /* 28 boutons : 2 rangées de 14 */
@@ -288,3 +291,4 @@ body.nav-bas #seriesView .chapters { padding-bottom:56px; }   /* le bas de la li
 .ident-liste small { color: #aaa; line-height: 1.4; }
 .ident-liste .ident-attente { opacity: 0.55; }
 .ident-liste .ident-echec small { color: #ffb4b4; }
+body.lecteur .admin-seul { display:none !important; }

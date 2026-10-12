@@ -434,11 +434,18 @@ def _remplir_statuts(series):
     def travail():
         try:
             for name, tome_max in series:
-                st = (tomes._charger(name) or {}).get("statut_officiel") or {}
-                if st and "resume" in st and time.time() - st.get("date", 0) < tomes.STATUT_DUREE:
-                    continue
-                tomes.statut_officiel(name, tome_max)
-                time.sleep(1.5)
+                garde = tomes._charger(name) or {}
+                st = garde.get("statut_officiel") or {}
+                if not tomes.statut_a_jour(st):
+                    tomes.statut_officiel(name, tome_max)
+                    time.sleep(1.5)
+                # chapitres en « Hors tome » : la répartition est recherchée de nouveau (cache passé) et ils sont rangés tout seuls
+                if time.time() - garde.get("date", 0) >= tomes.DUREE and _a_ranger(name) and not _en_telechargement(name) \
+                        and not (_RANGEMENTS.get(name) or {}).get("en_cours"):
+                    n = _rangement_complet(name)
+                    if n:
+                        logger.info("Rangement automatique de « %s » : %d chapitre(s)", name, n)
+                    time.sleep(1.5)
         except Exception as e:
             logger.warning("Statuts officiels : %s", e)
         finally:
@@ -1294,10 +1301,13 @@ def _ranger_en_tomes(name, info, garder_en_cours=False):
                 num = _numero_chapitre(_title_of(f))
                 if num is not None:
                     par_tome.setdefault(tomes.tome_de(num, info), []).append((num, f))
-            elif info_f.get("tome") is None:
+            else:
+                # « Hors tome » → son tome s'il est sorti ; tome fait par l'appli d'après une ancienne répartition fausse
+                # (The Breaker : mauvaise fiche MangaDex) → le chapitre change de tome
+                actuel = info_f.get("tome")
                 for c in tomes_cbz.chapitres(f):
                     t = tomes.tome_de(c["num"], info)
-                    if t is not None:
+                    if t is not None and (actuel is None or int(t) != int(actuel)):
                         depuis_hors.setdefault(f, []).append((t, c))
         for t in list(par_tome):                 # deux fichiers avec le même numéro : on ne fusionne rien, on les laisse
             vus = {}
@@ -2366,8 +2376,9 @@ def _relancer_identification(serie):
     etapes = [
         {"nom": "Effacement de l'ancien cache", "etat": "attente", "detail": ""},
         {"nom": "Tomes : Wikipédia puis MangaDex", "etat": "attente", "detail": ""},
-        {"nom": "Statut : AniList", "etat": "attente", "detail": ""},
+        {"nom": "Statut et résumé : AniList (nom d'origine via MangaUpdates), Wikipédia", "etat": "attente", "detail": ""},
         {"nom": "Fiche : AniList, Wikipédia, MangaUpdates, Google Books", "etat": "attente", "detail": ""},
+        {"nom": "Rangement des chapitres dans leurs tomes", "etat": "attente", "detail": ""},
     ]
     with _IDENT_VERROU:
         _IDENTIFICATIONS[serie] = {"etapes": etapes, "fini": False, "debut": time.time()}
@@ -2383,17 +2394,21 @@ def _relancer_identification(serie):
                 return None
 
         lancer(0, lambda: (tomes.oublier(serie), _etape(serie, 0, "ok", "ancien cache effacé")))
-        tome_info = lancer(1, lambda: tomes.chercher(serie, forcer=True))
-        if tome_info:
-            _etape(serie, 1, "ok", f"{len(tome_info.get('tomes') or {})} tome(s) trouvés · source : {tome_info.get('source') or '?'}")
-        elif _etapes_etat(serie, 1) != "echec":
-            _etape(serie, 1, "ok", "aucune liste de tomes trouvée (les tomes locaux restent affichés)")
+        # le statut d'abord : son titre AniList (« Shuujin Riku ») aide ensuite à trouver les tomes
         st = lancer(2, lambda: tomes.statut_officiel(serie, forcer=True))
+        brut_st = (tomes._charger(serie) or {}).get("statut_officiel") or {}
+        resume_txt = " · résumé " + ({"fr": "en français", "en": "en anglais"}.get(brut_st.get("resume_langue"), "trouvé") if brut_st.get("resume") else "introuvable")
         if st:
             _etape(serie, 2, "ok", f"{ {'FINISHED': 'terminée', 'RELEASING': 'en cours', 'HIATUS': 'en pause', 'CANCELLED': 'arrêtée'}.get(st.get('statut'), st.get('statut') or '?') }"
-                                   + (f" · {st['volumes']} tome(s) annoncés" if st.get("volumes") else ""))
+                                   + (f" · {st['volumes']} tome(s) annoncés" if st.get("volumes") else "") + resume_txt)
         elif _etapes_etat(serie, 2) != "echec":
-            _etape(serie, 2, "ok", "pas trouvé sur AniList")
+            _etape(serie, 2, "ok", "pas trouvé sur AniList" + resume_txt)
+        tome_info = lancer(1, lambda: tomes.chercher(serie, forcer=True))
+        if tome_info:
+            _etape(serie, 1, "ok", f"{len({t for t in (tome_info.get('tomes') or {}).values() if t is not None})} tome(s), "
+                                   f"{len(tome_info.get('tomes') or {})} chapitre(s) répartis · source : {tome_info.get('source') or '?'}")
+        elif _etapes_etat(serie, 1) != "echec":
+            _etape(serie, 1, "ok", "aucune liste de tomes trouvée (les tomes locaux restent affichés)")
         fi = lancer(3, lambda: tomes.fiche(serie, forcer=True))
         if fi is not None:
             sources = ", ".join(fi.get("sources") or []) or "aucune"
@@ -2401,6 +2416,14 @@ def _relancer_identification(serie):
             if fi.get("editeur_fr"):
                 detail += f" · éditeur : {fi['editeur_fr']}"
             _etape(serie, 3, "ok", detail)
+        if not tome_info:
+            _etape(serie, 4, "ok", "rien à ranger (répartition inconnue)")
+        elif _en_telechargement(serie):
+            _etape(serie, 4, "ok", "série en cours de téléchargement : rangée à la fin")
+        else:
+            _etape(serie, 4, "en_cours")
+            n = _rangement_complet(serie)
+            _etape(serie, 4, "echec" if n is None else "ok", (_RANGEMENTS.get(serie) or {}).get("message", ""))
         with _IDENT_VERROU:
             _IDENTIFICATIONS[serie]["fini"] = True
         logger.info("Identification relancée : « %s »", serie)
@@ -2409,7 +2432,7 @@ def _relancer_identification(serie):
 
 def _etapes_etat(serie, index):
     with _IDENT_VERROU:
-        return _IDENTIFICATIONS.get(serie, {"etapes": [{}] * 4})["etapes"][index].get("etat")
+        return _IDENTIFICATIONS.get(serie, {"etapes": [{}] * 5})["etapes"][index].get("etat")
 
 
 @app.route("/api/identifier/etat")
@@ -2620,6 +2643,14 @@ def api_tome():
         if provenance.equipe_du_nom(nom_fichier):
             prov = {"equipe": provenance.equipe_du_nom(nom_fichier), "origine": f"Nom du fichier : {nom_fichier}", "manuel": False}
     d["provenance"] = prov
+    if not d.get("resume"):                              # Wikipédia n'a pas de résumé de ce tome : notice Google Books en français
+        try:
+            d["resume"] = tomes.resume_tome_google(name, tome)
+        except Exception as e:
+            logger.info("Résumé du tome %s de %s : %s", tome, name, e.__class__.__name__)
+        if d.get("resume"):
+            d["resume_source"] = "Google Books"
+    _sommaire_du_tome(name, int(tome), d)
     if d.get("chapitres_langue") == "en" or not d.get("chapitres"):      # Wikipédia FR n'a rien : titres FR du tome local avant l'anglais
         groupe = tomes_cbz.dossier_tome(int(tome))
         locaux = [f"{e['num']:g}. {e['titre_ch']}" for e in _entrees(_scan().get(name) or [])
@@ -2627,6 +2658,68 @@ def api_tome():
         if locaux:
             d["chapitres"], d["chapitres_langue"] = locaux[:60], ""
     return jsonify(d)
+
+
+def _tome_complet(name, tome):
+    """Entrée du fichier « tome complet » (un fichier = un tome, pas un fichier de tome fait par l'appli), ou None."""
+    for e in _entrees(_scan().get(name) or []):
+        if e.get("tome") == tome and e.get("key") == e.get("path") and not e.get("a_importer"):
+            return e
+    return None
+
+
+def _sommaire_du_tome(name, tome, d):
+    """Chapitres lus dans le sommaire imprimé du tome (OCR). Pas encore lu : lecture lancée toute seule en arrière-plan
+    quand aucune source n'a les chapitres en français."""
+    import sommaire
+    import edition
+    lu = (edition.lire(MANGA_DIR / name).get("sommaires") or {}).get(str(tome))
+    e = _tome_complet(name, tome)
+    besoin = not d.get("chapitres") or d.get("chapitres_langue") == "en"
+    if lu and lu.get("chapitres") and besoin:
+        d["chapitres"] = [f"{c['num']:g}. {c['titre']}" if c.get("titre") else f"{c['num']:g}." for c in lu["chapitres"]]
+        d["chapitres_langue"], d["chapitres_source"] = "", "sommaire du tome, lu automatiquement"
+        if e:
+            d["chapitres_pages"] = [c.get("image") for c in lu["chapitres"]]
+            d["fichier"] = e["key"]
+    if e and sommaire.disponible() and not lu and besoin and auth.role() != "lecteur":
+        _lire_sommaire(name, tome, e)
+    et = sommaire.etat(name, tome)
+    d["sommaire"] = {"possible": bool(e) and sommaire.disponible(), "en_cours": bool(et.get("en_cours")),
+                     "message": et.get("message", ""), "lu": bool(lu)}
+
+
+def _lire_sommaire(name, tome, e):
+    import sommaire
+    import edition
+    chemin = MANGA_DIR / e["path"]
+
+    def enregistrer(r):
+        infos = edition.lire(MANGA_DIR / name)
+        infos.setdefault("sommaires", {})[str(tome)] = r
+        edition.ecrire(MANGA_DIR / name, infos)
+    return sommaire.lancer(name, tome, chemin, lambda i: archives.read_page(chemin, i)[0], len(archives.pages(chemin)), enregistrer)
+
+
+@app.route("/api/tome/sommaire", methods=["POST"])
+def api_tome_sommaire():
+    """Bouton « 🔍 Lire le sommaire » d'un tome : relit ses premières pages (OCR), même s'il a déjà été lu."""
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    try:
+        tome = int(float(body.get("tome")))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Tome inconnu"}), 400
+    import sommaire
+    if name not in _scan():
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if not sommaire.disponible():
+        return jsonify({"ok": False, "error": "Lecteur de texte (tesseract) absent du serveur"}), 400
+    e = _tome_complet(name, tome)
+    if not e:
+        return jsonify({"ok": False, "error": "Ce tome n'est pas un fichier de tome complet (ses chapitres sont déjà séparés)."}), 400
+    _lire_sommaire(name, tome, e)
+    return jsonify({"ok": True, "message": "Lecture du sommaire en cours (environ une minute)…"})
 
 
 # ---------------- 🎵 Génériques des mangas (OP1 de l'anime, même sans l'anime dans Emby) : admin ----------------
@@ -2717,20 +2810,36 @@ def api_tomes_ranger():
             return jsonify({"ok": True, "message": "Rangement déjà en cours."})
         _RANGEMENTS[name] = {"en_cours": True, "fait": 0, "total": 0, "erreur": None, "message": "Recherche des tomes…"}
 
-    def travail():
-        etat = _RANGEMENTS[name]
-        try:
-            info = tomes.chercher(name, forcer=True)
-            if not info:
-                etat.update(en_cours=False, message="Aucune source (Wikipédia, MangaDex) ne connaît les tomes de cette série : les chapitres restent un fichier chacun.")
-                return
-            n = _ranger_en_tomes(name, info, garder_en_cours=True)
-            etat.update(en_cours=False, message=f"✅ {n} chapitre(s) rangé(s) en tomes (d'après {info['source']})." if n
-                        else f"Déjà rangée (d'après {info['source']}).")
-        except Exception as e:
-            etat.update(en_cours=False, message=f"Rangement impossible : {e}")
-    threading.Thread(target=travail, daemon=True).start()
+    threading.Thread(target=_rangement_complet, args=(name, True), daemon=True).start()
     return jsonify({"ok": True, "message": "Recherche des tomes…"})
+
+
+def _rangement_complet(name, forcer=False):
+    """Cherche la répartition en tomes puis range la série ; le message de fin est montré sur la page de la série."""
+    etat = _RANGEMENTS.setdefault(name, {})
+    etat.update(en_cours=True, message="Recherche des tomes…")
+    try:
+        info = tomes.chercher(name, forcer=forcer)
+        if not info:
+            etat.update(en_cours=False, message="Aucune source (Wikipédia, MangaDex) ne connaît les tomes de cette série : les chapitres restent un fichier chacun.")
+            return 0
+        n = _ranger_en_tomes(name, info, garder_en_cours=True)
+        etat.update(en_cours=False, message=f"✅ {n} chapitre(s) rangé(s) en tomes (d'après {info['source']})." if n
+                    else f"Déjà rangée (d'après {info['source']}).")
+        return n
+    except Exception as e:
+        etat.update(en_cours=False, message=f"Rangement impossible : {e}")
+        return None
+
+
+def _en_telechargement(name):
+    return any(j.get("status") == "running" and japscan_scraper.nom_sur(japscan_scraper.titre_serie(j.get("title") or "")) == name
+               for j in list(japscan_scraper.download_jobs.values()))
+
+
+def _a_ranger(name):
+    """La série a-t-elle des chapitres « Hors tome » (fichier de l'appli) ? Ils attendent que leur tome soit connu."""
+    return any(e.get("tome") is None and e.get("groupe") == tomes_cbz.dossier_tome(None) for e in _entrees(_scan().get(name) or []))
 
 
 TROUVES = DATA_DIR / "mangas-trouves.json"        # séries trouvées par recherche : restent dans la liste

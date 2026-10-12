@@ -1,5 +1,14 @@
 # Historique des versions
 
+## Sommaire des tomes, résumés et rangement automatique (12 octobre 2026)
+- 🔍 **Sommaire lu dans le tome** : pour un tome complet sans liste de chapitres en français, l'appli lit ses premières pages (OCR, tesseract) et trouve la page « Sommaire ». Les chapitres apparaissent dans ⓘ et chacun ouvre le tome à la bonne page. La lecture se lance toute seule à l'ouverture de ⓘ, en arrière-plan, et prend environ une minute. Le bouton « 🔍 Relire le sommaire du tome » la refait. Les sommaires très stylisés (texte blanc sur fond noir, comme Bakuman) restent illisibles.
+- 📖 **Résumé du tome** dans ⓘ : celui de Wikipédia, ou sinon la notice Google Books en français.
+- 📝 **Résumés de série plus fiables** : une série inconnue d'AniList sous son nom français (« Prisonnier Riku ») est retrouvée par son nom d'origine via MangaUpdates (« Shuujin Riku »). Sans AniList, le résumé vient de Wikipédia, sinon de MangaUpdates. Une série sans résumé est réessayée chaque jour au lieu d'une fois par semaine. Les résumés qui enchaînaient ceux des suites (The Breaker) s'arrêtent à la série.
+- 📚 **Tomes de The Breaker** : MangaDex ne prend plus une autre série au titre proche. Un chapitre rangé dans le mauvais tome d'après une ancienne répartition change de tome au rangement suivant.
+- 🔄 **Ré-identification complète** : statut et résumé d'abord, puis tomes, fiche et **rangement des chapitres dans leurs tomes**. Chaque étape est affichée.
+- 🤖 **Automatique** : une série qui a des chapitres « Hors tome » est re-cherchée tous les 3 jours, en arrière-plan, puis rangée toute seule.
+- ✕ **Fiche grisée supprimable** : une série ajoutée (📥 Recherchée) mais encore vide a un bouton ✕ pour retirer sa fiche. Aucun fichier n'est touché.
+
 ## Provenance des tomes (9 octobre 2026)
 - 🏷 La fenêtre ⓘ d'un tome indique sa **provenance** : l'équipe de scan (lue dans le nom d'origine, ex. « PRiNTER-PapriKa+ ») et l'origine (torrent, rangement).
 - Elle est notée au rangement et à l'import d'un torrent, puis ne change plus toute seule.

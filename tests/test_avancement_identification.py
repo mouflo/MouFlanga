@@ -18,9 +18,12 @@ class AvancementTest(unittest.TestCase):
         def fiche_en_panne(s, forcer=False):
             raise RuntimeError("réseau")
         A.tomes.fiche = fiche_en_panne
+        self.rangement = A._rangement_complet
+        A._rangement_complet = lambda s, forcer=False: 3
 
     def tearDown(self):
         A.tomes.oublier, A.tomes.chercher, A.tomes.statut_officiel, A.tomes.fiche = self.anciens
+        A._rangement_complet = self.rangement
 
     def test_etapes_et_echec(self):
         A._relancer_identification("Série test")
@@ -30,8 +33,8 @@ class AvancementTest(unittest.TestCase):
             time.sleep(0.05)
         etapes = A._IDENTIFICATIONS["Série test"]["etapes"]
         self.assertTrue(A._IDENTIFICATIONS["Série test"]["fini"])
-        self.assertEqual([e["etat"] for e in etapes], ["ok", "ok", "ok", "echec"])
-        self.assertIn("2 tome(s) trouvés", etapes[1]["detail"])
+        self.assertEqual([e["etat"] for e in etapes], ["ok", "ok", "ok", "echec", "ok"])
+        self.assertIn("2 tome(s), 2 chapitre(s) répartis", etapes[1]["detail"])
         self.assertIn("19 tome(s) annoncés", etapes[2]["detail"])
 
 

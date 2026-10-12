@@ -255,6 +255,18 @@ class BibliothequeTest(unittest.TestCase):
         self.assertFalse((self.root / "Serie" / "Hors tome").exists())
         self.assertEqual((s["current"], s["page"]), ("#4", 1))
 
+    def test_chapitre_mal_place_change_de_tome(self):
+        """The Breaker : tomes faits d'après une mauvaise répartition ; la bonne (re-identification) déplace les chapitres."""
+        self.A._ranger_en_tomes("Serie", self.info)
+        self.info["tomes"].update({2.0: 2, 6.0: 2})
+        self.A._ranger_en_tomes("Serie", self.info)
+        s = self.client.get("/api/series?id=Serie").json
+        self.assertEqual([(c["key"], c["groupe"]) for c in s["chapters"]],
+                         [("#1", "Tome 01"), ("#2", "Tome 02"), ("#3", "Tome 02"), ("#4", "Tome 02"), ("#6", "Tome 02")])
+        c2 = next(c for c in s["chapters"] if c["key"] == "#2")
+        self.assertEqual(self.client.get(f"/api/page?path={c2['path']}&n={c2['debut']}").data, _pages(2, 2)[0])
+        self.assertFalse(self.A._a_ranger("Serie"))
+
     def test_supprimer_un_chapitre_du_tome(self):
         self.A._ranger_en_tomes("Serie", self.info)
         r = self.client.post("/api/delete", json={"series": "Serie", "path": "#3"})
@@ -708,7 +720,7 @@ class MangadexFormesTest(unittest.TestCase):
     """MangaDex renvoie les tomes en objet ou en liste (cas de « Kenichi » : plantait avec « float() … dict »)."""
     def _avec(self, volumes):
         from unittest import mock
-        rep = [mock.Mock(json=mock.Mock(return_value={"data": [{"id": "x"}]})),
+        rep = [mock.Mock(json=mock.Mock(return_value={"data": [{"id": "x", "attributes": {"title": {"en": "Essai"}}}]})),
                mock.Mock(json=mock.Mock(return_value={"volumes": volumes}))]
         with mock.patch.object(tomes._SESSION, "get", side_effect=rep):
             return tomes._mangadex(["Essai"])
@@ -718,10 +730,65 @@ class MangadexFormesTest(unittest.TestCase):
                         "none": {"volume": "none", "chapters": {"3": {"chapter": "3"}}}})
         self.assertEqual(r["tomes"], {1.0: 1, 2.0: 1, 3.0: None})
 
+    def test_jamais_une_autre_serie(self):
+        """« The Breaker » : la 1re réponse est « … Rule Breaker » ; sans titre identique, on ne prend rien."""
+        from unittest import mock
+        rep = mock.Mock(json=mock.Mock(return_value={"data": [{"id": "y", "attributes": {"title": {"ja-ro": "Saikyou Rule Breaker"}}}]}))
+        with mock.patch.object(tomes._SESSION, "get", return_value=rep) as g:
+            self.assertIsNone(tomes._mangadex(["The Breaker"]))
+        self.assertEqual(g.call_count, 1)
+
     def test_liste(self):
         r = self._avec([{"volume": "1", "chapters": [{"chapter": "1"}, {"chapter": "2"}]},
                         {"volume": "2", "chapters": {"3": {"chapter": "3"}}}])
         self.assertEqual(r["tomes"], {1.0: 1, 2.0: 1, 3.0: 2})
+
+
+class ResumesTest(unittest.TestCase):
+    """Résumés : retentés chaque jour quand ils manquent, sans les suites, nom d'origine trouvé par MangaUpdates."""
+
+    def test_statut_a_jour(self):
+        import time as t
+        self.assertFalse(tomes.statut_a_jour(None))
+        self.assertTrue(tomes.statut_a_jour({"date": t.time() - 3 * 86400, "statut": "FINISHED", "resume": "x"}))
+        self.assertFalse(tomes.statut_a_jour({"date": t.time() - 2 * 86400, "statut": None, "resume": ""}))
+        self.assertFalse(tomes.statut_a_jour({"date": t.time() - 2 * 86400, "statut": "FINISHED", "resume": ""}))
+        self.assertTrue(tomes.statut_a_jour({"date": t.time() - 3600, "statut": None, "resume": ""}))
+
+    def test_sans_suites(self):
+        texte = "Shi-Woon est un lycéen.\n\nIl apprend.\n\n\nThe Breaker: New Waves est la suite directe de The Breaker.\n\nAutre."
+        self.assertEqual(tomes._sans_suites(texte), "Shi-Woon est un lycéen.\n\nIl apprend.")
+
+    def test_titres_mangaupdates(self):
+        from unittest import mock
+        rep = mock.Mock(json=mock.Mock(return_value={"results": [
+            {"record": {"title": "Shuujin Riku"}, "hit_title": "Prisonnier Riku"},
+            {"record": {"title": "Toriko (Taneichi)"}, "hit_title": "Prisonnier"}]}))
+        with mock.patch.object(tomes._SESSION, "post", return_value=rep):
+            self.assertEqual(tomes._titres_mangaupdates("Prisonnier Riku"), ["Shuujin Riku"])
+
+    def test_anilist_par_le_nom_d_origine(self):
+        """AniList ne connaît pas « Prisonnier Riku » : on le recherche sous « Shuujin Riku »."""
+        from unittest import mock
+        media = {"id": 78257, "title": {"romaji": "Shuujin Riku", "english": "Prisoner Riku"}, "synonyms": [],
+                 "status": "FINISHED", "volumes": 38, "chapters": 337, "format": "MANGA", "description": "en"}
+        vide = mock.Mock(status_code=200, json=mock.Mock(return_value={"data": {"Page": {"media": []}}}))
+        trouve = mock.Mock(status_code=200, json=mock.Mock(return_value={"data": {"Page": {"media": [media]}}}))
+        def post(url, json=None, timeout=None):
+            return trouve if json["variables"]["s"] == "Shuujin Riku" else vide
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(tomes, "DOSSIER", Path(d)), \
+                mock.patch.object(tomes._SESSION, "post", side_effect=post), \
+                mock.patch.object(tomes, "_titres_mangaupdates", return_value=["Shuujin Riku"]), \
+                mock.patch.object(tomes, "_resume", return_value=("Une météorite…", "fr")):
+            st = tomes.statut_officiel("Prisonnier Riku", forcer=True)
+        self.assertEqual((st["anilist"], st["resume"], st["resume_langue"]), (78257, "Une météorite…", "fr"))
+
+    def test_sans_anilist_resume_ailleurs(self):
+        from unittest import mock
+        with mock.patch.object(tomes, "_wikipedia_fr", return_value=""), \
+                mock.patch.object(tomes, "_titres_mangaupdates", return_value=[]), \
+                mock.patch.object(tomes, "_mangaupdates", return_value={"description": "A story."}):
+            self.assertEqual(tomes._resume_sans_anilist("Inconnu"), ("A story.", "en"))
 
 
 class NomSerieTest(unittest.TestCase):
@@ -796,15 +863,15 @@ class RangementTomesCompletsTest(unittest.TestCase):
 
 
 class DetailsTomeTest(unittest.TestCase):
-    """Fenêtre ⓘ d'un tome : pas de résumé, titres français d'abord, anglais en dernier, jamais de simples numéros."""
+    """Fenêtre ⓘ d'un tome : résumé de Wikipédia, titres français d'abord, anglais en dernier, jamais de simples numéros."""
 
     def _details(self, memoire):
         with mock.patch.object(tomes, "_charger", return_value=memoire):
             return tomes.details_tome("Gintama", 1)
 
-    def test_pas_de_resume_ni_de_couverture_texte(self):
-        d = self._details({"titres_tomes": {"details": {"1": {"titre": "Tome un", "sortie": "2007", "resume": "Un très long pavé", "couverture": "Gin"}}}})
-        self.assertEqual(d, {"titre": "Tome un", "sortie": "2007"})
+    def test_resume_mais_pas_de_couverture_texte(self):
+        d = self._details({"titres_tomes": {"details": {"1": {"titre": "Tome un", "sortie": "2007", "resume": "Un pavé", "couverture": "Gin"}}}})
+        self.assertEqual(d, {"titre": "Tome un", "sortie": "2007", "resume": "Un pavé", "resume_source": "Wikipédia"})
 
     def test_titres_anglais_en_dernier_recours(self):
         d = self._details({"tomes": {1.0: 1, 2.0: 1}, "titres": {1.0: "Immortal Sugimoto", 2.0: "Second"}})

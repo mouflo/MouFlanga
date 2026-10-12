@@ -42,6 +42,11 @@ Appli Flask (bibliothèque et lecteur de mangas) + scraper Japscan. Dossier `/op
 
 - Marque fini/incomplet/en cours : `tomes.statut_officiel()` (AniList, choix du résultat d'après le titre et le nombre de tomes locaux, cache `statut_officiel` dans `data/tomes/<série>.json`, 7 jours), rempli en fond par `_remplir_statuts()` à l'ouverture de la bibliothèque ; `_etat_serie()` compare au NAS.
 
+- Sommaire imprimé (`sommaire.py`) : OCR tesseract `fra` (`nice`, un cœur, un tome à la fois) des 14 premières images d'un tome complet ; lignes « SCÈNE 1 Titre ....5 » / « 12. Titre ... 45 » ; décalage page imprimée → image d'après le titre du 1er chapitre vu APRÈS le sommaire (la couverture porte souvent le même titre). Gardé dans `.mouflanga-infos.json` → `sommaires`. Lancé tout seul par `/api/tome` (admin) si aucun chapitre FR ; bouton `/api/tome/sommaire`. Sommaires stylisés (Bakuman) non lus.
+- Résumés : `statut_a_jour()` (7 jours si complet, 1 jour si série ou résumé manquant) ; AniList introuvable → `_titres_mangaupdates()` (nom d'origine) puis `_resume_sans_anilist()` (Wikipédia FR, MangaUpdates) ; `_sans_suites()`. Résumé d'un tome : TomeBD Wikipédia, sinon `resume_tome_google()`.
+- MangaDex (`_mangadex`) : 50 résultats, titre identique obligatoire (jamais `data[0]`). `_ranger_en_tomes` déplace aussi les chapitres d'un tome de l'appli vers le tome indiqué par la répartition. `_rangement_complet()` sert au bouton, à la ré-identification (étape 5) et au passage automatique de `_remplir_statuts` (séries avec « Hors tome », cache des tomes passé).
+- Pas de scraper manga-sanctuary.com : son robots.txt interdit Claude (`User-agent: Claude-Web`, refusé le 12/10/2026).
+
 ## Le scraper Japscan (`japscan_scraper.py`)
 - Navigateur au choix dans ⚙ Réglages : Chrome (Patchright, profil `data/navigateur`) ou Camoufox (Firefox, profil `data/navigateur-firefox`), sous écran virtuel Xvfb ; clics réels avec xdotool.
 - Cloudflare impose une vérification interactive : la page `/verification` montre le navigateur du serveur (capture) et relaie clics, défilement et glisser du doigt ; alerte Telegram.

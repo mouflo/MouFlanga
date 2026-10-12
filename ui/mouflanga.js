@@ -128,6 +128,7 @@
       if (s.recherchee) return '<div class="card recherchee" tabindex="0" data-id="' + esc(s.id) + '" data-recherchee="1">' +
         (s.cover ? '<img class="cv" loading="lazy" alt="" src="' + esc(s.cover) + '">' : '<div class="cv"></div>') +
         '<span class="etat recherche">📥 Recherchée' + (s.propositions ? ' · ' + s.propositions + ' 🧲' : '') + '</span>' +
+        '<button type="button" class="carte-retirer" data-retirer-suivie="' + esc(s.id) + '" title="Supprimer cette fiche" aria-label="Supprimer cette fiche">✕</button>' +
         '<div class="nm">' + esc(s.title) + '</div><div class="st">Appuie pour choisir un torrent</div><div class="bar"><i style="width:0"></i></div></div>';
       return '<div class="card" tabindex="0" data-id="' + esc(s.id) + '">' +
         '<img class="cv" loading="lazy" alt="" src="' + esc(s.cover) + '">' +
@@ -508,7 +509,18 @@
       if (c.dataset.recherchee) location.href = '/telecharger?torrent=' + encodeURIComponent(c.dataset.id) + '&serie=' + encodeURIComponent(c.dataset.id);
       else openSeries(c.dataset.id);
     }
-    $('grid').addEventListener('click', function (e) { var c = e.target.closest('.card'); if (c) ouvrirCarte(c); });
+    $('grid').addEventListener('click', async function (e) {
+      var x = e.target.closest('[data-retirer-suivie]');
+      if (x) {                                              // fiche grisée (série ajoutée, encore rien sur le NAS) : on la supprime
+        e.stopPropagation();
+        if (!confirm('Supprimer la fiche « ' + x.dataset.retirerSuivie + ' » ? Elle n\'est plus suivie (aucun fichier n\'est touché).')) return;
+        var r = await post('/api/suivies', {action: 'retirer', nom: x.dataset.retirerSuivie});
+        if (r.ok) { series = series.filter(function (s) { return s.id !== x.dataset.retirerSuivie; }); drawGrid(); }
+        else alert(r.error || 'Suppression impossible');
+        return;
+      }
+      var c = e.target.closest('.card'); if (c) ouvrirCarte(c);
+    });
     $('grid').addEventListener('keydown', function (e) { if (e.key === 'Enter') { var c = e.target.closest('.card'); if (c) ouvrirCarte(c); } });
     $('backList').addEventListener('click', function (e) { e.preventDefault(); history.pushState({}, '', location.pathname); showList(); });
     $('sResume').addEventListener('click', function () { if ($('sResume').dataset.path) readChapter($('sResume').dataset.path); });
@@ -745,22 +757,46 @@
     $('chapters').addEventListener('click', async function (e) {
       var b = e.target.closest('[data-tinfo]'); if (!b) return;
       e.stopPropagation(); e.preventDefault();
-      var n = b.dataset.tinfo;
-      $('infosTitre').textContent = 'ℹ️ Tome ' + String(n).padStart(2, '0'); $('infosCorps').innerHTML = '<div class="dem-sous">…</div>'; $('infosVue').hidden = false;
+      afficherTome(b.dataset.tinfo, true);
+    }, true);
+    var suiviSommaire = null;
+    async function afficherTome(n, premier) {
+      clearTimeout(suiviSommaire);
+      if (premier) { $('infosTitre').textContent = 'ℹ️ Tome ' + String(n).padStart(2, '0'); $('infosCorps').innerHTML = '<div class="dem-sous">…</div>'; $('infosVue').hidden = false; }
+      if ($('infosVue').hidden) return;
       var d = await api('/api/tome?id=' + encodeURIComponent(current.id) + '&tome=' + n);
+      if ($('infosVue').hidden || $('infosTitre').textContent !== 'ℹ️ Tome ' + String(n).padStart(2, '0')) return;
+      var som = d.sommaire || {};
       var cov = '/api/tome/couverture?id=' + encodeURIComponent(current.id) + '&tome=' + n;
       var prov = d.provenance || {};
       var provTexte = (prov.equipe ? 'Équipe : ' + prov.equipe + ' · ' : '') + (prov.origine || '') + (prov.manuel ? ' (saisi à la main)' : '');
       var champs = [['Titre', d.titre], ['Sortie en France', d.sortie], ['Provenance', provTexte.trim() ? provTexte : '']].filter(function (x) { return x[1]; });
-      var chap = d.chapitres || [];
+      var chap = d.chapitres || [], pagesCh = d.chapitres_pages || [];
+      var lien = function (c, i) {                    // chapitre lu dans le sommaire d'un tome complet : ouvert à sa page
+        if (d.fichier && pagesCh[i] != null) return '<a href="/lire?s=' + encodeURIComponent(current.id) + '&c=' + encodeURIComponent(d.fichier) + '&p=' + pagesCh[i] + '">' + esc(c) + '</a>';
+        return lienChapitre(c, n);
+      };
       $('infosCorps').innerHTML = '<div class="tome-fiche"><img class="tome-couv" src="' + cov + '" alt="" data-grand="' + cov + '&grand=1">' +
         '<div class="tome-champs">' + (champs.length ? champs.map(function (x) { return '<div class="champ"><small>' + x[0] + '</small><div>' + esc(x[1]) + '</div></div>'; }).join('')
           : (chap.length ? '' : '<div class="dem-sous">Pas d\'infos sur ce tome.</div>')) + '</div></div>' +
-        '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-prov="' + n + '">✏️ Noter la provenance (équipe, origine)</button></div>' +
-        (chap.length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c) { return '<li>' + lienChapitre(c, n) + '</li>'; }).join('') + '</ol>' : '');
+        (d.resume ? '<div class="dem-titre">Résumé' + (d.resume_source ? ' <small>(' + esc(d.resume_source) + ')</small>' : '') + '</div><p class="tome-resume">' + esc(d.resume) + '</p>' : '') +
+        '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-prov="' + n + '">✏️ Noter la provenance (équipe, origine)</button>' +
+        (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '">🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' +
+        (som.en_cours ? '<div class="dem-sous">🔍 Lecture du sommaire dans les premières pages… (environ une minute)</div>'
+          : (som.message && !chap.length ? '<div class="dem-sous">' + esc(som.message) + '</div>' : '')) +
+        (chap.length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') +
+          (d.chapitres_source ? ' <small>(' + esc(d.chapitres_source) + ')</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c, i) { return '<li>' + lien(c, i) + '</li>'; }).join('') + '</ol>' : '');
       var im = $('infosCorps').querySelector('.tome-couv');
       if (im) im.addEventListener('error', function () { im.style.display = 'none'; });
-    }, true);
+      if (som.en_cours) suiviSommaire = setTimeout(function () { afficherTome(n, false); }, 4000);
+    }
+    $('infosCorps').addEventListener('click', async function (e) {         // 🔍 relire le sommaire imprimé du tome (OCR)
+      var b = e.target.closest('[data-sommaire]'); if (!b) return;
+      b.disabled = true;
+      var r = await post('/api/tome/sommaire', {series: current.id, tome: b.dataset.sommaire});
+      if (!r.ok) { b.disabled = false; alert(r.error || 'Impossible'); return; }
+      afficherTome(b.dataset.sommaire, false);
+    });
     $('infosVue').addEventListener('click', function (e) { if (e.target === $('infosVue')) $('infosVue').hidden = true; });
     $('infosCorps').addEventListener('click', async function (e) {         // provenance d'un tome : équipe et origine notées à la main
       var pv = e.target.closest('[data-prov]'); if (!pv) return;

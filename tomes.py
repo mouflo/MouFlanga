@@ -187,14 +187,17 @@ def _wikipedia(noms: list[str]) -> dict | None:
 def _mangadex(noms: list[str]) -> dict | None:
     for nom in noms:
         try:
-            r = _SESSION.get("https://api.mangadex.org/manga", params={"title": nom, "limit": 5}, timeout=15).json()
+            r = _SESSION.get("https://api.mangadex.org/manga", params={"title": nom, "limit": 50}, timeout=15).json()
             if not r.get("data"):
                 continue
             def titres_md(d):                       # titre principal et autres titres de la fiche MangaDex
                 a = d.get("attributes") or {}
                 return [*(a.get("title") or {}).values(), *(v for x in a.get("altTitles") or [] for v in x.values())]
-            # « Akame ga Kill! Zero » : la fiche au titre identique, pas la série principale renvoyée en premier
-            ident = next((d["id"] for d in r["data"] if any(_simple(t) == _simple(nom) for t in titres_md(d))), r["data"][0]["id"])
+            # « Akame ga Kill! Zero » : la fiche au titre identique, pas la série principale renvoyée en premier ;
+            # « The Breaker » est loin dans la liste (après « … Rule Breaker ») : on en demande 50 et on ne prend jamais une autre série
+            ident = next((d["id"] for d in r["data"] if any(_simple(t) == _simple(nom) for t in titres_md(d))), None)
+            if ident is None:
+                continue
             ag = _SESSION.get(f"https://api.mangadex.org/manga/{ident}/aggregate", timeout=20).json()
         except Exception as e:
             logger.info("MangaDex injoignable (%s)", e.__class__.__name__)
@@ -304,6 +307,15 @@ def tome_de(num: float, info: dict | None):
 # ---------------------------------------------------------------- Statut officiel (fini / en cours)
 
 STATUT_DUREE = 7 * 86400
+STATUT_VIDE_DUREE = 86400            # série pas trouvée ou sans résumé : on réessaie chaque jour (les sources s'enrichissent)
+
+
+def statut_a_jour(st) -> bool:
+    """Le statut gardé est-il encore bon ? 7 jours s'il est complet, un jour seulement s'il manque la série ou le résumé."""
+    if not st or "resume" not in st:
+        return False
+    duree = STATUT_DUREE if st.get("statut") and st.get("resume") else STATUT_VIDE_DUREE
+    return time.time() - st.get("date", 0) < duree
 
 
 def _choisir(medias, serie, tome_max):
@@ -341,7 +353,7 @@ def _resume(m, serie=""):
             if str((a.get("links") or {}).get("al", "")) == str(m.get("id")):
                 desc = a.get("description") or {}
                 if desc.get("fr"):
-                    return _texte_propre(desc["fr"]), "fr"
+                    return _sans_suites(_texte_propre(desc["fr"])), "fr"
                 break
     except Exception:
         pass
@@ -349,6 +361,42 @@ def _resume(m, serie=""):
     if fr:
         return fr, "fr"
     return _texte_propre(m.get("description") or ""), ("en" if m.get("description") else "")
+
+
+def _sans_suites(texte: str) -> str:
+    """Le résumé MangaDex de « The Breaker » enchaîne ceux des suites (« The Breaker: New Waves est la suite directe… ») :
+    on s'arrête au premier paragraphe qui présente une suite."""
+    paras = re.split(r"\n\s*\n", texte or "")
+    garde = []
+    for p in paras:
+        if garde and re.search(r"\best la suite\b|\bis the sequel\b|\bsuite directe\b", p, re.I):
+            break
+        garde.append(p)
+    return "\n\n".join(garde).strip()
+
+
+def _titres_mangaupdates(serie: str) -> list[str]:
+    """Noms d'origine d'une série que MangaUpdates connaît sous ce nom (« Prisonnier Riku » → « Shuujin Riku »)."""
+    try:
+        r = _SESSION.post("https://api.mangaupdates.com/v1/series/search", json={"search": serie, "perpage": 10}, timeout=15).json()
+    except Exception as e:
+        logger.info("MangaUpdates pour %s : %s", serie, e.__class__.__name__)
+        return []
+    return list(dict.fromkeys(x["record"]["title"] for x in r.get("results") or []
+                              if x.get("record", {}).get("title") and _simple(x.get("hit_title") or "") == _simple(serie)
+                              and _simple(x["record"]["title"]) != _simple(serie)))
+
+
+def _resume_sans_anilist(serie: str):
+    """Série absente d'AniList : résumé de Wikipédia en français, sinon celui de MangaUpdates (anglais)."""
+    fr = _wikipedia_fr({"title": {}}, serie)
+    if fr:
+        return fr, "fr"
+    for titre in [serie, *_titres_mangaupdates(serie)]:
+        mu = _mangaupdates([titre])
+        if mu and mu.get("description"):
+            return mu["description"], "en"
+    return "", ""
 
 
 def page_correspond(page: str, noms) -> bool:
@@ -403,7 +451,7 @@ def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
     d'après AniList, gardé 7 jours dans data/tomes/<série>.json ; None si inconnu."""
     garde = _charger(serie) or {}
     st = garde.get("statut_officiel")
-    if st and "resume" in st and not forcer and time.time() - st.get("date", 0) < STATUT_DUREE:
+    if not forcer and statut_a_jour(st):
         return st if st.get("statut") else None
     q = ("query($s:String){Page(perPage:6){media(search:$s,type:MANGA,format_not:NOVEL)"
          "{id title{romaji english} synonyms status volumes chapters format description(asHtml:false)}}}")
@@ -420,11 +468,23 @@ def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
         if medias:
             break
     m = _choisir(medias, serie, tome_max)
+    if not m:                                          # titre français inconnu d'AniList (« Prisonnier Riku ») : nom d'origine d'après MangaUpdates
+        for titre_mu in _titres_mangaupdates(serie):
+            try:
+                r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": titre_mu}}, timeout=15)
+                if r.status_code == 429:
+                    return None
+                m = _choisir(r.json()["data"]["Page"]["media"], titre_mu, tome_max)
+            except Exception as e:
+                logger.info("AniList injoignable (%s)", e.__class__.__name__)
+                return None
+            if m:
+                break
     st = {"date": time.time(), "statut": m["status"] if m else None, "volumes": m.get("volumes") if m else None,
           "chapitres": m.get("chapters") if m else None,
           "titre": (m["title"].get("romaji") or m["title"].get("english")) if m else None,
           "titre_en": m["title"].get("english") if m else None, "anilist": m.get("id") if m else None}
-    st["resume"], st["resume_langue"] = _resume(m, serie) if m else ("", "")
+    st["resume"], st["resume_langue"] = _resume(m, serie) if m else _resume_sans_anilist(serie)
     # enregistrement à côté de la répartition des tomes (même fichier)
     DOSSIER.mkdir(parents=True, exist_ok=True)
     try:
@@ -503,7 +563,7 @@ def _mangaupdates(titres: list[str]) -> dict | None:
             logger.info("MangaUpdates pour %s : %s", titre, e.__class__.__name__)
             continue
         vol = re.search(r"(\d+)\s*Volumes?", d.get("status") or "", re.I)
-        return {"id": ident, "editeurs": [p.get("publisher_name") for p in d.get("publishers") or [] if p.get("publisher_name")],
+        return {"id": ident, "description": _texte_propre(d.get("description") or ""), "editeurs": [p.get("publisher_name") for p in d.get("publishers") or [] if p.get("publisher_name")],
                 "auteurs": list(dict.fromkeys(a.get("name") for a in (d.get("authors") or []) if a.get("name"))),
                 "volumes": int(vol.group(1)) if vol else None}
     return None
@@ -534,6 +594,59 @@ def _google_books(titre: str) -> dict | None:
         editeur = editeur or v.get("publisher") or ""
         auteurs = auteurs or v.get("authors") or []
     return {"editeur": editeur, "auteurs": ", ".join(auteurs), "tomes": max(tomes) if tomes else None}
+
+
+RESUME_TOME_DUREE = 30 * 86400
+
+
+def _tome_du_titre(titre: str):
+    m = re.search(r"\b(?:tome|t|vol\.?|volume|band)\s*0*(\d{1,3})\b", titre or "", re.I)
+    return int(m.group(1)) if m else None
+
+
+def resume_tome_google(serie: str, tome) -> str:
+    """Résumé en français d'un tome d'après Google Books (clé requise) : la notice de « <série> tome N » en français.
+    Gardé 30 jours dans data/tomes/<série>.json (« resumes_tomes »), y compris « rien trouvé »."""
+    n = int(tome)
+    brut = _charger(serie) or {}
+    garde = (brut.get("resumes_tomes") or {}).get(str(n))
+    if garde and time.time() - garde.get("date", 0) < RESUME_TOME_DUREE:
+        return garde.get("texte", "")
+    cle = cle_google_books()
+    if not cle:
+        return ""
+    st = brut.get("statut_officiel") or {}
+    texte = ""
+    for titre in list(dict.fromkeys(x for x in (serie, st.get("titre")) if x)):
+        try:
+            r = _SESSION.get(GOOGLE_BOOKS, params={"q": f"{titre} tome {n}", "langRestrict": "fr", "maxResults": 20, "key": cle}, timeout=15)
+            if r.status_code != 200:
+                return ""                                  # quota, clé refusée : on réessaiera, rien n'est gardé
+            items = r.json().get("items") or []
+        except Exception as e:
+            logger.info("Résumé Google Books de %s tome %s : %s", serie, n, e.__class__.__name__)
+            return ""
+        for it in items:
+            v = it.get("volumeInfo") or {}
+            nom = " ".join(x for x in (v.get("title"), v.get("subtitle")) if x)
+            if _simple(titre) not in _simple(nom) or _tome_du_titre(nom) != n or (v.get("language") or "fr") != "fr":
+                continue
+            desc = _texte_propre(v.get("description") or "")
+            if len(desc) > 60:
+                texte = desc[:1500].rsplit(" ", 1)[0] + ("…" if len(desc) > 1500 else "")
+                break
+        if texte:
+            break
+    try:
+        brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        brut = {}
+    brut.setdefault("resumes_tomes", {})[str(n)] = {"date": time.time(), "texte": texte}
+    DOSSIER.mkdir(parents=True, exist_ok=True)
+    tmp = _fichier(serie).with_suffix(".tmp")
+    tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(_fichier(serie))
+    return texte
 
 
 def verifier_cle_google(cle: str) -> tuple[bool, str]:
@@ -685,10 +798,12 @@ def _liens_listes(pages: list) -> list:
 
 
 def details_tome(serie: str, tome) -> dict:
-    """Infos d'un tome (titre, sortie en France, chapitres) d'après la mémoire de titres_tomes.
-    Pas de résumé (trop long) ; les chapitres n'apparaissent que s'ils ont un titre."""
+    """Infos d'un tome (titre, sortie en France, résumé, chapitres) d'après la mémoire de titres_tomes.
+    Les chapitres n'apparaissent que s'ils ont un titre."""
     t = ((_charger(serie) or {}).get("titres_tomes") or {})
-    d = {k: v for k, v in (t.get("details") or {}).get(str(int(tome)), {}).items() if k not in ("resume", "couverture")}
+    d = {k: v for k, v in (t.get("details") or {}).get(str(int(tome)), {}).items() if k != "couverture"}
+    if d.get("resume"):
+        d["resume_source"] = "Wikipédia"
     if not d.get("chapitres"):                       # pas de liste en français : titres anglais connus pour ce tome
         info = _charger(serie) or {}
         titres_ch = info.get("titres") or {}
