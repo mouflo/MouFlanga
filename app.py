@@ -219,6 +219,11 @@ def _titre_hors_serie(titre):
     return court or titre
 
 
+def _chapitre_de_tome(e):
+    """Vrai pour un chapitre à l'intérieur d'un tome (« Tome 02 »). Un hors-série est un fichier entier, pas un chapitre."""
+    return bool(e.get("groupe")) and e.get("groupe") != HORS_SERIE
+
+
 def _infos_serie(name):
     """Fichier d'infos d'une série (une lecture par série et par liste)."""
     import edition
@@ -689,7 +694,7 @@ def api_series():
     else:
         trous, premier, dernier = _manquants([c["title"] for c in chapters])
         type_manquants = "chapitres"
-    en_tomes = any(c["groupe"] for c in chapters)
+    en_tomes = any(_chapitre_de_tome(c) for c in chapters)
     etat, etat_texte = _etat_serie(name, chapters) if name != "(Sans série)" else (None, "")
     st = (tomes._charger(name) or {}).get("statut_officiel") or {}
     perso = _read_json(RESUMES, {}).get(name)
@@ -946,6 +951,14 @@ def api_hors_serie_enregistrer():
     if body.get("action") == "retirer":
         hs.pop(key, None)
         msg = "Identification retirée."
+    elif body.get("action") == "renommer":           # seul le titre affiché change : l'année, l'auteur et la source restent
+        titre = str(body.get("titre", "")).strip()
+        if not titre or any(c in titre for c in '"$`\\\n\r'):
+            return jsonify({"ok": False, "error": "Nouveau nom : texte simple, sans guillemets ni dollar."}), 400
+        garde = dict(hs.get(key) or {"source": "Renommé à la main"})
+        garde["titre"] = titre
+        hs[key] = garde
+        msg = f"Hors-série renommé : « {titre} »."
     else:
         titre = str(body.get("titre", "")).strip()
         if not titre:
@@ -1152,7 +1165,7 @@ def api_delete():
         if entree is None:
             return jsonify({"ok": False, "error": "Chapitre introuvable"}), 404
         retires = {rel}
-        if entree["groupe"]:
+        if _chapitre_de_tome(entree):
             # Chapitre d'un fichier de tome : ses pages partent à la corbeille dans un .cbz à part
             try:
                 fichier = MANGA_DIR / entree["path"]
@@ -1164,7 +1177,7 @@ def api_delete():
             except (OSError, archives.ArchiveError) as e:
                 logger.warning("Suppression impossible dans %s : %s", series, e)
                 return jsonify({"ok": False, "error": f"Suppression impossible : {e}"}), 500
-        cibles = [] if entree["groupe"] else [MANGA_DIR / entree["path"]]
+        cibles = [] if _chapitre_de_tome(entree) else [MANGA_DIR / entree["path"]]
     try:
         for c in cibles:
             _vers_corbeille(c)

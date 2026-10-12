@@ -602,6 +602,7 @@
       $('infosCorps').innerHTML = lien + actuel + (hsCandidats.length ? '<ul class="ident-liste">' + lignes + '</ul>'
         : '<div class="dem-sous">Rien trouvé sur ces sources pour « ' + esc(r.titre) + ' ».</div>') +
         '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-hs-manuel="1">✏️ Saisir le hors-série à la main</button>' +
+        ' <button type="button" class="mou-btn ghost" data-hs-renommer="1">🏷 Renommer</button>' +
         (r.identifie ? ' <button type="button" class="mou-btn ghost" data-hs-retirer="1">Retirer l\'identification</button>' : '') + '</div>';
   }
   async function enregistrerHorsSerie(corps) {
@@ -610,7 +611,12 @@
     if (r.ok) { $('infosVue').hidden = true; openSeries(current.id, false); }
   }
   $('infosCorps').addEventListener('click', function (e) {
-    var b = e.target.closest('[data-hs-choix],[data-hs-manuel],[data-hs-retirer],[data-hs-lire]'); if (!b) return;
+    var b = e.target.closest('[data-hs-choix],[data-hs-manuel],[data-hs-retirer],[data-hs-lire],[data-hs-renommer]'); if (!b) return;
+    if (b.dataset.hsRenommer) {
+      var nouveau = prompt('Nouveau nom affiché pour ce hors-série :', ($('infosTitre').textContent || '').replace(/^🔎 Hors-série : /, ''));
+      if (!nouveau || !nouveau.trim()) return;
+      return enregistrerHorsSerie({action: 'renommer', titre: nouveau.trim()});
+    }
     if (b.dataset.hsLire) {
       var adresse = ($('hsLien').value || '').trim();
       if (!adresse) { note('listMsg', 'Colle d\'abord le lien de la page.', 'err'); return; }

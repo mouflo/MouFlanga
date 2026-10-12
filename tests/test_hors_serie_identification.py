@@ -50,6 +50,16 @@ class IdentificationHorsSerieTest(unittest.TestCase):
         rep = self.client.post("/api/hors-serie", json={"series": "One Piece", "key": self.cle, "action": "choisir", "titre": "  "})
         self.assertEqual(rep.status_code, 400)
 
+    def test_supprimer_un_hors_serie(self):
+        """Un hors-série est un fichier entier : il part à la corbeille (le chemin des chapitres de tome ne s'applique pas)."""
+        rep = self.client.post("/api/delete", json={"series": "One Piece", "path": self.cle})
+        self.assertTrue(rep.get_json()["ok"], rep.get_json())
+        self.assertFalse((self.root / self.cle).exists())
+
+    def test_renommer_un_hors_serie(self):
+        self.client.post("/api/hors-serie", json={"series": "One Piece", "key": self.cle, "action": "renommer", "titre": "Blue Data Book"})
+        self.assertEqual(self.titre_affiche()["title"], "Blue Data Book")
+
     def test_fichier_inconnu(self):
         rep = self.client.post("/api/hors-serie", json={"series": "One Piece", "key": "One Piece/inconnu.cbz", "action": "choisir", "titre": "X"})
         self.assertEqual(rep.status_code, 404)

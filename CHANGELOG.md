@@ -9,6 +9,12 @@
 - 🔗 Dans la fenêtre 🔎 d'un hors-série, colle le lien d'une page (Glénat, éditeur, boutique) : l'appli lit le titre, l'auteur, l'année et l'éditeur, et tu valides le résultat comme les autres.
 - Une page qui refuse la lecture automatique (protection anti-robot) ne déclenche rien : l'appli te le dit et tu saisis les infos à la main.
 
+## Corrections (12 octobre 2026)
+- 🗑 Supprimer un hors-série ne plante plus (il est traité comme un fichier entier).
+- 🏷 Hors-série : bouton « Renommer » dans la fenêtre 🔎 (change seulement le titre affiché).
+- 🚪 Déconnexion possible pour les comptes lecteurs.
+- 🔒 Les boutons réservés à l'admin (relance d'identification, couvertures des tomes, univers, identification des hors-série, provenance, couverture) sont cachés aux lecteurs.
+
 ## Identification des hors-série (9 octobre 2026)
 - 🔎 Chaque hors-série a un bouton 🔎 : l'appli cherche sur AniList, MangaDex et Google Books (avec le nom de la série et de l'auteur), et tu choisis le bon résultat dans la liste.
 - ✏️ Si rien ne convient : saisie à la main (titre, année, auteur, lien). « Retirer l'identification » revient au nom du fichier.

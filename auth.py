@@ -30,7 +30,8 @@ USERS_FILE = BASE_DIR / "data" / "utilisateurs.json"     # comptes « lecteur »
 LECTEUR_OK = {("GET", "/"), ("GET", "/lire"), ("GET", "/api/library"), ("GET", "/api/series"), ("GET", "/api/cover"),
               ("GET", "/api/pages"), ("GET", "/api/page"), ("POST", "/api/progress"), ("POST", "/api/mark"),
               ("GET", "/api/generique"), ("POST", "/api/clientlog"), ("GET", "/api/fiche"), ("GET", "/api/tome"), ("GET", "/api/tome/couverture"),
-              ("GET", "/api/demandes"), ("GET", "/api/demandes/chercher"), ("POST", "/api/demandes")}   # 📮 (admin vérifié dedans)
+              ("GET", "/api/demandes"), ("GET", "/api/demandes/chercher"), ("POST", "/api/demandes"),
+              ("POST", "/logout")}   # 📮 (admin vérifié dedans) ; se déconnecter reste permis
 
 REMEMBER_DAYS = 30
 MAX_FAILS_IP = 5          # essais ratés par adresse avant blocage

@@ -178,6 +178,8 @@ body.mou-skin #filtreRaz { background:none; border:0; padding:0; color:var(--acc
 body.lecteur a[href="/telecharger"], body.lecteur #bandeauImport, body.lecteur #mouSettingsOpen, body.lecteur #mouLogOpen,
 body.lecteur #sTomes, body.lecteur #sRenommer, body.lecteur #sGenerique, body.lecteur #sDelete, body.lecteur #sPitchModif,
 body.lecteur .cover-edit, body.lecteur [data-del], body.lecteur #sOrga, body.lecteur #menuCover { display:none !important; }
+body.lecteur #sIdentifier, body.lecteur #sCouvertures, body.lecteur #sUnivers, body.lecteur #sCoverPick, body.lecteur #sCoverAuto,
+body.lecteur [data-hs], body.lecteur [data-prov] { display:none !important; }
 body.lecteur .cover-btn, body.lecteur a.missing-line { pointer-events:none; }
 
 /* 📮 Demandes */
