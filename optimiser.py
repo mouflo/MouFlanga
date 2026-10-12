@@ -151,24 +151,24 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
     return gagne
 
 
-def reecrire_partage(chemin: Path, qualite: int, vers_corbeille, eclairer=False, largeur_max=None) -> int:
-    """Tome partagé par qBittorrent (lien physique) : le NAS refuse de le renommer ou de l'effacer, mais accepte de renommer
-    un DOSSIER. La version allégée est écrite dans un dossier voisin caché avec le reste du contenu, puis les deux dossiers
-    sont échangés (l'ancien, avec le fichier du torrent, va à la corbeille : le torrent n'est pas touché). Mêmes noms de
-    fichiers, donc lecture, progression et infos suivent."""
+def echanger_dossier(chemin: Path, ecrire, vers_corbeille) -> bool:
+    """Fichier partagé par qBittorrent (lien physique) : le NAS refuse de le renommer ou de l'effacer, mais accepte de
+    renommer un DOSSIER. « ecrire(destination) » écrit la nouvelle version du fichier dans un dossier voisin caché
+    (True si quelque chose est à remplacer), le reste du contenu y est copié, puis les deux dossiers sont échangés :
+    l'ancien, avec le fichier du torrent, va à la corbeille (le torrent n'est pas touché). Mêmes noms de fichiers,
+    donc lecture, progression et infos suivent."""
     import shutil
     dossier = chemin.parent
     nouveau = dossier.with_name("." + dossier.name + ".allege")
     ancien = dossier.with_name("." + dossier.name + ".avant")
     for d in (nouveau, ancien):
         if d.exists():
-            raise RuntimeError(f"reste d'un allègement interrompu : {d.name} (à vérifier)")
+            raise RuntimeError(f"reste d'un traitement interrompu : {d.name} (à vérifier)")
     nouveau.mkdir()
     try:
-        gagne = reecrire(chemin, qualite, eclairer, largeur_max, destination=nouveau / chemin.name)
-        if gagne <= 0 and not eclairer:
+        if not ecrire(nouveau / chemin.name):
             shutil.rmtree(nouveau, ignore_errors=True)
-            return 0
+            return False
         for x in dossier.iterdir():                       # le reste du dossier (couverture, infos) suit
             if x != chemin and not x.name.startswith("."):
                 shutil.copy2(x, nouveau / x.name) if x.is_file() else shutil.copytree(x, nouveau / x.name)
@@ -182,7 +182,17 @@ def reecrire_partage(chemin: Path, qualite: int, vers_corbeille, eclairer=False,
         shutil.rmtree(nouveau, ignore_errors=True)
         raise
     vers_corbeille(ancien)
-    return gagne
+    return True
+
+
+def reecrire_partage(chemin: Path, qualite: int, vers_corbeille, eclairer=False, largeur_max=None) -> int:
+    """Tome partagé : version allégée écrite à part puis dossiers échangés (voir echanger_dossier). Renvoie les octets gagnés."""
+    gagne = [0]
+
+    def ecrire(dest):
+        gagne[0] = reecrire(chemin, qualite, eclairer, largeur_max, destination=dest)
+        return gagne[0] > 0 or eclairer
+    return gagne[0] if echanger_dossier(chemin, ecrire, vers_corbeille) else 0
 
 
 def _dossier_a_lui(f: Path, serie: str) -> bool:

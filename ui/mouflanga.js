@@ -1166,7 +1166,9 @@
           : (som.message && !chap.length ? '<div class="dem-sous">' + esc(som.message) + '</div>' : '')) +
         (chap.length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') +
           (d.chapitres_source ? ' <small>(' + esc(d.chapitres_source) + ')</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c, i) { return '<li>' + lien(c, i) + '</li>'; }).join('') + '</ol>' +
-          '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEditer">✏️ Corriger les chapitres</button></div>' +
+          '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEditer">✏️ Corriger les chapitres</button>' +
+          (d.fichier && d.chapitres_source !== 'écrits dans le fichier' ? '<button type="button" class="mou-btn ghost" id="chapEcrire" data-tome="' + n + '" title="Pour que les chapitres suivent quand tu partages la série">📝 Écrire dans le fichier</button>' : '') + '</div>' +
+          '<div id="chapEcrireMsg" class="dem-sous"></div>' +
           '<div id="chapEdition" hidden><textarea id="chapTexte" class="mou-field" rows="' + Math.min(14, chap.length + 2) + '" spellcheck="false" style="width:100%"></textarea>' +
           '<div class="dem-sous">Une ligne par chapitre, avec son numéro : « 2. La valeur de la vie ». Après <b>@</b> : la page du lecteur où le chapitre commence (« 2. La valeur de la vie @64 »). Sans @, la page déjà connue est gardée.</div>' +
           '<div class="ident-actions"><label>Décaler toutes les pages de <input type="number" id="chapDecalage" value="0" style="width:4.5em"></label>' +
@@ -1189,6 +1191,21 @@
     });
     $('infosCorps').addEventListener('click', async function (e) {         // ✏️ corriger la liste des chapitres à la main
       if (e.target.closest('#chapEditer')) { $('chapEdition').hidden = false; $('chapEditer').hidden = true; $('chapTexte').focus(); return; }
+      var w = e.target.closest('#chapEcrire');
+      if (w) {                                                              // 📝 chapitres écrits dans le .cbz (partage de la série)
+        if (!confirm('Écrire les chapitres et leurs pages dans le fichier du tome ? Le fichier est réécrit (l\'ancien va à la corbeille 30 jours).')) return;
+        w.disabled = true;
+        var rr = await post('/api/tome/chapitres/ecrire', {series: current.id, tome: w.dataset.tome});
+        if (!rr.ok) { w.disabled = false; alert(rr.error || 'Impossible'); return; }
+        var msg = $('chapEcrireMsg'); if (msg) msg.textContent = '📝 ' + rr.message + ' (ça continue même si tu fermes la fenêtre)';
+        (async function suivre() {
+          var st = await api('/api/tome/chapitres/ecrire?series=' + encodeURIComponent(current.id) + '&tome=' + w.dataset.tome);
+          if (st && st.en_cours) { setTimeout(suivre, 3000); return; }
+          if (st && st.message) { window.MouToast((st.ok ? '📝 ' : '⚠️ ') + st.message, st.ok ? 'ok' : 'err'); var m2 = $('chapEcrireMsg'); if (m2) m2.textContent = st.message; }
+          if (st && st.ok && !$('infosVue').hidden) afficherTome(w.dataset.tome, false);
+        })();
+        return;
+      }
       if (e.target.closest('#chapAnnuler')) { $('chapEdition').hidden = true; $('chapEditer').hidden = false; return; }
       if (e.target.closest('#chapDecaler')) {                               // même décalage pour tous les « @page »
         var dec = parseInt($('chapDecalage').value, 10) || 0;

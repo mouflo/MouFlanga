@@ -2544,6 +2544,7 @@ def _travaux_en_cours():
     import sommaire
     with sommaire._VERROU:
         raisons += ["lecture d'un sommaire" for e in sommaire._ETAT.values() if e.get("en_cours")][:1]
+    raisons += ["écriture des chapitres dans un tome" for e in list(_SIGNETS.values()) if e.get("en_cours")][:1]
     import optimiser
     with optimiser._VERROU:
         raisons += [f"allègement de {n}" for n, e in optimiser._ETAT.items() if e.get("en_cours")]
@@ -3375,10 +3376,15 @@ def _sommaire_du_tome(name, tome, d):
     import edition
     lu = (edition.lire(MANGA_DIR / name).get("sommaires") or {}).get(str(tome))
     e = _tome_complet(name, tome)
+    if not lu and e:                                     # chapitres déjà écrits dans le fichier (série reçue d'un partage)
+        import signets
+        notes = signets.lire(MANGA_DIR / e["path"])
+        if notes:
+            lu = {"chapitres": notes, "fichier": True}
     besoin = not d.get("chapitres") or d.get("chapitres_langue") == "en"
     if lu and lu.get("chapitres") and (besoin or lu.get("manuel")):
         d["chapitres"] = [f"{c['num']:g}. {c['titre']}" if c.get("titre") else f"{c['num']:g}." for c in lu["chapitres"]]
-        d["chapitres_langue"], d["chapitres_source"] = "", "corrigés à la main" if lu.get("manuel") else "sommaire du tome, lu automatiquement"
+        d["chapitres_langue"], d["chapitres_source"] = "", "corrigés à la main" if lu.get("manuel") else "écrits dans le fichier" if lu.get("fichier") else "sommaire du tome, lu automatiquement"
         if e:
             d["chapitres_pages"] = [c.get("image") for c in lu["chapitres"]]
             d["fichier"] = e["key"]
@@ -3472,6 +3478,66 @@ def api_tome_chapitres():
     infos.setdefault("sommaires", {})[str(tome)] = nouveau
     edition.ecrire(MANGA_DIR / name, infos)
     return jsonify({"ok": True, "message": f"Tome {tome} : {len(chapitres)} chapitres enregistrés."})
+
+
+_SIGNETS = {}              # (série, tome) → {"en_cours", "message", "ok"} : écriture des chapitres dans le .cbz
+
+
+@app.route("/api/tome/chapitres/ecrire", methods=["GET", "POST"])
+def api_tome_chapitres_ecrire():
+    """📝 Écrit les chapitres (et leurs pages) du tome DANS son fichier .cbz (ComicInfo.xml), pour le partage.
+    Fichier partagé par qBittorrent : version à part et échange de dossiers, le torrent n'est pas touché."""
+    import edition
+    import signets
+    donnees = request.get_json(silent=True) or {} if request.method == "POST" else request.args
+    name = str(donnees.get("series", ""))
+    try:
+        tome = int(float(donnees.get("tome", "")))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Tome inconnu"}), 400
+    cle = (name, tome)
+    if request.method == "GET":
+        return jsonify(_SIGNETS.get(cle) or {})
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    e = _tome_complet(name, tome)
+    if not e or e.get("path", "").lower().endswith(".cbr"):
+        return jsonify({"ok": False, "error": "Seuls les tomes complets en .cbz peuvent recevoir leurs chapitres."}), 400
+    chemin = MANGA_DIR / e["path"]
+    if tomes_cbz.lire_info(chemin) is not None:
+        return jsonify({"ok": False, "error": "Ce tome est un fichier assemblé par MouFlanga : ses chapitres y sont déjà."}), 400
+    lu = (edition.lire(MANGA_DIR / name).get("sommaires") or {}).get(str(tome)) or {}
+    chapitres = lu.get("chapitres") or []
+    if not signets.nb_signets(chapitres):
+        return jsonify({"ok": False, "error": "Aucun chapitre avec une page connue : lis le sommaire ou corrige les chapitres d'abord."}), 400
+    partage = chemin.stat().st_nlink > 1
+    import optimiser
+    if partage and not optimiser._dossier_a_lui(chemin, name):
+        return jsonify({"ok": False, "error": "Fichier partagé par qBittorrent et posé hors d'un dossier de tome : jamais modifié."}), 400
+    if (_SIGNETS.get(cle) or {}).get("en_cours"):
+        return jsonify({"ok": False, "error": "Écriture déjà en cours."}), 409
+    _SIGNETS[cle] = {"en_cours": True, "message": "Écriture dans le fichier…"}
+
+    def travail():
+        try:
+            if partage:
+                optimiser.echanger_dossier(chemin, lambda dest: bool(signets.ecrire(chemin, chapitres, dest)), _vers_corbeille)
+            else:
+                tmp = chemin.with_name("." + chemin.name + ".signets")
+                signets.ecrire(chemin, chapitres, tmp)
+                ancien = chemin.with_name(chemin.name + ".avant")
+                chemin.rename(ancien)
+                tmp.rename(chemin)
+                _vers_corbeille(ancien)
+            tomes_cbz._CACHE.clear()
+            n = signets.nb_signets(chapitres)
+            _SIGNETS[cle] = {"en_cours": False, "ok": True, "message": f"{n} chapitres écrits dans le fichier du tome {tome}."
+                             + (" Le fichier du torrent n'est pas touché." if partage else "")}
+        except Exception as ex:
+            logger.warning("Chapitres écrits dans %s : %s", chemin, ex)
+            _SIGNETS[cle] = {"en_cours": False, "ok": False, "message": f"Échec : {ex}"}
+    threading.Thread(target=travail, daemon=True).start()
+    return jsonify({"ok": True, "message": "Écriture lancée…"})
 
 
 # ---------------- 🎵 Génériques des mangas (OP1 de l'anime, même sans l'anime dans Emby) : admin ----------------

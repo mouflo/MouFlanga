@@ -1,5 +1,9 @@
 # Historique des versions
 
+## Chapitres écrits dans le fichier du tome, pour le partage (12 octobre 2026, soir)
+- 📝 Fiche d'un tome → **Écrire dans le fichier** : les chapitres et leur page de départ sont inscrits dans le `ComicInfo.xml` du .cbz (signets standard, lus par Komga, Kavita…). Les pages sont recopiées telles quelles, l'ancien fichier va à la corbeille (30 jours). Un tome encore partagé par qBittorrent est écrit à part (échange de dossiers) : le torrent n'est pas touché.
+- 📥 MouFlanga relit ces signets quand il trouve un tome reçu d'un partage : les chapitres s'affichent sans relire le sommaire.
+
 ## Chapitres d'un tome corrigeables à la main (12 octobre 2026, soir)
 - ✏️ Dans la fiche d'un tome (ⓘ), le bouton **Corriger les chapitres** ouvre la liste en texte, une ligne par chapitre (« 2. La valeur de la vie »). Les liens de lecture des numéros déjà connus sont gardés. La page où commence un chapitre se règle aussi (« 2. Titre @64 », page du lecteur), avec un décalage commun pour toutes les pages. Une liste corrigée à la main n'est plus remplacée par la lecture automatique (« Relire le sommaire » demande confirmation).
 

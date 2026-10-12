@@ -386,6 +386,22 @@ class OrganiserTest(BibliothequeTest):
         double = self.client.post("/api/tome/chapitres", json={"series": "Serie", "tome": 1, "texte": "1. A\n1. B"})
         self.assertEqual(double.status_code, 400)
 
+    def test_chapitres_ecrits_dans_le_fichier(self):
+        import signets
+        f = self.root / "Tome complet.cbz"
+        with zipfile.ZipFile(f, "w", zipfile.ZIP_STORED) as z:
+            for k, d in enumerate(_pages(2, 7), 1):
+                z.writestr(f"{k:03d}.jpg", d)
+            z.writestr("ComicInfo.xml", "<ComicInfo><Series>X</Series></ComicInfo>")
+        chap = [{"num": 1.0, "titre": "Début", "image": 0}, {"num": 2.0, "titre": "Suite", "image": 1}, {"num": 3.0, "titre": "Sans page", "image": None}]
+        dest = self.root / "copie.cbz"
+        self.assertEqual(signets.ecrire(f, chap, dest), 2)
+        with zipfile.ZipFile(dest) as z:
+            self.assertIn("001.jpg", z.namelist())
+            self.assertNotIn("chapitres.json", z.namelist())                 # jamais : ce nom est réservé aux tomes assemblés par l'appli
+            self.assertIn("<Series>X</Series>", z.read("ComicInfo.xml").decode())
+        self.assertEqual([(c["num"], c["titre"], c["image"]) for c in signets.lire(dest)], [(1.0, "Début", 0), (2.0, "Suite", 1)])
+
     def test_organiser(self):
         with mock.patch.object(tomes, "chercher", return_value=None):
             r = self.client.post("/api/organiser", json={"series": self.vrac.name, "nom": "Gintama"})
