@@ -63,6 +63,32 @@ class OptimiserTest(unittest.TestCase):
         self.assertIn("qBittorrent", optimiser.etat("Serie")["rapport"][0]["note"])
         self.assertEqual(corbeille, [])
 
+    def test_tome_partage_dans_son_dossier_est_allege_sans_toucher_au_torrent(self):
+        racine = Path(self.tmp.name) / "Serie"
+        dossier = racine / "Tome 01"
+        dossier.mkdir(parents=True)
+        tome = dossier / "Serie - Tome 01.cbz"
+        os.replace(self.f, tome)
+        torrent = Path(self.tmp.name) / "torrent.cbz"
+        os.link(tome, torrent)                                   # le fichier du torrent (même inode)
+        (dossier / "cover.jpg").write_bytes(b"jpeg")
+        avant_taille = torrent.stat().st_size
+        corbeille = []
+        optimiser.lancer("Serie", [tome], True, corbeille.append, largeur_max=1200)
+        for _ in range(400):
+            if not optimiser.etat("Serie").get("en_cours"):
+                break
+            time.sleep(0.05)
+        ligne = optimiser.etat("Serie")["rapport"][0]
+        self.assertGreater(ligne.get("gagne_mo", 0), 0, ligne)
+        self.assertLess(tome.stat().st_size, avant_taille)               # le tome de la bibliothèque est plus léger
+        self.assertEqual(torrent.stat().st_size, avant_taille)           # le fichier du torrent est intact
+        self.assertTrue((dossier / "cover.jpg").is_file())
+        self.assertEqual(len(corbeille), 1)                              # l'ancien dossier part à la corbeille
+        self.assertFalse(any(x.name.startswith(".") for x in racine.iterdir() if x not in corbeille))
+        with zipfile.ZipFile(tome) as z:
+            self.assertIsNone(z.testzip())
+
     def test_eclaircir_seulement_le_gris(self):
         gris = Image.new("L", (100, 150), 200)
         self.assertEqual(optimiser.eclaircir(gris.point(lambda v: 40 if v < 100 else v)).getextrema()[1], 200)

@@ -769,7 +769,7 @@
       fermerMenus();
       $('infosTitre').textContent = '🪶 Alléger « ' + current.title + ' »';
       $('infosCorps').innerHTML = '<div class="dem-sous">Chaque tome est recompressé à la qualité la plus légère qui reste invisible à l\'écran (vérifiée sur des pages d\'essai). ' +
-        'Les tomes encore partagés par qBittorrent ne sont jamais touchés ; les anciens fichiers vont à la corbeille (30 jours).</div>' +
+        'Les tomes encore partagés par qBittorrent sont allégés à part : le fichier du torrent n\'est jamais touché (la place n\'est rendue qu\'une fois le torrent supprimé). Les anciens fichiers vont à la corbeille (30 jours).</div>' +
         '<div class="ident-actions"><label>Largeur des pages : <select id="allLargeur"><option value="">garder</option><option value="1600" selected>1600 px (tablette)</option><option value="1200">1200 px (téléphone)</option></select></label></div>' +
         '<div class="ident-actions"><label><input type="checkbox" id="allEclairer"> 🧼 Éclaircir le papier (scans gris ; pages en couleur jamais touchées)</label></div>' +
         '<div id="allApercu" hidden class="all-apercu"><figure><img alt="" id="allAvant"><figcaption>Avant</figcaption></figure><figure><img alt="" id="allApres"><figcaption>Après</figcaption></figure></div>' +

@@ -99,10 +99,12 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None) -> dict
     return meilleur
 
 
-def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None) -> int:
+def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, destination: Path | None = None) -> int:
     """Écrit la version allégée (ou éclaircie) à côté, la relit, puis remplace. Renvoie le nombre d'octets gagnés.
-    L'ancien fichier est renvoyé à l'appelant via un nom « .avant » (à mettre à la corbeille)."""
-    tmp = chemin.with_name("." + chemin.name + ".allege")
+    L'ancien fichier est renvoyé à l'appelant via un nom « .avant » (à mettre à la corbeille).
+    Avec « destination » (fichier partagé par qBittorrent : le NAS refuse de le renommer), la version allégée est seulement
+    écrite là, relue, et l'original n'est pas touché : l'appelant échange les dossiers."""
+    tmp = destination if destination is not None else chemin.with_name("." + chemin.name + ".allege")
     with zipfile.ZipFile(chemin) as src, zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as dst:
         for info in src.infolist():
             data = src.read(info.filename)
@@ -131,9 +133,56 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None) -> in
     if gagne <= 0 and not eclairer:
         tmp.unlink()
         return 0
+    if destination is not None:
+        return gagne
     chemin.rename(chemin.with_name(chemin.name + ".avant"))
     tmp.rename(chemin)
     return gagne
+
+
+def reecrire_partage(chemin: Path, qualite: int, vers_corbeille, eclairer=False, largeur_max=None) -> int:
+    """Tome partagé par qBittorrent (lien physique) : le NAS refuse de le renommer ou de l'effacer, mais accepte de renommer
+    un DOSSIER. La version allégée est écrite dans un dossier voisin caché avec le reste du contenu, puis les deux dossiers
+    sont échangés (l'ancien, avec le fichier du torrent, va à la corbeille : le torrent n'est pas touché). Mêmes noms de
+    fichiers, donc lecture, progression et infos suivent."""
+    import shutil
+    dossier = chemin.parent
+    nouveau = dossier.with_name("." + dossier.name + ".allege")
+    ancien = dossier.with_name("." + dossier.name + ".avant")
+    for d in (nouveau, ancien):
+        if d.exists():
+            raise RuntimeError(f"reste d'un allègement interrompu : {d.name} (à vérifier)")
+    nouveau.mkdir()
+    try:
+        gagne = reecrire(chemin, qualite, eclairer, largeur_max, destination=nouveau / chemin.name)
+        if gagne <= 0 and not eclairer:
+            shutil.rmtree(nouveau, ignore_errors=True)
+            return 0
+        for x in dossier.iterdir():                       # le reste du dossier (couverture, infos) suit
+            if x != chemin and not x.name.startswith("."):
+                shutil.copy2(x, nouveau / x.name) if x.is_file() else shutil.copytree(x, nouveau / x.name)
+        dossier.rename(ancien)
+        try:
+            nouveau.rename(dossier)
+        except OSError:
+            ancien.rename(dossier)                         # échec : l'ancien dossier reprend sa place
+            raise
+    except Exception:
+        shutil.rmtree(nouveau, ignore_errors=True)
+        raise
+    vers_corbeille(ancien)
+    return gagne
+
+
+def _dossier_a_lui(f: Path, serie: str) -> bool:
+    """Le fichier est seul de son genre dans un dossier de tome (« Tome 01/ »), pas à la racine de la série."""
+    d = f.parent
+    if d.name == serie:
+        return False
+    try:
+        return [x for x in d.iterdir() if x.suffix.lower() in (".cbz", ".cbr", ".zip")] == [f]
+    except OSError:
+        return False
 
 
 def etat(serie):
@@ -158,18 +207,23 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
                     if f.suffix.lower() not in (".cbz", ".zip") or not zipfile.is_zipfile(f):
                         rapport.append({"fichier": f.name, "note": "pas une archive ZIP : ignoré"})
                         continue
-                    if f.stat().st_nlink > 1:
-                        rapport.append({"fichier": f.name, "note": "partagé par qBittorrent : jamais modifié"})
+                    partage = f.stat().st_nlink > 1
+                    if partage and not _dossier_a_lui(f, serie):
+                        rapport.append({"fichier": f.name, "note": "partagé par qBittorrent et posé hors d'un dossier de tome : jamais modifié"})
                         continue
                     a = analyser(f, eclairer=eclairer, largeur_max=largeur_max)
                     avant_total += a["taille"]
                     ligne = {"fichier": f.name, "taille_mo": round(a["taille"] / 1048576, 1), "qualite": a["qualite"],
                              "gain": a["gain_estime"], "psnr": a["psnr_min"]}
                     if appliquer and a["qualite"]:
-                        g = reecrire(f, a["qualite"], eclairer, largeur_max)
-                        ancien = f.with_name(f.name + ".avant")
-                        if ancien.exists():
-                            vers_corbeille(ancien)
+                        if partage:
+                            g = reecrire_partage(f, a["qualite"], vers_corbeille, eclairer, largeur_max)
+                            ligne["note"] = "partagé par qBittorrent : version allégée à part, le torrent n'est pas touché"
+                        else:
+                            g = reecrire(f, a["qualite"], eclairer, largeur_max)
+                            ancien = f.with_name(f.name + ".avant")
+                            if ancien.exists():
+                                vers_corbeille(ancien)
                         ligne["gagne_mo"] = round(g / 1048576, 1)
                         gagne += g
                     elif a["qualite"]:

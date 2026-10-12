@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Alléger fonctionne aussi sur les tomes du torrent (12 octobre 2026, soir)
+- 🪶 Les tomes encore partagés par qBittorrent (ex. « Gantz : Perfect ») sont maintenant allégés : la version légère est écrite dans un dossier voisin, puis les dossiers sont échangés (le NAS refuse de renommer le fichier, pas le dossier). Le fichier du torrent n'est jamais touché ; l'ancien dossier va à la corbeille (30 jours). La place du torrent n'est rendue qu'une fois le torrent supprimé dans qBittorrent.
+
 ## Dépôt allégé (12 octobre 2026, soir)
 - 🧹 Les fichiers qui servent seulement au propriétaire pour travailler avec Claude Code (script d'installation, mémos `CLAUDE.md`) ne sont plus publiés dans le dépôt : ils restent sur son serveur. Rien ne change pour l'installation ou l'utilisation de l'appli.
 
