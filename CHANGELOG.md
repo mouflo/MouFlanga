@@ -1,5 +1,11 @@
 # Historique des versions
 
+## Alléger : réglage manuel, aperçu en direct, accès permanent (12 octobre 2026, soir)
+- 🎚 **Qualité manuelle** en plus de l'automatique : curseur 40-98 (100 = identique à l'original). L'analyse et l'allègement utilisent alors ce réglage tel quel.
+- 👁 **Aperçu en direct** : le bouton « Comparer avant / après » s'ouvre sans analyse préalable, avec un choix de tome ; changer la largeur, l'éclaircissement ou le curseur recalcule l'image tout de suite (poids de la page avant → après).
+- 🪶 **Ligne permanente** sous le titre de la série après une analyse (« Analyse prête : … Comparer et alléger ») : le résultat n'est plus perdu quand on ferme la fenêtre.
+- 🔔 **Correction des notifications du téléphone** : la clé de l'appli n'était pas lue correctement (erreur à chaque alerte). Les téléphones dont l'abonnement avait expiré sont oubliés et doivent se réabonner avec le bouton 📱.
+
 ## Alléger : comparer avant / après (12 octobre 2026, soir)
 - 👁 Après l'analyse, un bouton 👁 sur chaque tome ouvre une comparaison : la même page avant et après, avec exactement les réglages que « Appliquer » utiliserait. Boutons **Avant** / **Après** pour basculer sur place, ◀ ▶ pour changer de page, toucher l'image pour voir un détail à l'échelle réelle, et la taille de la page avant → après.
 

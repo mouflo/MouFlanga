@@ -88,7 +88,8 @@ def envoyer(comptes, sujet: str, titre: str, texte: str, url: str = "/"):
     def travail():
         try:
             from pywebpush import webpush, WebPushException
-            prive = json.loads(_fichier("vapid.json").read_text())["prive"]
+            from py_vapid import Vapid
+            prive = Vapid.from_pem(json.loads(_fichier("vapid.json").read_text())["prive"].encode())   # clé PEM → objet que pywebpush accepte
         except Exception as e:
             logger.info("Notifications téléphone indisponibles : %s", e.__class__.__name__)
             return

@@ -101,6 +101,20 @@ class OptimiserTest(unittest.TestCase):
         rien = optimiser.comparer(self.f, 2, None)                       # tome laissé tel quel : mêmes octets
         self.assertTrue(rien["inchange"])
 
+    def test_qualite_manuelle(self):
+        a = optimiser.analyser(self.f, qualite_forcee=70)
+        self.assertEqual(a["qualite"], 70)                               # le choix est respecté, sans seuil d'écart
+        self.assertGreater(a["gain_estime"], 0)
+        b = optimiser.analyser(self.f, qualite_forcee=98)
+        self.assertLess(b["gain_estime"], a["gain_estime"])              # plus fidèle = moins de gain
+        corbeille = []
+        optimiser.lancer("Serie", [self.f], False, corbeille.append, qualite_forcee=70)
+        for _ in range(300):
+            if not optimiser.etat("Serie").get("en_cours"):
+                break
+            time.sleep(0.05)
+        self.assertEqual(optimiser.etat("Serie")["rapport"][0]["qualite"], 70)
+
     def test_eclaircir_seulement_le_gris(self):
         gris = Image.new("L", (100, 150), 200)
         self.assertEqual(optimiser.eclaircir(gris.point(lambda v: 40 if v < 100 else v)).getextrema()[1], 200)

@@ -217,7 +217,8 @@
     drawSeries();
     window.scrollTo(0, 0);
     majNavSeries();
-    if (!document.body.classList.contains('lecteur')) api('/api/optimiser?series=' + encodeURIComponent(id)).then(function (o) { if (o && o.en_cours) veillerAllegement(id); });
+    if (!document.body.classList.contains('lecteur')) api('/api/optimiser?series=' + encodeURIComponent(id)).then(function (o) { if (o && o.en_cours) veillerAllegement(id); majLigneAllege(id, o); });
+    else $('sAllege').hidden = true;
   }
 
   // ‹ › : série précédente / suivante dans TOUTE la bibliothèque, dans l'ordre du tri choisi (lettre, filtres et recherche ne limitent pas)
@@ -766,6 +767,7 @@
 
     // 🪶 Alléger (sans perte visible) / 🧼 éclaircir le papier : analyse d'abord, puis application après accord
     var suiviAllege = null;
+    $('sAllege').addEventListener('click', function (e) { if (e.target.closest('#sAllegeVoir')) $('sAlleger').click(); });
     $('sAlleger').addEventListener('click', function () {
       fermerMenus();
       $('infosTitre').textContent = '🪶 Alléger « ' + current.title + ' »';
@@ -773,19 +775,24 @@
         'Les tomes encore partagés par qBittorrent sont allégés à part : le fichier du torrent n\'est jamais touché (la place n\'est rendue qu\'une fois le torrent supprimé). Les anciens fichiers vont à la corbeille (30 jours).</div>' +
         '<div class="ident-actions"><label>Largeur des pages : <select id="allLargeur"><option value="">garder</option><option value="1600" selected>1600 px (tablette)</option><option value="1200">1200 px (téléphone)</option></select></label></div>' +
         '<div class="ident-actions"><label><input type="checkbox" id="allEclairer"> 🧼 Éclaircir le papier (scans gris ; pages en couleur jamais touchées)</label></div>' +
-        '<div id="allApercu" hidden class="all-apercu"><figure><img alt="" id="allAvant"><figcaption>Avant</figcaption></figure><figure><img alt="" id="allApres"><figcaption>Après</figcaption></figure></div>' +
-        '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser (rien n\'est modifié)</button></div><div id="allCmp"></div><div id="allRes"></div>';
+        '<div class="ident-actions"><label>Qualité de l\'image : <select id="allQualMode"><option value="">Automatique (recommandé)</option><option value="m">Manuelle</option></select></label></div>' +
+        '<div id="allQualManuelle" hidden><input type="range" id="allQual" min="40" max="98" step="1" value="85" style="width:100%"> <div class="dem-sous"><b id="allQualVal">85</b> / 100 : 100 = identique à l\'original, plus bas = fichier plus léger. 90 et plus : aucune différence visible ; 80-88 : très léger, visible seulement en zoomant ; sous 70 : défauts qui se voient.</div></div>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn" id="allComparer">👁 Comparer avant / après (en direct)</button></div>' +
+        '<div id="allCmp"></div>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser tous les tomes (rien n\'est modifié)</button></div><div id="allRes"></div>';
       $('infosVue').hidden = false;
       suivreAllegement();
     });
-    function optionsAllegement() { return {largeur: $('allLargeur').value, eclairer: $('allEclairer').checked}; }
+    function optionsAllegement() {
+      return {largeur: $('allLargeur').value, eclairer: $('allEclairer').checked, qualite: $('allQualMode').value === 'm' ? $('allQual').value : ''};
+    }
     async function suivreAllegement() {
       clearTimeout(suiviAllege);
       if ($('infosVue').hidden || !$('allRes')) return;
       var r = await api('/api/optimiser?series=' + encodeURIComponent(current.id));
       if (!$('allRes')) return;
       var lignes = (r.rapport || []).map(function (x) {
-        return '<li>' + esc(x.fichier) + (!r.appliquer && !r.en_cours && x.qualite ? ' <button type="button" class="tog" data-comparer="' + esc(x.fichier) + '" title="Comparer avant / après">👁</button>' : '') + ' <small>' + (x.note ? esc(x.note) : (x.taille_mo + ' Mo · ' + (x.gagne_mo != null ? '−' + x.gagne_mo + ' Mo' : '≈ −' + Math.round(x.gain * 100) + ' %') + ' (qualité ' + x.qualite + ', écart ' + x.psnr + ' dB)')) + '</small></li>';
+        return '<li>' + esc(x.fichier) + (!r.appliquer && !r.en_cours && x.qualite ? ' <button type="button" class="tog" data-comparer="' + esc(x.fichier) + '" title="Comparer avant / après">👁</button>' : '') + ' <small>' + (x.note ? esc(x.note) : (x.taille_mo + ' Mo · ' + (x.gagne_mo != null ? '−' + x.gagne_mo + ' Mo' : '≈ −' + Math.round(x.gain * 100) + ' %') + ' (qualité JPEG ' + x.qualite + '/100, écart ' + x.psnr + ' dB)')) + '</small></li>';
       }).join('');
       $('allRes').innerHTML = (r.en_cours ? '<div class="dem-sous">' + esc(r.message || '') + ' ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' tomes · ça continue en arrière-plan, tu peux fermer cette fenêtre : une notification arrive à la fin.</div>' +
           '<progress max="' + (r.total || 1) + '" value="' + (r.fait || 0) + '" style="width:100%"></progress>' : (r.message ? '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' : '')) +
@@ -794,6 +801,15 @@
       if (r.en_cours) suiviAllege = setTimeout(suivreAllegement, 3000);
     }
     // Bulle « terminé » même si la fenêtre est fermée (le travail, lui, tourne sur le serveur)
+    // Ligne permanente sous le titre : le résultat d'une analyse reste accessible après fermeture de la fenêtre
+    async function majLigneAllege(id, o) {
+      var l = $('sAllege'); if (!l) return;
+      if (!o) o = await api('/api/optimiser?series=' + encodeURIComponent(id));
+      if (!current || current.id !== id) return;
+      var pret = o && !o.en_cours && o.message && (o.rapport || []).length && !o.appliquer && o.gain > 0;
+      l.hidden = !pret;
+      if (pret) l.innerHTML = '🪶 Analyse prête : ' + esc(o.message) + ' <button type="button" class="mou-btn small" id="sAllegeVoir">👁 Comparer et alléger</button>';
+    }
     var veilleAllege = {};
     function veillerAllegement(id) {
       if (veilleAllege[id]) return;
@@ -806,48 +822,80 @@
           window.MouToast('🪶 ' + id + ' : ' + (r.appliquer ? 'allègement terminé. ' : 'analyse prête. ') + r.message, 'ok');
           if (current && current.id === id && !$('infosVue').hidden) suivreAllegement();
           else if (current && current.id === id) rafraichirSerie(id);
+          majLigneAllege(id, r);
         }
       })();
     }
-    $('infosCorps').addEventListener('change', function (e) {
-      if (e.target.id !== 'allEclairer') return;
-      $('allApercu').hidden = !e.target.checked;
-      if (e.target.checked) { var u = '/api/optimiser/apercu?series=' + encodeURIComponent(current.id) + '&t=' + Date.now(); $('allAvant').src = u + '&avant=1'; $('allApres').src = u; }
-    });
-    // 👁 Comparer avant / après : même page, mêmes réglages que « Appliquer », bascule sur place ; toucher l'image = détail à l'échelle réelle
-    var cmp = null;
+    // 👁 Comparer avant / après EN DIRECT : mêmes réglages que « Appliquer » (largeur, éclaircir, qualité) ; toucher l'image = détail à l'échelle réelle
+    var cmp = null, cmpMinuterie = null;
+    function urlCmp(cote) {
+      var o = optionsAllegement();
+      return '/api/optimiser/comparer?series=' + encodeURIComponent(current.id) + '&fichier=' + encodeURIComponent(cmp.fichier) + '&page=' + cmp.page +
+        '&largeur=' + encodeURIComponent(o.largeur) + '&eclairer=' + (o.eclairer ? 1 : 0) + '&q=' + encodeURIComponent(o.qualite) +
+        (cmp.zoom ? '&fx=' + cmp.zoom[0].toFixed(3) + '&fy=' + cmp.zoom[1].toFixed(3) : '') + '&cote=' + cote;
+    }
+    function ouvrirComparaison(fichier) {
+      cmp = {fichier: fichier || '', page: 5, cote: 'apres', zoom: null, pages: 0, tomes: []};
+      dessinerComparaison(); $('allCmp').scrollIntoView({block: 'start'});
+    }
+    function majComparaison() {                                   // un réglage a bougé : l'image se recalcule (après une courte pause)
+      if (!cmp) return;
+      clearTimeout(cmpMinuterie);
+      cmpMinuterie = setTimeout(function () {
+        var im = $('cmpImg'); if (!im || !cmp) return;
+        $('cmpInfo').textContent = 'Calcul…';
+        im.src = urlCmp(cmp.cote);
+        chargerInfoCmp();
+        (new Image()).src = urlCmp(cmp.cote === 'avant' ? 'apres' : 'avant');
+      }, 350);
+    }
+    function chargerInfoCmp() {
+      api(urlCmp('info')).then(function (i) {
+        if (!$('cmpInfo') || !cmp) return;
+        if (i.error) { $('cmpInfo').textContent = i.error; return; }
+        cmp.pages = i.pages; cmp.fichier = i.fichier; cmp.tomes = i.tomes;
+        var sel = $('cmpTome');
+        if (sel && !sel.options.length) { sel.innerHTML = i.tomes.map(function (n) { return '<option>' + esc(n) + '</option>'; }).join(''); }
+        if (sel) sel.value = i.fichier;
+        $('cmpPage').textContent = 'page ' + (i.page + 1) + ' / ' + i.pages;
+        var gain = i.avant_ko ? Math.round(100 * (1 - i.apres_ko / i.avant_ko)) : 0;
+        $('cmpInfo').textContent = i.inchange || !i.qualite && !$('allEclairer').checked && !$('allLargeur').value ? 'Cette page garde ses octets d\'origine (' + i.avant_ko + ' Ko) : rien à gagner à ce réglage.'
+          : 'Qualité ' + i.qualite + '/100 (' + (i.auto ? 'choisie automatiquement' : 'manuelle') + ') · Avant ' + i.avant_ko + ' Ko (' + i.dimensions[0][0] + '×' + i.dimensions[0][1] + ') → Après ' + i.apres_ko + ' Ko (' + i.dimensions[1][0] + '×' + i.dimensions[1][1] + ') · ' + (gain >= 0 ? '−' : '+') + Math.abs(gain) + ' % sur cette page';
+      });
+    }
     function dessinerComparaison() {
       var z = $('allCmp'); if (!z || !cmp) return;
-      var base = '/api/optimiser/comparer?series=' + encodeURIComponent(current.id) + '&fichier=' + encodeURIComponent(cmp.fichier) + '&page=' + cmp.page +
-        (cmp.zoom ? '&fx=' + cmp.zoom[0].toFixed(3) + '&fy=' + cmp.zoom[1].toFixed(3) : '');
-      z.innerHTML = '<div class="cmp"><div class="dem-titre">👁 ' + esc(cmp.fichier) + '</div>' +
+      z.innerHTML = '<div class="cmp"><div class="dem-titre">👁 Avant / après</div>' +
+        '<select id="cmpTome" class="mou-field" style="width:100%">' + (cmp.tomes || []).map(function (n) { return '<option' + (n === cmp.fichier ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select>' +
         '<div class="cmp-barre"><button type="button" class="mou-btn ghost small" data-cmp="prec">◀</button>' +
         '<span id="cmpPage">page ' + (cmp.page + 1) + (cmp.pages ? ' / ' + cmp.pages : '') + '</span>' +
         '<button type="button" class="mou-btn ghost small" data-cmp="suiv">▶</button>' +
         '<button type="button" class="mou-btn ghost small" data-cmp="fermer">✕</button></div>' +
         '<div class="cmp-cote"><button type="button" class="mou-btn' + (cmp.cote === 'avant' ? '' : ' ghost') + '" data-cmp="avant">Avant</button>' +
         '<button type="button" class="mou-btn' + (cmp.cote === 'apres' ? '' : ' ghost') + '" data-cmp="apres">Après</button></div>' +
-        '<img id="cmpImg" class="cmp-img" alt="" src="' + base + '&cote=' + cmp.cote + '">' +
-        '<div class="dem-sous" id="cmpInfo">…</div>' +
-        '<div class="dem-sous">' + (cmp.zoom ? 'Détail à l\'échelle réelle : touche l\'image pour revenir à la page entière.' : 'Touche un endroit de la page pour le voir de près.') + '</div></div>';
-      api(base + '&cote=info').then(function (i) {
-        if (!$('cmpInfo') || !cmp) return;
-        if (i.error) { $('cmpInfo').textContent = i.error; return; }
-        cmp.pages = i.pages; $('cmpPage').textContent = 'page ' + (i.page + 1) + ' / ' + i.pages;
-        var gain = i.avant_ko ? Math.round(100 * (1 - i.apres_ko / i.avant_ko)) : 0;
-        $('cmpInfo').textContent = i.inchange ? 'Cette page garde ses octets d\'origine (' + i.avant_ko + ' Ko).'
-          : 'Avant ' + i.avant_ko + ' Ko (' + i.dimensions[0][0] + '×' + i.dimensions[0][1] + ') → Après ' + i.apres_ko + ' Ko (' + i.dimensions[1][0] + '×' + i.dimensions[1][1] + ') · ' + (gain >= 0 ? '−' : '+') + Math.abs(gain) + ' % sur cette page';
-      });
-      (new Image()).src = base + '&cote=' + (cmp.cote === 'avant' ? 'apres' : 'avant');         // l'autre côté se charge déjà
+        '<img id="cmpImg" class="cmp-img" alt="" src="' + urlCmp(cmp.cote) + '">' +
+        '<div class="dem-sous" id="cmpInfo">Calcul…</div>' +
+        '<div class="dem-sous">' + (cmp.zoom ? 'Détail à l\'échelle réelle : touche l\'image pour revenir à la page entière.' : 'Change la largeur, l\'éclaircissement ou la qualité au-dessus : l\'image se met à jour. Touche un endroit de la page pour le voir de près.') + '</div></div>';
+      chargerInfoCmp();
+      (new Image()).src = urlCmp(cmp.cote === 'avant' ? 'apres' : 'avant');         // l'autre côté se charge déjà
     }
+    $('infosCorps').addEventListener('input', function (e) {
+      if (e.target.id === 'allQual') { $('allQualVal').textContent = e.target.value; majComparaison(); }
+    });
+    $('infosCorps').addEventListener('change', function (e) {
+      if (e.target.id === 'allQualMode') { $('allQualManuelle').hidden = e.target.value !== 'm'; majComparaison(); }
+      else if (e.target.id === 'allLargeur' || e.target.id === 'allEclairer') majComparaison();
+      else if (e.target.id === 'cmpTome' && cmp) { cmp.fichier = e.target.value; cmp.zoom = null; dessinerComparaison(); }
+    });
     $('infosCorps').addEventListener('click', function (e) {
+      if (e.target.closest('#allComparer')) { ouvrirComparaison(''); return; }
       var c = e.target.closest('[data-comparer]');
-      if (c) { cmp = {fichier: c.dataset.comparer, page: 5, cote: 'apres', zoom: null, pages: 0}; dessinerComparaison(); $('allCmp').scrollIntoView({block: 'start'}); return; }
+      if (c) { ouvrirComparaison(c.dataset.comparer); return; }
       var b = e.target.closest('[data-cmp]');
       if (b && cmp) {
         var a = b.dataset.cmp;
         if (a === 'fermer') { cmp = null; $('allCmp').innerHTML = ''; return; }
-        if (a === 'avant' || a === 'apres') { cmp.cote = a; var im = $('cmpImg'); if (im) { im.src = im.src.replace(/cote=(avant|apres)/, 'cote=' + a); } 
+        if (a === 'avant' || a === 'apres') { cmp.cote = a; var im = $('cmpImg'); if (im) im.src = urlCmp(a);
           document.querySelectorAll('[data-cmp=avant],[data-cmp=apres]').forEach(function (x) { x.classList.toggle('ghost', x.dataset.cmp !== a); }); return; }
         cmp.page = Math.max(0, Math.min((cmp.pages || 1) - 1, cmp.page + (a === 'suiv' ? 1 : -1))); cmp.zoom = null; dessinerComparaison(); return;
       }
@@ -868,7 +916,7 @@
       if (appliquer && !confirm('Alléger tous les tomes de « ' + current.title + ' » avec ces réglages ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
       var r = await post('/api/optimiser', Object.assign({series: current.id, appliquer: appliquer}, optionsAllegement()));
       if (!r.ok) { alert(r.error || 'Impossible'); return; }
-      cmp = null; if ($('allCmp')) $('allCmp').innerHTML = '';
+      if (appliquer) { cmp = null; if ($('allCmp')) $('allCmp').innerHTML = ''; }
       setTimeout(suivreAllegement, 800);
       veillerAllegement(current.id);
     });

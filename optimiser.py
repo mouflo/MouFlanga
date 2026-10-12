@@ -69,8 +69,9 @@ def reduire(im: Image.Image, largeur_max) -> Image.Image:
     return im.resize((limite, round(im.height * limite / im.width)), Image.LANCZOS)
 
 
-def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None) -> dict:
-    """Choisit la qualité d'un tome : {"qualite", "gain_estime" (0-1), "psnr_min", "taille"} (qualite None : rien à gagner)."""
+def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite_forcee=None) -> dict:
+    """Choisit la qualité d'un tome : {"qualite", "gain_estime" (0-1), "psnr_min", "taille"} (qualite None : rien à gagner).
+    qualite_forcee : réglage manuel, seule cette qualité est essayée (sans seuil d'écart : c'est ton choix) ; None si elle ne gagne rien."""
     taille = chemin.stat().st_size
     with zipfile.ZipFile(chemin) as z:
         noms = _pages(z)
@@ -87,6 +88,16 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None) -> dict
     images = {n: reduire(im, largeur_max) for n, im in images.items()}
     total = sum(len(b) for b in originaux.values())
     meilleur = {"qualite": None, "gain_estime": 0.0, "psnr_min": None, "taille": taille}
+    if qualite_forcee:
+        nouveaux, psnrs = 0, []
+        for n, im in images.items():
+            b = _jpeg(im, qualite_forcee)
+            psnrs.append(_psnr(im, Image.open(io.BytesIO(b))))
+            nouveaux += min(len(b), len(originaux[n])) if not (eclairer or largeur_max) else len(b)
+        gain = 1 - nouveaux / total
+        if gain > 0 or eclairer:
+            meilleur = {"qualite": int(qualite_forcee), "gain_estime": round(float(gain), 3), "psnr_min": round(float(min(psnrs)), 1), "taille": taille}
+        return meilleur
     for q in sorted(QUALITES, reverse=True):          # de la plus fidèle à la plus légère : on garde la dernière acceptable
         nouveaux, psnrs = 0, []
         for n, im in images.items():
@@ -190,13 +201,13 @@ def etat(serie):
         return dict(_ETAT.get(serie) or {})
 
 
-def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None, largeur_max=None):
+def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None, largeur_max=None, qualite_forcee=None):
     """En arrière-plan : analyse (appliquer=False) ou allègement de chaque fichier de la liste."""
     with _VERROU:
         if (_ETAT.get(serie) or {}).get("en_cours"):
             return False
         _ETAT[serie] = {"en_cours": True, "fait": 0, "total": len(fichiers), "message": "Analyse…" if not appliquer else "Allègement…",
-                        "rapport": [], "appliquer": appliquer, "eclairer": eclairer, "largeur": largeur_max}
+                        "rapport": [], "appliquer": appliquer, "eclairer": eclairer, "largeur": largeur_max, "qualite_manuelle": qualite_forcee}
 
     def travail():
         gagne, avant_total, rapport = 0, 0, []
@@ -211,7 +222,7 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
                     if partage and not _dossier_a_lui(f, serie):
                         rapport.append({"fichier": f.name, "note": "partagé par qBittorrent et posé hors d'un dossier de tome : jamais modifié"})
                         continue
-                    a = analyser(f, eclairer=eclairer, largeur_max=largeur_max)
+                    a = analyser(f, eclairer=eclairer, largeur_max=largeur_max, qualite_forcee=qualite_forcee)
                     avant_total += a["taille"]
                     ligne = {"fichier": f.name, "taille_mo": round(a["taille"] / 1048576, 1), "qualite": a["qualite"],
                              "gain": a["gain_estime"], "psnr": a["psnr_min"]}
