@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
 <link rel="stylesheet" href="/ui/mouflanga.css?v={{ version|urlencode }}">
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+<script src="/ui/hors-ligne.js?v={{ version|urlencode }}" defer></script>
 <script src="/ui/mouflanga.js?v={{ version|urlencode }}" defer></script>
 <script src="/ui/verif-banniere.js?v={{ version|urlencode }}" defer></script>
 </head>
@@ -20,6 +21,7 @@
         <div style="margin-bottom: 16px;">
             <a href="/telecharger" class="mou-btn" style="display: inline-block; margin-right: 8px;">📥 Télécharger des mangas</a>
             {% if role != 'lecteur' %}<a href="/regles" class="mou-btn ghost" style="display: inline-block; margin-right: 8px;">📏 Règles de recherche</a>{% endif %}
+            <button type="button" class="mou-btn ghost" id="btnTelephone" title="Tomes gardés sur ce téléphone et notifications">📱</button>
             <button type="button" class="mou-btn ghost" id="btnDemandes">{% if role == 'lecteur' %}📮 Demander un manga{% else %}➕ Ajouter une série{% endif %}<span class="pastille" id="nbDemandes" hidden></span></button>
         </div>
         <div class="dem-fond" id="demVue" hidden>

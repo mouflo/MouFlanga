@@ -229,6 +229,8 @@ def init_app(app, data_dir, envoyer, role, utilisateur, adresse, demarrer=True):
                 x["traitee"] = datetime.now().strftime("%Y-%m-%d %H:%M")
                 _ecrire(d)
                 message = f"« {x['titre']} » : " + ("acceptée." if action == "accepter" else "refusée.")
+                if _ETAT.get("prevenir"):           # notification sur le téléphone de la personne qui a demandé
+                    _ETAT["prevenir"](x, action)
                 if action == "accepter":
                     try:
                         _ETAT["accepte"](x)       # ajoutée aux séries recherchées (grisée dans la bibliothèque)

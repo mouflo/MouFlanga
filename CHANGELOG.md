@@ -1,5 +1,10 @@
 # Historique des versions
 
+## Appli sur le téléphone : lecture hors ligne et notifications (12 octobre 2026, soir)
+- 📲 MouFlanga s'installe comme une appli (icône, plein écran) depuis Chrome : menu ⋮ → « Ajouter à l'écran d'accueil ».
+- ⬇️ **Lire sans réseau** : dans la fenêtre ⓘ d'un tome, « Garder sur ce téléphone ». La taille et la place libre sont affichées avant de confirmer. Le bouton 📱 (en haut) liste les tomes gardés avec leur place, permet de les supprimer, et propose « effacer une fois lu ». La progression notée sans réseau part au retour du réseau.
+- 🔔 **Notifications sur le téléphone**, pour l'admin comme pour chaque lecteur, chacun choisissant ses sujets dans 📱 : alertes de l'appli (admin), demande acceptée ou disponible, nouveaux tomes d'une série qu'on lit. Telegram garde toutes les alertes (historique).
+
 ## Alléger et nettoyer les tomes (12 octobre 2026, soir)
 - 🪶 Menu ⋯ → **Alléger ou nettoyer les tomes** : l'appli analyse d'abord, sans rien modifier, et montre le gain par tome. Chaque tome est recompressé à la qualité la plus légère qui reste invisible à l'écran (vérifiée sur des pages d'essai). Les pages peuvent être ramenées à 1600 px (tablette) ou 1200 px (téléphone). Tu appliques ensuite à toute la série.
 - 🧼 **Éclaircir le papier** des scans gris (niveaux automatiques), avec un aperçu avant/après. Les pages en couleur ne sont jamais touchées.

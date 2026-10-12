@@ -995,6 +995,82 @@ def api_optimiser_apercu():
     return Response(avant if request.args.get("avant") else apres, mimetype="image/jpeg")
 
 
+# ---------------- 📱 Notifications sur le téléphone (Web Push) ----------------
+import notifier
+import push
+push._ETAT["dossier"] = DATA_DIR
+
+
+def _compte_push():
+    return "admin" if auth.role() == "admin" else f"lecteur:{auth.utilisateur()}"
+
+
+notifier.RELAIS.append(lambda texte: push.envoyer(["admin"], "alertes", "MouFlanga", texte, "/"))
+
+
+def _prevenir_demande(x, action):
+    push.envoyer([f"lecteur:{x.get('par')}"], "demandes", "📮 Ta demande",
+                 f"« {x.get('titre')} » : " + ("acceptée, elle sera bientôt dans la bibliothèque." if action == "accepter" else "refusée."
+                                              + (f" ({x['motif']})" if x.get("motif") else "")), "/#demandes")
+
+
+
+def _prevenir_lecteurs(nom):
+    """Nouveaux tomes de « nom » : les lecteurs qui la lisent (progression) et ceux qui l'avaient demandée sont prévenus."""
+    try:
+        lecteurs = {f"lecteur:{f.stem}" for f in _fichiers_progression()[1:] if nom in _read_json(f, {})}
+        demandeurs = {f"lecteur:{x['par']}" for x in demandes._lire()["demandes"]
+                      if x.get("statut") == "accepte" and _cle_nom(x.get("titre", "")) == _cle_nom(nom)}
+        url = "/#" + _q(nom)
+        if demandeurs:
+            push.envoyer(demandeurs, "demandes", "📚 Disponible", f"« {nom} » est dans la bibliothèque.", url)
+        if lecteurs - demandeurs:
+            push.envoyer(lecteurs - demandeurs, "nouveaux", "🆕 Nouveaux tomes", f"Du nouveau dans « {nom} ».", url)
+    except Exception as e:
+        logger.info("Notifications des lecteurs (%s) : %s", nom, e)
+
+
+@app.route("/sw.js")
+def service_worker():
+    """Service worker (appli installée, lecture hors ligne, notifications) : servi depuis la racine pour tout couvrir."""
+    from flask import send_from_directory
+    resp = send_from_directory(BASE_DIR / "ui", "sw.js", max_age=0)
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.mimetype = "application/javascript"
+    return resp
+
+
+@app.route("/api/push", methods=["GET", "POST"])
+def api_push():
+    """GET ?endpoint= : clé publique, sujets possibles et sujets choisis sur cet appareil. POST : abonner, desabonner, essai."""
+    compte = _compte_push()
+    sujets = push.SUJETS_ADMIN if auth.role() == "admin" else push.SUJETS_LECTEUR
+    if request.method == "GET":
+        a = push.abonnement(compte, request.args.get("endpoint", ""))
+        try:
+            cle = push.cle_publique()
+        except Exception as e:
+            return jsonify({"error": f"Notifications indisponibles sur le serveur : {e}"}), 500
+        return jsonify({"cle": cle, "sujets": [{"id": s, "nom": push.SUJETS[s]} for s in sujets],
+                        "choisis": (a or {}).get("sujets", []), "abonne": bool(a)})
+    body = request.get_json(silent=True) or {}
+    action = body.get("action")
+    if action == "abonner":
+        try:
+            push.abonner(compte, body.get("abonnement"), [s for s in body.get("sujets", []) if s in sujets],
+                         request.headers.get("User-Agent", ""))
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        return jsonify({"ok": True, "message": "Notifications activées sur ce téléphone."})
+    if action == "desabonner":
+        push.desabonner(compte, str(body.get("endpoint", "")))
+        return jsonify({"ok": True, "message": "Notifications coupées sur ce téléphone."})
+    if action == "essai":
+        push.envoyer([compte], next(iter(body.get("sujets") or sujets)), "MouFlanga", "Ceci est un essai : les notifications marchent ✅", "/")
+        return jsonify({"ok": True, "message": "Notification d'essai envoyée."})
+    return jsonify({"ok": False, "error": "Action inconnue"}), 400
+
+
 @app.route("/couvertures")
 def page_couvertures():
     name = request.args.get("id", "")
@@ -2159,6 +2235,7 @@ def _travail_file():
                 deplaces.append(cible)
                 _noter_choix(src.name, g.get("propose", nom), nom)
             msg = _lancer_import(nom, attendre=True, lots_forces=deplaces)
+            _prevenir_lecteurs(nom)
             if "⚠" not in msg and "unittest" not in sys.modules:   # compte rendu complet de la série, comme pour un torrent
                 try:
                     import notifier
@@ -2328,7 +2405,9 @@ def _importer_torrent(nom, source, remplacer=False):
     except Exception as e:
         logger.warning("Infos de l'édition du torrent (%s) : %s", nom, e)
     logger.info("Torrent → « %s » : %d fichier(s) placé(s), %d archive(s) à extraire", nom, places, len(lots))
-    return _lancer_import(nom, attendre=True, lots_forces=lots)
+    fin = _lancer_import(nom, attendre=True, lots_forces=lots)
+    _prevenir_lecteurs(nom)
+    return fin
 
 
 # ---------------- ➕ Séries suivies (ajout comme Sonarr, surveillance, surclassement) : admin ----------------
@@ -3721,6 +3800,7 @@ import redemarrer
 redemarrer.init_app(app, lambda: _travaux_en_cours())
 
 import demandes         # 📮 demandes de mangas des lecteurs, rappels Telegram
+demandes._ETAT["prevenir"] = _prevenir_demande
 demandes.init_app(app, DATA_DIR, lambda t: __import__("notifier").envoyer(t), auth.role, auth.utilisateur,
                   lambda: os.getenv("APP_URL", "").strip(), demarrer=False)
 demandes._ETAT["accepte"] = _accepter_demande

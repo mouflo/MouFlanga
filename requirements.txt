@@ -7,3 +7,4 @@ beautifulsoup4
 patchright
 camoufox
 pymupdf
+pywebpush

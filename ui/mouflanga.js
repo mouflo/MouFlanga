@@ -770,6 +770,78 @@
       setTimeout(suivreAllegement, 800);
     });
 
+    // 📱 Tomes gardés sur ce téléphone (lecture sans réseau) et notifications
+    function fichierDuTome(n) {
+      var es = (current.chapters || []).filter(function (c) { return String(c.tome) === String(Number(n)) || c.groupe === 'Tome ' + String(n).padStart(2, '0'); });
+      if (!es.length) return null;
+      var path = es[0].path;
+      return {path: path, mo: es.filter(function (c) { return c.path === path; }).reduce(function (t, c) { return t + (c.size_mb || 0); }, 0), cle: es[0].key};
+    }
+    function boutonGarder(n) {
+      var f = fichierDuTome(n), hl = window.MFHorsLigne;
+      if (!f || !hl || !('caches' in window)) return '';
+      return '<div class="ident-actions" id="garderZone">' + (hl.estGarde(current.id, f.path)
+        ? '<span class="dem-sous">📱 Ce tome est sur ce téléphone.</span> <button type="button" class="mou-btn ghost" data-oublier="' + n + '">Le retirer</button>'
+        : '<button type="button" class="mou-btn ghost" data-garder="' + n + '">⬇️ Garder sur ce téléphone (' + Math.round(f.mo) + ' Mo)</button>') + '</div>';
+    }
+    $('infosCorps').addEventListener('click', async function (e) {
+      var b = e.target.closest('[data-garder],[data-oublier]'); if (!b) return;
+      var n = b.dataset.garder || b.dataset.oublier, f = fichierDuTome(n), hl = window.MFHorsLigne;
+      if (b.dataset.oublier) { await hl.retirer(current.id, f.path); afficherTome(n, false); return; }
+      var p = await hl.place();
+      if (!confirm('Garder ce tome sur le téléphone pour le lire sans réseau ?\nTaille : ' + Math.round(f.mo) + ' Mo' +
+        (p ? '\nPlace libre pour l\'appli : ' + (p.libre / 1073741824).toFixed(1) + ' Go' : ''))) return;
+      b.disabled = true;
+      try {
+        await hl.garder({serie: current.id, path: f.path, cle: f.cle, titre: current.title + ' · Tome ' + String(n).padStart(2, '0'), tailleMo: f.mo},
+          function (k, total) { b.textContent = '⬇️ ' + k + ' / ' + total + ' pages…'; });
+        afficherTome(n, false);
+      } catch (x) { b.disabled = false; alert(x.message); }
+    });
+    $('btnTelephone').addEventListener('click', async function () {
+      var hl = window.MFHorsLigne;
+      $('infosTitre').textContent = '📱 Sur ce téléphone';
+      $('infosVue').hidden = false;
+      if (!hl) { $('infosCorps').innerHTML = '<div class="dem-sous">Indisponible dans ce navigateur.</div>'; return; }
+      var l = hl.liste(), p = await hl.place(), total = l.reduce(function (t, x) { return t + (x.octets || 0); }, 0);
+      var tomes = l.length ? '<ol class="tchap">' + l.map(function (x) {
+        return '<li><a href="/lire?s=' + encodeURIComponent(x.serie) + '&c=' + encodeURIComponent(x.cle) + '">' + esc(x.titre) + '</a> <small>' +
+          Math.round((x.octets || 0) / 1048576) + ' Mo · ' + esc(x.date) + '</small> <button type="button" class="tog" data-retirer-tel="' + esc(x.serie) + '|' + esc(x.path) + '">🗑</button></li>';
+      }).join('') + '</ol>' : '<div class="dem-sous">Aucun tome gardé. Dans la fenêtre ⓘ d\'un tome : « ⬇️ Garder sur ce téléphone ».</div>';
+      $('infosCorps').innerHTML = '<div class="dem-titre">Tomes lisibles sans réseau</div>' + tomes +
+        '<div class="dem-sous">' + Math.round(total / 1048576) + ' Mo utilisés' + (p ? ' · ' + (p.libre / 1073741824).toFixed(1) + ' Go encore disponibles' : '') + '</div>' +
+        '<div class="ident-actions"><label><input type="checkbox" id="telEffacerLu"' + (hl.effacerSiLu() ? ' checked' : '') + '> Effacer un tome du téléphone une fois lu</label></div>' +
+        '<div class="dem-titre">🔔 Notifications sur ce téléphone</div><div id="telNotif" class="dem-sous">…</div>';
+      dessinerNotifications();
+    });
+    async function dessinerNotifications() {
+      var hl = window.MFHorsLigne, z = $('telNotif'); if (!z) return;
+      var e;
+      try { e = await hl.etatNotifications(); } catch (x) { z.textContent = 'Indisponible : ' + x.message; return; }
+      if (!e.possible) { z.textContent = 'Ce navigateur ne gère pas les notifications. Sur iPhone, ajoute d\'abord MouFlanga à l\'écran d\'accueil.'; return; }
+      z.innerHTML = (e.sujets || []).map(function (s) {
+        return '<label class="tel-sujet"><input type="checkbox" data-sujet="' + s.id + '"' + (!e.abonne || e.choisis.indexOf(s.id) >= 0 ? ' checked' : '') + '> ' + esc(s.nom) + '</label>';
+      }).join('') + '<div class="ident-actions">' +
+        (e.abonne ? '<button type="button" class="mou-btn" data-notif="maj">Enregistrer</button><button type="button" class="mou-btn ghost" data-notif="essai">Essai</button><button type="button" class="mou-btn ghost" data-notif="couper">Couper</button>'
+          : '<button type="button" class="mou-btn" data-notif="maj">🔔 Activer sur ce téléphone</button>') + '</div>' +
+        '<small>Telegram continue de recevoir les alertes (historique).</small>';
+    }
+    $('infosCorps').addEventListener('change', function (e) {
+      if (e.target.id === 'telEffacerLu') { try { localStorage.setItem('mfEffacerLu', e.target.checked ? '1' : '0'); } catch (x) {} }
+    });
+    $('infosCorps').addEventListener('click', async function (e) {
+      var r = e.target.closest('[data-retirer-tel]');
+      if (r) { var p = r.dataset.retirerTel.split('|'); await window.MFHorsLigne.retirer(p[0], p.slice(1).join('|')); $('btnTelephone').click(); return; }
+      var b = e.target.closest('[data-notif]'); if (!b) return;
+      var hl = window.MFHorsLigne;
+      try {
+        if (b.dataset.notif === 'couper') await hl.couperNotifications();
+        else if (b.dataset.notif === 'essai') { var x = await hl.essaiNotification(); alert(x.message || x.error); }
+        else await hl.activerNotifications([].slice.call(document.querySelectorAll('[data-sujet]')).filter(function (c) { return c.checked; }).map(function (c) { return c.dataset.sujet; }));
+      } catch (x) { alert(x.message); }
+      dessinerNotifications();
+    });
+
     $('sDecouper').addEventListener('click', function () { fermerMenus(); location.href = '/decouper?id=' + encodeURIComponent(current.id); });
 
     // 🔎 Choisir soi-même la fiche AniList (série mal reconnue : Crows, Prisonnier Riku…)
@@ -936,6 +1008,7 @@
         '<div class="tome-champs">' + (champs.length ? champs.map(function (x) { return '<div class="champ"><small>' + x[0] + '</small><div>' + esc(x[1]) + '</div></div>'; }).join('')
           : (chap.length ? '' : '<div class="dem-sous">Pas d\'infos sur ce tome.</div>')) + '</div></div>' +
         (d.resume ? '<div class="dem-titre">Résumé' + (d.resume_source ? ' <small>(' + esc(d.resume_source) + ')</small>' : '') + '</div><p class="tome-resume">' + esc(d.resume) + '</p>' : '') +
+        boutonGarder(n) +
         '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-prov="' + n + '">✏️ Noter la provenance (équipe, origine)</button>' +
         (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '">🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' +
         (som.en_cours ? '<div class="dem-sous">🔍 Lecture du sommaire dans les premières pages… (environ une minute)</div>'

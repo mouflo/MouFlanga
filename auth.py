@@ -31,6 +31,7 @@ LECTEUR_OK = {("GET", "/"), ("GET", "/lire"), ("GET", "/api/library"), ("GET", "
               ("GET", "/api/pages"), ("GET", "/api/page"), ("POST", "/api/progress"), ("POST", "/api/mark"),
               ("GET", "/api/generique"), ("POST", "/api/clientlog"), ("GET", "/api/fiche"), ("GET", "/api/tome"), ("GET", "/api/tome/couverture"),
               ("GET", "/api/demandes"), ("GET", "/api/demandes/chercher"), ("POST", "/api/demandes"),
+              ("GET", "/sw.js"), ("GET", "/api/push"), ("POST", "/api/push"),          # 📱 appli installée, notifications
               ("POST", "/logout")}   # 📮 (admin vérifié dedans) ; se déconnecter reste permis
 
 REMEMBER_DAYS = 30

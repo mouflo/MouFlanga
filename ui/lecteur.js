@@ -52,8 +52,12 @@
     var finished = count > 0 && page >= count - 1;
     if (finished) finishedSent[cle] = true;
     var body = JSON.stringify({series: seriesId, path: cle, page: page, finished: finished});
-    if (force && navigator.sendBeacon) { navigator.sendBeacon('/api/progress', new Blob([body], {type: 'application/json'})); return; }
-    fetch('/api/progress', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: body, keepalive: true}).catch(function () {});
+    var hl = window.MFHorsLigne;
+    if (finished && hl && hl.effacerSiLu() && hl.estGarde(seriesId, path)) hl.retirer(seriesId, path);    // « effacer une fois lu »
+    if (!navigator.onLine && hl) { hl.noterProgression(body); return; }                       // sans réseau : envoyée au retour
+    if (force && navigator.sendBeacon && navigator.sendBeacon('/api/progress', new Blob([body], {type: 'application/json'}))) return;
+    fetch('/api/progress', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: body, keepalive: true})
+      .catch(function () { if (hl) hl.noterProgression(body); });
   }
 
   function go(n, scrollTo) {

@@ -24,6 +24,7 @@ _TOKEN_RE = re.compile(r"^\d{6,12}:[A-Za-z0-9_-]{30,50}$")
 _CHAT_RE = re.compile(r"^-?\d{3,20}$")
 _THREAD_RE = re.compile(r"^\d{1,12}$")
 API = "https://api.telegram.org"
+RELAIS = []          # fonctions(texte) appelées à chaque alerte (notifications sur le téléphone)
 
 
 def token_valide(token: str) -> bool:
@@ -218,7 +219,13 @@ def _appel(token: str, methode: str, donnees: dict | None = None, timeout: int =
 def envoyer(texte: str, token: str | None = None, chat_id: str | None = None,
             thread_id: str | None = None) -> tuple[bool, str]:
     """Envoie un message. Renvoie (réussi, message lisible).
-    thread_id : None = celui des réglages ; "" = aucun sujet ; sinon le numéro du sujet."""
+    thread_id : None = celui des réglages ; "" = aucun sujet ; sinon le numéro du sujet.
+    Chaque alerte part aussi sur les téléphones abonnés (RELAIS : notifications web), Telegram gardant l'historique."""
+    for relais in RELAIS:
+        try:
+            relais(texte)
+        except Exception as e:
+            logger.info("Relais de notification : %s", e.__class__.__name__)
     token = token or _token()
     chat_id = chat_id or _chat()
     thread_id = _thread() if thread_id is None else thread_id
