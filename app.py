@@ -1414,7 +1414,10 @@ def _appris(dossier, propose):
         garde = set(c["choisi"].lower().split())
         for mot in set(c["propose"].lower().split()) - garde:
             retires[mot] = retires.get(mot, 0) + 1
-    mots = [m for m in propose.split(" ") if retires.get(m.lower(), 0) < 1]
+    # Jamais un tiret ni une mention d'édition : « Cat's Eye Édition de luxe » → « Cat's Eye » faisait perdre « Édition »
+    # (et le tiret d'un autre choix) à « Gantz - Perfect Édition », devenu « Gantz Perfect » puis « Gantz : Perfect »
+    proteges = {"-", "–", ":", "de", "édition", "edition", "perfect", "deluxe", "luxe", "ultimate", "collector", "kanzenban"}
+    mots = [m for m in propose.split(" ") if m.lower() in proteges or retires.get(m.lower(), 0) < 1]
     return " ".join(mots) if mots else propose
 
 
@@ -1816,7 +1819,7 @@ def _lancer_import(nouveau, attendre=False, lots_forces=None):
 
 _FILE_IMPORT = {"en_cours": None, "attente": [], "faits": [], "erreurs": [], "message": ""}
 _FILE_VERROU = threading.Lock()
-_EDITION = re.compile(r"\s*[-–:,]?\s*\b(?:[ée]dition\s+(?:de\s+)?luxe|deluxe|de\s+luxe|collector|kanzenban|perfect\s+edition|ultimate\s+edition)\b", re.I)
+_EDITION = re.compile(r"\s*[-–:,]?\s*\b(?:[ée]dition\s+(?:de\s+)?luxe|deluxe|de\s+luxe|collector|kanzenban|perfect\s+[ée]dition|ultimate\s+[ée]dition)\b", re.I)
 _NOMBRE_TOMES = re.compile(r"\b(?:int[ée]grale\s*)?\d+\s*tomes?\b|\b(?:tomes?|t)\s*\d+\s*(?:[-àa]|a)\s*\d+\b|\bfinal\b", re.I)
 
 
@@ -1858,6 +1861,16 @@ def _titre_officiel(t):
 
 
 def _nom_depuis_archive(nom_fichier, existantes):
+    """Nom de série d'une archive (voir _nom_sans_edition). Une autre édition d'une série déjà là (« Gantz - Perfect Édition »
+    alors que « Gantz » existe) a son propre dossier « Gantz : Perfect Édition » : les deux éditions ne se mélangent pas."""
+    nom = _nom_sans_edition(nom_fichier, existantes)
+    mention = tomes.mention_edition(_CROCHETS.sub(" ", Path(nom_fichier).stem.replace("_", " ").replace(".", " ")))
+    if mention and nom in existantes and tomes._simple(mention) not in tomes._simple(nom):
+        return _nom_serie(f"{nom} : {mention}")
+    return nom
+
+
+def _nom_sans_edition(nom_fichier, existantes):
     """« jojo's bizarre adventure tome 13 a 28 » → « Jojo's Bizarre Adventure » ; « AirGear.37.Tomes.Integral._FR__CBZ_-Digital-1417 »
     → « Air Gear » (tout ce qui suit le premier mot technique est coupé, puis écriture officielle d'AniList) ;
     une série déjà présente garde son nom."""

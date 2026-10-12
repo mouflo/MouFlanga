@@ -35,15 +35,40 @@ def _simple(texte: str) -> str:
 SERIES_EXISTANTES = lambda: ()               # noms des séries de la bibliothèque (rempli par app.py)
 
 
+# Mentions d'édition : « Gantz : Perfect », « Gantz - Perfect Édition », « Cat's Eye Édition de luxe » (pas une suite)
+EDITION = re.compile(r"\s*[-–:,(]?\s*\b(?:(?:perfect|ultimate|deluxe|collector|kanzenban|colossale|originale|double)(?:\s+[ée]dition)?"
+                     r"|[ée]dition\s+(?:de\s+)?luxe|de\s+luxe|[ée]dition\s+(?:perfect|ultimate|collector|colossale|originale|double))\b\s*\)?\s*$", re.I)
+
+
+_MENTION = re.compile(r"\b(?:(?:perfect|ultimate|deluxe|collector|kanzenban|colossale)(?:\s+[ée]dition)?|[ée]dition\s+(?:de\s+)?luxe)\b", re.I)
+
+
+def mention_edition(texte: str) -> str:
+    """« Gantz - Perfect Édition (01-18) … » → « Perfect Édition » (première mention d'édition du nom), sinon ""."""
+    m = _MENTION.search(texte or "")
+    return " ".join(w[:1].upper() + w[1:] for w in m.group(0).split()) if m else ""
+
+
+def sans_edition(titre: str) -> str:
+    """« Gantz : Perfect Édition » → « Gantz » ; un titre sans mention d'édition reste tel quel."""
+    t = EDITION.sub("", titre or "").strip(" -–:,")
+    return t if t and t != (titre or "").strip() else (titre or "").strip()
+
+
 def _variantes(titre: str) -> list[str]:
-    """Le nom tel quel, puis quelques écritures courantes (« N°8 » → « No. 8 »)."""
+    """Le nom tel quel, puis quelques écritures courantes (« N°8 » → « No. 8 »), puis sans la mention d'édition."""
     out = [titre.strip()]
+    base = sans_edition(titre)
+    if base != titre.strip():                   # « Gantz : Perfect » : on cherche « Gantz » (même si une autre édition est là)
+        out.append(base)
     v = re.sub(r"\s*n[°º]\s*", " No. ", titre, flags=re.I).strip()
     if v not in out:
         out.append(re.sub(r"\s+", " ", v))
     if " : " in titre:                          # « Frieren : Sousou no Frieren » → chaque partie (la plus longue d'abord)
         autres = {_simple(x) for x in SERIES_EXISTANTES() if x != titre}
         for part in sorted((x.strip() for x in titre.split(" : ")), key=len, reverse=True):
+            if EDITION.sub("", part).strip(" -–:,") == "":       # « Perfect » seul : une édition, pas un titre à chercher
+                continue
             if part and part not in out and _simple(part) not in autres and (len(part.split()) >= 2 or len(part) >= 6):   # « Frieren » oui, « Zero » tout seul non
                 out.append(part)
     return out
@@ -321,7 +346,7 @@ def statut_a_jour(st) -> bool:
 def _choisir(medias, serie, tome_max):
     """Parmi les résultats AniList, celui qui correspond le mieux : même titre, puis nombre de tomes compatible
     avec ce qu'on a (« Kenichi » 61 tomes → « Shijou Saikyou no Deshi Kenichi », pas « Kenichi Tantei Chou »)."""
-    cles = [c for c in {_simple(serie), *(_simple(x) for x in serie.split(" : "))} if c]
+    cles = [c for c in {_simple(serie), _simple(sans_edition(serie)), *(_simple(x) for x in serie.split(" : "))} if c]
     def note(m):
         titres = [_simple(t) for t in (m["title"].get("romaji"), m["title"].get("english")) if t] + [_simple(x) for x in m.get("synonyms") or []]
         exact = any(c in titres for c in cles)

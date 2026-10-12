@@ -1,5 +1,12 @@
 # Historique des versions
 
+## Ré-identification et éditions spéciales (12 octobre 2026)
+- 🔄 À la fin d'une ré-identification, la page de la série se recharge toute seule avec les nouvelles infos, même si tu as fermé la fenêtre d'avancement.
+- 📚 Éditions spéciales (Perfect, Deluxe, Édition de luxe, Kanzenban…) :
+  - Une autre édition d'une série déjà là a son propre dossier, par exemple « Gantz : Perfect Édition » à côté de « Gantz ».
+  - Ces séries sont identifiées sous le titre de base : « Gantz : Perfect » est cherchée comme « Gantz », pas comme « Perfect ».
+- 🧠 Mémoire des noms : retirer « Édition de luxe » une fois (Cat's Eye) ne fait plus disparaître « Édition » ni les tirets des noms des archives suivantes. C'est ce qui avait transformé « Gantz - Perfect Édition » en « Gantz : Perfect ».
+
 ## Sommaire des tomes, résumés et rangement automatique (12 octobre 2026)
 - 🔍 **Sommaire lu dans le tome** : pour un tome complet sans liste de chapitres en français, l'appli lit ses premières pages (OCR, tesseract) et trouve la page « Sommaire ». Les chapitres apparaissent dans ⓘ et chacun ouvre le tome à la bonne page. La lecture se lance toute seule à l'ouverture de ⓘ, en arrière-plan, et prend environ une minute. Le bouton « 🔍 Relire le sommaire du tome » la refait. Les sommaires très stylisés (texte blanc sur fond noir, comme Bakuman) restent illisibles.
 - 📖 **Résumé du tome** dans ⓘ : celui de Wikipédia, ou sinon la notice Google Books en français.

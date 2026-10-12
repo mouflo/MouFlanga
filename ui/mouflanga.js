@@ -688,16 +688,21 @@
           return '<li class="ident-' + e.etat + '"><span>' + (ICONE_ETAPE[e.etat] || '•') + '</span><div><b>' + esc(e.nom) + '</b>'
             + (e.detail ? '<small>' + esc(e.detail) + '</small>' : '') + '</div></li>';
         }).join('');
-        var fin = r.fini ? '<p class="dem-sous"><b>Terminé.</b> La fiche est à jour ; ferme cette fenêtre pour la voir.</p>'
-          : '<p class="dem-sous">En cours… tu peux fermer cette fenêtre, l\'identification continue.</p>';
+        var fin = r.fini ? '<p class="dem-sous"><b>Terminé.</b> La fiche de la série a été rechargée avec les nouvelles infos.</p>'
+          : '<p class="dem-sous">En cours… tu peux fermer cette fenêtre : la fiche se rechargera toute seule à la fin.</p>';
         $('infosCorps').innerHTML = '<ul class="ident-liste">' + lignes + '</ul>' + fin;
       }
+      var visible = function () { return !$('infosVue').hidden && $('infosTitre').textContent === '🔄 Identification : ' + nom; };
       async function boucle() {
-        if ($('infosVue').hidden) return;                  // fenêtre fermée : on arrête d'interroger
+        // fenêtre fermée : on continue d'interroger (sans rien dessiner) pour recharger la fiche à la fin
         var r = await api('/api/identifier/etat?series=' + encodeURIComponent(serie));
-        if (r.error) { $('infosCorps').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
-        dessiner(r);
-        if (r.fini) { loadList(); return; }
+        if (r.error) { if (visible()) $('infosCorps').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
+        if (visible()) dessiner(r);
+        if (r.fini) {
+          loadList();
+          if (current && current.id === serie) await openSeries(serie, false);   // la page de la série affiche les nouvelles infos
+          return;
+        }
         setTimeout(boucle, 1500);
       }
       $('infosCorps').innerHTML = '<div class="dem-sous">Démarrage…</div>';
