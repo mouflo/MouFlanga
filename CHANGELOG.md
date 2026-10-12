@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Correction d'affichage (12 octobre 2026, soir)
+- 🔧 Fiche d'une série : le « ? » de la légende des sources est de nouveau un petit rond à côté de la pastille (il apparaissait comme un grand bloc vert en dessous).
+
 ## Sommaires stylisés lus par Claude (facultatif) (12 octobre 2026, soir)
 - 🤖 📏 Règles → Sources : une clé API de Claude (facultative, payante, quelques centimes par tome) permet de lire les sommaires que la reconnaissance de texte du serveur ne lit pas (texte blanc sur noir, comme Bakuman). Sans clé, rien n'est envoyé.
 
