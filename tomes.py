@@ -471,6 +471,26 @@ def _wikipedia_fr(m, serie=""):
     return ""
 
 
+ID_CHOISI = lambda serie: None          # remplacé par l'appli : identifiant AniList choisi à la main pour la série
+
+
+def chercher_anilist(texte: str) -> list[dict]:
+    """Recherche AniList pour « 🔎 Choisir la fiche » : 12 résultats avec couverture, titres, année, statut, tomes."""
+    q = ("query($s:String){Page(perPage:12){media(search:$s,type:MANGA){id title{romaji english native} synonyms status "
+         "volumes chapters format startDate{year} coverImage{medium} siteUrl}}}")
+    r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": texte}}, timeout=15)
+    if r.status_code == 429:
+        raise RuntimeError("AniList demande de patienter une minute")
+    out = []
+    for m in (r.json().get("data") or {}).get("Page", {}).get("media") or []:
+        t = m.get("title") or {}
+        out.append({"id": m["id"], "titre": t.get("romaji") or t.get("english") or "", "anglais": t.get("english") or "",
+                    "natif": t.get("native") or "", "annee": (m.get("startDate") or {}).get("year"), "statut": m.get("status"),
+                    "tomes": m.get("volumes"), "chapitres": m.get("chapters"), "format": m.get("format"),
+                    "couverture": (m.get("coverImage") or {}).get("medium") or "", "lien": m.get("siteUrl") or ""})
+    return out
+
+
 def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
     """{"statut": FINISHED | RELEASING | HIATUS | CANCELLED | NOT_YET_RELEASED, "volumes", "chapitres", "titre"}
     d'après AniList, gardé 7 jours dans data/tomes/<série>.json ; None si inconnu."""
@@ -481,6 +501,19 @@ def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
     q = ("query($s:String){Page(perPage:6){media(search:$s,type:MANGA,format_not:NOVEL)"
          "{id title{romaji english} synonyms status volumes chapters format description(asHtml:false)}}}")
     medias = []
+    choisi = ID_CHOISI(serie)
+    if choisi:                                         # fiche choisie à la main (🔎 Choisir la fiche) : jamais de recherche
+        try:
+            r = _SESSION.post("https://graphql.anilist.co", json={"query": "query($i:Int){Media(id:$i,type:MANGA)"
+                              "{id title{romaji english} synonyms status volumes chapters format description(asHtml:false)}}",
+                              "variables": {"i": int(choisi)}}, timeout=15)
+            if r.status_code == 429:
+                return None
+            m = r.json()["data"]["Media"]
+        except Exception as e:
+            logger.info("AniList injoignable (%s)", e.__class__.__name__)
+            return None
+        return _garder_statut(serie, m)
     for v in _variantes(serie):
         try:
             r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": v}}, timeout=15)
@@ -505,10 +538,15 @@ def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
                 return None
             if m:
                 break
+    return _garder_statut(serie, m)
+
+
+def _garder_statut(serie, m):
     st = {"date": time.time(), "statut": m["status"] if m else None, "volumes": m.get("volumes") if m else None,
           "chapitres": m.get("chapters") if m else None,
           "titre": (m["title"].get("romaji") or m["title"].get("english")) if m else None,
-          "titre_en": m["title"].get("english") if m else None, "anilist": m.get("id") if m else None}
+          "titre_en": m["title"].get("english") if m else None, "anilist": m.get("id") if m else None,
+          "choisi": bool(m and ID_CHOISI(serie))}
     st["resume"], st["resume_langue"] = _resume(m, serie) if m else _resume_sans_anilist(serie)
     # enregistrement à côté de la répartition des tomes (même fichier)
     DOSSIER.mkdir(parents=True, exist_ok=True)

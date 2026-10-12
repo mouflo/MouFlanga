@@ -714,6 +714,7 @@ def api_series():
                     "en_tomes": en_tomes, "a_ranger": a_ranger, "rangement": _etat_rangement(name),
                     "etat": etat, "etat_texte": etat_texte, "etat_source": st.get("titre"),
                     "compte": _compte(chapters), "resume": st.get("resume") or "", "resume_langue": st.get("resume_langue") or "",
+                    "anilist": st.get("anilist"), "anilist_choisi": _anilist_choisi(name), "rattacher_a": _serie_mere(name),
                     "manquants": trous, "premier": premier, "dernier": dernier, "type_manquants": type_manquants,
                     "organiser": _plan_organiser(name, files) if name != "(Sans série)" else None,
                     "cover_perso": name != "(Sans série)" and (MANGA_DIR / name / COUVERTURE_PERSO).is_file(),
@@ -1624,6 +1625,15 @@ def _signaler_doublons(serie, paires):
                   "manuel": True, "paires": paires_tout, "progression": 100, "debut": maintenant, "rappel_le": maintenant,
                   "message": torrents.demander_choix(None, tomes)})
         torrents._ecrire(d)
+    regle = _regle_import(serie)
+    if regle and nouvelles:                 # choix retenu pour cette série : appliqué tout seul
+        jid = next((x["id"] for x in torrents._lire() if x.get("manuel") and x.get("serie") == serie and x.get("etat") == "a_valider"), None)
+        if jid:
+            r, _c = _appliquer_choix(jid, {"remplacer": True, "manquants": False, "ignorer": "ignorer"}[regle])
+            logger.info("Doublons de « %s » : règle « %s » appliquée toute seule (%s)", serie, regle, r.get("message") or r.get("error"))
+            import notifier
+            notifier.envoyer(f"📚 MouFlanga : « {serie} » : tomes en double, ton choix retenu « {regle} » a été appliqué tout seul.")
+            return
     if not nouvelles:                       # rien de neuf : pas de nouvelle notification
         return
     import notifier
@@ -1645,33 +1655,66 @@ def _appliquer_rangement(j, remplacer):
     return f"{n} tome(s) remplacé(s) ; les anciens sont dans la corbeille (30 jours)."
 
 
+REGLES_IMPORT = DATA_DIR / "regles-import.json"     # choix retenus par série : remplacer / manquants / ignorer
+
+
+def _regle_import(serie):
+    r = _read_json(REGLES_IMPORT, {}).get(serie) or {}
+    return r.get("choix") if r.get("choix") in ("remplacer", "manquants", "ignorer") else None
+
+
+@app.route("/api/regles-import", methods=["GET", "POST"])
+def api_regles_import():
+    """Choix retenus (« toujours faire ça pour cette série ») : liste, et suppression d'une règle (⚙️ Réglages)."""
+    regles = _read_json(REGLES_IMPORT, {})
+    if request.method == "POST":
+        serie = str((request.get_json(silent=True) or {}).get("serie", ""))
+        if regles.pop(serie, None) is not None:
+            _write_json(REGLES_IMPORT, regles)
+        return jsonify({"ok": True, "message": f"Règle de « {serie} » supprimée : l'appli te redemandera."})
+    return jsonify({"regles": [{"serie": k, **v} for k, v in sorted(regles.items())]})
+
+
 @app.route("/api/torrents/decider", methods=["POST"])
 def api_torrents_decider():
     body = request.get_json(silent=True) or {}
-    jid, ignorer = str(body.get("id", "")), body.get("remplacer") == "ignorer"
-    remplacer = bool(body.get("remplacer")) and not ignorer
+    jid = str(body.get("id", ""))
+    j = next((x for x in torrents._lire() if x.get("id") == jid and x.get("etat") == "a_valider"), None)
+    if j is not None and body.get("toujours"):
+        choix = "ignorer" if body.get("remplacer") == "ignorer" else ("remplacer" if body.get("remplacer") else "manquants")
+        regles = _read_json(REGLES_IMPORT, {})
+        regles[j["serie"]] = {"choix": choix, "date": datetime.now().strftime("%Y-%m-%d %H:%M")}
+        _write_json(REGLES_IMPORT, regles)
+    r, code = _appliquer_choix(jid, body.get("remplacer"))
+    return jsonify(r), code
+
+
+def _appliquer_choix(jid, valeur):
+    """Applique « remplacer » (valeur vraie), « ajouter les manquants » (fausse) ou « ignorer » à une tâche à valider."""
+    ignorer = valeur == "ignorer"
+    remplacer = bool(valeur) and not ignorer
     j = next((x for x in torrents._lire() if x.get("id") == jid and x.get("etat") == "a_valider"), None)
     if j is None:
-        return jsonify({"ok": False, "error": "Rien à valider ici (déjà traité ?)."}), 404
+        return {"ok": False, "error": "Rien à valider ici (déjà traité ?)."}, 404
     if ignorer:
         # Ne rien faire : la tâche est fermée, les doublons restent tels quels et ne sont plus signalés
         if j.get("manuel"):
             _retenir_doublons_ignores(j.get("paires", []))
         torrents._maj(jid, remplacer=None, etat="fini", message="Choix : ne rien faire. Les doublons restent tels quels.")
-        return jsonify({"ok": True, "message": "Rien n'a été changé. Cette demande ne reviendra plus."})
+        return {"ok": True, "message": "Rien n'a été changé. Cette demande ne reviendra plus."}, 200
     if j.get("manuel") and not any((MANGA_DIR / src).is_file() for src, _c, _t in j.get("paires", [])):
         torrents._maj(jid, etat="erreur", message="Fichiers introuvables (dossier renommé ou supprimé) : relance le rangement.")
-        return jsonify({"ok": False, "error": "Ces fichiers ne sont plus à leur place : relance le rangement."}), 409
+        return {"ok": False, "error": "Ces fichiers ne sont plus à leur place : relance le rangement."}, 409
     if not j.get("manuel"):
         torrents.decider_torrent(jid, remplacer)
-        return jsonify({"ok": True, "message": "Choix enregistré : l'import reprend."})
+        return {"ok": True, "message": "Choix enregistré : l'import reprend."}, 200
     try:
         fin = _appliquer_rangement(j, remplacer)
     except OSError as e:
         logger.warning("Choix sur « %s » impossible : %s", j["serie"], e)
-        return jsonify({"ok": False, "error": f"Impossible d'appliquer le choix : {e}"}), 500
+        return {"ok": False, "error": f"Impossible d'appliquer le choix : {e}"}, 500
     torrents._maj(jid, remplacer=remplacer, etat="fini", message=fin)
-    return jsonify({"ok": True, "message": fin})
+    return {"ok": True, "message": fin}, 200
 
 
 _AUTO = {"dernier": 0.0}
@@ -2277,6 +2320,7 @@ def _tomes_deja_la(nom, source):
 
 
 torrents._ETAT["doublons"] = _tomes_deja_la
+torrents._ETAT["regle"] = _regle_import
 def _noter_volumes_torrent(serie, titre):
     import edition
     edition.noter_volumes(MANGA_DIR / serie, titre)
@@ -2317,6 +2361,21 @@ def api_torrents_chercher():
         return jsonify({"error": f"Recherche impossible : {e}"}), 502
 
 
+def _serie_proche(nom):
+    """Série déjà là dont le nom ressemble à « nom » sans être le même (édition retirée, un nom contenu dans l'autre)."""
+    series = [n for n in _scan() if n != "(Sans série)"]
+    if nom in series:
+        return ""
+    cle = _cle_nom(tomes.sans_edition(nom))
+    if len(cle) < 4:
+        return ""
+    for n in sorted(series, key=len):
+        c = _cle_nom(tomes.sans_edition(n))
+        if len(c) >= 4 and (c == cle or c.endswith(cle) or cle.endswith(c) or c.startswith(cle) or cle.startswith(c)):
+            return n
+    return ""
+
+
 @app.route("/api/torrents", methods=["GET", "POST"])
 def api_torrents():
     if request.method == "GET":
@@ -2327,6 +2386,9 @@ def api_torrents():
     remplacer = body["remplacer"] if isinstance(body.get("remplacer"), bool) else None
     if not lien.startswith(("http://", "https://", "magnet:")) or not serie or serie == "sans-titre":
         return jsonify({"ok": False, "error": "Choisis le nom de la série."}), 400
+    proche = _serie_proche(serie)
+    if proche and not body.get("confirme"):       # « Breaker » alors que « CØDE BREAKER » existe : on demande
+        return jsonify({"ok": False, "proche": proche, "error": f"Une série au nom proche existe déjà : « {proche} »."}), 409
     try:
         torrents.lancer(lien, titre, serie, remplacer)
         if body.get("proposition"):               # proposition de la surveillance : marquée « vue »
@@ -2467,6 +2529,113 @@ def api_identifier_etat():
         return jsonify({"presente": True, "etapes": [dict(e) for e in etat["etapes"]], "fini": etat["fini"]})
 
 
+def _serie_mere(name):
+    """« Artbook Kenshin » (série à part) ressemble à un hors-série de « Kenshin le Vagabond » : nom de la série mère, ou ""."""
+    if not _est_hors_serie(name):
+        return ""
+    reste = _cle_nom(_MOTS_HORS_SERIE.sub(" ", name))
+    if len(reste) < 3:
+        return ""
+    meres = [n for n in _scan() if n not in (name, "(Sans série)") and not _est_hors_serie(n)
+             and (_cle_nom(n).startswith(reste) or reste.startswith(_cle_nom(n)))]
+    return min(meres, key=len) if meres else ""
+
+
+@app.route("/api/rattacher", methods=["POST"])
+def api_rattacher():
+    """« 📎 Rattacher comme hors-série » : les fichiers de la série rejoignent une autre série (groupe Hors-série),
+    sous le nom « <Série mère> HS - <nom> » ; le dossier vidé va à la corbeille, la progression suit."""
+    body = request.get_json(silent=True) or {}
+    name, cible = str(body.get("series", "")), str(body.get("cible", ""))
+    series = _scan()
+    if name not in series or name == "(Sans série)" or cible not in series or cible in (name, "(Sans série)"):
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if _fichiers_partages(name):
+        return jsonify({"ok": False, "error": "Fichiers encore partagés par qBittorrent : retire d'abord le torrent (sans effacer les fichiers)."}), 409
+    files = sorted(series[name], key=lambda f: f.name)
+    deplaces = {}
+    try:
+        for i, f in enumerate(files, 1):
+            suffixe = f" - {i:02d}" if len(files) > 1 else ""
+            dest = MANGA_DIR / cible / (_nom_serie(f"{cible} HS - {name}{suffixe}") + f.suffix.lower())
+            if dest.exists():
+                return jsonify({"ok": False, "error": f"« {dest.name} » existe déjà dans « {cible} »."}), 409
+            f.rename(dest)
+            deplaces[_rel(f)] = _rel(dest)
+        _vers_corbeille(MANGA_DIR / name)                 # reste : infos, dossiers vides
+    except OSError as e:
+        return jsonify({"ok": False, "error": f"Déplacement impossible : {e}"}), 500
+    with _progress_lock:
+        for _pf in _fichiers_progression():
+            data = _read_json(_pf, {})
+            p = data.pop(name, None)
+            if p:
+                autre = data.setdefault(cible, {"read": []})
+                autre["read"] = sorted(set(autre.get("read", [])) | {deplaces.get(r, r) for r in p.get("read", [])})
+                _write_json(_pf, data)
+    tomes.oublier(name)
+    logger.info("« %s » rattachée comme hors-série de « %s » (%d fichier(s))", name, cible, len(deplaces))
+    return jsonify({"ok": True, "id": cible, "message": f"« {name} » est maintenant un hors-série de « {cible} »."})
+
+
+def _anilist_choisi(serie):
+    import edition
+    return edition.lire(MANGA_DIR / serie).get("anilist_choisi")
+
+
+tomes.ID_CHOISI = _anilist_choisi
+
+
+def _infos_comicinfo(serie):
+    """Fiche de la série pour le ComicInfo.xml des tomes (auteur, éditeur, année…) : seulement si la série est
+    identifiée (fiche AniList trouvée ou choisie), d'après le cache, sans appel réseau."""
+    garde = tomes._charger(serie) or {}
+    st, f = garde.get("statut_officiel") or {}, garde.get("fiche") or {}
+    if not st.get("anilist"):
+        return {}
+    annee = re.search(r"(\d{4})", f.get("debut") or "")
+    return {"auteur": f.get("scenario", ""), "dessin": f.get("dessin", ""), "editeur": f.get("editeur_fr") or f.get("editeur_jp", ""),
+            "annee": annee.group(1) if annee else "", "tomes": st.get("volumes") or "", "genres": f.get("genres", ""),
+            "lien": f"https://anilist.co/manga/{st['anilist']}"}
+
+
+tomes_cbz.INFOS_SERIE = _infos_comicinfo
+
+
+@app.route("/api/identifier/chercher")
+def api_identifier_chercher():
+    """« 🔎 Choisir la fiche » : résultats AniList pour les mots tapés (titre japonais, anglais, auteur…)."""
+    texte = request.args.get("q", "").strip()[:150]
+    if not texte:
+        return jsonify({"resultats": []})
+    try:
+        return jsonify({"resultats": tomes.chercher_anilist(texte)})
+    except Exception as e:
+        return jsonify({"error": f"Recherche AniList impossible : {e}"}), 502
+
+
+@app.route("/api/identifier/choisir", methods=["POST"])
+def api_identifier_choisir():
+    """Retient la fiche AniList choisie (ou l'oublie : retour à la recherche automatique), puis relance l'identification."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    ident = body.get("anilist")
+    infos = edition.lire(MANGA_DIR / name)
+    if ident:
+        try:
+            infos["anilist_choisi"] = int(ident)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Fiche inconnue"}), 400
+    else:
+        infos.pop("anilist_choisi", None)
+    edition.ecrire(MANGA_DIR / name, infos)
+    _relancer_identification(name)
+    return jsonify({"ok": True, "message": "Fiche retenue : identification relancée." if ident else "Retour à la recherche automatique : identification relancée."})
+
+
 @app.route("/api/identifier", methods=["POST"])
 def api_identifier():
     """« 🔄 Relancer l'identification » : efface le cache et refait la recherche avec le nom actuel."""
@@ -2488,7 +2657,7 @@ def api_renommer():
     if not nouveau or nouveau.startswith(".") or nouveau == name:
         return jsonify({"ok": False, "error": "Nouveau nom invalide ou identique."}), 400
     fusion = nouveau in _scan() or (MANGA_DIR / nouveau).exists()
-    mode = {"remplacer": "remplacer", "manquants": "manquants", True: "manquants"}.get(body.get("fusionner"))
+    mode = {"remplacer": "remplacer", "manquants": "manquants", "serie": "serie", True: "manquants"}.get(body.get("fusionner"))
     if fusion and not mode:
         a, b = _tomes_de(name), _tomes_de(nouveau)
         return jsonify({"ok": False, "existe": True, "error": f"Une série « {nouveau} » existe déjà.",
@@ -2500,6 +2669,21 @@ def api_renommer():
             j.get("status") == "running" and japscan_scraper.nom_sur(japscan_scraper.titre_serie(j.get("title") or "")) == n
             for j in japscan_scraper.download_jobs.values()) for n in (name, nouveau)):
         return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    if fusion and mode == "serie":
+        # « Remplacer toute la série » : l'ancienne part entière à la corbeille (un dossier se déplace même si ses fichiers
+        # sont partagés par qBittorrent), puis c'est un simple renommage ; sa progression de lecture est oubliée
+        try:
+            _vers_corbeille(MANGA_DIR / nouveau)
+        except OSError as e:
+            return jsonify({"ok": False, "error": f"L'ancienne série « {nouveau} » n'a pas pu aller à la corbeille : {e}"}), 500
+        with _progress_lock:
+            for _pf in _fichiers_progression():
+                data = _read_json(_pf, {})
+                if data.pop(nouveau, None) is not None:
+                    _write_json(_pf, data)
+        tomes.oublier(nouveau)
+        logger.info("« %s » remplacée entièrement par « %s » (ancienne à la corbeille)", nouveau, name)
+        fusion, mode = False, "serie"
     partage = bool(_fichiers_partages(name))
     if fusion and partage:            # le NAS refuse de déplacer un fichier encore partagé par qBittorrent
         return jsonify({"ok": False, "error": f"Fusion impossible pour l'instant : les fichiers de « {name} » sont encore partagés par "
@@ -2528,6 +2712,8 @@ def api_renommer():
                         + (f" {remplaces} tome(s) remplacé(s) (anciens à la corbeille)." if remplaces else "")
                         + (f" {doublons} fichier(s) déjà présents mis à la corbeille." if doublons else "")})
     logger.info("Série renommée : « %s » → « %s »", name, nouveau)
+    if mode == "serie":
+        return jsonify({"ok": True, "id": nouveau, "message": f"« {nouveau} » remplacée par « {name} » (l'ancienne est dans la corbeille 30 jours)."})
     return jsonify({"ok": True, "id": nouveau, "message": "Série renommée."})
 
 

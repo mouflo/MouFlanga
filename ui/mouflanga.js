@@ -309,9 +309,13 @@
     $('sPitchAuto').hidden = s.resume_langue !== 'perso';
     $('sPitchZone').value = s.resume || '';
     // Édition : « 📐 1600 × 2400 · Digital ✓ » (✓ vert si sûr : NFO, nom de l'archive ou ton choix ; ? orange si deviné)
+    $('sRattacherSuggere').hidden = !s.rattacher_a;
+    if (s.rattacher_a) $('sRattacherSuggere').innerHTML = '📎 Ça ressemble à un hors-série de « ' + esc(s.rattacher_a) + ' ». ' +
+      '<button type="button" class="mou-btn" data-rattacher="' + esc(s.rattacher_a) + '">Le rattacher</button>';
     var ed = s.edition || {};
-    var src = ed.source ? '<span class="' + (ed.devine ? 'ed-devine' : 'ed-sur') + '">' + esc(ed.source) + (ed.devine ? ' ?' : ' ✓') + '</span>'
-      : (ed.resolution ? '<span class="ed-devine">source ?</span>' : '');
+    var cat = categorieSource(ed.source, ed.devine);
+    var src = (ed.source || ed.resolution) ? '<span class="src-pastille" style="--c:' + cat.couleur + '">' + esc(cat.nom) + '</span>' +
+      '<button type="button" class="src-aide" data-legende="1" aria-label="Légende des sources">?</button>' : '';
     var bouts = [ed.edition ? '🏷 ' + esc(ed.edition) : '', ed.resolution ? '📐 ' + esc(ed.resolution) : '', src].filter(Boolean);
     $('sEdition').hidden = !bouts.length; $('sEdition').innerHTML = bouts.join(' · ');
     $('sEdition').title = ed.pourquoi ? 'Indice : ' + ed.pourquoi : '';
@@ -429,6 +433,30 @@
   }
 
   // Titre d'un chapitre de la fenêtre ⓘ : cliquable quand le chapitre est dans la série (même numéro, même tome)
+  // Sources : nom + couleur (légende au point 3.20) ; « ? » = l'appli a un doute, à vérifier
+  var SOURCES = [
+    {nom: 'Scantrad', couleur: '#e05252', quoi: 'scan du Weekly Jump, nettoyé et traduit'},
+    {nom: 'Scan 🥇', couleur: '#e6c229', quoi: 'scan de la version officielle, nettoyé, recadré, simple et double page'},
+    {nom: 'Scan 🥈', couleur: '#e08a2c', quoi: 'scan de la version officielle brute'},
+    {nom: 'Digital', couleur: '#52b54b', quoi: 'ebook officiel'},
+    {nom: '?', couleur: '#8a8a8a', quoi: 'à vérifier : l\'appli n\'est pas sûre'}];
+  function categorieSource(source, devine) {
+    var s = String(source || '').toLowerCase();
+    var trouve = SOURCES.find(function (x) { return x.nom.toLowerCase() === s; }) ||
+      (/digital|ebook|e-book/.test(s) ? SOURCES[3] : /trad|web|jump/.test(s) ? SOURCES[0] : /🥇|clean|nettoy/.test(s) ? SOURCES[1] : /🥈|brut|raw/.test(s) ? SOURCES[2] : null);
+    if (!trouve || devine) return {nom: trouve ? trouve.nom + ' ?' : (source ? source + ' ?' : '?'), couleur: SOURCES[4].couleur};
+    return trouve;
+  }
+  function legendeSources() {
+    var o = document.createElement('div'); o.className = 'choix-fond';
+    o.innerHTML = '<div class="choix-boite"><h3>Légende des sources</h3>' + SOURCES.map(function (x) {
+      return '<p><span class="src-pastille" style="--c:' + x.couleur + '">' + esc(x.nom) + '</span> ' + esc(x.quoi) + '</p>'; }).join('') +
+      '<button type="button" class="mou-btn ghost">Fermer</button></div>';
+    o.addEventListener('click', function (e) { if (e.target === o || e.target.closest('button')) o.remove(); });
+    document.body.appendChild(o);
+  }
+  document.addEventListener('click', function (e) { if (e.target.closest('[data-legende]')) { e.stopPropagation(); legendeSources(); } });
+
   function lienChapitre(texte, tome) {
     var propre = String(texte).replace(/[{}]+/g, '');
     var m = /^([\d.]+)\./.exec(propre);
@@ -677,6 +705,61 @@
       suivreIdentification(serie);
     });
 
+    // 📎 Rattacher une série (artbook, databook…) comme hors-série d'une autre
+    async function rattacher(cible) {
+      if (!cible || !confirm('Rattacher « ' + current.title + ' » comme hors-série de « ' + cible + ' » ? Ses fichiers rejoignent cette série (groupe Hors-série).')) return;
+      var r = await post('/api/rattacher', {series: current.id, cible: cible});
+      if (!r.ok) { note('sMsg', r.error, 'err'); return; }
+      series = []; history.replaceState({s: r.id}, '', '#' + encodeURIComponent(r.id));
+      await openSeries(r.id, false); note('sMsg', r.message, 'ok');
+    }
+    $('sRattacherSuggere').addEventListener('click', function (e) { var b = e.target.closest('[data-rattacher]'); if (b) rattacher(b.dataset.rattacher); });
+    $('sRattacher').addEventListener('click', async function () {
+      fermerMenus();
+      if (!series.length) { var l = await api('/api/library'); series = l.series || []; }
+      var noms = series.filter(function (x) { return !x.recherchee && x.id !== current.id; }).map(function (x) { return x.id; });
+      var tape = prompt('Nom de la série dont « ' + current.title + ' » est un hors-série :', current.rattacher_a || '');
+      if (!tape) return;
+      var cle = function (t) { return t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, ''); };
+      var cible = noms.find(function (n) { return cle(n) === cle(tape); }) || noms.find(function (n) { return cle(n).indexOf(cle(tape)) === 0; });
+      if (!cible) { note('sMsg', 'Aucune série « ' + tape + ' » dans la bibliothèque.', 'err'); return; }
+      rattacher(cible);
+    });
+
+    // 🔎 Choisir soi-même la fiche AniList (série mal reconnue : Crows, Prisonnier Riku…)
+    var STATUTS_AL = {FINISHED: 'terminée', RELEASING: 'en cours', HIATUS: 'en pause', CANCELLED: 'arrêtée', NOT_YET_RELEASED: 'à paraître'};
+    $('sChoisirFiche').addEventListener('click', function () {
+      fermerMenus();
+      $('infosTitre').textContent = '🔎 Fiche de « ' + current.title + ' »';
+      $('infosCorps').innerHTML = '<div class="dem-sous">Tape le titre japonais, anglais ou l\'auteur, puis choisis la bonne fiche.' +
+        (current.anilist_choisi ? ' Fiche choisie à la main : n° ' + esc(current.anilist_choisi) + '.' : (current.anilist ? ' Fiche trouvée automatiquement : n° ' + esc(current.anilist) + '.' : ' Aucune fiche trouvée pour l\'instant.')) + '</div>' +
+        '<div class="ident-actions"><input type="search" id="ficheQ" class="fiche-q" value="' + esc(current.title) + '" style="flex:1;min-width:0"><button type="button" class="mou-btn" id="ficheGo">Chercher</button></div>' +
+        (current.anilist_choisi ? '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-fiche-auto="1">↺ Revenir à la recherche automatique</button></div>' : '') +
+        '<div id="ficheRes"></div>';
+      $('infosVue').hidden = false;
+      var chercher = async function () {
+        $('ficheRes').innerHTML = '<div class="dem-sous">Recherche…</div>';
+        var r = await api('/api/identifier/chercher?q=' + encodeURIComponent($('ficheQ').value));
+        if (r.error) { $('ficheRes').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
+        $('ficheRes').innerHTML = (r.resultats || []).map(function (m) {
+          return '<div class="fiche-choix' + (m.id === (current.anilist_choisi || current.anilist) ? ' actuelle' : '') + '">' + (m.couverture ? '<img src="' + esc(m.couverture) + '" alt="">' : '<div></div>') +
+            '<div><b>' + esc(m.titre) + '</b>' + (m.anglais && m.anglais !== m.titre ? '<small>' + esc(m.anglais) + '</small>' : '') + (m.natif ? '<small>' + esc(m.natif) + '</small>' : '') +
+            '<small>' + [m.annee, STATUTS_AL[m.statut] || '', m.tomes ? m.tomes + ' tomes' : '', m.format === 'NOVEL' ? 'roman' : ''].filter(Boolean).join(' · ') +
+            (m.lien ? ' · <a href="' + esc(m.lien) + '" target="_blank" rel="noopener">voir ↗</a>' : '') + '</small>' +
+            '<button type="button" class="mou-btn" data-fiche="' + m.id + '">C\'est celle-ci</button></div></div>';
+        }).join('') || '<div class="dem-sous">Aucun résultat : essaie un autre titre.</div>';
+      };
+      $('ficheGo').addEventListener('click', chercher);
+      $('ficheQ').addEventListener('keydown', function (e) { if (e.key === 'Enter') chercher(); });
+      chercher();
+    });
+    $('infosCorps').addEventListener('click', async function (e) {
+      var b = e.target.closest('[data-fiche],[data-fiche-auto]'); if (!b) return;
+      var r = await post('/api/identifier/choisir', {series: current.id, anilist: b.dataset.fiche || null});
+      if (!r.ok) { alert(r.error || 'Impossible'); return; }
+      suivreIdentification(current.id);
+    });
+
     // 🔄 Fenêtre d'avancement : chaque étape de la ré-identification, mise à jour toutes les 1,5 s
     var ICONE_ETAPE = {attente: '⏳', en_cours: '🔄', ok: '✅', echec: '⚠️'};
     function suivreIdentification(serie) {
@@ -733,7 +816,8 @@
           (r.communs ? '<p class="dem-sous">⚠️ Si ce sont deux éditions différentes (Perfect, Deluxe…), leurs tomes ne contiennent pas les mêmes chapitres : mieux vaut garder deux séries.</p>' : '') +
           (r.partage ? '<p class="dem-sous">⚠️ Fichiers encore partagés par qBittorrent : la fusion sera refusée tant que le torrent n\'est pas retiré.</p>' : '') +
           '<button type="button" class="mou-btn" data-choix="manquants">➕ Ajouter seulement les tomes manquants</button>' +
-          '<button type="button" class="mou-btn" data-choix="remplacer">♻️ Tout remplacer (ses tomes en double vont à la corbeille)</button>' +
+          '<button type="button" class="mou-btn" data-choix="remplacer">♻️ Remplacer les tomes en double (mêmes numéros seulement)</button>' +
+          '<button type="button" class="mou-btn" data-choix="serie">🔁 Remplacer toute la série (« ' + esc(cible) + ' » entière à la corbeille)</button>' +
           '<button type="button" class="mou-btn ghost" data-choix="">✋ Ne rien faire</button></div>';
         o.addEventListener('click', function (e) {
           var b = e.target.closest('[data-choix]');
@@ -857,9 +941,20 @@
     });
     $('sSource').addEventListener('click', async function () {
       fermerMenus();
-      var v = prompt('Source de « ' + current.title + ' » : Digital, Scan, Web…\n(laisse vide pour revenir à la détection automatique)', (current.edition || {}).source || '');
+      var v = await new Promise(function (fin) {
+        var o = document.createElement('div'); o.className = 'choix-fond';
+        o.innerHTML = '<div class="choix-boite"><h3>Source de « ' + esc(current.title) + ' »</h3>' + SOURCES.map(function (x) {
+          return '<button type="button" class="mou-btn ghost src-choix" data-src="' + esc(x.nom) + '"><span class="src-pastille" style="--c:' + x.couleur + '">' + esc(x.nom) + '</span> <small>' + esc(x.quoi) + '</small></button>'; }).join('') +
+          '<button type="button" class="mou-btn ghost" data-src="">↺ Détection automatique</button><button type="button" class="mou-btn ghost" data-annuler="1">Annuler</button></div>';
+        o.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-src],[data-annuler]');
+          if (!b && e.target !== o) return;
+          o.remove(); fin(b && !b.dataset.annuler ? b.dataset.src : null);
+        });
+        document.body.appendChild(o);
+      });
       if (v === null) return;
-      var r = await post('/api/edition', {series: current.id, source: v.trim()});
+      var r = await post('/api/edition', {series: current.id, source: v});
       note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err');
       if (r.ok) await openSeries(current.id, false);
     });

@@ -55,6 +55,13 @@
         <div id="orgMsg"></div>
     </div>
 
+    <div class="panel" data-onglet="Général">
+        <h2>🔁 Choix retenus pour les tomes en double</h2>
+        <div class="sub">Quand tu coches « Toujours faire ce choix » dans Télécharger, l'appli l'applique toute seule à la série la fois suivante (torrent ou rangement). Supprime une règle pour qu'elle te redemande.</div>
+        <div id="reglesImport"></div>
+        <div id="reglesImportMsg"></div>
+    </div>
+
     <div class="panel" data-onglet="Connexions">
         <h2>🧲 Torrents (Prowlarr + qBittorrent)</h2>
         <div class="sub">Pour chercher et télécharger des mangas par torrent (page Télécharger → 🧲 Torrents). MouFlanga crée tout seul sa catégorie « mouflanga » dans qBittorrent et ne touche jamais aux autres torrents. Les champs secrets laissés vides gardent leur valeur.</div>
@@ -323,6 +330,18 @@ loadCle();
     $('orgInfo').textContent = o.choix ? o.choix + ' choix de nom retenu(s) pour mieux proposer.' : 'Aucun choix retenu pour l\'instant.';
     $('orgAuto').addEventListener('change', async () => { const r = await post('/api/settings/organiser-auto', {actif: $('orgAuto').checked}); say('orgMsg', r.message || r.error, r.ok); });
 })();
+async function loadReglesImport() {
+    const r = await api('/api/regles-import');
+    const noms = {remplacer: 'remplacer les tomes', manquants: 'ajouter seulement les manquants', ignorer: 'ne rien faire'};
+    $('reglesImport').innerHTML = (r.regles || []).length ? r.regles.map(x => '<div class="row" style="align-items:center"><span style="flex:1">' + esc(x.serie) + ' : <b>' + (noms[x.choix] || x.choix) + '</b> <small>(' + esc(x.date || '') + ')</small></span><button class="btn ghost" data-regle="' + esc(x.serie) + '">Supprimer</button></div>').join('')
+        : '<div class="tabsinfo">Aucun choix retenu.</div>';
+}
+$('reglesImport').addEventListener('click', async e => {
+    const b = e.target.closest('[data-regle]'); if (!b) return;
+    const r = await post('/api/regles-import', {serie: b.dataset.regle});
+    say('reglesImportMsg', r.message || r.error, r.ok); loadReglesImport();
+});
+loadReglesImport();
 const PREFS = {dir: ['mfDir', 'rtl'], mode: ['mfMode', 'page'], fit: ['mfFit', 'height'], nav: ['mfNavStyle', 'bas'], auto: ['mfAutoGenerique', '1']};
 function getPref(k) { try { return localStorage.getItem(PREFS[k][0]) || PREFS[k][1]; } catch (e) { return PREFS[k][1]; } }
 for (const k of Object.keys(PREFS)) {

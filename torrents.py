@@ -334,6 +334,14 @@ def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
                 source = chemin_local(t.get("content_path") or str(Path(t["save_path"]) / t["name"]))
                 if j.get("remplacer") is None and _ETAT.get("doublons"):
                     deja = _ETAT["doublons"](j["serie"], source)
+                    regle = _ETAT["regle"](j["serie"]) if deja and _ETAT.get("regle") else None
+                    if regle == "ignorer":           # choix retenu pour cette série : appliqué sans redemander
+                        _maj(j["id"], etat="fini", progression=100, message="Tomes déjà là : ton choix retenu « ne rien faire » appliqué.")
+                        continue
+                    if regle:
+                        j["remplacer"] = regle == "remplacer"
+                        _maj(j["id"], remplacer=j["remplacer"], message=f"Choix retenu appliqué tout seul : {regle}")
+                        deja = None
                     if deja:
                         msg = demander_choix(j["id"], deja)
                         _maj(j["id"], etat="a_valider", progression=100, message=msg)

@@ -22,6 +22,7 @@ class DoublonsTest(unittest.TestCase):
         self.A = A
         A.MANGA_DIR = self.root
         A.DOUBLONS_IGNORES = t / "ignores.json"
+        A.REGLES_IMPORT = t / "regles-import.json"
         A.torrents._ETAT["fichier"] = t / "torrents.json"
         self.envois = []
         import notifier
@@ -42,6 +43,18 @@ class DoublonsTest(unittest.TestCase):
 
     def taches(self):
         return [j for j in self.A.torrents._lire() if j.get("manuel")]
+
+    def test_choix_retenu_applique_tout_seul(self):
+        """« Toujours faire ce choix » (ici : ne rien faire) : la fois suivante, plus de question ni de tâche en attente."""
+        self.A._write_json(self.A.REGLES_IMPORT, {"Serie": {"choix": "ignorer", "date": "x"}})
+        self.A._signaler_doublons("Serie", self.paire())
+        self.assertEqual([j["etat"] for j in self.taches()], ["fini"])
+        self.assertIn("appliqué tout seul", self.envois[0])
+
+    def test_regle_torrent(self):
+        self.A._write_json(self.A.REGLES_IMPORT, {"Serie": {"choix": "remplacer"}})
+        self.assertEqual(self.A._regle_import("Serie"), "remplacer")
+        self.assertIsNone(self.A._regle_import("Autre"))
 
     def test_signale_une_fois(self):
         self.A._signaler_doublons("Serie", self.paire())

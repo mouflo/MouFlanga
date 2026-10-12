@@ -1,5 +1,14 @@
 # Historique des versions
 
+## Fiches, sources, hors-séries et choix retenus (12 octobre 2026, soir)
+- 🔁 **Fusion : « Remplacer toute la série »** : l'ancienne série part entière à la corbeille et l'autre prend sa place (cas Gantz → Gantz Perfect). « Remplacer les tomes en double » ne remplace que les mêmes numéros.
+- 🔎 **Choisir la fiche (AniList)** dans le menu ⋯ : tu cherches avec d'autres mots (titre japonais, anglais, auteur), tu vois les couvertures, l'année, le statut et le nombre de tomes, puis tu choisis. La fiche retenue sert partout (statut, tomes, résumé, éditeur…). Tu peux revenir à la recherche automatique.
+- 🎨 **Sources en couleur** : Scantrad (rouge), Scan 🥇 (jaune), Scan 🥈 (orange), Digital (vert), « ? » quand l'appli doute. Un petit « ? » ouvre la légende. « Corriger la source » propose ces choix au lieu d'un champ libre.
+- 📎 **Rattacher comme hors-série** : un artbook ou databook rangé comme une série à part (Artbook Kenshin) peut rejoindre sa série mère dans le groupe Hors-série. L'appli le propose toute seule quand le nom ressemble à une série existante.
+- 🧠 **Choix retenus** : dans Télécharger, « Toujours faire ce choix pour cette série » applique ensuite tout seul remplacer, ajouter les manquants ou ne rien faire. Les règles se suppriment dans ⚙️ Réglages → Général.
+- ⚠️ **Nom proche** : envoyer un torrent vers « Breaker » alors que « CØDE BREAKER » existe fait demander dans quelle série le ranger.
+- 📄 **ComicInfo.xml plus complet** dans les tomes fabriqués par l'appli : auteur, dessinateur, éditeur, année, nombre de tomes, genres, lien AniList (seulement pour une série identifiée).
+
 ## Torrents : vraie copie dans MouFlanga (12 octobre 2026)
 - 📋 Les fichiers d'un torrent sont maintenant **copiés** dans la série, au lieu d'être un lien physique vers le fichier de qBittorrent. Ils sont indépendants du torrent : on peut les renommer, les déplacer ou fusionner la série tout de suite.
 - Réglage dans ⚙️ Réglages → Connexions → Torrents (coché par défaut). Décoché : lien physique, sans place en plus sur le NAS, mais fichiers bloqués tant que qBittorrent les partage.

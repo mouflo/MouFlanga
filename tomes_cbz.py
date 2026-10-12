@@ -93,14 +93,25 @@ def chapitres(path: Path) -> list[dict]:
     return out
 
 
+INFOS_SERIE = lambda serie: {}      # remplacé par l'appli : fiche de la série si elle est identifiée avec certitude
+
+_CHAMPS_COMICINFO = (("Writer", "auteur"), ("Penciller", "dessin"), ("Publisher", "editeur"), ("Year", "annee"),
+                     ("Count", "tomes"), ("Genre", "genres"), ("Web", "lien"))
+
+
 def _comicinfo(serie: str, tome, titres: dict, nb_pages: int) -> str:
     nums = sorted(titres)
     liste = " · ".join(f"{n:g}" + (f" : {titres[n]}" if titres[n] else "") for n in nums)
-    volume = f"<Volume>{tome}</Volume>" if tome is not None else ""
+    volume = f"<Volume>{tome}</Volume><Number>{tome}</Number>" if tome is not None else ""
+    try:
+        infos = INFOS_SERIE(serie) or {}
+    except Exception:
+        infos = {}
+    extra = "".join(f"<{balise}>{escape(str(infos[cle]))}</{balise}>" for balise, cle in _CHAMPS_COMICINFO if infos.get(cle))
     return ('<?xml version="1.0" encoding="utf-8"?>\n<ComicInfo>'
             f"<Series>{escape(serie)}</Series>{volume}"
             f"<Title>{escape(dossier_tome(tome))}</Title>"
-            f"<Summary>{escape('Chapitres ' + liste)}</Summary>"
+            f"<Summary>{escape('Chapitres ' + liste)}</Summary>{extra}"
             f"<PageCount>{nb_pages}</PageCount><LanguageISO>fr</LanguageISO><Manga>YesAndRightToLeft</Manga>"
             "</ComicInfo>\n")
 

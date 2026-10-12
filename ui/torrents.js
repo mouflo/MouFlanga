@@ -23,7 +23,8 @@
             <span>${ETATS[j.etat] || j.etat}${j.etat === "telechargement" ? " " + (j.progression || 0) + " %" : ""} · ${esc(j.message || "")}</span></div>${j.etat === "a_valider" ? `<div class="tor-choix">
                 <button type="button" class="mou-btn" data-decider="${esc(j.id)}" data-remplacer="1">Remplacer tous les tomes</button>
                 <button type="button" class="mou-btn" data-decider="${esc(j.id)}" data-remplacer="0">Ajouter seulement les manquants</button>
-                <button type="button" class="mou-btn ghost" data-decider="${esc(j.id)}" data-remplacer="ignorer">Ne rien faire</button></div>` : ""}</div>`).join("")
+                <button type="button" class="mou-btn ghost" data-decider="${esc(j.id)}" data-remplacer="ignorer">Ne rien faire</button>
+                <label class="tor-toujours"><input type="checkbox" data-toujours="${esc(j.id)}"> Toujours faire ce choix pour « ${esc(j.serie)} »</label></div>` : ""}</div>`).join("")
             : '<p class="sub">Aucun téléchargement pour l\'instant.</p>';
         clearTimeout(minuteur);
         if (l.some(j => j.etat === "telechargement" || j.etat === "import")) minuteur = setTimeout(etat, 15000);
@@ -58,8 +59,12 @@
             const x = res[+env.dataset.envoyer], serie = env.parentNode.querySelector('input[type="text"]').value.trim();
             if (!serie) return;
             env.disabled = true;
-            const r = await (await fetch("/api/torrents", {method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({lien: x.lien, titre: x.titre, serie, proposition: params.get("proposition") || ""})})).json();
+            const envoyer = (nom, confirme) => fetch("/api/torrents", {method: "POST", headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({lien: x.lien, titre: x.titre, serie: nom, confirme, proposition: params.get("proposition") || ""})}).then(q => q.json());
+            let r = await envoyer(serie, false);
+            if (!r.ok && r.proche) {          // nom proche d'une série déjà là : la rejoindre, ou garder le nom tapé
+                r = await envoyer(confirm(r.error + "\n\nOK : ranger dans « " + r.proche + " ».\nAnnuler : garder « " + serie + " » (nouvelle série).") ? r.proche : serie, true);
+            }
             env.parentNode.innerHTML = `<div class="note ${r.ok ? "ok" : "err"}">${esc(r.message || r.error)}</div>`;
             etat();
             return;
@@ -71,7 +76,7 @@
             bloc.querySelectorAll("button").forEach(b => b.disabled = true);
             const remplacer = choix === "ignorer" ? "ignorer" : choix === "1";
             const r = await (await fetch("/api/torrents/decider", {method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({id: dec.dataset.decider, remplacer})})).json();
+                body: JSON.stringify({id: dec.dataset.decider, remplacer, toujours: !!(bloc.querySelector("[data-toujours]") || {}).checked})})).json();
             bloc.innerHTML = `<div class="note ${r.ok ? "ok" : "err"}">${esc(r.message || r.error)}</div>`;
             etat();
         }

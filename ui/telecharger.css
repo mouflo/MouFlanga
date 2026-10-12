@@ -390,3 +390,4 @@ body.mou-skin .serie-ligne { background: none; color: var(--text, #eee); font-we
 .tor-remp { flex-basis:100%; display:flex; gap:6px; align-items:flex-start; font-size:.78rem; color:var(--muted, #999); }
 .tor-choix { flex-basis:100%; display:flex; gap:8px; flex-wrap:wrap; }
 .tor-ligne.a_valider span { color:#ffb74d; }
+.tor-toujours { display:flex; gap:8px; align-items:center; font-size:.85rem; margin-top:4px; }

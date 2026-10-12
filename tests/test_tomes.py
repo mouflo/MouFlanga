@@ -735,6 +735,34 @@ class RenommerEtOrdreTest(BibliothequeTest):
         self.assertEqual(len(list((self.root / ".corbeille").rglob("*.cbz"))), 1)
 
 
+    def test_artbook_rattache_comme_hors_serie(self):
+        f = self.root / "Artbook Serie" / "Tome 01" / "Artbook Serie - Tome 01.cbz"
+        f.parent.mkdir(parents=True)
+        with zipfile.ZipFile(f, "w") as z:
+            z.writestr("001.jpg", _jpeg((1, 2, 3)))
+        self.assertEqual(self.A._serie_mere("Artbook Serie"), "Serie")
+        self.assertEqual(self.A._serie_mere("Serie"), "")
+        r = self.client.post("/api/rattacher", json={"series": "Artbook Serie", "cible": "Serie"})
+        self.assertTrue(r.json["ok"], r.json)
+        self.assertTrue((self.root / "Serie" / "Serie HS - Artbook Serie.cbz").exists())
+        self.assertFalse((self.root / "Artbook Serie").exists())
+        s = self.client.get("/api/series?id=Serie").json
+        self.assertIn(self.A.HORS_SERIE, [c["groupe"] for c in s["chapters"]])
+
+    def test_fusion_remplacer_toute_la_serie(self):
+        for serie, ts in (("Perfect", (1, 2)), ("Ancienne", (1, 2, 3, 4))):
+            for t in ts:
+                f = self.root / serie / f"Tome {t:02d}" / f"{serie} - Tome {t:02d}.cbz"
+                f.parent.mkdir(parents=True)
+                with zipfile.ZipFile(f, "w") as z:
+                    z.writestr("001.jpg", _jpeg((t, 0, 0)))
+        r = self.client.post("/api/renommer", json={"series": "Perfect", "nom": "Ancienne", "fusionner": "serie"})
+        self.assertTrue(r.json["ok"], r.json)
+        self.assertEqual(sorted(p.name for p in (self.root / "Ancienne").rglob("*.cbz")), ["Ancienne - Tome 01.cbz", "Ancienne - Tome 02.cbz"])
+        self.assertFalse((self.root / "Perfect").exists())
+        self.assertEqual(len(list((self.root / ".corbeille").rglob("*.cbz"))), 4)
+
+
 class MangadexFormesTest(unittest.TestCase):
     """MangaDex renvoie les tomes en objet ou en liste (cas de « Kenichi » : plantait avec « float() … dict »)."""
     def _avec(self, volumes):

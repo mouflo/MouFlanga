@@ -45,3 +45,11 @@ class EditionsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SerieProcheTest(unittest.TestCase):
+    def test_noms_proches(self):
+        with mock.patch.object(A, "_scan", return_value={"CØDE BREAKER": [], "One Piece": [], "(Sans série)": []}):
+            self.assertEqual(A._serie_proche("Breaker"), "CØDE BREAKER")
+            self.assertEqual(A._serie_proche("One Piece"), "")
+            self.assertEqual(A._serie_proche("Naruto"), "")
