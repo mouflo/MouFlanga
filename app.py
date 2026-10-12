@@ -486,7 +486,7 @@ def api_library():
             "unite": "tome" if entrees and sum(e.get("tome") is not None for e in entrees) * 2 >= len(entrees) else "chapitre",
             "read": len([e for e in entrees if e["key"] in read]),
             "size_mb": round(total_size / 1048576, 1),
-            "last_read": p.get("last", ""), "added": newest,
+            "last_read": p.get("last", ""), "added": newest, "favori": bool(p.get("favori")),
             "cover": f"/api/cover?id={_q(name)}&v={int(max(newest, _couverture_mtime(name)))}",
             **_auteur_editeur(name), **_univers_de(name),
         })
@@ -1332,6 +1332,26 @@ def api_progress():
         p["read"] = sorted(read)
         _write_json(_fichier_progression(), data)
     return jsonify({"ok": True})
+
+
+@app.route("/api/favori", methods=["POST"])
+def api_favori():
+    """⭐ Mettre une série en favori (ou l'en retirer) : propre à chaque compte, rangé avec sa progression."""
+    body = request.get_json(silent=True) or {}
+    series = str(body.get("series", ""))
+    if series not in _scan() and series not in suivi.lire()["series"]:
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    with _progress_lock:
+        data = _read_json(_fichier_progression(), {})
+        p = data.setdefault(series, {})
+        if body.get("favori", True):
+            p["favori"] = True
+        else:
+            p.pop("favori", None)
+            if not p:
+                data.pop(series, None)
+        _write_json(_fichier_progression(), data)
+    return jsonify({"ok": True, "favori": bool(body.get("favori", True))})
 
 
 @app.route("/api/mark", methods=["POST"])

@@ -1,5 +1,10 @@
 # Historique des versions
 
+## Favorites (12 octobre 2026, soir)
+- ⭐ Une étoile sur chaque affiche de la bibliothèque : touche-la pour mettre la série en favorite (elle devient jaune), touche-la encore pour l'enlever. La série ne s'ouvre pas.
+- Dans le menu **Ma lecture**, le choix **⭐ Mes favorites** n'affiche que celles-là (cumulable avec Parution et Univers).
+- Les favorites sont propres à chaque compte (admin et chaque lecteur) et suivent la série si elle est renommée.
+
 ## Icône de l'appli (12 octobre 2026, soir)
 - 🎨 L'icône de l'appli sur le téléphone a maintenant un fond noir plein (les coins transparents la rendaient illisible sur fond clair).
 

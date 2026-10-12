@@ -147,7 +147,7 @@ body.mou-skin .lettres button.actif, .lettres button.actif { background:var(--ac
 body.mou-skin #sEcouter.joue { background:var(--accent, #52b54b); color:#fff; }
 
 /* Affiche d'une série entièrement lue : petite coche en haut à droite */
-.card .lue { position:absolute; top:8px; right:8px; width:24px; height:24px; border-radius:50%; background:#2e7d32; color:#fff; font-size:.8rem; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.5); }
+.card .lue { position:absolute; top:8px; right:48px; width:24px; height:24px; border-radius:50%; background:#2e7d32; color:#fff; font-size:.8rem; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.5); }
 
 /* Bibliothèque : menus « Ma lecture · Parution · Tri » (cumulables) */
 .filtres { display:flex; gap:8px; margin:-4px 0 10px; }
@@ -321,3 +321,9 @@ body.lecteur #sDecouper { display:none !important; }
 .all-apercu figcaption { text-align:center; font-size:.8rem; opacity:.8; }
 body.lecteur #sAlleger { display:none !important; }
 .tel-sujet { display:flex; gap:8px; align-items:flex-start; margin:6px 0; font-size:.9rem; }
+
+/* ⭐ Favorites : étoile en haut à droite de chaque affiche (cible tactile de 36 px) */
+body.mou-skin .card .fav { position:absolute; top:4px; right:4px; z-index:2; width:36px; height:36px; min-height:0; padding:0; margin:0; border:0; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.55); color:#ddd; font-size:20px; line-height:1; font-weight:400; cursor:pointer; }
+body.mou-skin .card .fav.on { color:#ffc83d; }
+body.mou-skin .card .fav:hover { background:rgba(0,0,0,.75); }

@@ -29,8 +29,9 @@
   function enParution(s) { return s.etat === 'en_cours' || s.etat === 'pause'; }
   // Trois menus cumulables : Ma lecture · Parution · Tri (+ recherche et lettres)
   var FILTRES = {
-    lecture: {titre: '📖 Ma lecture', choix: [['', 'Toutes'], ['lecture', 'En cours de lecture', 'En cours'], ['nonlu', 'Pas commencées'], ['lu', 'Déjà lues']],
-      garde: {lecture: function (s) { return s.read > 0 && s.read < s.chapters; }, nonlu: function (s) { return !s.read; }, lu: lue}},
+    lecture: {titre: '📖 Ma lecture', choix: [['', 'Toutes'], ['lecture', 'En cours de lecture', 'En cours'], ['nonlu', 'Pas commencées'], ['lu', 'Déjà lues'], ['favori', '⭐ Mes favorites', '⭐ Favorites']],
+      garde: {lecture: function (s) { return s.read > 0 && s.read < s.chapters; }, nonlu: function (s) { return !s.read; }, lu: lue,
+              favori: function (s) { return !!s.favori; }}},
     parution: {titre: '🗞 Parution', choix: [['', 'Toutes'], ['fini', 'Complètes'], ['manque', 'Il en manque'], ['parution', 'En cours de parution', 'En parution']],
       garde: {fini: function (s) { return s.etat === 'fini'; }, manque: function (s) { return !!s.manque; }, parution: enParution}},
     univers: {titre: '🌌 Univers', choix: [['', 'Tous']]},
@@ -132,6 +133,8 @@
         '<div class="nm">' + esc(s.title) + '</div><div class="st">Appuie pour choisir un torrent</div><div class="bar"><i style="width:0"></i></div></div>';
       return '<div class="card" tabindex="0" data-id="' + esc(s.id) + '">' +
         '<img class="cv" loading="lazy" alt="" src="' + esc(s.cover) + '">' +
+        '<button type="button" class="fav' + (s.favori ? ' on' : '') + '" data-favori="' + esc(s.id) + '" aria-pressed="' + (s.favori ? 'true' : 'false') +
+        '" title="' + (s.favori ? 'Retirer des favorites' : 'Mettre en favorite') + '" aria-label="Favorite">' + (s.favori ? '★' : '☆') + '</button>' +
         (ETATS[s.etat] ? '<span class="etat ' + s.etat + '" title="' + ETATS[s.etat][1] + '">' + ETATS[s.etat][0] + '</span>' : '') +
         (lue(s) ? (enParution(s) ? '<span class="lue attente" title="À jour : en attente du prochain tome">⏳</span>'
                                  : '<span class="lue" title="Déjà lue">✔</span>') : '') +
@@ -538,6 +541,15 @@
       else openSeries(c.dataset.id);
     }
     $('grid').addEventListener('click', async function (e) {
+      var fv = e.target.closest('[data-favori]');
+      if (fv) {                                             // ⭐ cocher / décocher sans ouvrir la série
+        e.stopPropagation();
+        var sf = series.filter(function (s) { return s.id === fv.dataset.favori; })[0]; if (!sf) return;
+        var veut = !sf.favori; sf.favori = veut; drawGrid();
+        var rf = await post('/api/favori', {series: sf.id, favori: veut});
+        if (!rf.ok) { sf.favori = !veut; drawGrid(); alert(rf.error || 'Favori impossible'); }
+        return;
+      }
       var x = e.target.closest('[data-retirer-suivie]');
       if (x) {                                              // fiche grisée (série ajoutée, encore rien sur le NAS) : on la supprime
         e.stopPropagation();
@@ -549,7 +561,7 @@
       }
       var c = e.target.closest('.card'); if (c) ouvrirCarte(c);
     });
-    $('grid').addEventListener('keydown', function (e) { if (e.key === 'Enter') { var c = e.target.closest('.card'); if (c) ouvrirCarte(c); } });
+    $('grid').addEventListener('keydown', function (e) { if (e.key === 'Enter') { if (e.target.closest('[data-favori]')) return; var c = e.target.closest('.card'); if (c) ouvrirCarte(c); } });
     $('backList').addEventListener('click', function (e) { e.preventDefault(); history.pushState({}, '', location.pathname); showList(); });
     $('sResume').addEventListener('click', function () { if ($('sResume').dataset.path) readChapter($('sResume').dataset.path); });
     $('chapters').addEventListener('click', async function (e) {
