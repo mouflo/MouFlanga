@@ -373,7 +373,10 @@ def _il_en_manque(name, entrees, etat):
 def _volumes_attendus(name):
     """Nombre de tomes de l'édition importée (torrent « Intégrale N tomes ») ; sinon celui d'AniList."""
     import edition
-    v = edition.lire(MANGA_DIR / name).get("volumes_attendus")
+    infos = edition.lire(MANGA_DIR / name)
+    v = infos.get("volumes_attendus")
+    if not v:                                           # séries importées avant : lu dans le nom des archives gardées (« … (01-18) »)
+        v = max([n for n in (edition.volumes_du_titre(a) for a in infos.get("archives", [])) if n] or [0]) or None
     return v or ((tomes._charger(name) or {}).get("statut_officiel") or {}).get("volumes")
 
 

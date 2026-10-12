@@ -135,12 +135,16 @@ def analyser(fichiers: list[Path], indices_texte: str = "") -> dict:
 def volumes_du_titre(titre: str):
     """« Cat's Eye - Édition de luxe [Intégrale 15 tomes] » → 15 ; None si le titre ne le dit pas."""
     m = re.search(r"(\d{1,3})\s*tomes?\b", titre or "", re.I)
-    return int(m.group(1)) if m else None
+    if m:
+        return int(m.group(1))
+    # « Gantz - Perfect Édition (01-18) », « Intégrale T01-77 » : une plage qui commence au tome 1
+    m = re.search(r"[(\[\s]T?0*1\s*[-–]\s*T?(\d{1,3})(?=[)\]\s]|$)", titre or "", re.I)
+    return int(m.group(1)) if m and int(m.group(1)) > 1 else None
 
 
 def edition_du_titre(titre: str):
     """« Cat's Eye - Édition de luxe [...] » → « Édition de luxe » ; None si aucune mention d'édition."""
-    m = re.search(r"[ée]dition\s+(?:de\s+)?luxe|deluxe|collector|kanzenban|perfect\s+edition|ultimate\s+edition", titre or "", re.I)
+    m = re.search(r"[ée]dition\s+(?:de\s+)?luxe|deluxe|collector|kanzenban|perfect\s+[ée]dition|ultimate\s+[ée]dition", titre or "", re.I)
     return m.group(0).strip().capitalize() if m else None
 
 

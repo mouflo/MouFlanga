@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Nombre de tomes de l'édition (12 octobre 2026, soir)
+- 📚 Une série importée en « Perfect Édition (01-18) » est comparée à ses **18 tomes**, plus aux 37 de l'édition standard d'AniList. Le nombre de tomes est lu dans le nom de l'archive (« (01-18) », « T01-T74 », « Intégrale 15 tomes ») même pour les séries importées avant ; « Perfect Édition » est reconnue comme mention d'édition.
+
 ## Encart « Organiser » qui revenait (12 octobre 2026, soir)
 - 🧹 Un nom de série que tu as déjà choisi (ex. « Gantz ») n'est plus remis en cause parce que les fichiers du torrent s'appellent « Gantz : Perfect - Tome NN », et un tome déjà dans son dossier « Tome NN » n'est plus à déplacer à cause de son nom de fichier. L'encart ne revient donc que pour un vrai rangement à faire.
 

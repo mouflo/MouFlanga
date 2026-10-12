@@ -359,6 +359,13 @@ class OrganiserTest(BibliothequeTest):
         self.A._write_json(self.A.CHOIX, [{"dossier": "Gantz : Perfect", "propose": "Gantz : Perfect", "choisi": "Gantz"}])
         self.assertIsNone(self.A._plan_organiser("Gantz", [f for f in serie.rglob("*.cbz")]))
 
+    def test_volumes_de_l_edition_lus_dans_le_nom(self):
+        import edition
+        self.assertEqual(edition.volumes_du_titre("Gantz - Perfect Édition (01-18) (Oku) (2017) [Digital-1920u] (PapriKa+)"), 18)
+        self.assertEqual(edition.volumes_du_titre("Bleach T01-T74"), 74)
+        self.assertIsNone(edition.volumes_du_titre("Serie (2017-2019)"))
+        self.assertEqual(edition.edition_du_titre("Gantz - Perfect Édition (01-18)"), "Perfect édition")
+
     def test_organiser(self):
         with mock.patch.object(tomes, "chercher", return_value=None):
             r = self.client.post("/api/organiser", json={"series": self.vrac.name, "nom": "Gintama"})
