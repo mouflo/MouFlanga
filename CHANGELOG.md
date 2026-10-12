@@ -1,5 +1,10 @@
 # Historique des versions
 
+## Découper un gros fichier en tomes (12 octobre 2026, soir)
+- ✂️ Menu ⋯ → **Découper un gros fichier en tomes** : un écran avec les miniatures de toutes les pages ; tu touches la première page de chaque tome, puis « Découper ». Un fichier par tome, l'original va à la corbeille une fois tout écrit (ou reste tant que qBittorrent le partage).
+- 📑 Si le fichier contient un sommaire (index.json des sites de lecture, comme Buyuden : 134 chapitres, 13 tomes), les tomes sont déjà placés et chaque tome garde ses chapitres et leurs titres.
+- Les tomes déjà présents ne sont remplacés qu'après confirmation (anciens à la corbeille).
+
 ## Même équipe et hors-séries du wiki Fandom (12 octobre 2026, soir)
 - ⭐ **Même équipe en priorité** : les propositions de tomes suivants mettent en tête l'équipe de la série (« PRiNTER-PapriKa+ » ≈ « TONER-Paprika »), avec l'étiquette ⭐.
 - 🔁 **Remplacement automatique** : quand l'équipe de la série sort enfin un tome que tu as d'une autre équipe (1 à 3 tomes), l'appli le télécharge et remplace l'ancien tout seul (corbeille 30 jours, lu gardé). Message Telegram « NoFace696 → PapriKa ».

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Découper en tomes · MouFlanga</title>
+    <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+    <link rel="stylesheet" href="/ui/mou-settings.css?v={{ version|urlencode }}">
+    <style>
+        .dc-tete { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .dc-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin: 12px 0 90px; }
+        .dc-page { position: relative; border: 2px solid transparent; border-radius: 8px; background: #0f1012; cursor: pointer; overflow: hidden; }
+        .dc-page img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; display: block; }
+        .dc-page .n { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.65); color: #ccc; font-size: 12px; text-align: center; padding: 2px; }
+        .dc-page.debut { border-color: #52b54b; }
+        .dc-page.debut::before { content: attr(data-tome); position: absolute; top: 0; left: 0; right: 0; background: #52b54b; color: #0b0c0e; font-weight: 700; font-size: 13px; text-align: center; padding: 3px; z-index: 1; }
+        .dc-barre { position: fixed; left: 0; right: 0; bottom: 0; background: #17181c; border-top: 1px solid #2c2f36; padding: 10px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .dc-barre .btn { flex: 1; min-width: 140px; }
+        .dc-sauts { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+        .dc-sauts a { padding: 6px 10px; border-radius: 8px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; text-decoration: none; font-size: 14px; }
+        .msg { padding: 10px 12px; border-radius: 8px; margin: 10px 0; }
+        .msg.ok { background: #14291a; color: #9be3a6; border: 1px solid #2f6b3a; }
+        .msg.err { background: #2a1416; color: #ffb4b4; border: 1px solid #6b2f35; }
+        select, input[type=number] { font-size: 16px; padding: 8px; border-radius: 8px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="dc-tete">
+        <a href="/#{{ nom|urlencode }}" class="back">← Retour à la série</a>
+        <h1 style="margin:0">✂️ Découper en tomes</h1>
+    </div>
+    <p class="sub">{{ nom }}</p>
+    {% if not fichiers %}
+        <div class="msg err">Aucun gros fichier à découper dans cette série (plus de 300 Mo ou 400 pages, pas déjà rangé en tomes).</div>
+    {% else %}
+    <p class="note">Touche la <b>première page de chaque tome</b> : elle passe en vert avec son numéro. Touche-la de nouveau pour l'enlever. Quand un sommaire est intégré au fichier, les tomes sont déjà placés (avec leurs chapitres) : vérifie seulement. Le fichier d'origine n'est jamais modifié ; il va à la corbeille une fois les tomes écrits.</p>
+    <div class="field"><label for="fichier">Fichier</label>
+        <select id="fichier">{% for f in fichiers %}<option value="{{ f.rel }}" {% if f.rel == choisi %}selected{% endif %}>{{ f.nom }}</option>{% endfor %}</select></div>
+    <div class="field"><label for="premier">Numéro du premier tome</label> <input type="number" id="premier" min="1" value="1" style="width:90px"></div>
+    <div id="info" class="note"></div>
+    <div class="dc-sauts" id="sauts"></div>
+    <div id="msg"></div>
+    <div class="dc-grille" id="grille"></div>
+    <div class="dc-barre"><span id="resume" style="flex:2;min-width:160px"></span><button class="btn" id="go">✂️ Découper</button></div>
+    {% endif %}
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const NOM = {{ nom|tojson }};
+let debuts = [], nbPages = 0, infos = {};
+function say(t, ok) { $('msg').innerHTML = t ? '<div class="msg ' + (ok ? 'ok' : 'err') + '">' + t.replace(/</g, '&lt;') + '</div>' : ''; }
+function numeros() { const p = Math.max(1, parseInt($('premier').value) || 1); return debuts.slice().sort((a, b) => a - b).map((page, i) => [p + i, page]); }
+function dessiner() {
+    const nums = new Map(numeros().map(([t, p]) => [p, t]));
+    document.querySelectorAll('.dc-page').forEach(el => {
+        const p = +el.dataset.p, t = nums.get(p);
+        el.classList.toggle('debut', t !== undefined);
+        el.dataset.tome = t !== undefined ? 'Tome ' + t : '';
+    });
+    $('sauts').innerHTML = numeros().map(([t, p]) => '<a href="#p' + p + '">T' + t + '</a>').join('');
+    $('resume').textContent = debuts.length ? debuts.length + ' tome(s) · ' + nbPages + ' pages' : 'Aucun tome placé';
+}
+async function charger() {
+    const f = $('fichier').value;
+    $('grille').innerHTML = ''; say('');
+    infos = await (await fetch('/api/decouper/infos?id=' + encodeURIComponent(NOM) + '&f=' + encodeURIComponent(f))).json();
+    if (infos.error) { say(infos.error); return; }
+    nbPages = infos.pages;
+    const d = Object.entries(infos.debuts || {}).map(([t, p]) => [+t, +p]).sort((a, b) => a[1] - b[1]);
+    debuts = d.map(x => x[1]);
+    if (d.length) $('premier').value = d[0][0];
+    $('info').innerHTML = (infos.chapitres ? '📑 Sommaire intégré trouvé : ' + infos.chapitres + ' chapitres répartis en ' + d.length + ' tomes (titres gardés). ' : '') +
+        (infos.existants.length ? '⚠️ Tomes déjà dans la série : ' + infos.existants.join(', ') + ' (ils iront à la corbeille si tu confirmes). ' : '') +
+        (infos.partage ? 'ℹ️ Ce fichier est encore partagé par qBittorrent : il restera en place après le découpage, jusqu\'à ce que tu supprimes le torrent.' : '');
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < nbPages; i++) {
+        const el = document.createElement('div');
+        el.className = 'dc-page'; el.dataset.p = i; el.id = 'p' + i;
+        el.innerHTML = '<img loading="lazy" alt="" src="/api/miniature?path=' + encodeURIComponent(f) + '&n=' + i + '"><span class="n">' + (i + 1) + '</span>';
+        frag.appendChild(el);
+    }
+    $('grille').appendChild(frag);
+    dessiner();
+    if (infos.etat && infos.etat.en_cours) suivre();
+}
+$('grille') && $('grille').addEventListener('click', e => {
+    const el = e.target.closest('.dc-page'); if (!el) return;
+    const p = +el.dataset.p, k = debuts.indexOf(p);
+    if (k >= 0) debuts.splice(k, 1); else debuts.push(p);
+    dessiner();
+});
+$('premier') && $('premier').addEventListener('input', dessiner);
+$('fichier') && $('fichier').addEventListener('change', charger);
+async function suivre() {
+    const f = $('fichier').value;
+    const r = await (await fetch('/api/decouper/etat?f=' + encodeURIComponent(f))).json();
+    if (r.en_cours) { say('✂️ Découpage : ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' tome(s)…', true); setTimeout(suivre, 3000); return; }
+    if (r.message) say(r.message, r.message.startsWith('✅'));
+}
+$('go') && $('go').addEventListener('click', async () => {
+    if (!debuts.length) return say('Touche la première page de chaque tome.');
+    const corps = {id: NOM, f: $('fichier').value, debuts: Object.fromEntries(numeros())};
+    let r = await (await fetch('/api/decouper', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(corps)})).json();
+    if (!r.ok && r.existants) {
+        if (!confirm(r.error + '\n\nLes remplacer ? Les anciens tomes vont à la corbeille (30 jours).')) return;
+        corps.remplacer = true;
+        r = await (await fetch('/api/decouper', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(corps)})).json();
+    }
+    if (!r.ok) return say(r.error);
+    say(r.message, true); $('go').disabled = true; setTimeout(suivre, 2000);
+});
+if ($('fichier')) charger();
+</script>
+</body>
+</html>

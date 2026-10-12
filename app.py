@@ -839,6 +839,116 @@ def _retour_couvertures(name, ok="", erreur=""):
     return redirect("/couvertures?id=" + quote(name) + "&trouvees=oui" + ("&ok=" + quote(ok) if ok else "") + ("&erreur=" + quote(erreur) if erreur else ""))
 
 
+# ---------------- ✂️ Découper un gros fichier (intégrale en un seul .cbz) en tomes : admin ----------------
+import decoupage
+
+
+def _gros_fichiers(name):
+    """Fichiers de la série qui regroupent sans doute plusieurs tomes (pas des fichiers de tome de l'appli)."""
+    out = []
+    for f in _scan().get(name) or []:
+        if f.suffix.lower() not in (".cbz", ".zip") or tomes_cbz.lire_info(f) is not None:
+            continue
+        try:
+            if f.stat().st_size >= 300 * 1048576 or len(archives.pages(f)) >= 400:
+                out.append(f)
+        except (OSError, archives.ArchiveError):
+            continue
+    return out
+
+
+def _fichier_a_decouper(name, rel):
+    f = _safe_path(rel)
+    return f if f is not None and name in _scan() and f in _gros_fichiers(name) else None
+
+
+@app.route("/decouper")
+def page_decouper():
+    name = request.args.get("id", "")
+    if name not in _scan() or name == "(Sans série)":
+        return Response("Série introuvable", status=404)
+    return render_template("decouper.html", version=APP_VERSION, nom=name,
+                           fichiers=[{"rel": _rel(f), "nom": f.name} for f in _gros_fichiers(name)], choisi=request.args.get("f", ""))
+
+
+@app.route("/api/decouper/infos")
+def api_decouper_infos():
+    name, f = request.args.get("id", ""), _fichier_a_decouper(request.args.get("id", ""), request.args.get("f", ""))
+    if f is None:
+        return jsonify({"error": "Fichier introuvable (ou déjà rangé en tomes)"}), 404
+    plan = decoupage.plan_index(f)
+    return jsonify({"pages": len(archives.pages(f)), "debuts": decoupage.debuts_depuis_plan(plan) if plan else {},
+                    "chapitres": len(plan or []), "existants": sorted(_tomes_presents(name)), "partage": f.stat().st_nlink > 1,
+                    "etat": decoupage.etat(f)})
+
+
+@app.route("/api/miniature")
+def api_miniature():
+    full = _safe_path(request.args.get("path", ""))
+    if full is None:
+        return Response("Introuvable", status=404)
+    try:
+        data = decoupage.miniature(full, int(request.args.get("n", "0")))
+    except (ValueError, archives.ArchiveError, OSError):
+        return Response("Page introuvable", status=404)
+    resp = Response(data, mimetype="image/jpeg")
+    resp.headers["Cache-Control"] = "private, max-age=86400"
+    return resp
+
+
+@app.route("/api/decouper", methods=["POST"])
+def api_decouper():
+    """Lance le découpage : {id, f, debuts: {tome: première page}, remplacer: les tomes déjà là vont à la corbeille}."""
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("id", ""))
+    f = _fichier_a_decouper(name, str(body.get("f", "")))
+    if f is None:
+        return jsonify({"ok": False, "error": "Fichier introuvable (ou déjà rangé en tomes)"}), 404
+    try:
+        debuts = {int(t): int(p) for t, p in (body.get("debuts") or {}).items()}
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Découpage invalide"}), 400
+    nb = len(archives.pages(f))
+    if not debuts or any(not (0 <= p < nb) or t < 1 for t, p in debuts.items()) or len(set(debuts.values())) != len(debuts):
+        return jsonify({"ok": False, "error": "Indique la première page de chaque tome (pages différentes)."}), 400
+    if _en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours"):
+        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    deja = sorted(set(debuts) & set(_tomes_presents(name)))
+    if deja and not body.get("remplacer"):
+        return jsonify({"ok": False, "existants": deja, "error": f"Les tomes {', '.join(map(str, deja))} existent déjà."}), 409
+    try:
+        for t in deja:                                   # anciens tomes : dossier entier à la corbeille (30 jours)
+            d = (MANGA_DIR / name / tomes_cbz.dossier_tome(t))
+            if d.is_dir():
+                _vers_corbeille(d)
+    except OSError as e:
+        return jsonify({"ok": False, "error": f"Anciens tomes non déplacés : {e}"}), 500
+    plan = decoupage.plan_index(f)
+    plan = plan if plan and decoupage.debuts_depuis_plan(plan) == debuts else None     # modifié à la main : pages seulement
+
+    def fini(ok, msg):
+        if not ok:
+            return ""
+        import edition
+        edition.invalider(MANGA_DIR / name)
+        try:
+            _vers_corbeille(f)
+            return "Le fichier d'origine est dans la corbeille (30 jours)."
+        except OSError:
+            return ("Le fichier d'origine est encore partagé par qBittorrent : supprime le torrent dans qBittorrent, "
+                    "puis supprime-le ici avec 🗑.")
+    decoupage.decouper(f, MANGA_DIR / name, name, debuts, plan, fini)
+    return jsonify({"ok": True, "message": f"Découpage en {len(debuts)} tome(s) lancé…"})
+
+
+@app.route("/api/decouper/etat")
+def api_decouper_etat():
+    rel = request.args.get("f", "")
+    if ".." in Path(rel).parts:
+        return jsonify({})
+    return jsonify(decoupage.etat((MANGA_DIR.resolve() / rel).resolve()))
+
+
 @app.route("/couvertures")
 def page_couvertures():
     name = request.args.get("id", "")

@@ -313,3 +313,4 @@ body.lecteur #sChoisirFiche { display:none !important; }
 body.lecteur #sRattacher { display:none !important; }
 .tor-toujours { display:flex; gap:8px; align-items:center; font-size:.85rem; margin-top:4px; }
 .hs-desc { display:block; margin-top:4px; font-size:.78rem; line-height:1.4; opacity:.85; }
+body.lecteur #sDecouper { display:none !important; }

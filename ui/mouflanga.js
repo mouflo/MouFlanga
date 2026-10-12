@@ -728,6 +728,8 @@
       rattacher(cible);
     });
 
+    $('sDecouper').addEventListener('click', function () { fermerMenus(); location.href = '/decouper?id=' + encodeURIComponent(current.id); });
+
     // 🔎 Choisir soi-même la fiche AniList (série mal reconnue : Crows, Prisonnier Riku…)
     var STATUTS_AL = {FINISHED: 'terminée', RELEASING: 'en cours', HIATUS: 'en pause', CANCELLED: 'arrêtée', NOT_YET_RELEASED: 'à paraître'};
     $('sChoisirFiche').addEventListener('click', function () {
