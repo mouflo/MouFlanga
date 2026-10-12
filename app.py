@@ -3376,9 +3376,9 @@ def _sommaire_du_tome(name, tome, d):
     lu = (edition.lire(MANGA_DIR / name).get("sommaires") or {}).get(str(tome))
     e = _tome_complet(name, tome)
     besoin = not d.get("chapitres") or d.get("chapitres_langue") == "en"
-    if lu and lu.get("chapitres") and besoin:
+    if lu and lu.get("chapitres") and (besoin or lu.get("manuel")):
         d["chapitres"] = [f"{c['num']:g}. {c['titre']}" if c.get("titre") else f"{c['num']:g}." for c in lu["chapitres"]]
-        d["chapitres_langue"], d["chapitres_source"] = "", "sommaire du tome, lu automatiquement"
+        d["chapitres_langue"], d["chapitres_source"] = "", "corrigés à la main" if lu.get("manuel") else "sommaire du tome, lu automatiquement"
         if e:
             d["chapitres_pages"] = [c.get("image") for c in lu["chapitres"]]
             d["fichier"] = e["key"]
@@ -3386,7 +3386,7 @@ def _sommaire_du_tome(name, tome, d):
         _lire_sommaire(name, tome, e)
     et = sommaire.etat(name, tome)
     d["sommaire"] = {"possible": bool(e) and sommaire.disponible(), "en_cours": bool(et.get("en_cours")),
-                     "message": et.get("message", ""), "lu": bool(lu)}
+                     "message": et.get("message", ""), "lu": bool(lu), "manuel": bool(lu and lu.get("manuel"))}
 
 
 def _lire_sommaire(name, tome, e):
@@ -3418,8 +3418,55 @@ def api_tome_sommaire():
     e = _tome_complet(name, tome)
     if not e:
         return jsonify({"ok": False, "error": "Ce tome n'est pas un fichier de tome complet (ses chapitres sont déjà séparés)."}), 400
+    import edition
+    deja = (edition.lire(MANGA_DIR / name).get("sommaires") or {}).get(str(tome)) or {}
+    if deja.get("manuel") and not body.get("force"):
+        return jsonify({"ok": False, "error": "Les chapitres de ce tome ont été corrigés à la main : confirme pour les remplacer."}), 409
     _lire_sommaire(name, tome, e)
     return jsonify({"ok": True, "message": "Lecture du sommaire en cours (environ une minute)…"})
+
+
+@app.route("/api/tome/chapitres", methods=["POST"])
+def api_tome_chapitres():
+    """Correction à la main de la liste des chapitres d'un tome : une ligne « 2. La valeur de la vie » par chapitre.
+    La page de chaque chapitre (lien de lecture) est gardée quand son numéro existait déjà. Remplace la lecture automatique."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    try:
+        tome = int(float(body.get("tome", "")))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Tome inconnu"}), 400
+    infos = edition.lire(MANGA_DIR / name)
+    ancien = (infos.get("sommaires") or {}).get(str(tome)) or {}
+    pages = {float(c["num"]): c for c in ancien.get("chapitres", []) if c.get("num") is not None}
+    chapitres, vus = [], set()
+    for i, ligne in enumerate(str(body.get("texte", "")).splitlines(), 1):
+        ligne = ligne.strip()
+        if not ligne:
+            continue
+        m = re.match(r"^(\d{1,4}(?:[.,]\d)?)\s*[.)\-:–]*\s*(.*)$", ligne)
+        if not m:
+            return jsonify({"ok": False, "error": f"Ligne {i} : elle doit commencer par le numéro du chapitre (ex. « 2. La valeur de la vie »)."}), 400
+        num = float(m.group(1).replace(",", "."))
+        if num in vus:
+            return jsonify({"ok": False, "error": f"Ligne {i} : le chapitre {num:g} est écrit deux fois."}), 400
+        vus.add(num)
+        titre = re.sub(r"\s+", " ", m.group(2)).strip()[:120]
+        c = {"num": num, "titre": titre}
+        if num in pages:
+            c.update({k: pages[num][k] for k in ("page", "image") if k in pages[num]})
+        chapitres.append(c)
+    if not chapitres:
+        return jsonify({"ok": False, "error": "Aucun chapitre : ajoute au moins une ligne."}), 400
+    chapitres.sort(key=lambda c: c["num"])
+    nouveau = dict(ancien)
+    nouveau.update(chapitres=chapitres, manuel=True)
+    infos.setdefault("sommaires", {})[str(tome)] = nouveau
+    edition.ecrire(MANGA_DIR / name, infos)
+    return jsonify({"ok": True, "message": f"Tome {tome} : {len(chapitres)} chapitres enregistrés."})
 
 
 # ---------------- 🎵 Génériques des mangas (OP1 de l'anime, même sans l'anime dans Emby) : admin ----------------

@@ -1161,21 +1161,39 @@
         (d.resume ? '<div class="dem-titre">Résumé' + (d.resume_source ? ' <small>(' + esc(d.resume_source) + ')</small>' : '') + '</div><p class="tome-resume">' + esc(d.resume) + '</p>' : '') +
         boutonGarder(n) +
         '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-prov="' + n + '">✏️ Noter la provenance (équipe, origine)</button>' +
-        (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '">🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' +
+        (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '"' + (som.manuel ? ' data-manuel="1"' : '') + '>🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' +
         (som.en_cours ? '<div class="dem-sous">🔍 Lecture du sommaire dans les premières pages… (environ une minute)</div>'
           : (som.message && !chap.length ? '<div class="dem-sous">' + esc(som.message) + '</div>' : '')) +
         (chap.length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') +
-          (d.chapitres_source ? ' <small>(' + esc(d.chapitres_source) + ')</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c, i) { return '<li>' + lien(c, i) + '</li>'; }).join('') + '</ol>' : '');
+          (d.chapitres_source ? ' <small>(' + esc(d.chapitres_source) + ')</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c, i) { return '<li>' + lien(c, i) + '</li>'; }).join('') + '</ol>' +
+          '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEditer">✏️ Corriger les chapitres</button></div>' +
+          '<div id="chapEdition" hidden><textarea id="chapTexte" class="mou-field" rows="' + Math.min(14, chap.length + 2) + '" spellcheck="false" style="width:100%"></textarea>' +
+          '<div class="dem-sous">Une ligne par chapitre, avec son numéro : « 2. La valeur de la vie ». Les liens de lecture sont gardés pour les numéros qui existaient déjà.</div>' +
+          '<div class="ident-actions"><button type="button" class="mou-btn" id="chapEnregistrer" data-tome="' + n + '">💾 Enregistrer</button>' +
+          '<button type="button" class="mou-btn ghost" id="chapAnnuler">Annuler</button></div></div>' : '');
+      var zone = $('chapTexte'); if (zone) zone.value = chap.join('\n');
       var im = $('infosCorps').querySelector('.tome-couv');
       if (im) im.addEventListener('error', function () { im.style.display = 'none'; });
       if (som.en_cours) suiviSommaire = setTimeout(function () { afficherTome(n, false); }, 4000);
     }
     $('infosCorps').addEventListener('click', async function (e) {         // 🔍 relire le sommaire imprimé du tome (OCR)
       var b = e.target.closest('[data-sommaire]'); if (!b) return;
+      if (b.dataset.manuel && !confirm('Tu as corrigé ces chapitres à la main. Relire le sommaire les remplace par la lecture automatique. Continuer ?')) return;
       b.disabled = true;
-      var r = await post('/api/tome/sommaire', {series: current.id, tome: b.dataset.sommaire});
+      var r = await post('/api/tome/sommaire', {series: current.id, tome: b.dataset.sommaire, force: !!b.dataset.manuel});
       if (!r.ok) { b.disabled = false; alert(r.error || 'Impossible'); return; }
       afficherTome(b.dataset.sommaire, false);
+    });
+    $('infosCorps').addEventListener('click', async function (e) {         // ✏️ corriger la liste des chapitres à la main
+      if (e.target.closest('#chapEditer')) { $('chapEdition').hidden = false; $('chapEditer').hidden = true; $('chapTexte').focus(); return; }
+      if (e.target.closest('#chapAnnuler')) { $('chapEdition').hidden = true; $('chapEditer').hidden = false; return; }
+      var b = e.target.closest('#chapEnregistrer'); if (!b) return;
+      b.disabled = true;
+      var r = await post('/api/tome/chapitres', {series: current.id, tome: b.dataset.tome, texte: $('chapTexte').value});
+      b.disabled = false;
+      if (!r.ok) { alert(r.error || 'Impossible'); return; }
+      window.MouToast('✏️ ' + r.message, 'ok');
+      afficherTome(b.dataset.tome, false);
     });
     $('infosVue').addEventListener('click', function (e) { if (e.target === $('infosVue')) $('infosVue').hidden = true; });
     $('infosCorps').addEventListener('click', async function (e) {         // provenance d'un tome : équipe et origine notées à la main

@@ -366,6 +366,23 @@ class OrganiserTest(BibliothequeTest):
         self.assertIsNone(edition.volumes_du_titre("Serie (2017-2019)"))
         self.assertEqual(edition.edition_du_titre("Gantz - Perfect Édition (01-18)"), "Perfect édition")
 
+    def test_corriger_les_chapitres_a_la_main(self):
+        import edition
+        infos = edition.lire(self.root / "Serie")
+        infos["sommaires"] = {"1": {"chapitres": [{"num": 1.0, "titre": "Les deux", "page": 5, "image": 9},
+                                                  {"num": 2.0, "titre": "€} Lawvaleur de la vie", "page": 59, "image": 63}]}}
+        edition.ecrire(self.root / "Serie", infos)
+        r = self.client.post("/api/tome/chapitres", json={"series": "Serie", "tome": 1, "texte": "1. Les deux alchimistes\n2. La valeur de la vie\n3 - Nouveau"})
+        self.assertTrue(r.json["ok"], r.json)
+        som = edition.lire(self.root / "Serie")["sommaires"]["1"]
+        self.assertTrue(som["manuel"])
+        self.assertEqual([(c["num"], c["titre"]) for c in som["chapitres"]], [(1.0, "Les deux alchimistes"), (2.0, "La valeur de la vie"), (3.0, "Nouveau")])
+        self.assertEqual(som["chapitres"][1]["image"], 63)               # le lien de lecture est gardé
+        mauvais = self.client.post("/api/tome/chapitres", json={"series": "Serie", "tome": 1, "texte": "pas de numéro"})
+        self.assertEqual(mauvais.status_code, 400)
+        double = self.client.post("/api/tome/chapitres", json={"series": "Serie", "tome": 1, "texte": "1. A\n1. B"})
+        self.assertEqual(double.status_code, 400)
+
     def test_organiser(self):
         with mock.patch.object(tomes, "chercher", return_value=None):
             r = self.client.post("/api/organiser", json={"series": self.vrac.name, "nom": "Gintama"})
