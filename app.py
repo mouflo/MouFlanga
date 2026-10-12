@@ -183,12 +183,44 @@ def _numero_tome(nom):
     return importer.numero_tome(nom)
 
 
+_CACHE_EDITION = {}
+
+
+def _edition_vue(serie):
+    """Infos d'édition de la série (relues seulement si le fichier a changé : appelé pour chaque tome d'une liste)."""
+    import edition
+    f = MANGA_DIR / serie / edition.FICHIER
+    try:
+        cle = f.stat().st_mtime_ns
+    except OSError:
+        return {}
+    c = _CACHE_EDITION.get(serie)
+    if not c or c[0] != cle:
+        if len(_CACHE_EDITION) > 500:
+            _CACHE_EDITION.clear()
+        c = _CACHE_EDITION[serie] = (cle, edition.lire(MANGA_DIR / serie))
+    return c[1]
+
+
+def _edition_differente(serie):
+    """Édition importée (Perfect, deluxe…) qui n'a pas le même nombre de tomes que l'édition standard connue :
+    la répartition des chapitres par tome de Wikipédia ne s'applique alors pas."""
+    v = _edition_vue(serie).get("volumes_attendus") or max(
+        [n for n in (__import__("edition").volumes_du_titre(a) for a in _edition_vue(serie).get("archives", [])) if n] or [0]) or None
+    officiel = ((tomes._charger(serie) or {}).get("statut_officiel") or {}).get("volumes")
+    return bool(v and officiel and int(v) != int(officiel))
+
+
 def _plage_chapitres(serie, tome):
-    """« chapitres 1 à 8 » pour un tome complet, si la répartition de la série est déjà connue (sans aller sur Internet)."""
-    info = tomes._charger(serie)
-    if not info or not info.get("tomes"):
-        return [], ""
-    nums = sorted(n for n, t in info["tomes"].items() if t == tome)
+    """« chapitres 1 à 8 » pour un tome complet : d'abord le sommaire lu dans le tome (ou corrigé à la main), sinon la
+    répartition de la série si elle est déjà connue (sans aller sur Internet) et si l'édition est l'édition standard."""
+    lu = ((_edition_vue(serie).get("sommaires") or {}).get(str(tome)) or {}).get("chapitres") or []
+    nums = sorted(c["num"] for c in lu if c.get("num") is not None)
+    if not nums:
+        info = tomes._charger(serie)
+        if not info or not info.get("tomes") or _edition_differente(serie):
+            return [], ""
+        nums = sorted(n for n, t in info["tomes"].items() if t == tome)
     if not nums:
         return [], ""
     return nums, (f"chapitre {nums[0]:g}" if len(nums) == 1 else f"chapitres {nums[0]:g} à {nums[-1]:g}")
@@ -260,7 +292,7 @@ def _entrees(files):
     connus_de = {}
 
     def wiki_fr(serie, t):                       # des titres de chapitres sont-ils connus pour ce tome ? (mémoire seulement)
-        if t is None:
+        if t is None or _edition_differente(serie):
             return False
         if serie not in connus_de:
             info = tomes._charger(serie) or {}
@@ -3381,7 +3413,10 @@ def _sommaire_du_tome(name, tome, d):
         notes = signets.lire(MANGA_DIR / e["path"])
         if notes:
             lu = {"chapitres": notes, "fichier": True}
-    besoin = not d.get("chapitres") or d.get("chapitres_langue") == "en"
+    differente = _edition_differente(name)               # autre édition que celle de Wikipédia : ses chapitres par tome ne valent pas
+    if differente and not lu:
+        d["chapitres"], d["chapitres_langue"] = [], ""
+    besoin = not d.get("chapitres") or d.get("chapitres_langue") == "en" or differente
     if lu and lu.get("chapitres") and (besoin or lu.get("manuel")):
         d["chapitres"] = [f"{c['num']:g}. {c['titre']}" if c.get("titre") else f"{c['num']:g}." for c in lu["chapitres"]]
         d["chapitres_langue"], d["chapitres_source"] = "", "corrigés à la main" if lu.get("manuel") else "écrits dans le fichier" if lu.get("fichier") else "sommaire du tome, lu automatiquement"

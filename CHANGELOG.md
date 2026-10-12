@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Chapitres par tome d'une autre édition (12 octobre 2026, soir)
+- 📖 « Chapitres 1 à 4 » sur le tome 1 d'une Perfect Édition venait de la répartition de l'édition standard (Wikipédia). La plage affichée vient maintenant du sommaire lu dans le tome (ou corrigé à la main), et quand l'édition importée n'a pas le même nombre de tomes que l'édition standard (18 au lieu de 27), la répartition de Wikipédia n'est plus utilisée : le sommaire de chaque tome est lu dans le fichier.
+
 ## Chapitres écrits dans le fichier du tome, pour le partage (12 octobre 2026, soir)
 - 📝 Fiche d'un tome → **Écrire dans le fichier** : les chapitres et leur page de départ sont inscrits dans le `ComicInfo.xml` du .cbz (signets standard, lus par Komga, Kavita…). Les pages sont recopiées telles quelles, l'ancien fichier va à la corbeille (30 jours). Un tome encore partagé par qBittorrent est écrit à part (échange de dossiers) : le torrent n'est pas touché.
 - 📥 MouFlanga relit ces signets quand il trouve un tome reçu d'un partage : les chapitres s'affichent sans relire le sommaire.
