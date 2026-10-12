@@ -33,7 +33,7 @@
     var info = await rp.clone().json();
     await c.put(urlPages(item.path), rp);
     var rs = await fetch(urlSerie(item.serie)); if (rs.ok) await c.put(urlSerie(item.serie), rs);
-    var rl = await fetch('/lire'); if (rl.ok && !rl.redirected) await (await caches.open('mf-appli-v2')).put('/lire', rl);
+    var rl = await fetch('/lire'); if (rl.ok && !rl.redirected) await (await caches.open('mf-appli-v3')).put('/lire', rl);
     var octets = 0;
     for (var n = 0; n < info.count; n++) {
       var u = urlPage(item.path, n);

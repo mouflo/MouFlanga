@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Mises à jour visibles tout de suite (12 octobre 2026, soir)
+- 📱 L'appli installée charge d'abord la version la plus récente des scripts et styles (avant : l'ancienne version s'affichait une fois de plus, il fallait recharger deux fois pour voir une nouveauté).
+
 ## Alléger : réglage manuel, aperçu en direct, accès permanent (12 octobre 2026, soir)
 - 🎚 **Qualité manuelle** en plus de l'automatique : curseur 40-98 (100 = identique à l'original). L'analyse et l'allègement utilisent alors ce réglage tel quel.
 - 👁 **Aperçu en direct** : le bouton « Comparer avant / après » s'ouvre sans analyse préalable, avec un choix de tome ; changer la largeur, l'éclaircissement ou le curseur recalcule l'image tout de suite (poids de la page avant → après).

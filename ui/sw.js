@@ -1,7 +1,7 @@
 /* MouFlanga · service worker : appli installée, tomes gardés sur le téléphone (lecture hors ligne), notifications.
    Servi depuis /sw.js (portée : tout le site). Les pages d'un tome gardé sont dans le cache « mf-hors-ligne »
    (rangées par ui/hors-ligne.js) ; le reste de l'appli dans « mf-appli ». */
-const APPLI = 'mf-appli-v2', PAGES = 'mf-hors-ligne';
+const APPLI = 'mf-appli-v3', PAGES = 'mf-hors-ligne';
 const COQUILLE = ['/ui/mou-ui.css', '/ui/mou-ui.js', '/ui/mouflanga.css', '/ui/mouflanga.js', '/ui/lecteur.js', '/ui/hors-ligne.js',
                   '/icons/icon-192.png', '/icons/mouflanga.svg'];
 
@@ -54,12 +54,9 @@ self.addEventListener('fetch', e => {
         return;
     }
     if (p.startsWith('/ui/')) {
-        // styles, scripts et icônes : la copie tout de suite, mise à jour en fond
-        e.respondWith(caches.open(APPLI).then(async c => {
-            const garde = await c.match(req, {ignoreSearch: true});
-            const frais = fetch(req).then(r => { if (r.ok) c.put(p, r.clone()); return r; }).catch(() => garde);
-            return garde || frais;
-        }));
+        // styles et scripts : le réseau d'abord (une mise à jour apparaît tout de suite, sans recharger deux fois), sinon la copie gardée
+        e.respondWith(caches.open(APPLI).then(c => fetch(req).then(r => { if (r.ok) c.put(p, r.clone()); return r; })
+            .catch(() => c.match(req, {ignoreSearch: true}))));
     }
 });
 
