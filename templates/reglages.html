@@ -66,6 +66,7 @@
         <div class="field"><label for="torNok">Dossier d'arrivée des téléchargements (vu par qBittorrent)</label><input type="text" id="torNok" placeholder="/chemin/vers/Mouflanga.NOK" autocapitalize="off" spellcheck="false"></div>
         <div class="field"><label for="torOk">Dossier de partage une fois importé</label><input type="text" id="torOk" placeholder="/chemin/vers/Mouflanga.OK" autocapitalize="off" spellcheck="false"></div>
         <div class="field"><label for="torChemins">Correspondance de chemins (facultatif, si qBittorrent ne voit pas les mêmes chemins) : « chemin_qbittorrent=>chemin_ici »</label><input type="text" id="torChemins" placeholder="/downloads=>/mnt/nas/Downloads" autocapitalize="off" spellcheck="false"></div>
+        <div class="field"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="torCopie" style="width:22px;height:22px;flex:none;margin-top:2px"><span><b>Vraie copie dans MouFlanga</b> (conseillé) : tu peux effacer le torrent et ses fichiers dans qBittorrent, et renommer ou fusionner les séries tout de suite. Prend deux fois la place tant que le torrent est gardé. Décoché : lien physique (pas de place en plus, mais fichiers bloqués tant que qBittorrent les partage).</span></label></div>
         <div class="row"><button class="btn" id="torSave">Enregistrer</button><button class="btn ghost" id="torTest">🔌 Tester la connexion</button></div>
         <div id="torMsg"></div>
     </div>
@@ -189,12 +190,13 @@ async function loadTor() {
     const t = await api('/api/settings/torrents');
     $('torProwlarr').value = t.prowlarr || ''; $('torQbit').value = t.qbit || ''; $('torQbitUser').value = t.qbit_user || '';
     $('torNok').value = t.nok || ''; $('torOk').value = t.ok || ''; $('torChemins').value = t.chemins || '';
+    $('torCopie').checked = t.copie !== false;
     $('torProwlarrCle').placeholder = t.prowlarr_cle ? 'enregistrée (' + t.prowlarr_cle + ')' : 'pas encore saisie';
     $('torQbitMdp').placeholder = t.qbit_mdp ? 'enregistré' : 'pas encore saisi';
 }
 $('torSave').addEventListener('click', async () => {
     const r = await post('/api/settings/torrents', {prowlarr: $('torProwlarr').value, prowlarr_cle: $('torProwlarrCle').value, qbit: $('torQbit').value,
-        qbit_user: $('torQbitUser').value, qbit_mdp: $('torQbitMdp').value, nok: $('torNok').value, ok: $('torOk').value, chemins: $('torChemins').value});
+        qbit_user: $('torQbitUser').value, qbit_mdp: $('torQbitMdp').value, nok: $('torNok').value, ok: $('torOk').value, chemins: $('torChemins').value, copie: $('torCopie').checked});
     say('torMsg', r.message || r.error, r.ok);
     if (r.ok) { $('torProwlarrCle').value = ''; $('torQbitMdp').value = ''; loadTor(); }
 });

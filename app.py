@@ -2348,12 +2348,15 @@ def api_settings_torrents():
     if request.method == "GET":
         return jsonify({"prowlarr": r["prowlarr"], "prowlarr_cle": ("…" + r["prowlarr_cle"][-4:]) if r["prowlarr_cle"] else "",
                         "qbit": r["qbit"], "qbit_user": r["qbit_user"], "qbit_mdp": bool(r["qbit_mdp"]),
-                        "nok": r["nok"], "ok": r["ok"], "chemins": r["chemins"]})
+                        "nok": r["nok"], "ok": r["ok"], "chemins": r["chemins"], "copie": r["copie"]})
     body = request.get_json(silent=True) or {}
     if body.get("tester"):
         return jsonify({"ok": True, "lignes": torrents.tester()})
     champs = {"PROWLARR_URL": "prowlarr", "QBIT_URL": "qbit", "QBIT_USER": "qbit_user", "TORRENTS_NOK": "nok",
               "TORRENTS_OK": "ok", "TORRENTS_CHEMINS": "chemins", "PROWLARR_API_KEY": "prowlarr_cle", "QBIT_PASSWORD": "qbit_mdp"}
+    if "copie" in body:
+        write_secret(DATA_DIR / "secrets.env", "TORRENTS_COPIE", "1" if body.get("copie") else "0")
+        os.environ["TORRENTS_COPIE"] = "1" if body.get("copie") else "0"
     for env, cle in champs.items():
         if cle not in body:
             continue

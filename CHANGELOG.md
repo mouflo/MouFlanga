@@ -1,5 +1,10 @@
 # Historique des versions
 
+## Torrents : vraie copie dans MouFlanga (12 octobre 2026)
+- 📋 Les fichiers d'un torrent sont maintenant **copiés** dans la série, au lieu d'être un lien physique vers le fichier de qBittorrent. Ils sont indépendants du torrent : on peut les renommer, les déplacer ou fusionner la série tout de suite.
+- Réglage dans ⚙️ Réglages → Connexions → Torrents (coché par défaut). Décoché : lien physique, sans place en plus sur le NAS, mais fichiers bloqués tant que qBittorrent les partage.
+- Effacer le torrent et ses fichiers dans qBittorrent ne touche jamais les fichiers de MouFlanga, avec un lien comme avec une copie.
+
 ## Fusion de deux séries : choix (12 octobre 2026)
 - 🔀 Renommer une série avec le nom d'une série déjà là ouvre une fenêtre de choix au lieu d'un simple OK/Annuler :
   - ➕ ajouter seulement les tomes manquants ;

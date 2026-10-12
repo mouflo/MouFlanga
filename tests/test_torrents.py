@@ -62,7 +62,8 @@ class TorrentsTest(unittest.TestCase):
         self.assertEqual(importes[0], ("Air Gear", nok))
         self.assertEqual([f.name for f in torrents.fichiers_du_torrent(nok)], ["Air Gear T01.cbz"])
         torrents.lier(nok / "sub" / "Air Gear T01.cbz", biblio / "x" / "T01.cbz")
-        self.assertEqual(os.stat(biblio / "x" / "T01.cbz").st_ino, os.stat(nok / "sub" / "Air Gear T01.cbz").st_ino)   # lien physique
+        self.assertNotEqual(os.stat(biblio / "x" / "T01.cbz").st_ino, os.stat(nok / "sub" / "Air Gear T01.cbz").st_ino)   # vraie copie
+        self.assertEqual((biblio / "x" / "T01.cbz").read_bytes(), (nok / "sub" / "Air Gear T01.cbz").read_bytes())
         self.assertEqual(q.appels, [("torrents/setLocation", {"hashes": "h1", "location": "/ok"})])
         self.assertEqual(torrents._lire()[0]["etat"], "fini"); self.assertIn("importé", messages[0])
 

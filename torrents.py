@@ -36,7 +36,12 @@ def reglages():
     g = lambda k, d="": os.getenv(k, d).strip()
     return {"prowlarr": g("PROWLARR_URL").rstrip("/"), "prowlarr_cle": g("PROWLARR_API_KEY"),
             "qbit": g("QBIT_URL").rstrip("/"), "qbit_user": g("QBIT_USER"), "qbit_mdp": _mdp(),
-            "nok": g("TORRENTS_NOK"), "ok": g("TORRENTS_OK"), "chemins": g("TORRENTS_CHEMINS")}
+            "nok": g("TORRENTS_NOK"), "ok": g("TORRENTS_OK"), "chemins": g("TORRENTS_CHEMINS"), "copie": copie_active()}
+
+
+def copie_active() -> bool:
+    """Réglage « vraie copie » (oui par défaut) : les fichiers rangés dans MouFlanga ne sont pas liés au torrent."""
+    return os.getenv("TORRENTS_COPIE", "1").strip() != "0"
 
 
 def _mdp():
@@ -247,13 +252,24 @@ def fichiers_du_torrent(source: Path) -> list[Path]:
 
 
 def lier(f: Path, cible: Path):
-    """Place un fichier du torrent DIRECTEMENT sous son nom définitif : lien physique (aucune place en plus), sinon copie.
-    Le NAS refuse ensuite de renommer ou d'effacer ces fichiers tant que qBittorrent les partage : on ne les déplace jamais."""
+    """Place un fichier du torrent DIRECTEMENT sous son nom définitif.
+    Par défaut une vraie copie (réglage TORRENTS_COPIE) : le fichier de MouFlanga est indépendant du torrent, on peut le
+    renommer, le déplacer ou fusionner la série tout de suite ; effacer le torrent et ses fichiers ne le touche pas.
+    Sinon un lien physique (aucune place en plus, mais le NAS refuse de le renommer tant que qBittorrent le partage)."""
     cible.parent.mkdir(parents=True, exist_ok=True)
+    if not copie_active():
+        try:
+            os.link(f, cible)
+            return
+        except OSError:
+            pass
+    tmp = cible.with_name("." + cible.name + ".copie")          # copie à moitié faite (coupure) : jamais prise pour un tome
     try:
-        os.link(f, cible)
-    except OSError:
-        shutil.copy2(f, cible)
+        shutil.copyfile(f, tmp)
+        os.replace(tmp, cible)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
 
 
 def surveiller(importer_serie, envoyer, manga_dir):
