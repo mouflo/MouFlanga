@@ -378,6 +378,9 @@ class OrganiserTest(BibliothequeTest):
         self.assertTrue(som["manuel"])
         self.assertEqual([(c["num"], c["titre"]) for c in som["chapitres"]], [(1.0, "Les deux alchimistes"), (2.0, "La valeur de la vie"), (3.0, "Nouveau")])
         self.assertEqual(som["chapitres"][1]["image"], 63)               # le lien de lecture est gardé
+        r = self.client.post("/api/tome/chapitres", json={"series": "Serie", "tome": 1, "texte": "1. Les deux alchimistes @10\n2. La valeur de la vie @70"})
+        som = edition.lire(self.root / "Serie")["sommaires"]["1"]
+        self.assertEqual([c["image"] for c in som["chapitres"]], [9, 69])    # « @10 » = 10e page du lecteur = image 9
         mauvais = self.client.post("/api/tome/chapitres", json={"series": "Serie", "tome": 1, "texte": "pas de numéro"})
         self.assertEqual(mauvais.status_code, 400)
         double = self.client.post("/api/tome/chapitres", json={"series": "Serie", "tome": 1, "texte": "1. A\n1. B"})

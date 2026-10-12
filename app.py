@@ -3447,6 +3447,9 @@ def api_tome_chapitres():
         ligne = ligne.strip()
         if not ligne:
             continue
+        page_lecteur = re.search(r"\s*@\s*(\d{1,5})\s*$", ligne)          # « @64 » : page affichée par le lecteur où commence le chapitre
+        if page_lecteur:
+            ligne = ligne[:page_lecteur.start()].strip()
         m = re.match(r"^(\d{1,4}(?:[.,]\d)?)\s*[.)\-:–]*\s*(.*)$", ligne)
         if not m:
             return jsonify({"ok": False, "error": f"Ligne {i} : elle doit commencer par le numéro du chapitre (ex. « 2. La valeur de la vie »)."}), 400
@@ -3458,6 +3461,8 @@ def api_tome_chapitres():
         c = {"num": num, "titre": titre}
         if num in pages:
             c.update({k: pages[num][k] for k in ("page", "image") if k in pages[num]})
+        if page_lecteur:
+            c["image"] = max(0, int(page_lecteur.group(1)) - 1)             # position dans le fichier (0 = première page)
         chapitres.append(c)
     if not chapitres:
         return jsonify({"ok": False, "error": "Aucun chapitre : ajoute au moins une ligne."}), 400

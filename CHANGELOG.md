@@ -1,7 +1,7 @@
 # Historique des versions
 
 ## Chapitres d'un tome corrigeables à la main (12 octobre 2026, soir)
-- ✏️ Dans la fiche d'un tome (ⓘ), le bouton **Corriger les chapitres** ouvre la liste en texte, une ligne par chapitre (« 2. La valeur de la vie »). Les liens de lecture des numéros déjà connus sont gardés. Une liste corrigée à la main n'est plus remplacée par la lecture automatique (« Relire le sommaire » demande confirmation).
+- ✏️ Dans la fiche d'un tome (ⓘ), le bouton **Corriger les chapitres** ouvre la liste en texte, une ligne par chapitre (« 2. La valeur de la vie »). Les liens de lecture des numéros déjà connus sont gardés. La page où commence un chapitre se règle aussi (« 2. Titre @64 », page du lecteur), avec un décalage commun pour toutes les pages. Une liste corrigée à la main n'est plus remplacée par la lecture automatique (« Relire le sommaire » demande confirmation).
 
 ## Nombre de tomes de l'édition (12 octobre 2026, soir)
 - 📚 Une série importée en « Perfect Édition (01-18) » est comparée à ses **18 tomes**, plus aux 37 de l'édition standard d'AniList. Le nombre de tomes est lu dans le nom de l'archive (« (01-18) », « T01-T74 », « Intégrale 15 tomes ») même pour les séries importées avant ; « Perfect Édition » est reconnue comme mention d'édition.
