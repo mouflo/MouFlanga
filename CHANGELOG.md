@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Dépôt allégé (12 octobre 2026, soir)
+- 🧹 Les fichiers qui servent seulement au propriétaire pour travailler avec Claude Code (script d'installation, mémos `CLAUDE.md`) ne sont plus publiés dans le dépôt : ils restent sur son serveur. Rien ne change pour l'installation ou l'utilisation de l'appli.
+
 ## Rescan des torrents, fiche avant ajout, noms mieux reconnus (12 octobre 2026, soir)
 - 🔄 **Page Importer → Dossier des torrents** : relit le dossier d'arrivée des torrents (`Mouflanga.NOK`), montre le nom de série deviné pour chaque élément (modifiable) et importe ceux que tu coches avec le même traitement automatique qu'un vrai téléchargement (rangement, identification, fiche, couverture, Telegram). Une série qui a déjà ses tomes n'est jamais écrasée. Rien n'est modifié dans le dossier des torrents.
 - 👆 **➕ Ajouter une série** : toucher le **nom** d'un résultat ouvre sa fiche dans MouFlanga (la série est ajoutée si besoin) : infos, poster (MouFloster ou image), bouton 🧲 Choisir un torrent.

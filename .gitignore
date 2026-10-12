@@ -12,3 +12,8 @@ venv/
 /data/
 .env
 *.log
+
+# Réservé au propriétaire (Claude Code sur le serveur) : pas utile aux autres, jamais publié
+/CLAUDE.md
+/docs/claude-opt.md
+/scripts/installer-claude-code.sh
