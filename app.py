@@ -2177,6 +2177,12 @@ def api_occupe():
     """L'appli fait-elle un travail long ? (lu par deploy.sh avant de redémarrer : seulement depuis le serveur lui-même)"""
     if (request.remote_addr or "") not in ("127.0.0.1", "::1"):
         return jsonify({"error": "réservé au serveur"}), 403
+    raisons = _travaux_en_cours()
+    return jsonify({"occupe": bool(raisons), "raisons": raisons})
+
+
+def _travaux_en_cours():
+    """Travaux longs en cours (téléchargement, import, rangement, découpage…) : ne pas redémarrer pendant ce temps."""
     raisons = []
     if any(j.get("status") == "running" for j in japscan_scraper.download_jobs.values()):
         raisons.append("téléchargement")
@@ -2187,7 +2193,13 @@ def api_occupe():
     raisons += [f"rangement de {n}" for n, e in _RANGEMENTS.items() if e.get("en_cours")]
     import torrents
     raisons += [f"import du torrent {j['titre'][:40]}" for j in torrents.liste() if j.get("etat") == "import"]
-    return jsonify({"occupe": bool(raisons), "raisons": raisons})
+    import decoupage
+    with decoupage._VERROU:
+        raisons += ["découpage en tomes" for e in decoupage._ETAT.values() if e.get("en_cours")][:1]
+    import sommaire
+    with sommaire._VERROU:
+        raisons += ["lecture d'un sommaire" for e in sommaire._ETAT.values() if e.get("en_cours")][:1]
+    return raisons
 
 
 # ---------------- 🧲 Torrents (Prowlarr → qBittorrent → import) : admin seulement ----------------
@@ -3656,6 +3668,8 @@ api_externe.init_app(app, BASE_DIR, lambda: APP_VERSION, _series_externes, _couv
 
 import redemarrage      # alerte Telegram après un plantage ou un redémarrage du serveur
 redemarrage.init_app(app, BASE_DIR)
+import redemarrer
+redemarrer.init_app(app, lambda: _travaux_en_cours())
 
 import demandes         # 📮 demandes de mangas des lecteurs, rappels Telegram
 demandes.init_app(app, DATA_DIR, lambda t: __import__("notifier").envoyer(t), auth.role, auth.utilisateur,
