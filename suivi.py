@@ -83,28 +83,38 @@ def tomes_du_titre(titre: str) -> set:
 
 
 def propositions_pour(nom, info, resultats, deja):
-    """info : {"tomes": set des tomes présents, "source": « Scan »…, "qualite": visée}. Renvoie les nouvelles propositions."""
+    """info : {"tomes": set des tomes présents, "source": « Scan »…, "qualite": visée, "equipe": équipe principale,
+    "equipe_tomes": {tome: équipe}}. Renvoie les nouvelles propositions, la MÊME ÉQUIPE en premier (⭐)."""
+    import provenance
     out, vus = [], set(deja)
     if info.get("complete") or info.get("en_cours"):          # série terminée ou téléchargement déjà lancé : rien à proposer
         return out
     possedes = info["tomes"]
     rang = RANG_QUALITE.get(info.get("source") or "", 1)
-    for r in resultats:
+    equipe = info.get("equipe") or ""
+    meme = lambda r: bool(equipe) and provenance.meme_equipe(provenance.equipe_torrent(r["titre"]), equipe)
+    for r in sorted(resultats, key=lambda r: not meme(r)):     # même équipe d'abord
         if r["titre"] in vus or "🇫🇷 FR" not in r["badges"]:
             continue
         couverts = tomes_du_titre(r["titre"])
         manquants = sorted(couverts - possedes)
+        # tomes déjà là mais d'une autre équipe, que l'équipe de la série sort enfin (NoFace696 → Paprika)
+        autres = sorted(t for t in couverts & possedes if (info.get("equipe_tomes") or {}).get(t)
+                        and not provenance.meme_equipe(info["equipe_tomes"][t], equipe))
         sorte = None
         if manquants:
             sorte = "nouveau"
+        elif meme(r) and autres:
+            sorte, manquants = "equipe", autres
         elif (possedes and info.get("qualite") == "Digital" and rang < 2 and "Digital" in r["badges"]
               and (not couverts or couverts & possedes or "Intégrale" in r["badges"])):
             sorte = "meilleur"
         if not sorte:
             continue
         vus.add(r["titre"])
-        out.append({"id": uuid.uuid4().hex[:8], "type": sorte, "titre": r["titre"], "page": r.get("page", ""),
-                    "taille": r.get("taille", 0), "sources": r.get("sources", 0), "badges": r["badges"],
+        out.append({"id": uuid.uuid4().hex[:8], "type": sorte, "titre": r["titre"], "page": r.get("page", ""), "lien": r.get("lien") or "",
+                    "taille": r.get("taille", 0), "sources": r.get("sources", 0),
+                    "badges": (["⭐ même équipe"] if meme(r) else []) + list(r["badges"]), "meme_equipe": meme(r),
                     "tomes": manquants[:40], "date": datetime.now().strftime("%Y-%m-%d"), "statut": "attente"})
         if len(out) >= 5:
             break
@@ -116,8 +126,10 @@ def _sans_point(titre):
     return titre.replace(".", " ")
 
 
-def verifier(nom, chercher, infos_serie):
-    """Cherche dans Prowlarr pour une série suivie et garde les nouvelles propositions. Renvoie celles-ci."""
+def verifier(nom, chercher, infos_serie, lancer=None, envoyer=None):
+    """Cherche dans Prowlarr pour une série suivie et garde les nouvelles propositions. Renvoie celles-ci.
+    lancer(lien, titre, nom) : une version de la MÊME ÉQUIPE pour 1 à 3 tomes déjà là d'une autre équipe est téléchargée
+    et remplace ces tomes toute seule (ancien à la corbeille, lu gardé), avec un message."""
     d = lire()
     x = d["series"].get(nom)
     if not x:
@@ -132,6 +144,19 @@ def verifier(nom, chercher, infos_serie):
     info["qualite"] = x.get("qualite", "Digital")
     deja = [p["titre"] for p in x.get("propositions", [])]
     nouvelles = propositions_pour(nom, info, resultats, deja)
+    if lancer and x.get("equipe_auto", True):
+        for p in nouvelles:
+            if p["type"] == "equipe" and p.get("lien") and 1 <= len(p["tomes"]) <= 3 and not info.get("en_cours"):
+                try:
+                    lancer(p["lien"], p["titre"], nom)
+                    p["statut"] = "telecharge"
+                    info["en_cours"] = True
+                    if envoyer:
+                        avant = ", ".join(sorted({(info.get("equipe_tomes") or {}).get(t, "?") for t in p["tomes"]}))
+                        envoyer(f"🔁 MouFlanga : {nom} T{', T'.join(str(t) for t in p['tomes'])} : {avant} → {info.get('equipe')} "
+                                f"(téléchargement lancé, l'ancien ira à la corbeille)")
+                except Exception as e:
+                    logger.warning("Remplacement automatique (même équipe) de %s : %s", nom, e)
     with _verrou:
         d = lire()
         if nom in d["series"]:
@@ -146,7 +171,7 @@ def en_attente():
     return [(n, p) for n, x in lire()["series"].items() for p in x.get("propositions", []) if p["statut"] == "attente"]
 
 
-def boucle(chercher, infos_serie, envoyer, adresse, actif):
+def boucle(chercher, infos_serie, envoyer, adresse, actif, lancer=None):
     """Chaque jour (vers 7 h) : vérifie les séries surveillées ; un message Telegram groupé si du nouveau."""
     while True:
         time.sleep(600)
@@ -159,7 +184,7 @@ def boucle(chercher, infos_serie, envoyer, adresse, actif):
                 if not x.get("surveiller") or (x.get("derniere_verif") or "")[:10] == jour:
                     continue
                 try:
-                    nouv = verifier(nom, chercher, infos_serie)
+                    nouv = verifier(nom, chercher, infos_serie, lancer, envoyer)
                 except Exception as e:
                     logger.warning("Surveillance de %s impossible : %s", nom, e)
                     continue

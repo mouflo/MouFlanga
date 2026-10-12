@@ -20,6 +20,29 @@ def equipe_du_nom(nom: str) -> str:
     return ""
 
 
+_GENERIQUES = {"fr", "vf", "cbz", "cbr", "manga", "digital", "scan", "team", "the"}
+
+
+def equipe_torrent(titre: str) -> str:
+    """Équipe d'un nom de torrent : « … (PRiNTER-PapriKa+) » ou « One.Piece.T101.FR.[CBZ]-TONER-Paprika » → « TONER-Paprika »."""
+    e = equipe_du_nom(titre)
+    if e:
+        return e
+    m = re.search(r"\]\s*-\s*([A-Za-z][\w+-]{2,40})\s*$|-([A-Za-z][A-Za-z0-9+]{2,20}(?:-[A-Za-z0-9+]{2,20})?)\s*$", (titre or "").strip())
+    g = (m.group(1) or m.group(2)) if m else ""
+    return g if g and not _MOTS_PAS_EQUIPE.search(g) else ""
+
+
+def mots_equipe(equipe: str) -> set:
+    """« PRiNTER-PapriKa+ » → {"printer", "paprika"} (sans casse, sans « + », mots génériques retirés)."""
+    return {m for m in re.split(r"[^a-z0-9]+", (equipe or "").lower()) if len(m) >= 4 and m not in _GENERIQUES}
+
+
+def meme_equipe(a: str, b: str) -> bool:
+    """« PRiNTER-PapriKa+ » ≈ « TONER-Paprika » (un mot en commun : « paprika »)."""
+    return bool(mots_equipe(a) & mots_equipe(b))
+
+
 def lire(infos: dict) -> dict:
     d = infos.get("provenance") or {}
     return d if isinstance(d, dict) else {}

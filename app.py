@@ -232,8 +232,8 @@ def _infos_serie(name):
 
 def _ordre_entree(e):
     """Hors-série en premier, puis tomes dans l'ordre (tome complet ou tome à chapitres), puis chapitres « hors tome », puis le reste."""
-    if e.get("groupe") == HORS_SERIE:
-        return (-1, 0, 0)
+    if e.get("groupe") == HORS_SERIE:                    # dans l'ordre de lecture : Blue (après le tome 24) avant Yellow (46)
+        return (-1, e.get("apres_tome") or 9999, e.get("title") or "")
     t = _tome_de_entree(e)
     if t is not None:
         return (0, t, e.get("num") or 0)
@@ -293,8 +293,10 @@ def _entrees(files):
                 entree.update(groupe=HORS_SERIE, title=_titre_hors_serie(titre))
                 ident = hors_serie.lire(_infos_serie(f.relative_to(MANGA_DIR).parts[0])).get(rel)
                 if ident:                                 # identifié à la main ou sur AniList/MangaDex
-                    entree.update(title=ident.get("titre") or entree["title"], identifie=True,
-                                  sous=" · ".join(str(x) for x in (ident.get("annee"), ident.get("auteur"), ident.get("source")) if x))
+                    entree.update(title=ident.get("titre") or entree["title"], identifie=True, apres_tome=ident.get("apres_tome"),
+                                  descriptif=ident.get("descriptif", ""),
+                                  sous=" · ".join(str(x) for x in (ident.get("type"), ident.get("annee"), ident.get("auteur"), ident.get("source"),
+                                                                   f"à lire après le tome {ident['apres_tome']}" if ident.get("apres_tome") else "") if x))
             elif tome is not None:
                 # Tome complet (un fichier = un tome) : affiché « Tome 03 · chapitres 17 à 25 »
                 couverts, plage = _plage_chapitres(f.relative_to(MANGA_DIR).parts[0], tome)
@@ -977,6 +979,9 @@ def api_hors_serie_enregistrer():
         hs[key] = {"titre": titre, "annee": int(annee) if annee.isdigit() else None,
                    "auteur": str(body.get("auteur", "")).strip()[:200], "source": str(body.get("source", "Saisie manuelle"))[:40],
                    "editeur": str(body.get("editeur", "")).strip()[:80],
+                   "descriptif": str(body.get("descriptif", "")).strip()[:600], "type": str(body.get("type", "")).strip()[:30],
+                   "sortie": str(body.get("sortie", "")).strip()[:40], "pages": str(body.get("pages", "")).strip()[:10],
+                   "apres_tome": int(body["apres_tome"]) if str(body.get("apres_tome", "")).isdigit() else None,
                    "lien": str(body.get("lien", "")).strip() if str(body.get("lien", "")).strip().startswith(("http://", "https://")) else ""}
         msg = f"Hors-série identifié : « {titre} »."
     d["hors_series"] = hs
@@ -2172,7 +2177,12 @@ def _infos_suivi(nom):
     attendus = _volumes_attendus(nom) if files else None
     complete = bool(attendus) and all(i in t for i in range(1, int(attendus) + 1))
     en_cours = any(j.get("serie") == nom and j.get("etat") in ("telechargement", "import", "a_valider") for j in torrents._lire())
-    return {"tomes": t, "source": source, "complete": complete, "en_cours": en_cours}
+    # Équipe de chaque tome (provenance) et équipe principale de la série (la plus fréquente, sinon celle de l'archive d'origine)
+    from collections import Counter
+    equipe_tomes = {int(k): v.get("equipe") for k, v in provenance.lire(d).items() if v.get("equipe") and str(k).isdigit()}
+    principale = Counter(equipe_tomes.values()).most_common(1)
+    equipe = principale[0][0] if principale else next((provenance.equipe_torrent(a) for a in d.get("archives", []) if provenance.equipe_torrent(a)), "")
+    return {"tomes": t, "source": source, "complete": complete, "en_cours": en_cours, "equipe": equipe, "equipe_tomes": equipe_tomes}
 
 
 def _accepter_demande(x):
@@ -3556,7 +3566,8 @@ if __name__ == "__main__":
     redemarrage.verifier(BASE_DIR, "MouFlanga", DATA_DIR / "mouflanga.log", lambda t: notifier.envoyer(t))
     threading.Thread(target=_boucle_generiques, daemon=True).start()
     threading.Thread(target=suivi.boucle, args=(torrents.chercher, _infos_suivi, lambda t: notifier.envoyer(t),
-                                                lambda: os.getenv("APP_URL", "").strip(), torrents.configure), daemon=True).start()
+                                                lambda: os.getenv("APP_URL", "").strip(), torrents.configure,
+                                                lambda lien, titre, nom: torrents.lancer(lien, titre, nom, True)), daemon=True).start()
     threading.Thread(target=torrents.surveiller, args=(_importer_torrent, lambda t: notifier.envoyer(t), MANGA_DIR), daemon=True).start()
     threading.Thread(target=demandes._boucle_rappels, args=(lambda t: notifier.envoyer(t), lambda: os.getenv("APP_URL", "").strip()),
                      daemon=True).start()

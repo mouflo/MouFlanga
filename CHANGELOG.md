@@ -1,5 +1,11 @@
 # Historique des versions
 
+## Même équipe et hors-séries du wiki Fandom (12 octobre 2026, soir)
+- ⭐ **Même équipe en priorité** : les propositions de tomes suivants mettent en tête l'équipe de la série (« PRiNTER-PapriKa+ » ≈ « TONER-Paprika »), avec l'étiquette ⭐.
+- 🔁 **Remplacement automatique** : quand l'équipe de la série sort enfin un tome que tu as d'une autre équipe (1 à 3 tomes), l'appli le télécharge et remplace l'ancien tout seul (corbeille 30 jours, lu gardé). Message Telegram « NoFace696 → PapriKa ».
+- 📚 **Hors-séries : fiche du wiki Fandom** de la série en premier choix (One Piece Blue, Red, Yellow) : titre complet, type (Databook…), sortie en France, éditeur, pages, petit descriptif.
+- 📖 **Ordre de lecture** : « à lire après le tome 24 » sous le hors-série, et le groupe Hors-série est trié dans cet ordre (Red, Blue, Yellow).
+
 ## Fiches, sources, hors-séries et choix retenus (12 octobre 2026, soir)
 - 🔁 **Fusion : « Remplacer toute la série »** : l'ancienne série part entière à la corbeille et l'autre prend sa place (cas Gantz → Gantz Perfect). « Remplacer les tomes en double » ne remplace que les mêmes numéros.
 - 🔎 **Choisir la fiche (AniList)** dans le menu ⋯ : tu cherches avec d'autres mots (titre japonais, anglais, auteur), tu vois les couvertures, l'année, le statut et le nombre de tomes, puis tu choisis. La fiche retenue sert partout (statut, tomes, résumé, éditeur…). Tu peux revenir à la recherche automatique.

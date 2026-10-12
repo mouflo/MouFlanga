@@ -78,12 +78,88 @@ def _chercher_google(requete: str) -> list[dict]:
     return out
 
 
+def _wikis_fandom(serie: str) -> list[str]:
+    """Adresses d'API possibles du wiki Fandom de la série (français puis anglais) : « One Piece » → onepiece.fandom.com."""
+    import tomes
+    noms = [serie] + [x for x in ((tomes._charger(serie) or {}).get("statut_officiel") or {}).get("titre", "").split("|") if x]
+    out = []
+    for n in noms:
+        slug = re.sub(r"[^a-z0-9]+", "", tomes._simple(n))
+        if len(slug) >= 3:
+            out += [f"https://{slug}.fandom.com/fr/api.php", f"https://{slug}.fandom.com/api.php"]
+    return list(dict.fromkeys(out))
+
+
+def _wiki_propre(v: str) -> str:
+    v = re.sub(r"\[\[(?:Fichier|File|Image):[^\]]*\]\]", "", v or "", flags=re.I)
+    v = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", r"\1", v)
+    v = re.sub(r"\{\{[^}]*\}\}|<ref.*?(</ref>|/>)|<[^>]+>|'{2,}", "", v, flags=re.S)
+    return re.sub(r"\s+", " ", v).strip()
+
+
+_NOMBRES = {"premiers": 0, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "six": 6, "sept": 7, "huit": 8, "neuf": 9, "dix": 10}
+
+
+def fandom(serie: str, titre: str) -> dict | None:
+    """Fiche d'un hors-série sur le wiki Fandom de la série (API MediaWiki publique, jamais de contournement) :
+    titre complet, type, sortie en France, éditeur, pages, petit descriptif et « à lire après le tome N »."""
+    for api in _wikis_fandom(serie):
+        try:
+            r = _SESSION.get(api, params={"action": "query", "list": "search", "srsearch": f"{serie} {titre}", "srlimit": 5,
+                                          "format": "json"}, timeout=12)
+            if r.status_code != 200 or "json" not in r.headers.get("content-type", ""):
+                continue
+            pages = [x["title"] for x in (r.json().get("query") or {}).get("search") or []]
+        except (requests.RequestException, ValueError):
+            continue
+        mots = [m for m in re.findall(r"\w{3,}", titre.lower())]
+        w, page = "", None
+        for p in [p for p in pages if all(m in p.lower() for m in mots)][:4]:
+            try:
+                texte_page = _SESSION.get(api, params={"action": "parse", "page": p, "prop": "wikitext", "format": "json"},
+                                          timeout=12).json()["parse"]["wikitext"]["*"]
+            except (requests.RequestException, ValueError, KeyError):
+                continue
+            # un LIVRE (fiche avec ISBN, pages ou date de parution), pas un lieu ou un film du même nom
+            if re.search(r"^\|\s*(isbnf?|pages|parutionf?)\s*=", texte_page, re.M | re.I):
+                w, page = texte_page, p
+                break
+        if not page:
+            continue
+        champ = lambda c: _wiki_propre((re.search(r"^\|\s*" + c + r"\s*=\s*(.*)$", w, re.M) or [None, ""])[1])
+        texte = re.sub(r"\{\{.*?\}\}", "", w, flags=re.S)
+        intro = next((_wiki_propre(p) for p in texte.split("\n") if len(_wiki_propre(p)) > 60 and not p.startswith(("|", "{", "[[Fichier"))), "")
+        if intro[:1].islower():                           # le titre était dans un modèle retiré : « est le premier Databook… »
+            intro = f"{champ('nom') or page} {intro}"
+        m = re.search(r"(\d+|deux|trois|quatre|cinq|six|sept|huit|neuf|dix)\s+premiers\s+(?:\[\[[^|\]]*\|)?tomes", texte, re.I) or \
+            re.search(r"tomes?\s+\d+\s*(?:à|-|au)\s*(\d+)", intro, re.I)
+        apres = None
+        if m:
+            g = m.group(1).lower()
+            apres = int(g) if g.isdigit() else _NOMBRES.get(g)
+        sortie = champ("parutionf") or champ("parution")
+        annee = re.search(r"(19|20)\d\d", sortie)
+        kind = "Databook" if re.search(r"databook|data book", w, re.I) else ("Artbook" if re.search(r"artbook|art book", w, re.I) else "Hors-série")
+        return {"titre": f"{serie} {champ('nom')}".strip() if champ("nom") and serie.lower() not in champ("nom").lower() else (champ("nom") or page),
+                "annee": int(annee.group(0)) if annee else None, "auteur": champ("auteur"), "editeur": champ("editf") or champ("éditeur"),
+                "source": "Fandom", "sortie": sortie, "pages": champ("pages"), "type": kind, "apres_tome": apres,
+                "descriptif": intro[:400].rsplit(" ", 1)[0] + ("…" if len(intro) > 400 else ""),
+                "lien": api.replace("api.php", "wiki/") + page.replace(" ", "_")}
+    return None
+
+
 def candidats(serie: str, titre: str) -> list[dict]:
     """Résultats possibles pour un hors-série : « <série> <titre> » d'abord, puis le titre seul."""
     import tomes
     scenariste = (((tomes._charger(serie) or {}).get("fiche") or {}).get("scenario") or "").split(",")[0].strip()
     requetes = list(dict.fromkeys(x for x in (f"{serie} {scenariste} {titre}".strip(), f"{serie} {titre}".strip(), titre.strip()) if x))
     resultat = []
+    try:                                                  # wiki Fandom de la série d'abord : la fiche la plus complète
+        f = fandom(serie, titre)
+        if f:
+            resultat.append(f)
+    except Exception as e:
+        logger.info("Hors-série : Fandom impossible : %s", e.__class__.__name__)
     for nom, chercher in (("AniList", _chercher_anilist), ("MangaDex", _chercher_mangadex), ("Google Books", _chercher_google)):
         par_source, vus = [], set()
         for requete in requetes:

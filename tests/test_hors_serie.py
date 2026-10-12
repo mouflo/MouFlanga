@@ -44,3 +44,26 @@ class HorsSerieTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FandomTest(unittest.TestCase):
+    """Fiche d'un databook sur le wiki Fandom : titre, éditeur, pages, « à lire après le tome N »."""
+
+    def test_fiche_databook(self):
+        import hors_serie
+        from unittest import mock
+        wikitexte = ("{{Databook box\n| nom = Blue : Grand Data File\n| parutionf = novembre 2005\n| editf = Glénat\n| pages = 196\n"
+                     "| isbnf = ISBN 9782723450263\n}}\n'''''One Piece Blue : Grand Data File''''' est le second [[Databooks|Databook]] "
+                     "publié en novembre 2005 en France. Il résume les 24 premiers [[Tomes One Piece|tomes]].\n")
+        def get(url, params=None, timeout=None):
+            if params["action"] == "query":
+                return mock.Mock(status_code=200, headers={"content-type": "application/json"},
+                                 json=mock.Mock(return_value={"query": {"search": [{"title": "All Blue"}, {"title": "One Piece Blue : Grand Data File"}]}}))
+            if params["page"] == "All Blue":
+                return mock.Mock(json=mock.Mock(return_value={"parse": {"wikitext": {"*": "{{Lieu\n| nom = All Blue\n}}\nUne mer."}}}))
+            return mock.Mock(json=mock.Mock(return_value={"parse": {"wikitext": {"*": wikitexte}}}))
+        with mock.patch.object(hors_serie._SESSION, "get", side_effect=get), \
+                mock.patch.object(hors_serie, "_wikis_fandom", return_value=["https://onepiece.fandom.com/fr/api.php"]):
+            f = hors_serie.fandom("One Piece", "Blue")
+        self.assertEqual((f["titre"], f["editeur"], f["pages"], f["annee"], f["apres_tome"], f["type"]),
+                         ("One Piece Blue : Grand Data File", "Glénat", "196", 2005, 24, "Databook"))

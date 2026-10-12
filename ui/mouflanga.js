@@ -327,9 +327,9 @@
     var props = ((sv && sv.propositions) || []).filter(function (p) { return p.statut === 'attente'; });
     $('sProps').hidden = !(sv && sv.surveiller) && !props.length;
     $('sPropsListe').innerHTML = props.length ? props.map(function (p) {
-      var url = '/telecharger?torrent=' + encodeURIComponent(p.titre) + '&serie=' + encodeURIComponent(s.id) + '&proposition=' + p.id + (p.type === 'meilleur' ? '&remplacer=1' : '');
-      return '<div class="prop"><div class="dem-info"><b>' + (p.type === 'meilleur' ? '⬆️ ' : '🆕 ') + esc(p.titre) + '</b><small>' +
-        (p.type === 'meilleur' ? 'Meilleure version' : 'Tomes absents : ' + esc((p.tomes || []).join(', '))) + ' · ' + (p.badges || []).map(esc).join(' · ') + '</small></div>' +
+      var url = '/telecharger?torrent=' + encodeURIComponent(p.titre) + '&serie=' + encodeURIComponent(s.id) + '&proposition=' + p.id + (p.type === 'meilleur' || p.type === 'equipe' ? '&remplacer=1' : '');
+      return '<div class="prop"><div class="dem-info"><b>' + ({meilleur: '⬆️ ', equipe: '🔁 '}[p.type] || '🆕 ') + esc(p.titre) + '</b><small>' +
+        (p.type === 'meilleur' ? 'Meilleure version' : p.type === 'equipe' ? 'Même équipe que la série pour les tomes ' + esc((p.tomes || []).join(', ')) : 'Tomes absents : ' + esc((p.tomes || []).join(', '))) + ' · ' + (p.badges || []).map(esc).join(' · ') + '</small></div>' +
         '<div class="dem-act"><a class="mou-btn small" href="' + url + '">⬇️</a><button type="button" class="ghost" data-ignorer="' + p.id + '">✕</button></div></div>';
     }).join('') : '<div class="dem-sous">Rien de nouveau' + (sv && sv.derniere_verif ? ' (vérifié le ' + esc(sv.derniere_verif) + ')' : '') + '.</div>';
     $('sEtat').hidden = !s.etat_texte;
@@ -636,7 +636,8 @@
       var actuel = r.identifie ? '<p class="dem-sous">Actuellement : <b>' + esc(r.identifie.titre) + '</b>' +
         (r.identifie.annee ? ' · ' + esc(r.identifie.annee) : '') + (r.identifie.auteur ? ' · ' + esc(r.identifie.auteur) : '') + '</p>' : '';
       var lignes = hsCandidats.map(function (c, i) {
-        return '<li class="ident-ligne"><div><b>' + esc(c.titre) + '</b><small>' + [c.annee, c.auteur, c.source, c.statut].filter(Boolean).map(esc).join(' · ') + '</small></div>' +
+        return '<li class="ident-ligne"><div><b>' + esc(c.titre) + '</b><small>' + [c.type, c.annee, c.auteur, c.editeur, c.pages ? c.pages + ' pages' : '', c.source, c.statut, c.apres_tome ? 'à lire après le tome ' + c.apres_tome : ''].filter(Boolean).map(esc).join(' · ') + '</small>' +
+          (c.descriptif ? '<small class="hs-desc">' + esc(c.descriptif) + '</small>' : '') + '</div>' +
           '<button type="button" class="mou-btn" data-hs-choix="' + i + '">Choisir</button></li>';
       }).join('');
       $('infosCorps').innerHTML = lien + actuel + (hsCandidats.length ? '<ul class="ident-liste">' + lignes + '</ul>'
@@ -680,7 +681,8 @@
       return enregistrerHorsSerie({action: 'choisir', titre: titre.trim(), annee: annee.trim(), auteur: auteur.trim(), source: 'Saisie manuelle', lien: lien.trim()});
     }
     var c = hsCandidats[+b.dataset.hsChoix];
-    if (c) enregistrerHorsSerie({action: 'choisir', titre: c.titre, annee: c.annee || '', auteur: c.auteur || '', editeur: c.editeur || '', source: c.source, lien: c.lien || ''});
+    if (c) enregistrerHorsSerie({action: 'choisir', titre: c.titre, annee: c.annee || '', auteur: c.auteur || '', editeur: c.editeur || '', source: c.source, lien: c.lien || '',
+      descriptif: c.descriptif || '', type: c.type || '', sortie: c.sortie || '', pages: c.pages || '', apres_tome: c.apres_tome || ''});
   });
 
 
