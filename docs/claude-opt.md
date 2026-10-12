@@ -60,6 +60,9 @@ Source : `docs/claude-opt.md` du dépôt MouFlanga, recopié dans `/opt/CLAUDE.m
 - **Alertes Telegram** (`notif.py`) : témoin `data/en-marche` effacé à l'arrêt normal (SIGTERM) ; s'il est encore là au démarrage → alerte « plantage » ou « serveur redémarré » (heure de démarrage du serveur comparée au témoin). `au_demarrage()` n'est appelé que dans `if __name__ == "__main__"` (jamais lors d'un import pour un essai). Options `NOTIF_REDEMARRAGE/ERREURS/LOT/MAJ`.
 - **Générique manquant** : après `/api/library/apply`, `_a_un_generique()` (même règle que MouFlopening : theme.<audio> ≥ 8 Ko ou theme-music/) ; si absent, fenêtre « Ouvrir MouFlopening » → `<mouflopening>/?dossier=<chemin>&retour=…` (adresses `MOUFLOPENING_URL` / `_EXTERNE`). MouFlopening : `ouvrirDepuisLien()` sélectionne le titre (champ `chemin` de /api/library).
 
+## Bouton « 🔄 Redémarrer l'appli » (les quatre applis)
+- `redemarrer.py`, **fichier identique dans les quatre dépôts** : route `POST /api/redemarrer` (admin), prévient si un travail long est en cours (`forcer` pour passer outre), s'envoie SIGTERM (témoin effacé), systemd relance. Le bouton est ajouté par `ui/mou-settings.js` (onglet Général).
+
 ## Alerte « redémarrage inattendu » (MouFlanga, MouFlanimeXer, MouFlopening)
 - `redemarrage.py`, **fichier identique dans les trois dépôts** : témoin `data/en-marche` (effacé sur SIGTERM), `verifier()` appelé seulement au lancement du vrai service, case dans ⚙️ Réglages (`data/alerte-redemarrage-coupee`). MouFloster a la même logique dans `notif.py`.
 - **Lot de posters** : plusieurs titres d'un coup ; n'envoie automatiquement que quand le dossier est trouvé avec certitude (sinon le poster est gardé pour envoi manuel).
