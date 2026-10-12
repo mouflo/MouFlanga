@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Alléger : comparer avant / après (12 octobre 2026, soir)
+- 👁 Après l'analyse, un bouton 👁 sur chaque tome ouvre une comparaison : la même page avant et après, avec exactement les réglages que « Appliquer » utiliserait. Boutons **Avant** / **Après** pour basculer sur place, ◀ ▶ pour changer de page, toucher l'image pour voir un détail à l'échelle réelle, et la taille de la page avant → après.
+
 ## Alléger : suivi et notification de fin (12 octobre 2026, soir)
 - 🪶 Barre de progression (tomes faits / total) dans la fenêtre Alléger ; le travail tourne sur le serveur, tu peux fermer la fenêtre ou la page.
 - 🔔 Une bulle « analyse prête » / « allègement terminé » apparaît à la fin si la page est ouverte, et un message Telegram + notification du téléphone arrive dans tous les cas.

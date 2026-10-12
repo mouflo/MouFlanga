@@ -774,7 +774,7 @@
         '<div class="ident-actions"><label>Largeur des pages : <select id="allLargeur"><option value="">garder</option><option value="1600" selected>1600 px (tablette)</option><option value="1200">1200 px (téléphone)</option></select></label></div>' +
         '<div class="ident-actions"><label><input type="checkbox" id="allEclairer"> 🧼 Éclaircir le papier (scans gris ; pages en couleur jamais touchées)</label></div>' +
         '<div id="allApercu" hidden class="all-apercu"><figure><img alt="" id="allAvant"><figcaption>Avant</figcaption></figure><figure><img alt="" id="allApres"><figcaption>Après</figcaption></figure></div>' +
-        '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser (rien n\'est modifié)</button></div><div id="allRes"></div>';
+        '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser (rien n\'est modifié)</button></div><div id="allCmp"></div><div id="allRes"></div>';
       $('infosVue').hidden = false;
       suivreAllegement();
     });
@@ -785,7 +785,7 @@
       var r = await api('/api/optimiser?series=' + encodeURIComponent(current.id));
       if (!$('allRes')) return;
       var lignes = (r.rapport || []).map(function (x) {
-        return '<li>' + esc(x.fichier) + ' <small>' + (x.note ? esc(x.note) : (x.taille_mo + ' Mo · ' + (x.gagne_mo != null ? '−' + x.gagne_mo + ' Mo' : '≈ −' + Math.round(x.gain * 100) + ' %') + ' (qualité ' + x.qualite + ', écart ' + x.psnr + ' dB)')) + '</small></li>';
+        return '<li>' + esc(x.fichier) + (!r.appliquer && !r.en_cours && x.qualite ? ' <button type="button" class="tog" data-comparer="' + esc(x.fichier) + '" title="Comparer avant / après">👁</button>' : '') + ' <small>' + (x.note ? esc(x.note) : (x.taille_mo + ' Mo · ' + (x.gagne_mo != null ? '−' + x.gagne_mo + ' Mo' : '≈ −' + Math.round(x.gain * 100) + ' %') + ' (qualité ' + x.qualite + ', écart ' + x.psnr + ' dB)')) + '</small></li>';
       }).join('');
       $('allRes').innerHTML = (r.en_cours ? '<div class="dem-sous">' + esc(r.message || '') + ' ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' tomes · ça continue en arrière-plan, tu peux fermer cette fenêtre : une notification arrive à la fin.</div>' +
           '<progress max="' + (r.total || 1) + '" value="' + (r.fait || 0) + '" style="width:100%"></progress>' : (r.message ? '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' : '')) +
@@ -814,12 +814,61 @@
       $('allApercu').hidden = !e.target.checked;
       if (e.target.checked) { var u = '/api/optimiser/apercu?series=' + encodeURIComponent(current.id) + '&t=' + Date.now(); $('allAvant').src = u + '&avant=1'; $('allApres').src = u; }
     });
+    // 👁 Comparer avant / après : même page, mêmes réglages que « Appliquer », bascule sur place ; toucher l'image = détail à l'échelle réelle
+    var cmp = null;
+    function dessinerComparaison() {
+      var z = $('allCmp'); if (!z || !cmp) return;
+      var base = '/api/optimiser/comparer?series=' + encodeURIComponent(current.id) + '&fichier=' + encodeURIComponent(cmp.fichier) + '&page=' + cmp.page +
+        (cmp.zoom ? '&fx=' + cmp.zoom[0].toFixed(3) + '&fy=' + cmp.zoom[1].toFixed(3) : '');
+      z.innerHTML = '<div class="cmp"><div class="dem-titre">👁 ' + esc(cmp.fichier) + '</div>' +
+        '<div class="cmp-barre"><button type="button" class="mou-btn ghost small" data-cmp="prec">◀</button>' +
+        '<span id="cmpPage">page ' + (cmp.page + 1) + (cmp.pages ? ' / ' + cmp.pages : '') + '</span>' +
+        '<button type="button" class="mou-btn ghost small" data-cmp="suiv">▶</button>' +
+        '<button type="button" class="mou-btn ghost small" data-cmp="fermer">✕</button></div>' +
+        '<div class="cmp-cote"><button type="button" class="mou-btn' + (cmp.cote === 'avant' ? '' : ' ghost') + '" data-cmp="avant">Avant</button>' +
+        '<button type="button" class="mou-btn' + (cmp.cote === 'apres' ? '' : ' ghost') + '" data-cmp="apres">Après</button></div>' +
+        '<img id="cmpImg" class="cmp-img" alt="" src="' + base + '&cote=' + cmp.cote + '">' +
+        '<div class="dem-sous" id="cmpInfo">…</div>' +
+        '<div class="dem-sous">' + (cmp.zoom ? 'Détail à l\'échelle réelle : touche l\'image pour revenir à la page entière.' : 'Touche un endroit de la page pour le voir de près.') + '</div></div>';
+      api(base + '&cote=info').then(function (i) {
+        if (!$('cmpInfo') || !cmp) return;
+        if (i.error) { $('cmpInfo').textContent = i.error; return; }
+        cmp.pages = i.pages; $('cmpPage').textContent = 'page ' + (i.page + 1) + ' / ' + i.pages;
+        var gain = i.avant_ko ? Math.round(100 * (1 - i.apres_ko / i.avant_ko)) : 0;
+        $('cmpInfo').textContent = i.inchange ? 'Cette page garde ses octets d\'origine (' + i.avant_ko + ' Ko).'
+          : 'Avant ' + i.avant_ko + ' Ko (' + i.dimensions[0][0] + '×' + i.dimensions[0][1] + ') → Après ' + i.apres_ko + ' Ko (' + i.dimensions[1][0] + '×' + i.dimensions[1][1] + ') · ' + (gain >= 0 ? '−' : '+') + Math.abs(gain) + ' % sur cette page';
+      });
+      (new Image()).src = base + '&cote=' + (cmp.cote === 'avant' ? 'apres' : 'avant');         // l'autre côté se charge déjà
+    }
+    $('infosCorps').addEventListener('click', function (e) {
+      var c = e.target.closest('[data-comparer]');
+      if (c) { cmp = {fichier: c.dataset.comparer, page: 5, cote: 'apres', zoom: null, pages: 0}; dessinerComparaison(); $('allCmp').scrollIntoView({block: 'start'}); return; }
+      var b = e.target.closest('[data-cmp]');
+      if (b && cmp) {
+        var a = b.dataset.cmp;
+        if (a === 'fermer') { cmp = null; $('allCmp').innerHTML = ''; return; }
+        if (a === 'avant' || a === 'apres') { cmp.cote = a; var im = $('cmpImg'); if (im) { im.src = im.src.replace(/cote=(avant|apres)/, 'cote=' + a); } 
+          document.querySelectorAll('[data-cmp=avant],[data-cmp=apres]').forEach(function (x) { x.classList.toggle('ghost', x.dataset.cmp !== a); }); return; }
+        cmp.page = Math.max(0, Math.min((cmp.pages || 1) - 1, cmp.page + (a === 'suiv' ? 1 : -1))); cmp.zoom = null; dessinerComparaison(); return;
+      }
+      var img = e.target.closest('#cmpImg');
+      if (img && cmp) {
+        if (cmp.zoom) cmp.zoom = null;
+        else {                                   // position réelle dans l'image (elle est centrée dans son cadre)
+          var r = img.getBoundingClientRect(), sc = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight),
+              dw = img.naturalWidth * sc, dh = img.naturalHeight * sc;
+          cmp.zoom = [(e.clientX - r.left - (r.width - dw) / 2) / dw, (e.clientY - r.top - (r.height - dh) / 2) / dh];
+        }
+        dessinerComparaison();
+      }
+    });
     $('infosCorps').addEventListener('click', async function (e) {
       var b = e.target.closest('[data-alleger]'); if (!b) return;
       var appliquer = b.dataset.alleger === '1';
       if (appliquer && !confirm('Alléger tous les tomes de « ' + current.title + ' » avec ces réglages ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
       var r = await post('/api/optimiser', Object.assign({series: current.id, appliquer: appliquer}, optionsAllegement()));
       if (!r.ok) { alert(r.error || 'Impossible'); return; }
+      cmp = null; if ($('allCmp')) $('allCmp').innerHTML = '';
       setTimeout(suivreAllegement, 800);
       veillerAllegement(current.id);
     });

@@ -89,6 +89,18 @@ class OptimiserTest(unittest.TestCase):
         with zipfile.ZipFile(tome) as z:
             self.assertIsNone(z.testzip())
 
+    def test_comparer_avant_apres(self):
+        r = optimiser.comparer(self.f, 2, 85, largeur_max=1200)
+        self.assertEqual(r["pages"], 6)
+        self.assertEqual(r["dimensions"][1][0], 1200)                    # même réglage que « Appliquer » : largeur réduite
+        self.assertLess(r["apres_ko"], r["avant_ko"])
+        a, b = Image.open(io.BytesIO(r["avant"])), Image.open(io.BytesIO(r["apres"]))
+        self.assertEqual(a.size, b.size)                                  # même géométrie pour comparer
+        z = optimiser.comparer(self.f, 2, 85, largeur_max=1200, zoom=(0.5, 0.5))
+        self.assertEqual(Image.open(io.BytesIO(z["apres"])).size, (640, 640))
+        rien = optimiser.comparer(self.f, 2, None)                       # tome laissé tel quel : mêmes octets
+        self.assertTrue(rien["inchange"])
+
     def test_eclaircir_seulement_le_gris(self):
         gris = Image.new("L", (100, 150), 200)
         self.assertEqual(optimiser.eclaircir(gris.point(lambda v: 40 if v < 100 else v)).getextrema()[1], 200)

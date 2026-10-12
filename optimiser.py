@@ -196,7 +196,7 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
         if (_ETAT.get(serie) or {}).get("en_cours"):
             return False
         _ETAT[serie] = {"en_cours": True, "fait": 0, "total": len(fichiers), "message": "Analyse…" if not appliquer else "Allègement…",
-                        "rapport": [], "appliquer": appliquer, "eclairer": eclairer}
+                        "rapport": [], "appliquer": appliquer, "eclairer": eclairer, "largeur": largeur_max}
 
     def travail():
         gagne, avant_total, rapport = 0, 0, []
@@ -248,6 +248,54 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
             fini()
     threading.Thread(target=travail, daemon=True).start()
     return True
+
+
+_CACHE_COMPARAISON = {}
+
+
+def comparer(chemin: Path, index: int, qualite, eclairer=False, largeur_max=None, zoom=None) -> dict:
+    """Une page du tome AVANT / APRÈS, avec exactement ce que « Appliquer » écrirait (même qualité, même largeur, même éclaircissement).
+    zoom = (fx, fy) entre 0 et 1 : un détail de 640 px à l'échelle réelle plutôt que la page entière.
+    Renvoie {"avant", "apres" (JPEG), "avant_ko", "apres_ko", "page", "pages", "inchange", "dimensions": [avant, après]}."""
+    cle = (str(chemin), chemin.stat().st_mtime_ns, index, qualite, bool(eclairer), largeur_max, zoom)
+    if cle in _CACHE_COMPARAISON:
+        return _CACHE_COMPARAISON[cle]
+    with zipfile.ZipFile(chemin) as z:
+        noms = _pages(z)
+        if not noms:
+            raise RuntimeError("aucune page JPEG dans ce tome")
+        index = max(0, min(index, len(noms) - 1))
+        data = z.read(noms[index])
+    im = Image.open(io.BytesIO(data))
+    im.load()
+    traitee = eclaircir(im) if eclairer and not est_couleur(im) else im
+    im2 = reduire(traitee, largeur_max)
+    nouveau = _jpeg(im2, qualite) if qualite else data
+    if qualite and not (eclairer or im2 is not im or len(nouveau) < len(data)):
+        nouveau = data                                   # une page qui ne gagne rien garde ses octets d'origine
+    apres = Image.open(io.BytesIO(nouveau))
+    apres.load()
+    avant = im if im.size == apres.size else im.resize(apres.size, Image.LANCZOS)   # même géométrie pour comparer
+    if zoom:
+        c = 640
+        x0 = int(max(0, min(apres.width - c, zoom[0] * apres.width - c / 2)))
+        y0 = int(max(0, min(apres.height - c, zoom[1] * apres.height - c / 2)))
+        boite = (x0, y0, min(apres.width, x0 + c), min(apres.height, y0 + c))
+        vues = [x.crop(boite) for x in (avant, apres)]
+        sortie = [_jpeg(v, 95) for v in vues]
+    else:
+        vues = []
+        for x in (avant, apres):
+            v = x.copy()
+            v.thumbnail((1100, 1650))
+            vues.append(v)
+        sortie = [_jpeg(v, 88) for v in vues]
+    res = {"avant": sortie[0], "apres": sortie[1], "avant_ko": round(len(data) / 1024), "apres_ko": round(len(nouveau) / 1024),
+           "page": index, "pages": len(noms), "inchange": nouveau is data, "dimensions": [list(im.size), list(apres.size)]}
+    if len(_CACHE_COMPARAISON) >= 8:
+        _CACHE_COMPARAISON.pop(next(iter(_CACHE_COMPARAISON)))
+    _CACHE_COMPARAISON[cle] = res
+    return res
 
 
 def apercu(chemin: Path, index: int, eclairer=True, qualite=88) -> tuple[bytes, bytes]:

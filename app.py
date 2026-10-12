@@ -1003,6 +1003,39 @@ def api_optimiser():
     return jsonify({"ok": True, "message": "Allègement lancé…" if appliquer else "Analyse lancée…"})
 
 
+@app.route("/api/optimiser/comparer")
+def api_optimiser_comparer():
+    """Une page d'un tome avant / après, avec les réglages de la dernière analyse (cote=avant|apres|info)."""
+    name = request.args.get("series", "")
+    nom_fichier = request.args.get("fichier", "")
+    etat = optimiser.etat(name)
+    ligne = next((x for x in etat.get("rapport", []) if x.get("fichier") == nom_fichier), None)
+    if not ligne or etat.get("appliquer"):
+        return jsonify({"error": "Lance d'abord l'analyse de la série."}), 404
+    chemin = next((f for f in _fichiers_a_alleger(name) if f.name == nom_fichier), None) if name in _scan() else None
+    if chemin is None or not zipfile.is_zipfile(chemin):
+        return jsonify({"error": "Tome introuvable."}), 404
+    try:
+        page = int(request.args.get("page", 5))
+    except ValueError:
+        page = 5
+    zoom = None
+    if request.args.get("fx") and request.args.get("fy"):
+        try:
+            zoom = (min(1.0, max(0.0, float(request.args["fx"]))), min(1.0, max(0.0, float(request.args["fy"]))))
+        except ValueError:
+            zoom = None
+    try:
+        r = optimiser.comparer(chemin, page, ligne.get("qualite"), etat.get("eclairer", False), etat.get("largeur"), zoom)
+    except Exception as e:
+        logger.warning("Comparaison %s : %s", nom_fichier, e)
+        return jsonify({"error": f"Comparaison impossible : {e}"}), 500
+    cote = request.args.get("cote", "info")
+    if cote in ("avant", "apres"):
+        return Response(r[cote], mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
+    return jsonify({k: v for k, v in r.items() if k not in ("avant", "apres")})
+
+
 @app.route("/api/optimiser/apercu")
 def api_optimiser_apercu():
     """Une page avant / après l'éclaircissement (pour juger à l'œil)."""
