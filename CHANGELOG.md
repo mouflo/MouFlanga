@@ -1,5 +1,9 @@
 # Historique des versions
 
+## Alléger : suivi et notification de fin (12 octobre 2026, soir)
+- 🪶 Barre de progression (tomes faits / total) dans la fenêtre Alléger ; le travail tourne sur le serveur, tu peux fermer la fenêtre ou la page.
+- 🔔 Une bulle « analyse prête » / « allègement terminé » apparaît à la fin si la page est ouverte, et un message Telegram + notification du téléphone arrive dans tous les cas.
+
 ## Alléger fonctionne aussi sur les tomes du torrent (12 octobre 2026, soir)
 - 🪶 Les tomes encore partagés par qBittorrent (ex. « Gantz : Perfect ») sont maintenant allégés : la version légère est écrite dans un dossier voisin, puis les dossiers sont échangés (le NAS refuse de renommer le fichier, pas le dossier). Le fichier du torrent n'est jamais touché ; l'ancien dossier va à la corbeille (30 jours). La place du torrent n'est rendue qu'une fois le torrent supprimé dans qBittorrent.
 

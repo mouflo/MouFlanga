@@ -992,6 +992,12 @@ def api_optimiser():
             infos["allegement"] = {"date": datetime.now().strftime("%Y-%m-%d"), "largeur": largeur, "eclairci": eclairer}
             edition.ecrire(MANGA_DIR / name, infos)
             edition.invalider(MANGA_DIR / name)              # résolution et source refaites d'après les nouveaux fichiers
+        try:                                                 # Telegram + notification du téléphone : on n'a pas à rester sur la page
+            import notifier
+            notifier.envoyer(f"🪶 MouFlanga : {'allègement terminé' if appliquer else 'analyse terminée'} pour « {name} » : "
+                             f"{optimiser.etat(name).get('message', '')}" + ("" if appliquer else " Ouvre la série → ⋯ → Alléger pour appliquer."))
+        except Exception as e:
+            logger.info("Notification de fin d'allègement : %s", e)
     if not optimiser.lancer(name, _fichiers_a_alleger(name), appliquer, _vers_corbeille, eclairer, fini, largeur):
         return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
     return jsonify({"ok": True, "message": "Allègement lancé…" if appliquer else "Analyse lancée…"})

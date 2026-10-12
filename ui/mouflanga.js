@@ -217,6 +217,7 @@
     drawSeries();
     window.scrollTo(0, 0);
     majNavSeries();
+    if (!document.body.classList.contains('lecteur')) api('/api/optimiser?series=' + encodeURIComponent(id)).then(function (o) { if (o && o.en_cours) veillerAllegement(id); });
   }
 
   // ‹ › : série précédente / suivante dans TOUTE la bibliothèque, dans l'ordre du tri choisi (lettre, filtres et recherche ne limitent pas)
@@ -786,10 +787,27 @@
       var lignes = (r.rapport || []).map(function (x) {
         return '<li>' + esc(x.fichier) + ' <small>' + (x.note ? esc(x.note) : (x.taille_mo + ' Mo · ' + (x.gagne_mo != null ? '−' + x.gagne_mo + ' Mo' : '≈ −' + Math.round(x.gain * 100) + ' %') + ' (qualité ' + x.qualite + ', écart ' + x.psnr + ' dB)')) + '</small></li>';
       }).join('');
-      $('allRes').innerHTML = (r.en_cours ? '<div class="dem-sous">' + esc(r.message || '') + ' ' + (r.fait || 0) + ' / ' + (r.total || '?') + '</div>' : (r.message ? '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' : '')) +
+      $('allRes').innerHTML = (r.en_cours ? '<div class="dem-sous">' + esc(r.message || '') + ' ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' tomes · ça continue en arrière-plan, tu peux fermer cette fenêtre : une notification arrive à la fin.</div>' +
+          '<progress max="' + (r.total || 1) + '" value="' + (r.fait || 0) + '" style="width:100%"></progress>' : (r.message ? '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' : '')) +
         (lignes ? '<ol class="tchap">' + lignes + '</ol>' : '') +
         (!r.en_cours && r.message && !r.appliquer && r.gain > 0 ? '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="1">🪶 Appliquer à toute la série</button></div>' : '');
       if (r.en_cours) suiviAllege = setTimeout(suivreAllegement, 3000);
+    }
+    // Bulle « terminé » même si la fenêtre est fermée (le travail, lui, tourne sur le serveur)
+    var veilleAllege = {};
+    function veillerAllegement(id) {
+      if (veilleAllege[id]) return;
+      veilleAllege[id] = true;
+      (async function boucle() {
+        var r = await api('/api/optimiser?series=' + encodeURIComponent(id));
+        if (r && r.en_cours) { setTimeout(boucle, 4000); return; }
+        delete veilleAllege[id];
+        if (r && r.message) {
+          window.MouToast('🪶 ' + id + ' : ' + (r.appliquer ? 'allègement terminé. ' : 'analyse prête. ') + r.message, 'ok');
+          if (current && current.id === id && !$('infosVue').hidden) suivreAllegement();
+          else if (current && current.id === id) rafraichirSerie(id);
+        }
+      })();
     }
     $('infosCorps').addEventListener('change', function (e) {
       if (e.target.id !== 'allEclairer') return;
@@ -803,6 +821,7 @@
       var r = await post('/api/optimiser', Object.assign({series: current.id, appliquer: appliquer}, optionsAllegement()));
       if (!r.ok) { alert(r.error || 'Impossible'); return; }
       setTimeout(suivreAllegement, 800);
+      veillerAllegement(current.id);
     });
 
     // 📱 Tomes gardés sur ce téléphone (lecture sans réseau) et notifications
