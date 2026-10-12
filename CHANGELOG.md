@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Icône de l'appli (12 octobre 2026, soir)
+- 🎨 L'icône de l'appli sur le téléphone a maintenant un fond noir plein (les coins transparents la rendaient illisible sur fond clair).
+
 ## Correction d'affichage (12 octobre 2026, soir)
 - 🔧 Fiche d'une série : le « ? » de la légende des sources est de nouveau un petit rond à côté de la pastille (il apparaissait comme un grand bloc vert en dessous).
 
