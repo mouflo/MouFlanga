@@ -495,7 +495,8 @@ def api_library():
         if nom not in presentes and auth.role() != "lecteur":
             out.append({"id": nom, "title": nom, "recherchee": True, "chapters": 0, "read": 0, "compte": "📥 Recherchée",
                         "unite": "tome", "size_mb": 0, "last_read": "", "added": time.time(), "etat": None, "manque": False,
-                        "cover": x.get("couverture") or "", "propositions": sum(p["statut"] == "attente" for p in x.get("propositions", []))})
+                        "cover": (f"/api/cover?id={_q(nom)}&v={int(_couverture_mtime(nom))}" if (MANGA_DIR / nom / COUVERTURE_PERSO).is_file()
+                                  else x.get("couverture") or ""), "propositions": sum(p["statut"] == "attente" for p in x.get("propositions", []))})
     _remplir_statuts([x for x in a_remplir if x[0] != "(Sans série)"])
     try:
         faites = _read_json(DATA_DIR / "archives-importees.json", {})
@@ -692,6 +693,11 @@ def _infos_anime(name):
 def api_series():
     name = request.args.get("id", "")
     files = _scan().get(name)
+    vide = None                      # série ajoutée (➕) mais encore sans fichier : sa fiche s'ouvre quand même (infos, poster)
+    if files is None and auth.role() != "lecteur":
+        vide = suivi.lire()["series"].get(name)
+        if vide is not None:
+            files = []
     if files is None:
         return jsonify({"error": "Série introuvable"}), 404
     p = _read_json(_fichier_progression(), {}).get(name, {})
@@ -725,7 +731,11 @@ def api_series():
                     "moufloster": os.getenv("MOUFLOSTER_URL", "").strip(),
                     "moufloster_externe": os.getenv("MOUFLOSTER_URL_EXTERNE", "").strip(),
                     **_infos_anime(name), "edition": _infos_edition(name, files), "_t": _titres_tomes_en_fond(name, chapters),
-                    "suivi": suivi.lire()["series"].get(name)})
+                    "suivi": suivi.lire()["series"].get(name),
+                    **({"recherchee": True, "cover_externe": vide.get("couverture") or "",
+                        "compte": " · ".join(str(x) for x in ("📥 Pas encore de tomes", vide.get("annee"), vide.get("auteur"),
+                                                              vide.get("editeur"), vide.get("source")) if x),
+                        "lien": vide.get("lien") or ""} if vide is not None else {})})
 
 
 @app.route("/api/cover")
@@ -733,6 +743,9 @@ def api_cover():
     name = request.args.get("id", "")
     files = _scan().get(name)
     if not files:
+        perso = MANGA_DIR / name / COUVERTURE_PERSO
+        if name in suivi.lire()["series"] and perso.is_file() and name != "(Sans série)":
+            return send_file(perso, max_age=3600)           # poster choisi pour une série encore vide
         return Response(status=404)
     # image « cover.jpg » / « folder.jpg » posée dans le dossier de la série : prioritaire
     sub = MANGA_DIR / name
@@ -1231,7 +1244,7 @@ def api_cover_choisir():
 
 def _enregistrer_couverture(name, envoi):
     """Enregistre l'image envoyée (fichier de formulaire) comme couverture de la série. Renvoie (réponse, code)."""
-    if name not in _scan() or name == "(Sans série)":
+    if (name not in _scan() and name not in suivi.lire()["series"]) or name == "(Sans série)":
         return {"ok": False, "error": "Série introuvable"}, 404
     if envoi is None:
         return {"ok": False, "error": "Aucune image reçue"}, 400
@@ -1246,6 +1259,7 @@ def _enregistrer_couverture(name, envoi):
         return {"ok": False, "error": "Ce fichier n'est pas une image lisible (JPEG, PNG, WebP…)"}, 400
     cible = MANGA_DIR / name / COUVERTURE_PERSO
     try:
+        cible.parent.mkdir(parents=True, exist_ok=True)      # série ajoutée, encore sans dossier
         if cible.exists():
             _vers_corbeille(cible)
         tmp = cible.with_suffix(".tmp")
@@ -1262,7 +1276,7 @@ def _enregistrer_couverture(name, envoi):
 def api_cover_automatique():
     """Revenir à la couverture automatique (1re page du 1er chapitre) : cover.jpg va à la corbeille."""
     name = str((request.get_json(silent=True) or {}).get("id", ""))
-    if name not in _scan() or name == "(Sans série)":
+    if (name not in _scan() and name not in suivi.lire()["series"]) or name == "(Sans série)":
         return jsonify({"ok": False, "error": "Série introuvable"}), 404
     cible = MANGA_DIR / name / COUVERTURE_PERSO
     if cible.exists():
@@ -1634,7 +1648,7 @@ def _etat_rangement(name):
 
 _CROCHETS = re.compile(r"\[[^\]]*\]|\([^)]*\)|\{[^}]*\}")
 _MARQUE = re.compile(r"(?:^|[\s_\-.])(?:t|tome|vol(?:ume)?\.?|v|chap(?:itre|ter)?\.?|ch\.?|#)\s*\d{1,4}\b.*$", re.I)
-_BRUIT = re.compile(r"\b(?:int[ée]grale?|complete|complet|fr|vf|vostfr|cbz|cbr|e-?books?|officiels?|digital|scans?|manga)\b", re.I)
+_BRUIT = re.compile(r"\b(?:int[ée]grale?|complete|complet|fr|vf|vostfr|cbz|cbr|e-?books?|officiels?|digital|scans?|manga|no-?tags?|hybrid)\b", re.I)
 
 
 _PARTICULES = {"no", "wa", "ga", "ni", "to", "wo", "de", "na", "e", "of", "the", "a", "an", "and", "in", "on", "de", "du", "des", "la", "le", "les", "et"}
@@ -1675,7 +1689,12 @@ def _appris(dossier, propose):
     # Jamais un tiret ni une mention d'édition : « Cat's Eye Édition de luxe » → « Cat's Eye » faisait perdre « Édition »
     # (et le tiret d'un autre choix) à « Gantz - Perfect Édition », devenu « Gantz Perfect » puis « Gantz : Perfect »
     proteges = {"-", "–", ":", "de", "édition", "edition", "perfect", "deluxe", "luxe", "ultimate", "collector", "kanzenban"}
-    mots = [m for m in propose.split(" ") if m.lower() in proteges or retires.get(m.lower(), 0) < 1]
+    # Un mot n'est retiré partout que s'il est technique (« scan », « fr »…) ou retiré au moins deux fois : une seule
+    # correction (« … IMMORTAL REGIS » → « Cavalier of the Abyss ») ne doit pas effacer « Regis » d'un autre titre.
+    def retire(m):
+        n = retires.get(m.lower(), 0)
+        return n >= 2 or (n >= 1 and (bool(_BRUIT.fullmatch(m)) or bool(re.fullmatch(r"\d+|t\d+|tomes?", m, re.I))))
+    mots = [m for m in propose.split(" ") if m.lower() in proteges or not retire(m)]
     return " ".join(mots) if mots else propose
 
 
@@ -2130,34 +2149,43 @@ def _cle_nom(nom):
 
 
 _COUPURE = re.compile(r"\s(?:\d{1,3}\s*tomes?|t\d{1,3}\b|tomes?\s*\d|vol(?:ume)?s?\s*\d|int[ée]grale?|complete|fr|french|vf|cbz|cbr|"
-                      r"digital|scans?|(?:19|20)\d\d|\d{3,4}p?|e-?books?)\b", re.I)
+                      r"digital|scans?|no-?tags?|hybrid|(?:19|20)\d\d|\d{3,4}p?|e-?books?)\b", re.I)
 _NOMS_ANILIST = {}
 
 
-def _titre_officiel(t):
+def _latin(c):
+    """Titre écrit en alphabet latin (accents compris) : « คำอธิษฐาน… Frieren » ou un titre en japonais ne sont jamais un nom de dossier."""
+    return all(ord(ch) < 0x250 or not ch.isalpha() for ch in c)
+
+
+def _titre_anilist(t):
     """Écriture officielle du titre d'après AniList (« AirGear » → « Air Gear », « 20th Century boys » → « 20th Century Boys »),
-    seulement si c'est bien la même suite de lettres ; sinon le nom tel quel. Gardé en mémoire et dans data/noms-anilist.json."""
+    seulement si c'est bien la même suite de lettres ; sinon « ». Gardé en mémoire et dans data/noms-anilist.json."""
     f = DATA_DIR / "noms-anilist.json"
     if not _NOMS_ANILIST:
         _NOMS_ANILIST.update(_read_json(f, {}) or {"": ""})
-    if t in _NOMS_ANILIST:
-        return _NOMS_ANILIST[t] or t
+    if t in _NOMS_ANILIST and _latin(_NOMS_ANILIST[t]):         # une ancienne réponse en thaï ou en japonais est refaite
+        return _NOMS_ANILIST[t]
     trouve = ""
     try:
         q = "query($s:String){Page(perPage:6){media(search:$s,type:MANGA){title{romaji english} synonyms}}}"
         r = tomes._SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": t}}, timeout=10)
         for m in (r.json().get("data") or {}).get("Page", {}).get("media") or []:
             egaux = [c.rstrip(" .。") for c in (m["title"].get("english"), m["title"].get("romaji"), *(m.get("synonyms") or []))
-                     if c and _cle_nom(c.rstrip(" .!。")) == _cle_nom(t)]
+                     if c and _latin(c) and _cle_nom(c.rstrip(" .!。")) == _cle_nom(t)]
             if egaux:                                        # « Akame ga Kill! Zero » plutôt que « Akame ga KILL! ZERO »
                 trouve = min(egaux, key=lambda c: sum(x.isupper() for x in c) / max(1, sum(x.isalpha() for x in c)))
                 break
     except Exception as e:
         logger.info("AniList (nom officiel) : %s", e.__class__.__name__)
-        return t
+        return ""
     _NOMS_ANILIST[t] = trouve
     _write_json(f, _NOMS_ANILIST)
-    return trouve or t
+    return trouve
+
+
+def _titre_officiel(t):
+    return _titre_anilist(t) or t
 
 
 def _nom_depuis_archive(nom_fichier, existantes):
@@ -2198,6 +2226,14 @@ def _nom_sans_edition(nom_fichier, existantes):
         if deja:
             return deja
         officiel = next((o for c in parties for o in [_titre_officiel(c)] if o != c), None)
+        if not officiel and not _titre_anilist(t) and len(t.split()) >= 4:
+            # « Jujutsu Kaisen Gege Akutami » : si le nom entier est inconnu, les deux derniers mots sont peut-être l'auteur
+            mots_t = t.split()
+            avant = " ".join(mots_t[:-2])
+            deja = next((e for e in existantes if _cle_nom(e) == _cle_nom(avant)), None)
+            if deja:
+                return deja
+            officiel = _titre_anilist(avant) or None
         t = _nom_serie(officiel or t)
     # Suite d'une série déjà là (« Akame ga Kill! Zero » et « Akame ga Kill ! ») → « Akame ga Kill ! : Zero »
     mots = t.split()
@@ -2315,6 +2351,107 @@ def api_import_racine():
     return jsonify({"groupes": groupes, "file": file, "detail": etat.get("message", "")})
 
 
+# ---------------- 🔄 Rescanner le dossier des torrents (NOK) : même traitement qu'un vrai téléchargement ----------------
+_RESCAN = {"en_cours": None, "attente": [], "faits": [], "erreurs": [], "message": ""}
+_RESCAN_VERROU = threading.Lock()
+
+
+def _elements_torrents():
+    """Éléments du dossier d'arrivée des torrents (TORRENTS_NOK) : dossiers et fichiers de manga, avec le nom de série deviné
+    par le MÊME code que pour un torrent ajouté à la main."""
+    racine = torrents.reglages()["nok"]
+    if not racine or not Path(racine).is_dir():
+        return None, []
+    existantes = sorted(n for n in _scan() if n != "(Sans série)")
+    out = []
+    for d in sorted(Path(racine).iterdir(), key=lambda x: archives.natural_key(x.name)):
+        if d.name.startswith((".", "@")):
+            continue
+        try:
+            fichiers = torrents.fichiers_du_torrent(d)
+        except OSError:
+            continue
+        if not any(f.suffix.lower() in (".cbz", ".cbr", ".zip", ".rar", ".7z", ".pdf") for f in fichiers):
+            continue
+        serie = _nom_depuis_archive(d.name + ".zip", existantes)
+        out.append({"nom": d.name, "serie": serie, "existe": serie in existantes, "fichiers": len(fichiers),
+                    "taille_go": round(sum(f.stat().st_size for f in fichiers) / 1e9, 2)})
+    return racine, out
+
+
+def _travail_rescan():
+    """Un élément à la fois : rangement, identification, fiche, compte rendu Telegram (comme un torrent fini)."""
+    import notifier
+    while True:
+        with _RESCAN_VERROU:
+            if not _RESCAN["attente"]:
+                _RESCAN["en_cours"] = None
+                break
+            g = _RESCAN["attente"].pop(0)
+            _RESCAN["en_cours"] = g["serie"]
+        try:
+            source = Path(torrents.reglages()["nok"]) / g["nom"]
+            deja = _tomes_deja_la(g["serie"], source)
+            if deja:
+                raise RuntimeError(f"{len(deja)} tome(s) déjà dans la bibliothèque, rien n'est écrasé (utilise Télécharger pour remplacer)")
+            fin = _importer_torrent(g["serie"], source, False)
+            _noter_volumes_torrent(g["serie"], g["nom"])
+            try:
+                rapport = _rapport_serie(g["serie"], g["nom"], "🔄 Rescan")
+            except Exception as e:
+                logger.warning("Compte rendu de %s : %s", g["serie"], e)
+                rapport = None
+            notifier.envoyer(rapport or f"🔄 MouFlanga : « {g['serie']} » importé depuis {g['nom'][:80]}\n{fin or ''}".strip())
+            with _RESCAN_VERROU:
+                _RESCAN["faits"].append(f"{g['serie']} ← {g['nom']}")
+        except Exception as e:
+            logger.warning("Rescan de %s : %s", g["nom"], e)
+            with _RESCAN_VERROU:
+                _RESCAN["erreurs"].append(f"{g['nom']} : {str(e)[:200]}")
+    with _RESCAN_VERROU:
+        _RESCAN["message"] = f"Terminé : {len(_RESCAN['faits'])} importée(s)" + (f", {len(_RESCAN['erreurs'])} avec un problème." if _RESCAN["erreurs"] else ".")
+    try:
+        import notifier
+        notifier.envoyer("🔄 MouFlanga : " + _RESCAN["message"])
+    except Exception:
+        pass
+
+
+@app.route("/api/import/torrents", methods=["GET", "POST"])
+def api_import_torrents():
+    """GET : éléments du dossier des torrents et état de la file. POST {elements: [{nom, serie}]} : ajout à la file."""
+    if request.method == "POST":
+        racine, presents = _elements_torrents()
+        if racine is None:
+            return jsonify({"ok": False, "error": "Dossier des torrents introuvable (⚙️ Réglages → Torrents)."}), 400
+        connus = {x["nom"] for x in presents}
+        ajout = []
+        for g in (request.get_json(silent=True) or {}).get("elements") or []:
+            nom = Path(str(g.get("nom", ""))).name
+            serie = _nom_serie(str(g.get("serie", "")).strip())
+            if nom in connus and serie and not serie.startswith("."):
+                ajout.append({"nom": nom, "serie": serie})
+        if not ajout:
+            return jsonify({"ok": False, "error": "Rien à importer."}), 400
+        with _RESCAN_VERROU:
+            deja = {x["nom"] for x in _RESCAN["attente"]} | ({_RESCAN["en_cours"]} if _RESCAN["en_cours"] else set())
+            _RESCAN["attente"] += [g for g in ajout if g["nom"] not in deja]
+            demarrer = _RESCAN["en_cours"] is None
+            if demarrer:
+                _RESCAN.update(faits=[], erreurs=[], message="", en_cours="(démarrage)")
+        if demarrer:
+            threading.Thread(target=_travail_rescan, daemon=True).start()
+        return jsonify({"ok": True, "message": f"{len(ajout)} élément(s) ajouté(s) à la file."})
+    racine, elements = _elements_torrents()
+    with _RESCAN_VERROU:
+        file = {"en_cours": _RESCAN["en_cours"], "attente": [g["serie"] for g in _RESCAN["attente"]],
+                "faits": list(_RESCAN["faits"]), "erreurs": list(_RESCAN["erreurs"]), "message": _RESCAN["message"]}
+        en_file = {g["nom"] for g in _RESCAN["attente"]}
+    etat = _RANGEMENTS.get(file["en_cours"] or "", {}) if file["en_cours"] else {}
+    return jsonify({"dossier": racine, "elements": [x for x in elements if x["nom"] not in en_file], "file": file,
+                    "detail": etat.get("message", "")})
+
+
 @app.route("/api/occupe")
 def api_occupe():
     """L'appli fait-elle un travail long ? (lu par deploy.sh avant de redémarrer : seulement depuis le serveur lui-même)"""
@@ -2331,6 +2468,8 @@ def _travaux_en_cours():
         raisons.append("téléchargement")
     if _FILE_IMPORT["en_cours"] or _FILE_IMPORT["attente"]:
         raisons.append("import d'archives")
+    if _RESCAN["en_cours"] or _RESCAN["attente"]:
+        raisons.append("rescan des torrents")
     if _CATALOGUE_ETAT["en_cours"]:
         raisons.append("chargement du catalogue")
     raisons += [f"rangement de {n}" for n, e in _RANGEMENTS.items() if e.get("en_cours")]

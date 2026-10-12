@@ -1,5 +1,10 @@
 # Historique des versions
 
+## Rescan des torrents, fiche avant ajout, noms mieux reconnus (12 octobre 2026, soir)
+- 🔄 **Page Importer → Dossier des torrents** : relit le dossier d'arrivée des torrents (`Mouflanga.NOK`), montre le nom de série deviné pour chaque élément (modifiable) et importe ceux que tu coches avec le même traitement automatique qu'un vrai téléchargement (rangement, identification, fiche, couverture, Telegram). Une série qui a déjà ses tomes n'est jamais écrasée. Rien n'est modifié dans le dossier des torrents.
+- 👆 **➕ Ajouter une série** : toucher le **nom** d'un résultat ouvre sa fiche dans MouFlanga (la série est ajoutée si besoin) : infos, poster (MouFloster ou image), bouton 🧲 Choisir un torrent.
+- 🔎 Identification corrigée d'après le rescan : « NOTAG » et « HYBRID » ne deviennent plus une suite de série (« 20th Century Boys : NOTAG ») ; un titre AniList en thaï ou en japonais n'est plus choisi (« Frieren ») ; un nom d'auteur à la fin est écarté quand le titre seul est connu (« Jujutsu Kaisen Gege Akutami ») ; une seule correction ne fait plus disparaître un mot du titre partout (« Regis »).
+
 ## Favorites (12 octobre 2026, soir)
 - ⭐ Une étoile sur chaque affiche de la bibliothèque : touche-la pour mettre la série en favorite (elle devient jaune), touche-la encore pour l'enlever. La série ne s'ouvre pas.
 - Dans le menu **Ma lecture**, le choix **⭐ Mes favorites** n'affiche que celles-là (cumulable avec Parution et Univers).

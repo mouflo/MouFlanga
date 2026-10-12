@@ -56,3 +56,8 @@ Sorti de `CLAUDE.md` pour l'alléger : lire la section utile avant de toucher au
 - Essai hors appli : charger `data/secrets.env` (choix du navigateur) et appeler `_assurer_ecran()` avant `download_chapter_pages`.
 - Utiliser la puce graphique Intel Iris Xe du conteneur (`/dev/dri`) : le rapport a une section « Carte graphique » ; Xvfb n'utilise aucune carte graphique, il faudrait changer d'affichage.
 - Mettre à jour les captures d'écran du README pour la grosse mise à jour Japscan.
+
+## Rescan du dossier des torrents et fiche d'une série vide (12/10/2026)
+- `/api/import/torrents` (GET liste, POST file) : `_elements_torrents()` lit `TORRENTS_NOK`, nom deviné par `_nom_depuis_archive` (même code que `adopter`) ; `_travail_rescan()` → `_importer_torrent` + `_noter_volumes_torrent` + `_rapport_serie`, jamais d'écrasement (`_tomes_deja_la`). État dans `_RESCAN` (compté dans `_travaux_en_cours`). Page : panneau « Dossier des torrents » de `templates/importer.html` / `ui/importer.js`.
+- Identification : `_titre_anilist` (alphabet latin seulement ; réponse en cache non latine refaite), `_BRUIT`/`_COUPURE` connaissent NOTAG et HYBRID, `_appris` ne retire un mot partout que s'il est technique ou retiré deux fois, auteur final écarté dans `_nom_sans_edition`.
+- Série ajoutée (suivi) sans dossier : `/api/series` renvoie `recherchee: true` (+ `cover_externe`, infos dans `compte`) ; poster enregistré dans `<série>/cover.jpg` (dossier créé), servi par `/api/cover`.

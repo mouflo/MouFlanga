@@ -24,6 +24,20 @@
         <details id="fileFaitsBox" style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted)">Séries déjà importées</summary><ul id="fileFaits"></ul></details>
     </div>
 
+    <div class="panel" id="rescanFileBox" hidden>
+        <h2>⏳ Rescan en cours</h2>
+        <div id="rescanFileEtat"></div>
+        <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted)">Séries déjà importées</summary><ul id="rescanFaits"></ul></details>
+    </div>
+
+    <div class="panel">
+        <h2>🔄 Dossier des torrents</h2>
+        <div class="sub">Relit le dossier d'arrivée des torrents (<span id="rescanDossier">…</span>) et montre le nom de série que l'appli devine pour chaque élément. Coche ceux à importer : ils passent dans le <b>même traitement automatique</b> qu'un vrai téléchargement (rangement, identification, fiche, couverture, message Telegram). Rien n'est modifié dans le dossier des torrents, l'appli travaille sur une copie.</div>
+        <div class="row" style="margin:10px 0"><button class="btn ghost" id="rescanLire" type="button">🔄 Rescanner</button> <button class="btn" id="rescanGo" type="button" hidden>📥 Importer la sélection</button></div>
+        <div id="rescanMsg"></div>
+        <div id="rescanListe" class="groupes"></div>
+    </div>
+
     <div class="panel">
         <h2>📦 Archives déposées dans le dossier des mangas</h2>
         <div class="sub">Chaque archive (.rar, .zip, .7z) devient une série : un dossier, un fichier par tome, les chapitres quand ils sont séparés. Vérifie les noms proposés (l'appli apprend de tes corrections), puis importe une série ou tout d'un coup. L'import se fait une série à la fois, en arrière-plan : tu peux fermer cette page, un message Telegram arrive à la fin. Les archives d'origine vont à la corbeille (30 jours) une fois importées.</div>

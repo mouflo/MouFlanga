@@ -327,3 +327,8 @@ body.mou-skin .card .fav { position:absolute; top:4px; right:4px; z-index:2; wid
   display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.55); color:#ddd; font-size:20px; line-height:1; font-weight:400; cursor:pointer; }
 body.mou-skin .card .fav.on { color:#ffc83d; }
 body.mou-skin .card .fav:hover { background:rgba(0,0,0,.75); }
+
+/* Fenêtre « Ajouter une série » : le nom d'un résultat ouvre sa fiche */
+.dem-nom { cursor:pointer; text-decoration:underline; text-decoration-color:rgba(255,255,255,.3); text-underline-offset:3px; }
+.dem-nom:hover { text-decoration-color:var(--accent, #52b54b); }
+body.lecteur .dem-nom { cursor:default; text-decoration:none; }

@@ -154,7 +154,7 @@
     var l = r.demandes || [];
     $('demListe').innerHTML = l.length ? l.map(function (x) {
       return '<div class="dem-ligne ' + x.statut + '">' + (x.couverture ? '<img src="' + esc(x.couverture) + '" alt="" loading="lazy">' : '<span class="dem-vide"></span>') +
-        '<div class="dem-info"><b>' + esc(x.titre) + '</b><small>' + (x.annee ? x.annee + ' · ' : '') + (r.admin ? 'par ' + esc(x.par) + ' · ' : '') + esc(x.date.slice(0, 10)) +
+        '<div class="dem-info"><b class="dem-nom" role="link" tabindex="0" data-voir="' + i + '" title="Ouvrir la fiche">' + esc(x.titre) + '</b><small>' + (x.annee ? x.annee + ' · ' : '') + (r.admin ? 'par ' + esc(x.par) + ' · ' : '') + esc(x.date.slice(0, 10)) +
         '</small><span class="dem-statut">' + DEM_STATUT[x.statut] + (x.motif ? ' — ' + esc(x.motif) : '') + '</span></div><div class="dem-act">' +
         (x.statut === 'attente' ? (r.admin ? '<button type="button" data-dem="accepter" data-id="' + x.id + '">✅</button><button type="button" class="ghost" data-dem="refuser" data-id="' + x.id + '">❌</button>'
                                            : '<button type="button" class="ghost" data-dem="retirer" data-id="' + x.id + '">Retirer</button>') : '') + '</div></div>';
@@ -292,7 +292,7 @@
   function drawSeries() {
     var s = current, read = s.chapters.filter(function (c) { return c.read; }).length;
     $('sTitle').textContent = s.title; $('sTitle').classList.remove('deplie');
-    $('sCover').src = '/api/cover?id=' + encodeURIComponent(s.id) + '&v=' + (s.cover_v || 0);
+    $('sCover').src = s.cover_externe && !s.cover_perso ? s.cover_externe : '/api/cover?id=' + encodeURIComponent(s.id) + '&v=' + (s.cover_v || 0);
     var perso = s.id !== '(Sans série)';
     $('sCoverPick').hidden = !perso;
     $('sCoverAuto').hidden = !s.cover_perso;
@@ -392,6 +392,15 @@
     var next = s.current || (s.chapters.find(function (c) { return !c.read; }) || s.chapters[0] || {}).key;
     $('sResume').textContent = (s.current ? '▶ Reprendre' : read ? '▶ Continuer' : '▶ Commencer');
     $('sResume').dataset.path = next || '';
+    // Série ajoutée mais encore sans tomes : pas de lecture, un accès direct au choix du torrent
+    $('sResume').hidden = !!s.recherchee; $('sMore').parentNode.hidden = !!s.recherchee;
+    var lt = $('sTorrent');
+    if (!lt) {
+      lt = document.createElement('a'); lt.id = 'sTorrent'; lt.className = 'mou-btn'; lt.textContent = '🧲 Choisir un torrent';
+      $('sResume').parentNode.insertBefore(lt, $('sResume'));
+    }
+    lt.hidden = !s.recherchee;
+    lt.href = '/telecharger?torrent=' + encodeURIComponent(s.id) + '&serie=' + encodeURIComponent(s.id);
     // Chapitres groupés par tome (« Tome 02 », « Hors tome ») : un appui sur le titre ouvre ou ferme le tome.
     // Au départ, seul le tome en cours de lecture (ou le premier avec des chapitres à lire) est ouvert.
     function ligne(c) {
@@ -496,6 +505,20 @@
         var rm = await post('/api/suivies', {action: 'ajouter', nom: titre.trim(), serie: {titre: titre.trim(), auteur: auteur.trim(), editeur: editeur.trim(), lien: lien.trim(), source: 'Saisie manuelle'}});
         note('demMsg', rm.message || rm.error, rm.ok ? 'ok' : 'err');
         if (rm.ok) loadList();
+        return;
+      }
+      var vo = e.target.closest('[data-voir]');
+      if (vo && !document.body.classList.contains('lecteur')) {      // toucher le nom : la fiche dans MouFlanga (la série est ajoutée si besoin)
+        var xv = demResultats[+vo.dataset.voir], cv = sansAccents(xv.titre).replace(/[^a-z0-9]/g, '');
+        var ex = series.filter(function (z) { return sansAccents(z.title).replace(/[^a-z0-9]/g, '') === cv; })[0];
+        var nomv = ex ? ex.id : xv.titre.trim();
+        if (!ex) {
+          var rv = await post('/api/suivies', {action: 'ajouter', nom: nomv, serie: xv});
+          if (!rv.ok) { note('demMsg', rv.error || 'Ajout impossible', 'err'); return; }
+          await loadList();
+        }
+        ouvrirDemandes(false);
+        openSeries(nomv);
         return;
       }
       var aj = e.target.closest('[data-ajouter]');
