@@ -2041,6 +2041,11 @@ import torrents
 torrents._ETAT["fichier"] = DATA_DIR / "torrents.json"
 
 
+def _tomes_de(nom):
+    """Numéros des tomes présents d'une série."""
+    return {e["tome"] for e in _entrees(_scan().get(nom) or []) if e.get("tome") is not None}
+
+
 def _remplacer_tomes(nom, numeros):
     """Meilleure version : les tomes déjà présents que le torrent apporte vont à la corbeille (30 jours) ; un tome
     lu (en entier, ou tous ses chapitres « #n ») reste marqué lu pour chaque personne. Renvoie le nombre remplacé."""
@@ -2480,8 +2485,12 @@ def api_renommer():
     if not nouveau or nouveau.startswith(".") or nouveau == name:
         return jsonify({"ok": False, "error": "Nouveau nom invalide ou identique."}), 400
     fusion = nouveau in _scan() or (MANGA_DIR / nouveau).exists()
-    if fusion and not body.get("fusionner"):
-        return jsonify({"ok": False, "existe": True, "error": f"Une série « {nouveau} » existe déjà."}), 409
+    mode = {"remplacer": "remplacer", "manquants": "manquants", True: "manquants"}.get(body.get("fusionner"))
+    if fusion and not mode:
+        a, b = _tomes_de(name), _tomes_de(nouveau)
+        return jsonify({"ok": False, "existe": True, "error": f"Une série « {nouveau} » existe déjà.",
+                        "communs": len(a & b), "manquants": len(a - b), "tomes_source": len(a), "tomes_cible": len(b),
+                        "partage": bool(_fichiers_partages(name))}), 409
     if fusion and not (MANGA_DIR / nouveau).is_dir():
         return jsonify({"ok": False, "error": f"« {nouveau} » existe déjà et n'est pas un dossier."}), 409
     if any((_RANGEMENTS.get(n) or {}).get("en_cours") or any(
@@ -2489,7 +2498,13 @@ def api_renommer():
             for j in japscan_scraper.download_jobs.values()) for n in (name, nouveau)):
         return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
     partage = bool(_fichiers_partages(name))
+    if fusion and partage:            # le NAS refuse de déplacer un fichier encore partagé par qBittorrent
+        return jsonify({"ok": False, "error": f"Fusion impossible pour l'instant : les fichiers de « {name} » sont encore partagés par "
+                        "qBittorrent (le NAS refuse de les déplacer). Retire le torrent de qBittorrent (sans effacer les fichiers), puis recommence."}), 409
+    remplaces = 0
     try:
+        if fusion and mode == "remplacer":            # les tomes de l'autre série prennent la place des siens (anciens : corbeille)
+            remplaces = _remplacer_tomes(nouveau, _tomes_de(name))
         nouveau = _organiser(name, nouveau)
         for f in ((MANGA_DIR / nouveau).rglob("*.cbz") if not partage else []):        # « Ancien nom - Tome 03.cbz » → « Nouveau nom - Tome 03.cbz »
             if f.name.startswith(name + " - ") and not f.with_name(nouveau + f.name[len(name):]).exists():
@@ -2501,13 +2516,14 @@ def api_renommer():
             _vers_corbeille(MANGA_DIR / name)
         _noter_choix(name, name, nouveau)
         suivi.renommer(name, nouveau)
-    except OSError as e:
+    except (OSError, ValueError) as e:
         return jsonify({"ok": False, "error": f"Renommage impossible : {e}"}), 500
     _relancer_identification(nouveau)
     if fusion:
-        logger.info("Série fusionnée : « %s » → « %s » (%d doublon(s) à la corbeille)", name, nouveau, doublons)
+        logger.info("Série fusionnée (%s) : « %s » → « %s » (%d remplacé(s), %d doublon(s) à la corbeille)", mode, name, nouveau, remplaces, doublons)
         return jsonify({"ok": True, "id": nouveau, "message": f"Séries fusionnées dans « {nouveau} »."
-                        + (f" {doublons} fichier(s) en double mis à la corbeille." if doublons else "")})
+                        + (f" {remplaces} tome(s) remplacé(s) (anciens à la corbeille)." if remplaces else "")
+                        + (f" {doublons} fichier(s) déjà présents mis à la corbeille." if doublons else "")})
     logger.info("Série renommée : « %s » → « %s »", name, nouveau)
     return jsonify({"ok": True, "id": nouveau, "message": "Série renommée."})
 

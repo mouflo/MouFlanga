@@ -292,3 +292,8 @@ body.nav-bas #seriesView .chapters { padding-bottom:56px; }   /* le bas de la li
 .ident-liste .ident-attente { opacity: 0.55; }
 .ident-liste .ident-echec small { color: #ffb4b4; }
 body.lecteur .admin-seul { display:none !important; }
+.choix-fond { position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.7); display:flex; align-items:center; justify-content:center; padding:16px; }
+.choix-boite { background:var(--surface2, #222); border-radius:12px; padding:16px; max-width:420px; width:100%; display:flex; flex-direction:column; gap:10px; }
+.choix-boite h3 { margin:0; font-size:1.05rem; }
+.choix-boite p { margin:0; font-size:.9rem; line-height:1.45; }
+.choix-boite .mou-btn { width:100%; text-align:left; }

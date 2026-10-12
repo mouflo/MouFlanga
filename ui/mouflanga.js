@@ -714,14 +714,35 @@
       if (!nom || nom.trim() === current.title) return;
       var r = await post('/api/renommer', {series: current.id, nom: nom.trim()});
       if (!r.ok && r.existe) {
-        if (!confirm(r.error + '\n\nFusionner les deux ? Les tomes et chapitres de « ' + current.title + ' » rejoignent « ' + nom.trim() + ' », ta progression de lecture est gardée ; les fichiers déjà présents des deux côtés vont à la corbeille (30 jours).')) return;
-        r = await post('/api/renommer', {series: current.id, nom: nom.trim(), fusionner: true});
+        var choix = await choixFusion(r, current.title, nom.trim());
+        if (!choix) return;
+        r = await post('/api/renommer', {series: current.id, nom: nom.trim(), fusionner: choix});
       }
       if (!r.ok) { note('sMsg', r.error); return; }
       history.replaceState({s: r.id}, '', '#' + encodeURIComponent(r.id));
       await openSeries(r.id, false);
       note('sMsg', r.message || 'Série renommée.', 'ok');
     });
+    // Fusion avec une série déjà là : ajouter seulement les tomes manquants, tout remplacer, ou ne rien faire
+    function choixFusion(r, source, cible) {
+      return new Promise(function (fin) {
+        var o = document.createElement('div'); o.className = 'choix-fond';
+        o.innerHTML = '<div class="choix-boite" role="dialog"><h3>' + esc(r.error) + '</h3>' +
+          '<p>« ' + esc(source) + ' » : ' + r.tomes_source + ' tome(s) · « ' + esc(cible) + ' » : ' + r.tomes_cible + ' tome(s)<br>' +
+          r.communs + ' tome(s) en commun · ' + r.manquants + ' tome(s) que « ' + esc(cible) + ' » n\'a pas.</p>' +
+          (r.communs ? '<p class="dem-sous">⚠️ Si ce sont deux éditions différentes (Perfect, Deluxe…), leurs tomes ne contiennent pas les mêmes chapitres : mieux vaut garder deux séries.</p>' : '') +
+          (r.partage ? '<p class="dem-sous">⚠️ Fichiers encore partagés par qBittorrent : la fusion sera refusée tant que le torrent n\'est pas retiré.</p>' : '') +
+          '<button type="button" class="mou-btn" data-choix="manquants">➕ Ajouter seulement les tomes manquants</button>' +
+          '<button type="button" class="mou-btn" data-choix="remplacer">♻️ Tout remplacer (ses tomes en double vont à la corbeille)</button>' +
+          '<button type="button" class="mou-btn ghost" data-choix="">✋ Ne rien faire</button></div>';
+        o.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-choix]');
+          if (!b && e.target !== o) return;
+          o.remove(); fin(b ? b.dataset.choix : '');
+        });
+        document.body.appendChild(o);
+      });
+    }
     $('sPitchTexte').addEventListener('click', function () { $('sPitch').classList.toggle('ouvert'); });
     // Modifier le résumé : ton texte remplace celui d'Internet (et n'est jamais écrasé par une mise à jour)
     function editionResume(ouvrir) {

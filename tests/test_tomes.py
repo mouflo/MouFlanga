@@ -703,9 +703,10 @@ class RenommerEtOrdreTest(BibliothequeTest):
             "Alice in Borderland": {"read": [], "current": "Alice in Borderland/Tome 06/Alice in Borderland - Tome 06.cbz", "page": 4, "last": "2026-10-05 10:00"}})
         r = self.client.post("/api/renommer", json={"series": "Alice-in-borderland", "nom": "Alice in Borderland"})
         self.assertEqual((r.status_code, r.json.get("existe")), (409, True))
+        self.assertEqual((r.json["communs"], r.json["manquants"], r.json["tomes_source"], r.json["tomes_cible"]), (1, 1, 2, 2))
         r = self.client.post("/api/renommer", json={"series": "Alice-in-borderland", "nom": "Alice in Borderland", "fusionner": True})
         self.assertTrue(r.json["ok"], r.json)
-        self.assertIn("1 fichier(s) en double", r.json["message"])
+        self.assertIn("1 fichier(s) déjà présents", r.json["message"])
         self.assertFalse((self.root / "Alice-in-borderland").exists())
         noms = sorted(p.name for p in (self.root / "Alice in Borderland").rglob("*.cbz"))
         self.assertEqual(noms, ["Alice in Borderland - Tome 01.cbz", "Alice in Borderland - Tome 06.cbz", "Alice in Borderland - Tome 07.cbz"])
@@ -714,6 +715,24 @@ class RenommerEtOrdreTest(BibliothequeTest):
         self.assertNotIn("Alice-in-borderland", prog)
         p = prog["Alice in Borderland"]
         self.assertEqual((p["read"], p["page"]), (["Alice in Borderland/Tome 01/Alice in Borderland - Tome 01.cbz"], 4))
+
+
+    def test_fusion_tout_remplacer(self):
+        """« Tout remplacer » : le tome 7 de la série renommée prend la place de celui de la série d'arrivée."""
+        for serie, ts, rouge in (("Source", (1, 7), 200), ("Cible", (6, 7), 10)):
+            for t in ts:
+                f = self.root / serie / f"Tome {t:02d}" / f"{serie} - Tome {t:02d}.cbz"
+                f.parent.mkdir(parents=True)
+                with zipfile.ZipFile(f, "w") as z:
+                    z.writestr("001.jpg", _jpeg((rouge, 0, 0)))
+        r = self.client.post("/api/renommer", json={"series": "Source", "nom": "Cible", "fusionner": "remplacer"})
+        self.assertTrue(r.json["ok"], r.json)
+        self.assertIn("1 tome(s) remplacé(s)", r.json["message"])
+        t7 = self.root / "Cible" / "Tome 07" / "Cible - Tome 07.cbz"
+        with zipfile.ZipFile(t7) as z:
+            self.assertEqual(z.read("001.jpg"), _jpeg((200, 0, 0)))
+        self.assertEqual(sorted(p.name for p in (self.root / "Cible").rglob("*.cbz")), ["Cible - Tome 01.cbz", "Cible - Tome 06.cbz", "Cible - Tome 07.cbz"])
+        self.assertEqual(len(list((self.root / ".corbeille").rglob("*.cbz"))), 1)
 
 
 class MangadexFormesTest(unittest.TestCase):

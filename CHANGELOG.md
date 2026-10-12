@@ -1,5 +1,12 @@
 # Historique des versions
 
+## Fusion de deux séries : choix (12 octobre 2026)
+- 🔀 Renommer une série avec le nom d'une série déjà là ouvre une fenêtre de choix au lieu d'un simple OK/Annuler :
+  - ➕ ajouter seulement les tomes manquants ;
+  - ♻️ tout remplacer (les tomes en double de la série d'arrivée vont à la corbeille, l'état « lu » est gardé) ;
+  - ✋ ne rien faire.
+- La fenêtre indique les tomes de chaque série et ceux qu'elles ont en commun. Elle prévient quand ce sont deux éditions différentes, et quand les fichiers sont encore partagés par qBittorrent : la fusion est alors refusée avec une explication, au lieu d'une erreur.
+
 ## Ré-identification et éditions spéciales (12 octobre 2026)
 - 🔄 À la fin d'une ré-identification, la page de la série se recharge toute seule avec les nouvelles infos, même si tu as fermé la fenêtre d'avancement.
 - 📚 Éditions spéciales (Perfect, Deluxe, Édition de luxe, Kanzenban…) :
