@@ -1781,6 +1781,8 @@ def _plan_organiser(name, files):
     propose = _nom_serie(_appris(name, _majuscules(propose)))
     if _cle_nom(propose) == _cle_nom(name) and propose.lower() != name.lower():   # seule la ponctuation diffère (« : ») : on garde
         propose = name
+    if any(c.get("choisi") == name for c in _read_json(CHOIX, [])):               # un nom que tu as déjà validé n'est plus remis en cause
+        propose = name                                                             # (les fichiers du torrent gardent leur nom d'origine)
     tomes_fichiers, a_deplacer, chapitres = [], 0, 0
     for f in files:
         if tomes_cbz.lire_info(f) is not None:
@@ -1788,8 +1790,7 @@ def _plan_organiser(name, files):
         t = _numero_tome(f.stem)
         if t is not None:
             tomes_fichiers.append(t)
-            attendu = Path(tomes_cbz.dossier_tome(t)) / f"{propose} - {tomes_cbz.dossier_tome(t)}{f.suffix.lower()}"
-            if f.relative_to(MANGA_DIR / name) != attendu:
+            if f.relative_to(MANGA_DIR / name).parent != Path(tomes_cbz.dossier_tome(t)):   # seul le dossier compte : le nom du fichier peut garder celui du torrent
                 a_deplacer += 1
         elif _numero_chapitre(f.stem) is not None:
             chapitres += 1

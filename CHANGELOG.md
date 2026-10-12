@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Encart « Organiser » qui revenait (12 octobre 2026, soir)
+- 🧹 Un nom de série que tu as déjà choisi (ex. « Gantz ») n'est plus remis en cause parce que les fichiers du torrent s'appellent « Gantz : Perfect - Tome NN », et un tome déjà dans son dossier « Tome NN » n'est plus à déplacer à cause de son nom de fichier. L'encart ne revient donc que pour un vrai rangement à faire.
+
 ## Mises à jour visibles tout de suite (12 octobre 2026, soir)
 - 📱 L'appli installée charge d'abord la version la plus récente des scripts et styles (avant : l'ancienne version s'affichait une fois de plus, il fallait recharger deux fois pour voir une nouveauté).
 

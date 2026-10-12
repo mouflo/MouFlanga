@@ -347,6 +347,18 @@ class OrganiserTest(BibliothequeTest):
         self.assertEqual([c["title"] for c in s["chapters"]], ["Tome 01", "Tome 02", "Tome 04"])
         self.assertEqual((s["type_manquants"], s["manquants"]), ("tomes", ["3"]))
 
+    def test_nom_valide_et_fichiers_du_torrent_ne_redemandent_rien(self):
+        """Série nommée « Gantz » par toi, tomes déjà dans « Tome NN » mais nommés « Gantz : Perfect - Tome NN » : pas d'encart."""
+        serie = self.root / "Gantz"
+        for t in (1, 2):
+            p = serie / f"Tome {t:02d}" / f"Gantz : Perfect - Tome {t:02d}.cbz"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(p, "w") as z:
+                for k, d in enumerate(_pages(3, t), 1):
+                    z.writestr(f"{k:03d}.jpg", d)
+        self.A._write_json(self.A.CHOIX, [{"dossier": "Gantz : Perfect", "propose": "Gantz : Perfect", "choisi": "Gantz"}])
+        self.assertIsNone(self.A._plan_organiser("Gantz", [f for f in serie.rglob("*.cbz")]))
+
     def test_organiser(self):
         with mock.patch.object(tomes, "chercher", return_value=None):
             r = self.client.post("/api/organiser", json={"series": self.vrac.name, "nom": "Gintama"})
