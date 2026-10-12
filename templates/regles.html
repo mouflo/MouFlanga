@@ -137,6 +137,20 @@
                 <button type="submit" name="action" value="retirer">🗑 Retirer la clé</button>
             </form>
             {% endif %}
+            <h2 style="margin-top: 24px;">🤖 Claude (sommaires stylisés)</h2>
+            <p class="note">Facultatif et <b>payant</b> (quelques centimes par tome). L'appli lit d'abord le sommaire d'un tome avec la reconnaissance de texte du serveur (gratuite). Quand elle n'y arrive pas (sommaire très stylisé, texte blanc sur noir comme Bakuman), elle peut envoyer les premières pages, réduites, à Claude pour les lire. Clé à créer sur console.anthropic.com → API Keys.</p>
+            <p class="note">Clé actuelle : {{ cle_claude if cle_claude else "aucune (Claude n'est jamais utilisé)" }}.</p>
+            <form class="formulaire" method="post" action="/regles/claude">
+                <label for="clcle">Clé API de Claude</label>
+                <input type="text" id="clcle" name="cle" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-…">
+                <button type="submit" name="action" value="tester" class="ghost">🧪 Tester la clé</button>
+                <button type="submit" name="action" value="enregistrer">💾 Enregistrer la clé</button>
+            </form>
+            {% if cle_claude %}
+            <form method="post" action="/regles/claude" style="margin-top: 10px;" onsubmit="return confirm('Retirer la clé de Claude ?');">
+                <button type="submit" name="action" value="retirer">🗑 Retirer la clé</button>
+            </form>
+            {% endif %}
         {% endif %}
     </div>
 </body>

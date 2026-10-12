@@ -3630,6 +3630,7 @@ def page_regles():
     cle = tomes.cle_google_books()
     return render_template("regles.html", version=APP_VERSION, onglet=onglet, profils=regles.profils(),
                            formats=regles.formats(), modif=modif, cle_gb=("…" + cle[-4:]) if len(cle) >= 8 else "",
+                           cle_claude=("…" + os.getenv("CLAUDE_API_KEY", "").strip()[-4:]) if len(os.getenv("CLAUDE_API_KEY", "").strip()) >= 8 else "",
                            ok=request.args.get("ok", ""), erreur=request.args.get("erreur", ""))
 
 
@@ -3657,6 +3658,32 @@ def regles_google_books():
     write_secret(DATA_DIR / "secrets.env", "GOOGLE_BOOKS_API_KEY", cle)
     os.environ["GOOGLE_BOOKS_API_KEY"] = cle
     logger.info("Clé API Google Books enregistrée depuis la page Règles")
+    return redirect(retour + "&ok=" + quote("Clé enregistrée. " + msg + "."))
+
+
+_CLE_CLAUDE_RE = re.compile(r"^sk-ant-[A-Za-z0-9_-]{20,200}$")
+
+
+@app.route("/regles/claude", methods=["POST"])
+def regles_claude():
+    """Clé API de Claude (facultative, payante) : lecture des sommaires stylisés que l'OCR ne lit pas."""
+    import sommaire
+    from secrets_store import write_secret
+    f = request.form
+    cle = f.get("cle", "").strip()
+    retour = "/regles?onglet=sources"
+    if f.get("action") == "retirer":
+        write_secret(DATA_DIR / "secrets.env", "CLAUDE_API_KEY", "")
+        os.environ["CLAUDE_API_KEY"] = ""
+        return redirect(retour + "&ok=" + quote("Clé de Claude retirée : seuls les sommaires lisibles par l'OCR sont lus."))
+    if not _CLE_CLAUDE_RE.match(cle):
+        return redirect(retour + "&erreur=" + quote("Clé invalide : elle commence par « sk-ant- » (colle-la sans espace)."))
+    ok, msg = sommaire.verifier_cle_claude(cle)
+    if f.get("action") == "tester" or not ok:
+        return redirect(retour + ("&ok=" if ok else "&erreur=") + quote(msg + ("" if ok or f.get("action") == "tester" else ". Rien n'a été enregistré.")))
+    write_secret(DATA_DIR / "secrets.env", "CLAUDE_API_KEY", cle)
+    os.environ["CLAUDE_API_KEY"] = cle
+    logger.info("Clé API de Claude enregistrée depuis la page Règles")
     return redirect(retour + "&ok=" + quote("Clé enregistrée. " + msg + "."))
 
 

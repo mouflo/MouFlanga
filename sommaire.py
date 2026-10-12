@@ -110,6 +110,11 @@ def lire(chemin, lire_page, nb_pages) -> dict:
         elif trouve and i > page_sommaire + 2:
             break
     if not trouve:
+        if cle_claude():                                   # sommaire stylisé (Bakuman) : lu par l'analyse d'image de Claude
+            try:
+                return lire_vision(lire_page, nb_pages, cle_claude())
+            except Exception as e:
+                logger.info("Sommaire par Claude impossible pour %s : %s", chemin, e)
         return {"chapitres": [], "page_sommaire": None, "decalage": None}
     decalage = _decalage(trouve, textes, page_sommaire, lire_page, nb_pages)
     for c in trouve:
@@ -172,3 +177,69 @@ def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer):
                 _ETAT[cle] = {"en_cours": False, "message": msg}
     threading.Thread(target=travail, daemon=True).start()
     return True
+
+
+# ---------------------------------------------------------------- Lecture par Claude (facultative, clé payante)
+
+MODELE_VISION = "claude-haiku-5-5"
+API_CLAUDE = "https://api.anthropic.com/v1"
+_CONSIGNE = (
+    "Voici les premières pages d'un tome de manga, numérotées à partir de 0 dans l'ordre du fichier. "
+    "Trouve la page de sommaire (table des matières). Réponds UNIQUEMENT par un objet JSON, sans autre texte : "
+    '{"page_sommaire": <numéro de l\'image du sommaire ou null>, '
+    '"chapitres": [{"num": <numéro du chapitre>, "titre": "<titre en français tel qu\'écrit>", "page": <numéro de page imprimé>}], '
+    '"image_chapitre_1": <numéro de l\'image où commence le premier chapitre listé, si tu la vois, sinon null>}. '
+    "Sans sommaire : chapitres = []. N'invente rien.")
+
+
+def cle_claude() -> str:
+    return os.getenv("CLAUDE_API_KEY", "").strip()
+
+
+def verifier_cle_claude(cle: str) -> tuple[bool, str]:
+    """(ok, message) : la clé est-elle acceptée par l'API de Claude ? (liste des modèles : gratuit, rien n'est lu)"""
+    import requests
+    try:
+        r = requests.get(API_CLAUDE + "/models", headers={"x-api-key": cle, "anthropic-version": "2023-06-01"}, timeout=15)
+    except requests.RequestException:
+        return False, "API de Claude injoignable depuis le serveur"
+    if r.status_code == 200:
+        return True, "Clé acceptée par Claude"
+    if r.status_code == 401:
+        return False, "Claude refuse cette clé (vérifie qu'elle est complète)"
+    return False, f"L'API de Claude a répondu {r.status_code}"
+
+
+def lire_vision(lire_page, nb_pages, cle) -> dict:
+    """Envoie les premières pages (réduites) à Claude, qui lit le sommaire même stylisé (texte blanc sur noir…)."""
+    import base64
+    import json
+    import requests
+    from PIL import Image
+    contenu = []
+    for i in range(min(nb_pages, PAGES_MAX)):
+        im = Image.open(io.BytesIO(lire_page(i)))
+        im.thumbnail((800, 1200))
+        buf = io.BytesIO()
+        im.convert("RGB").save(buf, "JPEG", quality=70)
+        contenu += [{"type": "text", "text": f"Image {i}"},
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(buf.getvalue()).decode()}}]
+    contenu.append({"type": "text", "text": _CONSIGNE})
+    r = requests.post(API_CLAUDE + "/messages", timeout=120,
+                      headers={"x-api-key": cle, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                      json={"model": MODELE_VISION, "max_tokens": 2000, "messages": [{"role": "user", "content": contenu}]})
+    if r.status_code != 200:
+        raise RuntimeError(f"Claude a répondu {r.status_code}")
+    texte = "".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text")
+    debut, fin = texte.find("{"), texte.rfind("}")
+    d = json.loads(texte[debut:fin + 1]) if debut >= 0 else {}
+    chap = [{"num": float(c["num"]), "titre": str(c.get("titre") or "").strip(), "page": int(c["page"])}
+            for c in d.get("chapitres") or [] if str(c.get("num", "")).replace(".", "", 1).isdigit() and str(c.get("page", "")).isdigit()]
+    if not _vraisemblable(chap):
+        return {"chapitres": [], "page_sommaire": None, "decalage": None, "source": "Claude"}
+    decalage = None
+    if isinstance(d.get("image_chapitre_1"), int):
+        decalage = d["image_chapitre_1"] - chap[0]["page"]
+    for c in chap:
+        c["image"] = c["page"] + decalage if decalage is not None and 0 <= c["page"] + decalage < nb_pages else None
+    return {"chapitres": chap, "page_sommaire": d.get("page_sommaire"), "decalage": decalage, "source": "Claude"}

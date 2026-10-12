@@ -49,3 +49,27 @@ class LectureTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VisionTest(unittest.TestCase):
+    """Sommaire stylisé (Bakuman) : lu par Claude seulement si une clé est enregistrée."""
+
+    def test_sans_cle_rien_n_est_envoye(self):
+        with mock.patch.object(sommaire, "ocr", return_value="dessin"), mock.patch.dict("os.environ", {"CLAUDE_API_KEY": ""}), \
+                mock.patch("requests.post") as p:
+            r = sommaire.lire("x", lambda i: i, 20)
+        self.assertEqual(r["chapitres"], [])
+        p.assert_not_called()
+
+    def test_reponse_de_claude(self):
+        import io as _io
+        from PIL import Image
+        b = _io.BytesIO(); Image.new("RGB", (40, 60)).save(b, "JPEG")
+        texte = ('Voici : {"page_sommaire": 4, "image_chapitre_1": 6, "chapitres": [{"num": 8, "titre": "La carotte et le bâton", "page": 7},'
+                 ' {"num": 9, "titre": "Conditions et capitale", "page": 29}]}')
+        rep = mock.Mock(status_code=200, json=mock.Mock(return_value={"content": [{"type": "text", "text": texte}]}))
+        with mock.patch.object(sommaire, "ocr", return_value="dessin"), mock.patch.dict("os.environ", {"CLAUDE_API_KEY": "sk-ant-x"}), \
+                mock.patch("requests.post", return_value=rep):
+            r = sommaire.lire("x", lambda i: b.getvalue(), 190)
+        self.assertEqual([(c["num"], c["page"], c["image"]) for c in r["chapitres"]], [(8.0, 7, 6), (9.0, 29, 28)])
+        self.assertEqual(r["source"], "Claude")

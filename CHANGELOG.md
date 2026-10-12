@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Sommaires stylisés lus par Claude (facultatif) (12 octobre 2026, soir)
+- 🤖 📏 Règles → Sources : une clé API de Claude (facultative, payante, quelques centimes par tome) permet de lire les sommaires que la reconnaissance de texte du serveur ne lit pas (texte blanc sur noir, comme Bakuman). Sans clé, rien n'est envoyé.
+
 ## Appli sur le téléphone : lecture hors ligne et notifications (12 octobre 2026, soir)
 - 📲 MouFlanga s'installe comme une appli (icône, plein écran) depuis Chrome : menu ⋮ → « Ajouter à l'écran d'accueil ».
 - ⬇️ **Lire sans réseau** : dans la fenêtre ⓘ d'un tome, « Garder sur ce téléphone ». La taille et la place libre sont affichées avant de confirmer. Le bouton 📱 (en haut) liste les tomes gardés avec leur place, permet de les supprimer, et propose « effacer une fois lu ». La progression notée sans réseau part au retour du réseau.
