@@ -6,6 +6,7 @@
 - 🔢 Nombre de tomes : l'identification affiche « 18 tomes dans ton édition (AniList en annonce 27 pour l'édition standard) » au lieu du seul chiffre d'AniList ; la fiche ⓘ a une ligne « Tomes de ton édition » ; les ComicInfo des tomes portent aussi le nombre de ton édition.
 - 🟢 Le ⓘ d'un tome est vert aussi quand ses chapitres viennent d'un sommaire lu dans le tome, validé ou corrigé à la main, ou écrit dans le fichier (avant : seulement si la liste venait de Wikipédia ou du fichier).
 - 📖 Résumés de tomes : la recherche Google Books réessaie 3 fois quand Google répond « indisponible » (503) au lieu d'abandonner.
+- ✏️ Fiche d'un tome : bouton « Modifier le résumé du tome » (ou « Écrire » s'il n'y en a pas). Ton texte passe avant celui d'Internet, reste avec la série, et « Remettre le résumé automatique » le retire.
 - ↕️ Fiche d'un tome : les boutons « Garder sur ce téléphone », « Noter la provenance » et « Relire le sommaire » passent sous la liste des chapitres.
 
 ## Sommaire : épilogue sans numéro et symboles parasites (13 octobre 2026)

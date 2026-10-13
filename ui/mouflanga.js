@@ -1158,7 +1158,12 @@
       $('infosCorps').innerHTML = '<div class="tome-fiche"><img class="tome-couv" src="' + cov + '" alt="" data-grand="' + cov + '&grand=1">' +
         '<div class="tome-champs">' + (champs.length ? champs.map(function (x) { return '<div class="champ"><small>' + x[0] + '</small><div>' + esc(x[1]) + '</div></div>'; }).join('')
           : (chap.length ? '' : '<div class="dem-sous">Pas d\'infos sur ce tome.</div>')) + '</div></div>' +
-        (d.resume ? '<div class="dem-titre">Résumé' + (d.resume_source ? ' <small>(' + esc(d.resume_source) + ')</small>' : '') + '</div><p class="tome-resume">' + esc(d.resume) + '</p>' : '') +
+        (d.resume ? '<div class="dem-titre">Résumé' + (d.resume_source ? ' <small>(' + esc(d.resume_source) + ')</small>' : '') + '</div><p class="tome-resume" id="tomeResumeTexte">' + esc(d.resume) + '</p>' : '') +
+        '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="tomeResumeModif" data-tome="' + n + '">✏️ ' + (d.resume ? 'Modifier' : 'Écrire') + ' le résumé du tome</button></div>' +
+        '<div id="tomeResumeEdit" hidden><textarea id="tomeResumeZone" class="mou-field" rows="8" style="width:100%" maxlength="5000"></textarea>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn" id="tomeResumeSave" data-tome="' + n + '">💾 Enregistrer</button>' +
+        '<button type="button" class="mou-btn ghost" id="tomeResumeAuto" data-tome="' + n + '"' + (d.resume_manuel ? '' : ' hidden') + '>↩️ Remettre le résumé automatique</button>' +
+        '<button type="button" class="mou-btn ghost" id="tomeResumeCancel">Annuler</button></div></div>' +
         (som.en_cours ? '<div class="dem-sous">🔍 Lecture du sommaire dans les premières pages… (environ une minute)</div>'
           : (som.message && !chap.length ? '<div class="dem-sous">' + esc(som.message) + '</div>' : '')) +
         (som.manquants && som.manquants.length ? '<div class="tome-statut verif">⚠️ Il manque dans la liste le' + (som.manquants.length > 1 ? 's chapitres ' : ' chapitre ') +
@@ -1188,6 +1193,21 @@
       if (im) im.addEventListener('error', function () { im.style.display = 'none'; });
       if (som.en_cours) suiviSommaire = setTimeout(function () { afficherTome(n, false); }, 4000);
     }
+    $('infosCorps').addEventListener('click', async function (e) {         // ✏️ résumé du tome écrit à la main
+      var m = e.target.closest('#tomeResumeModif');
+      if (m) {
+        var t = $('tomeResumeTexte'); $('tomeResumeZone').value = t ? t.textContent : '';
+        $('tomeResumeEdit').hidden = false; m.hidden = true; $('tomeResumeZone').focus(); return;
+      }
+      if (e.target.closest('#tomeResumeCancel')) { $('tomeResumeEdit').hidden = true; $('tomeResumeModif').hidden = false; return; }
+      var sv = e.target.closest('#tomeResumeSave, #tomeResumeAuto'); if (!sv) return;
+      var texte = sv.id === 'tomeResumeAuto' ? '' : $('tomeResumeZone').value;
+      sv.disabled = true;
+      var r = await post('/api/tome/resume', {series: current.id, tome: sv.dataset.tome, texte: texte});
+      if (!r.ok) { sv.disabled = false; alert(r.error || 'Impossible'); return; }
+      window.MouToast('✅ ' + r.message, 'ok');
+      afficherTome(sv.dataset.tome, false);
+    });
     $('infosCorps').addEventListener('click', async function (e) {         // 🔍 relire le sommaire imprimé du tome (OCR)
       var b = e.target.closest('[data-sommaire]'); if (!b) return;
       if (b.dataset.manuel && !confirm('Tu as corrigé ces chapitres à la main. Relire le sommaire les remplace par la lecture automatique. Continuer ?')) return;

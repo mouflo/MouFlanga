@@ -3428,6 +3428,9 @@ def api_tome():
         if provenance.equipe_du_nom(nom_fichier):
             prov = {"equipe": provenance.equipe_du_nom(nom_fichier), "origine": f"Nom du fichier : {nom_fichier}", "manuel": False}
     d["provenance"] = prov
+    perso = (edition.lire(MANGA_DIR / name).get("resumes_tomes") or {}).get(str(int(tome)))
+    if perso:                                            # résumé écrit à la main : prioritaire sur Internet
+        d["resume"], d["resume_source"], d["resume_manuel"] = perso, "écrit à la main", True
     if not d.get("resume"):                              # Wikipédia n'a pas de résumé de ce tome : notice Google Books en français
         try:
             d["resume"] = tomes.resume_tome_google(name, tome)
@@ -3735,6 +3738,31 @@ def api_resume():
     _write_json(RESUMES, perso)
     logger.info("Résumé de « %s » %s", name, "modifié à la main" if texte else "remis en automatique")
     return jsonify({"ok": True, "message": "Résumé enregistré." if texte else "Résumé automatique rétabli."})
+
+
+@app.route("/api/tome/resume", methods=["POST"])
+def api_tome_resume():
+    """Résumé d'un tome écrit à la main (gardé avec la série) ; texte vide = revenir au résumé trouvé sur Internet."""
+    body = request.get_json(silent=True) or {}
+    name, texte = str(body.get("series", "")), str(body.get("texte", "")).strip()
+    try:
+        tome = int(float(body.get("tome")))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Tome inconnu"}), 400
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if len(texte) > 5000:
+        return jsonify({"ok": False, "error": "Résumé trop long (5 000 caractères au plus)."}), 400
+    import edition
+    infos = edition.lire(MANGA_DIR / name)
+    rt = infos.setdefault("resumes_tomes", {})
+    if texte:
+        rt[str(tome)] = texte
+    else:
+        rt.pop(str(tome), None)
+    edition.ecrire(MANGA_DIR / name, infos)
+    logger.info("Résumé du tome %s de « %s » %s", tome, name, "écrit à la main" if texte else "remis en automatique")
+    return jsonify({"ok": True, "message": "Résumé du tome enregistré." if texte else "Résumé automatique rétabli."})
 
 
 @app.route("/api/tomes/ranger", methods=["POST"])
