@@ -5,6 +5,7 @@ images, on en lit les lignes « Chapitre 12 : Titre ...... 45 » et on retrouve 
 fichier (décalage entre le numéro imprimé et la position de l'image, trouvé d'après le titre du 1er chapitre).
 Le résultat est gardé dans <série>/.mouflanga-infos.json (« sommaires ») : rien n'est relu ensuite.
 """
+import difflib
 import io
 import logging
 import os
@@ -99,7 +100,7 @@ def _vraisemblable(lignes) -> bool:
     return all(b > a for a, b in zip(nums, nums[1:])) and all(b > a for a, b in zip(pages, pages[1:]))
 
 
-def lire(chemin, lire_page, nb_pages) -> dict:
+def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
     """{"chapitres": [{"num", "titre", "page" (imprimée), "image" (position dans le fichier ou None)}], "page_sommaire"}
     lire_page(i) → octets de l'image i. Sans sommaire trouvé : chapitres vide."""
     textes, trouve, page_sommaire = {}, [], None
@@ -131,21 +132,30 @@ def lire(chemin, lire_page, nb_pages) -> dict:
             except Exception as e:
                 logger.info("Sommaire par Claude impossible pour %s : %s", chemin, e)
         return {"chapitres": [], "page_sommaire": None, "decalage": None}
-    decalage = _decalage(trouve, textes, page_sommaire, lire_page, nb_pages)
+    decalage = _decalage(trouve, textes, page_sommaire, lire_page, nb_pages, noms)
     for c in trouve:
         c["image"] = c["page"] + decalage if decalage is not None and c["page"] + decalage < nb_pages else None
     return {"chapitres": trouve, "page_sommaire": page_sommaire, "decalage": decalage}
 
 
-def _decalage(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0):
+def _proche(mot, morceaux):
+    """Le mot du titre est dans le texte lu, à quelques lettres près (« tefrent » pour « torrent ») : l'OCR se trompe
+    souvent sur les titres stylisés des pages d'ouverture."""
+    for m in morceaux:
+        if mot in m or (len(mot) >= 5 and abs(len(m) - len(mot)) <= 2 and difflib.SequenceMatcher(None, mot, m).ratio() >= 0.7):
+            return True
+    return False
+
+
+def _decalage(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=None):
     """Image où commence le 1er chapitre (son titre y est écrit, APRÈS le sommaire : la couverture porte souvent
     le même titre) moins sa page imprimée. Pas vu dans les pages déjà lues : quelques images autour de la page annoncée."""
     mots = [m for m in _simple(chapitres[0]["titre"]).split() if len(m) > 3][:4]
     if not mots:
         return None
     def contient(t):
-        s = _simple(t)
-        return sum(m in s for m in mots) >= max(1, (len(mots) + 1) // 2)
+        morceaux = _simple(t).split()
+        return sum(_proche(m, morceaux) for m in mots) >= max(1, (len(mots) + 1) // 2)
     for i, t in sorted(textes.items()):
         if i > page_sommaire and contient(t):
             return i - chapitres[0]["page"]
@@ -161,6 +171,16 @@ def _decalage(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0):
             continue
         if contient(textes[i]):
             return o
+    return _decalage_par_nom(chapitres[0]["page"], noms, page_sommaire)
+
+
+def _decalage_par_nom(page, noms, page_sommaire):
+    """Dernier recours : beaucoup de scans nomment les images d'après la page imprimée (« 005.jpg »). Un fichier
+    dont le numéro est la page du 1er chapitre, après le sommaire, donne le décalage."""
+    for i, nom in enumerate(noms or []):
+        m = re.match(r"(\d{2,4})", os.path.basename(nom))
+        if m and i > page_sommaire and int(m.group(1)) == page:
+            return i - page
     return None
 
 
@@ -169,7 +189,7 @@ def etat(serie, tome):
         return dict(_ETAT.get((serie, int(tome))) or {})
 
 
-def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer):
+def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer, noms=None):
     """Lit le sommaire en arrière-plan ; enregistrer(resultat) le garde. Renvoie False si déjà en cours."""
     cle = (serie, int(tome))
     with _VERROU:
@@ -180,7 +200,7 @@ def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer):
     def travail():
         with _FILE:
             try:
-                r = lire(chemin, lire_page, nb_pages)
+                r = lire(chemin, lire_page, nb_pages, noms)
                 r["date"] = time.strftime("%Y-%m-%d")
                 enregistrer(r)
                 msg = f"{len(r['chapitres'])} chapitre(s) lus dans le sommaire" if r["chapitres"] else "Pas de sommaire trouvé dans les premières pages"

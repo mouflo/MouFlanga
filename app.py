@@ -3464,7 +3464,8 @@ def _lire_sommaire(name, tome, e):
         infos = edition.lire(MANGA_DIR / name)
         infos.setdefault("sommaires", {})[str(tome)] = r
         edition.ecrire(MANGA_DIR / name, infos)
-    return sommaire.lancer(name, tome, chemin, lambda i: archives.read_page(chemin, i)[0], len(archives.pages(chemin)), enregistrer)
+    return sommaire.lancer(name, tome, chemin, lambda i: archives.read_page(chemin, i)[0], len(archives.pages(chemin)), enregistrer,
+                         noms=archives.pages(chemin))
 
 
 @app.route("/api/tome/sommaire", methods=["POST"])

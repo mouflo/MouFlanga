@@ -73,3 +73,11 @@ class VisionTest(unittest.TestCase):
             r = sommaire.lire("x", lambda i: b.getvalue(), 190)
         self.assertEqual([(c["num"], c["page"], c["image"]) for c in r["chapitres"]], [(8.0, 7, 6), (9.0, 29, 28)])
         self.assertEqual(r["source"], "Claude")
+
+    def test_titre_mal_lu_et_numero_de_fichier(self):
+        # « tefrent » (OCR) reste reconnu pour « torrent » ; sans texte lisible, le numéro du fichier « 005 » donne le décalage
+        self.assertTrue(sommaire._proche("torrent", ["un", "tefrent", "de"]))
+        self.assertFalse(sommaire._proche("torrent", ["sortir"]))
+        noms = ["000.jpg", "000a.jpg", "000b.jpg", "000c.jpg", "001.jpg", "002.jpg", "003.jpg", "004.jpg", "005.jpg", "006.jpg"]
+        self.assertEqual(sommaire._decalage_par_nom(5, noms, 7), 3)                 # « 005.jpg » est la 9e image : décalage 3
+        self.assertIsNone(sommaire._decalage_par_nom(5, noms[:4], 1))
