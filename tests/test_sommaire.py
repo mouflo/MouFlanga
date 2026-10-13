@@ -101,3 +101,20 @@ class VisionTest(unittest.TestCase):
         lignes = [{"num": 22.0, "titre": "a", "page": 115}, {"num": 23.0, "titre": "b", "page": 161}, {"num": 21.0, "titre": "c", "page": 207}]
         self.assertEqual([x["num"] for x in sommaire._numeros_suivis(lignes)], [22.0, 23.0, 24.0])
         self.assertTrue(sommaire._vraisemblable(sommaire._numeros_suivis(lignes)))
+
+    def test_titre_sur_deux_lignes(self):
+        texte = ("SOMMAIRE\n\nChapitre 71 @ L'homme écarlate ———— 173\n\n"
+                 "Chapitre 72 @ Une spirale négative\n\net un pas vers le salut ———— 215\n")
+        r = sommaire.analyser(texte)
+        self.assertEqual([(c["num"], c["page"]) for c in r], [(71.0, 173), (72.0, 215)])
+        self.assertEqual(r[1]["titre"], "Une spirale négative et un pas vers le salut")
+
+    def test_image_par_nom_de_fichier(self):
+        noms = ["000.jpg", "000a.jpg", "000b.jpg", "000c.jpg", "001.jpg", "002.jpg", "003.jpg", "004.jpg",
+                "005.jpg", "006-007.jpg", "008.jpg", "009.jpg"]
+        self.assertEqual(sommaire._image_par_nom(5, noms, 7), 8)
+        self.assertEqual(sommaire._image_par_nom(7, noms, 7), 9)             # page de droite d'une double page
+        self.assertEqual(sommaire._image_par_nom(8, noms, 7), 10)
+        self.assertIsNone(sommaire._image_par_nom(50, noms, 7))
+        ch = [{"num": 1.0, "titre": "Début", "page": 5}, {"num": 2.0, "titre": "Suite", "page": 8}]
+        self.assertEqual(sommaire._images(ch, {}, 7, None, 12, noms)[0], [8, 10])

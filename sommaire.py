@@ -26,6 +26,9 @@ _CHIFFRES_OCR = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1",
 _LIGNE_MOT = re.compile(r"^\W*" + _MOTS + r"\.?\s*([0-9OoIlSABZ|]{1,4})\b\s*[:.\-–—]?\s*(.*?)[\s.·…_,]+(\d{1,3})\s*$", re.I)
 _LIGNE_NUM = re.compile(r"^\W*(\d{1,4})\s*[.):\-–—]\s*(.+?)\s*[.·…_,]{3,}\s*(\d{1,3})\s*$")
 
+_DEBUT_CHAPITRE = re.compile(r"^\W*" + _MOTS + r"\.?\s*([0-9OoIlSABZ|]{1,4})\b\s*[:.\-–—]?\s*(.*)$", re.I)
+_SUITE_TITRE = re.compile(r"^\W*(.*?)[\s.·…_,\-–—]+(\d{1,3})\s*$")
+
 _ETAT = {}                      # (série, tome) → {"en_cours", "message"}
 _VERROU = threading.Lock()
 _FILE = threading.Semaphore(1)  # un seul tome lu à la fois (le processeur reste disponible pour le reste)
@@ -42,12 +45,13 @@ def _simple(t):
 
 def ocr(image_octets: bytes, clair: bool = False) -> str:
     """Texte d'une image (tesseract, français, une ligne par ligne de texte).
-    clair=True : texte blanc sur fond coloré (sommaire d'un tome, « SOMMAIRE » sur orange) : on ne lit que le canal bleu,
-    où le blanc est très clair et le fond sombre."""
-    from PIL import Image, ImageOps
+    clair=True : texte blanc sur fond coloré (sommaire d'un tome sur orange, sur rose) : on ne garde que ce qui est clair
+    dans les trois canaux (le plus sombre des trois > 180) : le blanc ressort, un fond coloré non."""
+    from PIL import Image, ImageChops, ImageOps
     im = Image.open(io.BytesIO(image_octets))
     if clair and im.mode in ("RGB", "RGBA"):
-        im = im.convert("RGB").split()[2].point(lambda v: 255 if v > 170 else 0)
+        r, g, b = im.convert("RGB").split()
+        im = ImageChops.darker(ImageChops.darker(r, g), b).point(lambda v: 255 if v > 180 else 0)
     else:
         im = ImageOps.grayscale(im)
     if im.width < 1400:                                   # petites images : agrandies, l'OCR lit mieux
@@ -69,18 +73,29 @@ def _numero(brut):
 
 def analyser(texte: str) -> list[dict]:
     """Lignes de sommaire d'une page : [{"num", "titre", "page"}] (numéro illisible → suite du précédent)."""
-    out = []
+    out, attente = [], None
     for ligne in (texte or "").splitlines():
         ligne = ligne.strip()
+        if not ligne:                                         # ligne vide entre les deux morceaux d'un titre
+            continue
         m = _LIGNE_MOT.match(ligne)
         num = titre = page = None
         if m:
             num, titre, page = _numero(m.group(1)), m.group(2), int(m.group(3))
+            attente = None
         else:
             m = _LIGNE_NUM.match(ligne)
             if m:
                 num, titre, page = float(m.group(1)), m.group(2), int(m.group(3))
+                attente = None
+        if page is None and attente is not None:             # titre sur deux lignes : la page est au bout de la seconde
+            suite = _SUITE_TITRE.match(ligne)
+            if suite and not _DEBUT_CHAPITRE.match(ligne):
+                num, titre, page = attente[0], (attente[1] + " " + suite.group(1)).strip(), int(suite.group(2))
+            attente = None
         if page is None:
+            debut = _DEBUT_CHAPITRE.match(ligne)
+            attente = (_numero(debut.group(1)), debut.group(2)) if debut and _numero(debut.group(1)) is not None else None
             continue
         titre = re.sub(r"[.·…_]{2,}.*$", "", titre or "").strip(" .:-–—,'\"‘’")
         titre = re.sub(r"^[@©®°•·\s]+", "", titre)                      # le sceau « @ » devant chaque chapitre
@@ -186,18 +201,14 @@ def _score(texte, mots, num):
 
 def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=None):
     """Image où commence chaque chapitre, et décalage du 1er (pour information).
-    Pour chaque chapitre, les pages proches de l'estimation (page imprimée + écart du chapitre précédent ; pour le
-    1er, de -2 à +10) reçoivent un score (voir _score) et la meilleure est gardée. Les doubles pages (« 042-043 »)
-    font varier l'écart d'un chapitre à l'autre, d'où une recherche par chapitre et non un décalage unique."""
+    1) Le nom de fichier donne l'image (« 077.jpg » = page imprimée 77, double page « 042-043.jpg » comprise).
+    2) Sans nom exploitable : les pages proches de l'estimation (page imprimée + écart du chapitre précédent ; pour le
+       1er, de -2 à +10) reçoivent un score (voir _score) et la meilleure est gardée.
+    Les doubles pages font varier l'écart d'un chapitre à l'autre : la recherche se fait chapitre par chapitre."""
     images, decalage, ecart, precedente = [], None, None, page_sommaire
-    for k, c in enumerate(chapitres):
-        mots = _mots_titre(c["titre"])
-        if ecart is None:
-            plage = sorted(textes) if (k == 0 and lire_page is None) else range(c["page"] - 2, c["page"] + 11)
-        else:
-            plage = range(c["page"] + ecart - 3, c["page"] + ecart + 4)
-        seuil = max(1.0, len(mots) / 2)
-        meilleur, score_max = None, 0.0
+
+    def meilleure(plage, mots, num, seuil):
+        gagnante, maxi = None, 0.0
         for i in plage:
             if i <= precedente or i < 0 or (nb_pages and i >= nb_pages):
                 continue
@@ -208,20 +219,32 @@ def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=N
                     textes[i] = ocr(lire_page(i))
                 except Exception:
                     continue
-            sc = _score(textes[i], mots, c.get("num"))
-            if sc >= seuil and sc > score_max:               # à égalité : la première page
-                meilleur, score_max = i, sc
-        if meilleur is not None:
-            images.append(meilleur)
-            precedente = meilleur
-            ecart = meilleur - c["page"]
-            if decalage is None:
-                decalage = ecart
+            sc = _score(textes[i], mots, num)
+            if sc >= seuil and sc > maxi:                    # à égalité : la plus proche de l'estimation
+                gagnante, maxi = i, sc
+        return gagnante
+
+    for k, c in enumerate(chapitres):
+        mots = _mots_titre(c["titre"])
+        par_nom = _image_par_nom(c["page"], noms, page_sommaire)
+        if par_nom is not None:
+            image = par_nom             # essayé : ajuster sur le titre des pages voisines accorde moins (23/45 contre 29/45)
         else:
-            images.append(c["page"] + ecart if ecart is not None else None)
-            if ecart is None and k == 0:                       # aucun titre lu : numéro du fichier en dernier recours
-                ecart = _decalage_par_nom(c["page"], noms, page_sommaire)
-                images[-1] = c["page"] + ecart if ecart is not None else None
+            if ecart is None:
+                plage = sorted(textes) if (k == 0 and lire_page is None) else range(c["page"] - 2, c["page"] + 11)
+            else:
+                plage = range(c["page"] + ecart - 3, c["page"] + ecart + 4)
+            image = meilleure(plage, mots, c.get("num"), max(1.0, len(mots) / 2))
+            if image is None and ecart is not None:
+                image = c["page"] + ecart                    # estimation, sans titre lu
+            if image is None and k == 0:                     # aucun titre lu : numéro du fichier en dernier recours
+                e = _decalage_par_nom(c["page"], noms, page_sommaire)
+                image = c["page"] + e if e is not None else None
+        images.append(image)
+        if image is not None:
+            precedente = max(precedente, image)
+            ecart = image - c["page"]
+            if decalage is None:
                 decalage = ecart
     return images, decalage
 
@@ -229,6 +252,16 @@ def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=N
 def _decalage(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=None):
     """Décalage du 1er chapitre seulement (voir _images)."""
     return _images(chapitres, textes, page_sommaire, lire_page, nb_pages, noms)[1]
+
+
+def _image_par_nom(page, noms, page_sommaire):
+    """Image dont le nom porte la page imprimée (« 077.jpg », ou « 042-043.jpg » pour une double page) : la plupart des
+    scans sont nommés ainsi, et les doubles pages y sont déjà comptées pour une seule image."""
+    for i, nom in enumerate(noms or []):
+        m = re.match(r"(\d{2,4})(?:-(\d{2,4}))?(?!\d)", os.path.basename(nom))
+        if m and i > page_sommaire and int(m.group(1)) <= page <= int(m.group(2) or m.group(1)):
+            return i
+    return None
 
 
 def _decalage_par_nom(page, noms, page_sommaire):

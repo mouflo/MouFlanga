@@ -1,5 +1,10 @@
 # Historique des versions
 
+## Sommaire : tomes sur fond rose et pages calées par le nom des images (13 octobre 2026)
+- 🌸 Sommaire en blanc sur fond rose (FullMetal Alchemist Perfect tome 12) : la lecture du texte clair garde ce qui est clair dans les trois couleurs (avant : le bleu seul, que le rose laissait passer).
+- ✂️ Un titre de chapitre écrit sur deux lignes (« Une spirale négative / et un pas vers le salut ····· 215 ») est maintenant rassemblé, même avec une ligne vide entre les deux.
+- 🖼️ La page de départ d'un chapitre est d'abord cherchée par le **nom des images** (« 077.jpg » = page imprimée 77, « 042-043.jpg » pour une double page). Sur tes corrections des tomes 4 à 11, 29 chapitres sur 45 tombent exactement sur la bonne image (16 avec la lecture des titres seule), les autres à 1–3 images près. Sans nom exploitable, la recherche par titre sert encore.
+
 ## Sommaire : pages mieux calées et chapitres « validés » (13 octobre 2026)
 - 🎯 Chaque chapitre cherche sa page d'ouverture près de l'estimation du chapitre précédent, et la page qui ressemble le plus gagne : mots du titre et surtout la mention « Chapitre N ». Les doubles pages (« 042-043 ») ne décalent plus tous les chapitres suivants. Sur les tomes 4 à 7 de FullMetal Alchemist, 17 chapitres sur 24 retombent exactement sur les pages corrigées à la main (9 sur 24 avant), les autres à 1 à 3 pages près.
 - 🔧 Le sommaire du tome 4 n'était plus lu : la seconde lecture (texte blanc sur couleur) n'était tentée que si la première ne donnait aucune ligne, et un numéro mal lu (« 24 » lu « 21 ») faisait rejeter toute la liste. Les deux cas sont corrigés.
