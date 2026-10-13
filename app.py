@@ -2623,6 +2623,24 @@ def _remplacer_tomes(nom, numeros):
     return n
 
 
+_MOT_INTEGRALE = re.compile(r"int[ée]grale|perfect|deluxe|omnibus|kanzenban|ultimate|collector", re.I)
+
+
+def _tomes_hors_integrale(nom, titre, nouveaux):
+    """Remplacer par une intégrale (« Perfect INTEGRALE », « Perfect Édition (01-18) »…) : les tomes qu'elle ne contient pas
+    (ex. les tomes 19 à 27 de l'ancienne édition) sont retirés aussi. Seulement si elle annonce N tomes et les apporte tous
+    (1 à N) : sinon, rien de plus n'est retiré. Renvoie l'ensemble des numéros à mettre à la corbeille."""
+    import edition
+    titre_plat = re.sub(r"[._]+", " ", titre or "")
+    n = edition.volumes_du_titre(titre_plat)
+    if not n or not (_MOT_INTEGRALE.search(titre_plat) or edition.edition_du_titre(titre_plat)):
+        return set()
+    if not set(range(1, n + 1)) <= set(nouveaux):
+        return set()
+    presents = {_tome_de_entree(e) for e in _entrees(_scan().get(nom) or [])} - {None}
+    return {t for t in presents if t not in nouveaux and t > 0}
+
+
 def _importer_torrent(nom, source, remplacer=False):
     """Contenu d'un torrent → bibliothèque, sans jamais renommer ni effacer ses fichiers (le NAS le refuse tant que
     qBittorrent partage) : un tome complet est placé directement sous « Tome NN/<série> - Tome NN.cbz », un chapitre
@@ -2636,7 +2654,10 @@ def _importer_torrent(nom, source, remplacer=False):
         if f.suffix.lower() in (".cbz", ".cbr") and _numero_tome(f.stem) is not None:
             a_tomes.setdefault(_numero_tome(f.stem), f)
     if remplacer:
-        logger.info("Meilleure version de « %s » : %d tome(s) remplacé(s)", nom, _remplacer_tomes(nom, set(a_tomes)))
+        hors = _tomes_hors_integrale(nom, Path(source).name, set(a_tomes))
+        if hors:
+            logger.info("Intégrale « %s » : tomes absents de cette édition mis à la corbeille : %s", nom, sorted(hors))
+        logger.info("Meilleure version de « %s » : %d tome(s) remplacé(s)", nom, _remplacer_tomes(nom, set(a_tomes) | hors))
     lots, places = [], 0
     for f in fichiers:
         ext = f.suffix.lower()

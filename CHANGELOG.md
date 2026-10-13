@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Remplacer par une intégrale : les tomes absents partent aussi (13 octobre 2026)
+- 🧲 Quand un torrent d'intégrale (« Perfect INTEGRALE », « Perfect Édition (01-18) »…) remplace les tomes, les tomes de l'ancienne édition qu'il ne contient pas (ex. 19 à 27) vont aussi à la corbeille (30 jours). Seulement si l'intégrale annonce N tomes et les apporte tous (1 à N) ; sinon rien de plus n'est retiré.
+
 ## Aperçu d'allègement fidèle, fiche d'infos lisible (13 octobre 2026)
 - 👁 L'aperçu « Après » affiche désormais exactement les octets qu'« Appliquer » écrirait. Avant, il était recompressé en qualité 88 et réduit : les différences entre 98 et 40 étaient masquées. Le détail zoomé est encodé sans perte visible.
 - 📋 La fiche d'infos de la série (ℹ️) passe les libellés au-dessus de chaque valeur : plus de colonne écrasée sur téléphone.

@@ -402,6 +402,19 @@ class OrganiserTest(BibliothequeTest):
             self.assertIn("<Series>X</Series>", z.read("ComicInfo.xml").decode())
         self.assertEqual([(c["num"], c["titre"], c["image"]) for c in signets.lire(dest)], [(1.0, "Début", 0), (2.0, "Suite", 1)])
 
+    def test_integrale_remplace_aussi_les_tomes_absents(self):
+        serie = self.root / "Serie"
+        for t in (1, 2, 19):
+            p = serie / f"Tome {t:02d}" / f"Serie - Tome {t:02d}.cbz"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(p, "w") as z:
+                z.writestr("001.jpg", _pages(2, t)[0])
+        A = self.A
+        self.assertEqual(A._tomes_hors_integrale("Serie", "Serie.Perfect.INTEGRALE.Arakawa.2020", {1, 2}), set())   # pas de N tomes annoncé
+        self.assertEqual(A._tomes_hors_integrale("Serie", "Serie - Perfect Édition (01-02) (Oku)", {1, 2}), {19})
+        self.assertEqual(A._tomes_hors_integrale("Serie", "Serie - Perfect Édition (01-03) (Oku)", {1, 2}), set())  # tome 3 manque : rien retiré
+        self.assertEqual(A._tomes_hors_integrale("Serie", "Serie - Tome 01 (2005) [Digital]", {1}), set())            # pas une intégrale
+
     def test_organiser(self):
         with mock.patch.object(tomes, "chercher", return_value=None):
             r = self.client.post("/api/organiser", json={"series": self.vrac.name, "nom": "Gintama"})
