@@ -1,5 +1,8 @@
 # Historique des versions
 
+## Sommaire en blanc sur couleur (13 octobre 2026)
+- 🔍 Un sommaire imprimé en blanc sur fond orange (FullMetal Alchemist Perfect) n'était pas lu. Quand la lecture normale ne trouve rien, l'appli relit la page avec le canal bleu (le blanc y ressort). Le sceau « @ » devant chaque titre n'est plus repris.
+
 ## Remplacement : plus de dossiers « Tome NN » vides
 - 🧹 Quand un remplacement met un tome à la corbeille, son dossier « Tome NN » vide est supprimé aussi (avant il restait vide).
 

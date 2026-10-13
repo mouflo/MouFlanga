@@ -38,10 +38,16 @@ def _simple(t):
     return re.sub(r"[^a-z0-9]+", " ", t).strip()
 
 
-def ocr(image_octets: bytes) -> str:
-    """Texte d'une image (tesseract, français, une ligne par ligne de texte)."""
+def ocr(image_octets: bytes, clair: bool = False) -> str:
+    """Texte d'une image (tesseract, français, une ligne par ligne de texte).
+    clair=True : texte blanc sur fond coloré (sommaire d'un tome, « SOMMAIRE » sur orange) : on ne lit que le canal bleu,
+    où le blanc est très clair et le fond sombre."""
     from PIL import Image, ImageOps
-    im = ImageOps.grayscale(Image.open(io.BytesIO(image_octets)))
+    im = Image.open(io.BytesIO(image_octets))
+    if clair and im.mode in ("RGB", "RGBA"):
+        im = im.convert("RGB").split()[2].point(lambda v: 255 if v > 170 else 0)
+    else:
+        im = ImageOps.grayscale(im)
     if im.width < 1400:                                   # petites images : agrandies, l'OCR lit mieux
         im = im.resize((im.width * 2, im.height * 2))
     buf = io.BytesIO()
@@ -75,6 +81,7 @@ def analyser(texte: str) -> list[dict]:
         if page is None:
             continue
         titre = re.sub(r"[.·…_]{2,}.*$", "", titre or "").strip(" .:-–—,'\"‘’")
+        titre = re.sub(r"^[@©®°•·\s]+", "", titre)                      # le sceau « @ » devant chaque chapitre
         if num is None and out:
             num = out[-1]["num"] + 1
         if num is None:
@@ -98,11 +105,19 @@ def lire(chemin, lire_page, nb_pages) -> dict:
     textes, trouve, page_sommaire = {}, [], None
     for i in range(min(nb_pages, PAGES_MAX)):
         try:
-            textes[i] = ocr(lire_page(i))
+            octets = lire_page(i)
+            textes[i] = ocr(octets)
         except Exception as e:                               # image illisible, tesseract en panne : page suivante
             logger.info("Sommaire de %s, page %d : %s", chemin, i, e.__class__.__name__)
             continue
         lignes = analyser(textes[i])
+        if not lignes:                                       # titre en blanc sur couleur : seconde lecture (canal bleu)
+            try:
+                clair = ocr(octets, clair=True)
+                if analyser(clair):
+                    textes[i], lignes = clair, analyser(clair)
+            except Exception as e:
+                logger.info("Sommaire de %s, page %d (couleur) : %s", chemin, i, e.__class__.__name__)
         if trouve and lignes and lignes[0]["num"] > trouve[-1]["num"] and _vraisemblable(trouve + lignes):
             trouve += lignes                                 # sommaire sur deux pages
         elif not trouve and _vraisemblable(lignes):
