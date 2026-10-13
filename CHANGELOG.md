@@ -1,5 +1,9 @@
 # Historique des versions
 
+## Sommaire : épilogue sans numéro et symboles parasites (13 octobre 2026)
+- 📖 Une ligne de sommaire sans numéro de chapitre (« Épilogue — L'autre fin du voyage … 329 », « Prologue », « Bonus », « Extra », « Postface »…) est maintenant lue : elle prend le numéro suivant et garde son mot dans le titre (« Épilogue : L'autre fin du voyage »). Avant, le tome 18 de FullMetal Alchemist perdait son dernier chapitre.
+- 🧹 Les symboles parasites devant les titres (« € », « €} », « @ », le sceau de chaque chapitre mal lu) sont retirés.
+
 ## Sommaire : tomes sur fond rose et pages calées par le nom des images (13 octobre 2026)
 - 🌸 Sommaire en blanc sur fond rose (FullMetal Alchemist Perfect tome 12) : la lecture du texte clair garde ce qui est clair dans les trois couleurs (avant : le bleu seul, que le rose laissait passer).
 - ✂️ Un titre de chapitre écrit sur deux lignes (« Une spirale négative / et un pas vers le salut ····· 215 ») est maintenant rassemblé, même avec une ligne vide entre les deux.

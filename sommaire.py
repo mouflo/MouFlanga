@@ -27,6 +27,8 @@ _LIGNE_MOT = re.compile(r"^\W*" + _MOTS + r"\.?\s*([0-9OoIlSABZ|]{1,4})\b\s*[:.\
 _LIGNE_NUM = re.compile(r"^\W*(\d{1,4})\s*[.):\-–—]\s*(.+?)\s*[.·…_,]{3,}\s*(\d{1,3})\s*$")
 
 _DEBUT_CHAPITRE = re.compile(r"^\W*" + _MOTS + r"\.?\s*([0-9OoIlSABZ|]{1,4})\b\s*[:.\-–—]?\s*(.*)$", re.I)
+_LIGNE_SPECIALE = re.compile(r"^\W*((?:[ée]\s?pilogue|prologue|bonus|extra|postface|pr[ée]face|interlude|chapitre\s+final|hors[- ]s[ée]rie)s?)\b"
+                             r"[\s:.\-–—@©®°•·€{}()\[\]]*(.*?)[\s.·…_,\-–—]+(\d{1,3})\s*$", re.I)
 _SUITE_TITRE = re.compile(r"^\W*(.*?)[\s.·…_,\-–—]+(\d{1,3})\s*$")
 
 _ETAT = {}                      # (série, tome) → {"en_cours", "message"}
@@ -88,6 +90,13 @@ def analyser(texte: str) -> list[dict]:
             if m:
                 num, titre, page = float(m.group(1)), m.group(2), int(m.group(3))
                 attente = None
+            else:
+                m = _LIGNE_SPECIALE.match(ligne)
+                if m and out:                                 # « Épilogue ··· L'autre fin du voyage ··· 329 » : suite du précédent
+                    mot = m.group(1)[:1].upper() + m.group(1)[1:].lower()
+                    reste = re.sub(r"^[^\w«\"“‘'(\[]+", "", m.group(2)).strip(" .:-–—,'\"‘’")
+                    num, titre, page = None, (mot + " : " + reste) if reste else mot, int(m.group(3))
+                    attente = None
         if page is None and attente is not None:             # titre sur deux lignes : la page est au bout de la seconde
             suite = _SUITE_TITRE.match(ligne)
             if suite and not _DEBUT_CHAPITRE.match(ligne):
@@ -98,7 +107,7 @@ def analyser(texte: str) -> list[dict]:
             attente = (_numero(debut.group(1)), debut.group(2)) if debut and _numero(debut.group(1)) is not None else None
             continue
         titre = re.sub(r"[.·…_]{2,}.*$", "", titre or "").strip(" .:-–—,'\"‘’")
-        titre = re.sub(r"^[@©®°•·\s]+", "", titre)                      # le sceau « @ » devant chaque chapitre
+        titre = re.sub(r"^[^\w«\"“‘'(\[]+", "", titre)                  # le sceau « @ », « € », « €} » devant chaque chapitre
         if num is None and out:
             num = out[-1]["num"] + 1
         if num is None:

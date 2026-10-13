@@ -118,3 +118,10 @@ class VisionTest(unittest.TestCase):
         self.assertIsNone(sommaire._image_par_nom(50, noms, 7))
         ch = [{"num": 1.0, "titre": "Début", "page": 5}, {"num": 2.0, "titre": "Suite", "page": 8}]
         self.assertEqual(sommaire._images(ch, {}, 7, None, 12, noms)[0], [8, 10])
+
+    def test_epilogue_sans_numero_et_symboles_parasites(self):
+        texte = ("SOMMAIRE\nChapitre 107 € Le dernier combat ———— 141\nChapitre 108 €} La fin du voyage ———— 213\n"
+                 "Épilogue @ L'autre fin du voyage ———— 329\n")
+        r = sommaire.analyser(texte)
+        self.assertEqual([(c["num"], c["page"]) for c in r], [(107.0, 141), (108.0, 213), (109.0, 329)])
+        self.assertEqual([c["titre"] for c in r], ["Le dernier combat", "La fin du voyage", "Épilogue : L'autre fin du voyage"])
