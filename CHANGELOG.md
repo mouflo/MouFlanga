@@ -1,5 +1,12 @@
 # Historique des versions
 
+## ⚡ Bibliothèque rapide : index SQLite, défilement infini, fiches des tomes instantanées (13 octobre 2026)
+- 🗂 Index de la bibliothèque (`data/index.sqlite`, SQLite) : l'appli ne refait plus le tour du NAS à chaque demande. Elle compare seulement la date des dossiers (environ 10 ms) et ne reparcourt que quand quelque chose a changé ; après un redémarrage, la bibliothèque est prête tout de suite. Les tailles et dates des fichiers sont retenues (vérifiées en arrière-plan toutes les 10 minutes).
+- ⓘ Fiche d'un tome : de 1,5 à 6 secondes avant, environ 0,05 s maintenant (même en revenant sur un tome déjà ouvert).
+- 📚 Liste de la bibliothèque : de 1,3 à 5,7 secondes avant, environ 0,25 s une fois chaud ; les fiches d'identification et les infos de chaque tome ne sont plus relues à chaque affichage tant que leur fichier n'a pas changé.
+- ♾️ Défilement infini : la page affiche les 36 premières séries, les suivantes arrivent en descendant. La recherche, les lettres et les filtres portent toujours sur toute la bibliothèque.
+- 👥 Plusieurs lecteurs en même temps : chaque écriture de progression utilise son propre fichier temporaire (plus de collision entre deux enregistrements simultanés).
+
 ## 07-Ghost : résumé, chapitres et sommaire en colonnes (13 octobre 2026)
 - 📖 Résumé en français : MangaDex renvoyait parfois un simple lien « Wikipedia » à la place du résumé, et l'appli le gardait (07-Ghost). Un résumé trop court est maintenant ignoré et Wikipédia en français prend le relais ; les séries qui n'avaient qu'un mot sont refaites toutes seules dès le lendemain.
 - 🔖 Chapitres en français : la fiche Wikipédia de la série est lue elle-même (titres « Kapitel.1 La fuite<br />… » rangés par tome), plus seulement les pages « Liste des chapitres ».

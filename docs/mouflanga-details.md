@@ -75,3 +75,11 @@ Sorti de `CLAUDE.md` pour l'alléger : lire la section utile avant de toucher au
 
 ## Alléger un tome partagé par qBittorrent (12/10/2026)
 - Le NAS (NFS) refuse de renommer ou d'effacer un fichier lié au torrent (même après pause du torrent, même chmod), mais accepte de renommer un DOSSIER. `optimiser.reecrire_partage` : version légère dans `.<Tome NN>.allege/`, puis `Tome NN` → `.Tome NN.avant` → corbeille et `.allege` → `Tome NN`. Seulement si le tome est seul dans son dossier (`_dossier_a_lui`).
+
+
+## Index de la bibliothèque (13/10/2026)
+- `indexation.py` + `app._scan()` : parcours du NAS gardé en mémoire et dans `data/index.sqlite` (tables fichiers, dossiers, meta ; WAL). `_scan()` compare la date de chaque dossier connu (un stat par dossier, une fois par requête) et reparcourt seulement si elle a changé ; les écritures (POST hors `_SANS_EFFET_SUR_FICHIERS`) invalident aussi (`_scan_invalider()`). Un dossier modifié depuis moins de 2 s est revérifié (horloge du disque). `_scan()` rend une copie de premier niveau.
+- `_stat_index(f)` : taille et date d'un fichier d'après l'index ; `_memo_fichier()` garde `tomes_cbz.lire_info/chapitres` par (taille, date) ; `tomes._charger` garde les fiches par (date, taille) du JSON.
+- Parcours complet (tailles relues) toutes les 10 min en arrière-plan. Seul le dossier réel est enregistré dans index.sqlite (pas ceux des tests).
+- Page : `drawGrid()` affiche `GRILLE_PAGE` = 36 cartes puis `grilleSuite()` (IntersectionObserver, sentinelle `#grilleSuite`).
+- Piste suivante (pas faite) : données des lecteurs (progression, favoris, demandes) vers SQLite si le nombre d'utilisateurs augmente ; aujourd'hui un fichier par lecteur, écriture atomique et verrouillée (`_progress_lock`).

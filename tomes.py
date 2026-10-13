@@ -276,14 +276,32 @@ def oublier(serie: str):
     _fichier(serie).unlink(missing_ok=True)
 
 
+_CACHE_FICHES = {}              # série → ((date, taille du fichier), contenu) : relu seulement si le fichier a changé
+
+
 def _charger(serie: str) -> dict | None:
+    """Contenu de data/tomes/<série>.json. Gardé en mémoire tant que le fichier ne change pas : la liste de la
+    bibliothèque le demande des milliers de fois. Le résultat est une copie de premier niveau (on peut y ajouter des clés)."""
+    f = _fichier(serie)
     try:
-        d = json.loads(_fichier(serie).read_text(encoding="utf-8"))
+        st = f.stat()
+        cle = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        _CACHE_FICHES.pop(serie, None)
+        return None
+    c = _CACHE_FICHES.get(serie)
+    if c and c[0] == cle:
+        return dict(c[1])
+    try:
+        d = json.loads(f.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     d["tomes"] = {float(k): v for k, v in d.get("tomes", {}).items()}
     d["titres"] = {float(k): v for k, v in d.get("titres", {}).items()}
-    return d
+    if len(_CACHE_FICHES) > 1000:
+        _CACHE_FICHES.clear()
+    _CACHE_FICHES[serie] = (cle, d)
+    return dict(d)
 
 
 def chercher(serie: str, forcer: bool = False) -> dict | None:

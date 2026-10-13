@@ -109,7 +109,7 @@ def _read_json(path, default):
 
 def _write_json(path, data):
     Path(path).parent.mkdir(parents=True, exist_ok=True)      # ex. data/progression/ au 1er lecteur
-    tmp = Path(path).with_suffix(".tmp")
+    tmp = Path(path).with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")      # un nom par fil : écritures simultanées
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, path)
 
@@ -144,34 +144,134 @@ def _a_importer(p: Path):
         return False
 
 
-def _scan():
-    """{série: [fichiers]} — chaque sous-dossier est une série ; les fichiers posés à la racine forment « (Sans série) »."""
-    series = {}
-    if not MANGA_DIR.is_dir():
-        return series
-    loose = []
-    try:
-        entries = sorted(MANGA_DIR.iterdir(), key=lambda p: archives.natural_key(p.name))
-    except OSError:
-        return series
-    for entry in entries:
-        try:
-            if entry.name.startswith((".", "@", "#")):
-                continue
-            if entry.is_dir():
-                files = []
-                for dirpath, dirnames, filenames in os.walk(entry, onerror=lambda e: None):
-                    dirnames[:] = [d for d in dirnames if not d.startswith((".", "@"))]
-                    files += [Path(dirpath) / n for n in filenames if _is_archive(Path(n)) or _a_importer(Path(dirpath) / n)]
-                if files:
-                    series[entry.name] = sorted(files, key=lambda p: archives.natural_key(p.relative_to(entry)))
-            elif _is_archive(entry) and not importer.est_lot(entry):     # les .rar/.zip/.7z vont dans la page d'import
-                loose.append(entry)
-        except OSError:
-            continue
-    if loose:
-        series["(Sans série)"] = loose
+_INDEX = {"series": None, "stats": {}, "racine": None, "date": 0.0, "perime": True, "en_cours": False, "dossiers": {},
+          "fichiers": {}, "vrac": []}
+_INDEX_VERROU = threading.Lock()
+INDEX_DUREE = 20                 # secondes avant qu'un parcours du NAS soit relancé en arrière-plan
+INDEX_BASE = DATA_DIR / "index.sqlite"
+_RACINE_REELLE = MANGA_DIR      # seul le vrai dossier est gardé dans data/index.sqlite (pas ceux des tests)
+
+
+def _scan_invalider():
+    """Un fichier vient de changer (import, suppression, remplacement…) : le prochain _scan() reparcourt tout de suite."""
+    _INDEX["perime"] = True
+
+
+def _parcours(complet=False):
+    """Parcourt le dossier des mangas (seuls les dossiers modifiés sont relus ; complet=True relit aussi la taille et la
+    date de chaque fichier) et met l'index à jour."""
+    import indexation
+    racine = MANGA_DIR
+    if not racine.is_dir():
+        return {}
+    garder = lambda p: _is_archive(p) or _a_importer(p)
+    garder_vrac = lambda p: _is_archive(p) and not importer.est_lot(p)
+    fichiers, dossiers, vrac = indexation.parcourir(racine, garder, garder_vrac, {} if complet else _INDEX["fichiers"],
+                                                    {} if complet else _INDEX["dossiers"])
+    return _appliquer_index(racine, fichiers, dossiers, vrac)
+
+
+def _appliquer_index(racine, fichiers, dossiers, vrac):
+    stats, series = {}, {}
+    for nom in sorted(fichiers, key=archives.natural_key):
+        lst = []
+        for ch, taille, mtime in sorted(fichiers[nom], key=lambda x: archives.natural_key(x[0].split("/", 1)[1] if "/" in x[0] else x[0])):
+            p = racine / ch
+            lst.append(p)
+            stats[p] = (taille, mtime)
+        if lst:
+            series[nom] = lst
+    if vrac:
+        lst = []
+        for ch, taille, mtime in sorted(vrac, key=lambda x: archives.natural_key(x[0])):
+            p = racine / ch
+            lst.append(p)
+            stats[p] = (taille, mtime)
+        series["(Sans série)"] = lst
+    maintenant = time.time()
+    _INDEX.update(series=series, stats=stats, racine=str(racine), date=maintenant, perime=False,
+                  fichiers=fichiers, dossiers=dossiers, vrac=vrac,
+                  recent=any(m > maintenant - 2 for m in dossiers.values()))      # horloge du disque à quelques ms : on revérifie
     return series
+
+
+def _reparcourir_en_arriere_plan():
+    if _INDEX["en_cours"]:
+        return
+    _INDEX["en_cours"] = True
+
+    def travail():
+        try:
+            import indexation
+            avant = (_INDEX["fichiers"], _INDEX["vrac"])
+            complet = time.time() - _INDEX.get("complet", 0) > 600       # de temps en temps : tailles et dates relues partout
+            _parcours(complet)
+            if complet:
+                _INDEX["complet"] = time.time()
+            if MANGA_DIR == _RACINE_REELLE and (_INDEX["fichiers"], _INDEX["vrac"]) != avant:
+                indexation.enregistrer(INDEX_BASE, MANGA_DIR, _INDEX["fichiers"], _INDEX["dossiers"])
+        except Exception as e:
+            logger.warning("Index de la bibliothèque : %s", e)
+        finally:
+            _INDEX["en_cours"] = False
+    threading.Thread(target=travail, daemon=True).start()
+
+
+def _index_a_jour() -> bool:
+    """Les dossiers connus ont-ils la même date qu'au dernier parcours ? (un stat par dossier : ≈ 10 ms pour toute la
+    bibliothèque, au plus une fois par demande)."""
+    from flask import g, has_request_context
+    if _INDEX.get("recent") and time.time() - _INDEX["date"] < 3:
+        return False                                         # dossier modifié à l'instant : sa date n'est pas encore fiable
+    if has_request_context() and g.get("_index_verifie"):
+        return True
+    for rel, mtime in _INDEX["dossiers"].items():
+        try:
+            if os.stat(MANGA_DIR / rel if rel else MANGA_DIR).st_mtime != mtime:
+                return False
+        except OSError:
+            return False
+    if has_request_context():
+        g._index_verifie = True
+    return True
+
+
+def _scan():
+    """{série: [fichiers]} — chaque sous-dossier est une série ; les fichiers posés à la racine forment « (Sans série) ».
+    Lu dans l'index (mémoire + data/index.sqlite) : le NAS n'est parcouru qu'après une modification ou toutes les
+    INDEX_DUREE secondes, en arrière-plan (l'ancien résultat est servi pendant ce temps)."""
+    if not MANGA_DIR.is_dir():
+        return {}
+    with _INDEX_VERROU:
+        if _INDEX["racine"] != str(MANGA_DIR):                 # premier appel (ou autre dossier)
+            import indexation
+            _INDEX.update(series=None, perime=True, fichiers={}, dossiers={}, vrac=[], stats={}, date=0.0)
+            garde = indexation.charger(INDEX_BASE, MANGA_DIR) if MANGA_DIR == _RACINE_REELLE else None
+            if garde and garde[0]:                             # l'index du dernier arrêt : servi tout de suite, relu en arrière-plan
+                _appliquer_index(MANGA_DIR, garde[0], garde[1], [])
+                _INDEX["date"] = 0.0
+        if _INDEX["series"] is not None and not _INDEX["perime"] and not _index_a_jour():
+            _INDEX["perime"] = True                            # un dossier a changé de date : fichier ajouté, retiré, renommé
+        if _INDEX["series"] is None or _INDEX["perime"]:
+            _parcours()
+            if MANGA_DIR == _RACINE_REELLE:
+                import indexation
+                indexation.enregistrer(INDEX_BASE, MANGA_DIR, _INDEX["fichiers"], _INDEX["dossiers"])
+        elif time.time() - _INDEX["date"] > INDEX_DUREE:
+            _reparcourir_en_arriere_plan()
+        return {k: list(v) for k, v in _INDEX["series"].items()}
+
+
+def _stat_index(p: Path):
+    """(taille, date de modification) d'un fichier connu de l'index, sinon d'après le disque ; None si absent."""
+    s = _INDEX["stats"].get(p)
+    if s is not None:
+        return s
+    try:
+        st = p.stat()
+        return st.st_size, st.st_mtime
+    except OSError:
+        return None
 
 
 def _rel(p: Path):
@@ -352,6 +452,25 @@ def _compte(entrees):
     return texte + (f" + {autres} chapitre{'s' if autres > 1 else ''}" if autres else "")
 
 
+_MEMO_FICHIERS = {}
+
+
+def _memo_fichier(genre, f, fonction):
+    """fonction(f) pour un fichier de tome, gardé tant que sa taille et sa date ne changent pas (ouvrir l'archive sur
+    le NAS coûte cher : la liste de la bibliothèque le faisait pour chaque tome à chaque affichage)."""
+    st = _stat_index(f)
+    cle = (genre, str(f))
+    c = _MEMO_FICHIERS.get(cle)
+    if c and st and c[0] == st:
+        return c[1]
+    r = fonction(f)
+    if st:
+        if len(_MEMO_FICHIERS) > 20000:
+            _MEMO_FICHIERS.clear()
+        _MEMO_FICHIERS[cle] = (st, r)
+    return r
+
+
 def _entrees(files):
     """Chapitres d'une série, dans l'ordre de lecture.
     Fichier ordinaire = un chapitre (clé : son chemin). Fichier de tome = plusieurs chapitres (clé : « #12 »),
@@ -377,15 +496,13 @@ def _entrees(files):
         return titres_de[serie].get(str(int(t))) if t is not None else None
     for f in files:
         rel = _rel(f)
-        try:
-            taille = f.stat().st_size
-        except OSError:
-            taille = 0
+        st = _stat_index(f)
+        taille = st[0] if st else 0
         if _a_importer(f):
             out.append({"key": rel, "path": rel, "title": f"📦 {f.name}", "num": None, "groupe": None, "debut": 0,
                         "nb": None, "a_importer": True, "size_mb": round(taille / 1048576, 1)})
             continue
-        info = tomes_cbz.lire_info(f) if f.suffix.lower() == ".cbz" else None
+        info = _memo_fichier("info", f, tomes_cbz.lire_info) if f.suffix.lower() == ".cbz" else None
         if info is None:
             titre = _title_of(f)
             entree = {"key": rel, "path": rel, "title": titre, "num": _numero_chapitre(titre), "groupe": None,
@@ -410,7 +527,7 @@ def _entrees(files):
             out.append(entree)
             continue
         try:
-            chapitres = tomes_cbz.chapitres(f)
+            chapitres = _memo_fichier("chapitres", f, tomes_cbz.chapitres)
         except archives.ArchiveError:
             continue
         total = sum(c["nb"] for c in chapitres) or 1
@@ -580,6 +697,20 @@ def _remplir_statuts(series):
     threading.Thread(target=travail, daemon=True).start()
 
 
+# Demandes fréquentes qui ne touchent à aucun fichier de la bibliothèque (page tournée, favori, lu/non lu, connexion…)
+_SANS_EFFET_SUR_FICHIERS = ("/api/progress", "/api/favori", "/api/mark", "/api/login", "/api/logout", "/login", "/logout",
+                            "/api/tome/resume", "/api/tome/provenance", "/api/resume", "/api/push", "/api/demande")
+
+
+@app.after_request
+def _index_apres_ecriture(reponse):
+    """Une demande qui modifie quelque chose (envoi, suppression, import, réglage…) : l'index est reparcouru au prochain appel."""
+    if request.method not in ("GET", "HEAD", "OPTIONS") and reponse.status_code < 400 \
+            and not request.path.startswith(_SANS_EFFET_SUR_FICHIERS):
+        _scan_invalider()
+    return reponse
+
+
 @app.route("/api/library")
 def api_library():
     if not MANGA_DIR.is_dir():
@@ -593,12 +724,10 @@ def api_library():
         total_size = 0
         newest = 0
         for f in files:
-            try:
-                st = f.stat()
-                total_size += st.st_size
-                newest = max(newest, st.st_mtime)
-            except OSError:
-                pass
+            st = _stat_index(f)
+            if st:
+                total_size += st[0]
+                newest = max(newest, st[1])
         entrees = _entrees(files)
         etat, _ = _etat_serie(name, entrees) if name != "(Sans série)" else (None, "")
         manque = name != "(Sans série)" and _il_en_manque(name, entrees, etat)

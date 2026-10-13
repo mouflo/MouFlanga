@@ -105,6 +105,8 @@
       }).join('');
   }
 
+  var GRILLE_PAGE = 36, grilleListe = [], grilleRendu = 0, grilleObs = null;     // défilement infini de la bibliothèque
+
   function drawGrid() {
     var noms = [];
     series.forEach(function (s) { if (s.univers && noms.indexOf(s.univers) < 0) noms.push(s.univers); });
@@ -124,7 +126,15 @@
         : 'Aucune série' + (quoi ? ' ' + esc(quoi) : '') + (lettre ? ' à la lettre ' + esc(lettre) : '') + '.') + '</div>';
       return;
     }
-    $('grid').innerHTML = list.map(function (s) {
+    // Défilement infini : les premières cartes tout de suite, les suivantes quand on approche du bas de la page
+    var rendu = (list.length === grilleListe.length && grilleRendu) ? grilleRendu : GRILLE_PAGE;
+    grilleListe = list;
+    grilleRendu = 0;
+    $('grid').innerHTML = '';
+    grilleSuite(Math.max(rendu, GRILLE_PAGE));
+  }
+
+  function carteGrille(s) {
       var left = s.chapters - s.read, pct = s.chapters ? Math.round(100 * s.read / s.chapters) : 0;
       if (s.recherchee) return '<div class="card recherchee" tabindex="0" data-id="' + esc(s.id) + '" data-recherchee="1">' +
         (s.cover ? '<img class="cv" loading="lazy" alt="" src="' + esc(s.cover) + '">' : '<div class="cv"></div>') +
@@ -141,7 +151,34 @@
         '<div class="nm">' + esc(s.title) + '</div>' +
         '<div class="st">' + esc(s.compte || (s.chapters + ' chapitre(s)')) + ' · ' + taille(s.size_mb) + '</div>' +
         '<div class="bar"><i style="width:' + pct + '%"></i></div></div>';
-    }).join('');
+  }
+
+  function grilleSuite(jusqua) {
+    var fin = Math.min(grilleListe.length, jusqua || grilleRendu + GRILLE_PAGE);
+    if (fin > grilleRendu) {
+      $('grid').insertAdjacentHTML('beforeend', grilleListe.slice(grilleRendu, fin).map(carteGrille).join(''));
+      grilleRendu = fin;
+    }
+    var sentinelle = document.getElementById('grilleSuite');
+    if (grilleRendu >= grilleListe.length) {            // tout est affiché : plus rien à surveiller
+      if (sentinelle) sentinelle.remove();
+      if (grilleObs) { grilleObs.disconnect(); grilleObs = null; }
+      return;
+    }
+    if (!sentinelle) {
+      sentinelle = document.createElement('div');
+      sentinelle.id = 'grilleSuite';
+      sentinelle.style.cssText = 'height:1px;width:100%';
+      $('grid').after(sentinelle);
+    }
+    if (!('IntersectionObserver' in window)) { grilleSuite(grilleListe.length); return; }       // vieux navigateur : tout
+    if (!grilleObs) {
+      grilleObs = new IntersectionObserver(function (entries) {
+        if (entries.some(function (e) { return e.isIntersecting; })) grilleSuite();
+      }, {rootMargin: '900px 0px'});
+    }
+    grilleObs.disconnect();
+    grilleObs.observe(sentinelle);                      // si la sentinelle est déjà visible, la suite arrive aussitôt
   }
 
   // ---------- 📮 Demandes de mangas (lecteur : chercher et demander ; admin : accepter ou refuser) ----------
