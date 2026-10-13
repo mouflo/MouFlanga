@@ -667,6 +667,35 @@ def _tome_du_titre(titre: str):
     return int(m.group(1)) if m else None
 
 
+def _cle_texte(t: str) -> str:
+    return _simple(t or "")[:160]
+
+
+def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
+    """Résumé propre du tome : la notice Google Books commence souvent par la présentation de la série entière
+    (« Avec son subtil mélange d'action… Fullmetal Alchemist est le titre incontournable… »), la même sur tous les tomes.
+    On retire le début commun aux autres tomes gardés en mémoire (coupé à la fin d'une phrase) ; s'il ne reste rien
+    de propre à ce tome, on ne met rien."""
+    texte = texte or ""
+    for k, v in (brut.get("resumes_tomes") or {}).items():
+        autre = v.get("texte") or ""
+        if k == str(n) or not autre or not texte:
+            continue
+        i = 0
+        while i < min(len(texte), len(autre)) and texte[i] == autre[i]:
+            i += 1
+        commun = texte[:i]
+        coupe = max(commun.rfind(c) for c in (". ", "! ", "? ", ".\n", "!\n", "?\n"))
+        if i == len(texte) == len(autre):
+            return ""                                  # exactement le même texte : présentation de la série
+        if coupe >= 40:
+            texte = texte[coupe + 2:].lstrip()
+    st = brut.get("statut") or brut.get("statut_officiel") or {}
+    if texte and st.get("resume") and _simple(texte)[:160] == _simple(st["resume"])[:160]:
+        return ""
+    return texte if len(texte) >= 40 else ""
+
+
 def resume_tome_google(serie: str, tome) -> str:
     """Résumé en français d'un tome d'après Google Books (clé requise) : la notice de « <série> tome N » en français.
     Gardé 30 jours dans data/tomes/<série>.json (« resumes_tomes »), y compris « rien trouvé »."""
@@ -674,7 +703,7 @@ def resume_tome_google(serie: str, tome) -> str:
     brut = _charger(serie) or {}
     garde = (brut.get("resumes_tomes") or {}).get(str(n))
     if garde and time.time() - garde.get("date", 0) < RESUME_TOME_DUREE:
-        return garde.get("texte", "")
+        return _resume_de_serie(garde.get("texte", ""), brut, n)
     cle = cle_google_books()
     if not cle:
         return ""
@@ -705,6 +734,7 @@ def resume_tome_google(serie: str, tome) -> str:
     except (OSError, ValueError):
         brut = {}
     brut.setdefault("resumes_tomes", {})[str(n)] = {"date": time.time(), "texte": texte}
+    texte = _resume_de_serie(texte, brut, n)             # sans la présentation de la série, répétée sur chaque tome
     DOSSIER.mkdir(parents=True, exist_ok=True)
     tmp = _fichier(serie).with_suffix(".tmp")
     tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")

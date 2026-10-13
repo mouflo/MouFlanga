@@ -1159,9 +1159,6 @@
         '<div class="tome-champs">' + (champs.length ? champs.map(function (x) { return '<div class="champ"><small>' + x[0] + '</small><div>' + esc(x[1]) + '</div></div>'; }).join('')
           : (chap.length ? '' : '<div class="dem-sous">Pas d\'infos sur ce tome.</div>')) + '</div></div>' +
         (d.resume ? '<div class="dem-titre">Résumé' + (d.resume_source ? ' <small>(' + esc(d.resume_source) + ')</small>' : '') + '</div><p class="tome-resume">' + esc(d.resume) + '</p>' : '') +
-        boutonGarder(n) +
-        '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-prov="' + n + '">✏️ Noter la provenance (équipe, origine)</button>' +
-        (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '"' + (som.manuel ? ' data-manuel="1"' : '') + '>🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' +
         (som.en_cours ? '<div class="dem-sous">🔍 Lecture du sommaire dans les premières pages… (environ une minute)</div>'
           : (som.message && !chap.length ? '<div class="dem-sous">' + esc(som.message) + '</div>' : '')) +
         (som.manquants && som.manquants.length ? '<div class="tome-statut verif">⚠️ Il manque dans la liste le' + (som.manquants.length > 1 ? 's chapitres ' : ' chapitre ') +
@@ -1181,7 +1178,10 @@
           '<div class="ident-actions"><label>Décaler toutes les pages de <input type="number" id="chapDecalage" value="0" style="width:4.5em"></label>' +
           '<button type="button" class="mou-btn ghost" id="chapDecaler">↔ Appliquer</button></div>' +
           '<div class="ident-actions"><button type="button" class="mou-btn" id="chapEnregistrer" data-tome="' + n + '">💾 Enregistrer</button>' +
-          '<button type="button" class="mou-btn ghost" id="chapAnnuler">Annuler</button></div></div>' : '');
+          '<button type="button" class="mou-btn ghost" id="chapAnnuler">Annuler</button></div></div>' : '') +
+        boutonGarder(n) +
+        '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-prov="' + n + '">✏️ Noter la provenance (équipe, origine)</button>' +
+        (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '"' + (som.manuel ? ' data-manuel="1"' : '') + '>🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' ;
       var zone = $('chapTexte');
       if (zone) zone.value = chap.map(function (c, i) { return c + (d.fichier && pagesCh[i] != null ? ' @' + (pagesCh[i] + 1) : ''); }).join('\n');
       var im = $('infosCorps').querySelector('.tome-couv');

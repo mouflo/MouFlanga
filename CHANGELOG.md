@@ -1,5 +1,9 @@
 # Historique des versions
 
+## Résumé de tome sans la présentation de la série ; boutons sous les chapitres (13 octobre 2026)
+- 📖 Le résumé d'un tome ne commence plus par la présentation de la série entière (la même phrase d'accroche sur chaque tome) : le début commun aux autres tomes est retiré ; s'il ne reste rien de propre au tome, rien n'est affiché.
+- ↕️ Fiche d'un tome : les boutons « Garder sur ce téléphone », « Noter la provenance » et « Relire le sommaire » passent sous la liste des chapitres.
+
 ## Sommaire : épilogue sans numéro et symboles parasites (13 octobre 2026)
 - 📖 Une ligne de sommaire sans numéro de chapitre (« Épilogue — L'autre fin du voyage … 329 », « Prologue », « Bonus », « Extra », « Postface »…) est maintenant lue : elle prend le numéro suivant et garde son mot dans le titre (« Épilogue : L'autre fin du voyage »). Avant, le tome 18 de FullMetal Alchemist perdait son dernier chapitre.
 - 🧹 Les symboles parasites devant les titres (« € », « €} », « @ », le sceau de chaque chapitre mal lu) sont retirés.
