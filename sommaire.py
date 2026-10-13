@@ -1208,17 +1208,21 @@ def analyser_rangees(image_octets: bytes, mots=None) -> list[dict]:
     return sortie if _vraisemblable(sortie) else []
 
 
-def analyser_pastilles(image_octets: bytes) -> list[dict]:
+def _pastilles(image_octets: bytes, inverse: bool = False) -> list[dict]:
     """Sommaire en pastilles empilées (Air Gear : « Trick:24 ......... 5 » dans une pilule par chapitre, sans titre) :
     chaque pastille est repérée à ses deux traits horizontaux, puis le nom et la page sont lus séparément.
     [{"num", "titre": "Trick 24", "page", "_cands"}] ou []."""
     import numpy as np
     from PIL import Image, ImageOps
     im = Image.open(io.BytesIO(image_octets))
-    g = np.asarray(ImageOps.grayscale(im)).astype(int)
+    gris = ImageOps.grayscale(im)
+    g = np.asarray(ImageOps.invert(gris) if inverse else gris).astype(int)
     h, w = g.shape
     x0, x1 = int(.40 * w), int(.95 * w)
     bord = (g[:, x0:x1] < 110).mean(axis=1) > .6
+    if bord.sum() < 8:                                       # pastilles plus à gauche sur cette page
+        x0 = int(.34 * w)
+        bord = (g[:, x0:x1] < 110).mean(axis=1) > .6
     groupes, i = [], 0
     while i < h:
         if bord[i]:
@@ -1237,8 +1241,9 @@ def analyser_pastilles(image_octets: bytes) -> list[dict]:
     rangs = [(a, b) for a, b in rangs if b - a >= haut * .8]
     if len(rangs) < 2:
         return []
-    ink = (g[rangs[0][0]:rangs[-1][1], int(.2 * w):int(.8 * w)] < 110).any(axis=0)
-    xs = np.where(ink)[0] + int(.2 * w)
+    lignes_bord = np.where(bord)[0]                          # étendue des pastilles : là où les traits horizontaux ont de l'encre
+    cols = (g[lignes_bord, :] < 110).mean(axis=0) > .6
+    xs = np.where(cols)[0]
     if not len(xs):
         return []
     px0, px1 = int(xs.min()), int(xs.max())
@@ -1260,15 +1265,18 @@ def analyser_pastilles(image_octets: bytes) -> list[dict]:
         bande = Image.fromarray(coupe).point(lambda v: 255 if v > 100 else 0)
         gauche = bande.crop((0, 0, int(bande.width * .55), bande.height))
         droite = bande.crop((int(bande.width * .6), 0, bande.width, bande.height))
-        m = re.search(r"(\d{1,3})\s*$", re.sub(r"[^\w]", "", lire_zone(gauche)).replace("e", "2") if False else lire_zone(gauche))
-        num = int(m.group(1)) if m else None
+        etiquette = lire_zone(gauche)
         cands = Counter()
         for psm in (7, 8):
             t = lire_zone(droite, "0123456789", psm)
             if re.fullmatch(r"\d{1,3}", t):
                 cands[int(t)] += 2
+        if not re.search(r"(?i)ri?c?k|ick|rick", etiquette) and not (cands and re.search(r"\d", etiquette)):
+            continue                                         # bandeau noir, pied de page… : pas une pastille de chapitre
+        m = re.search(r"(\d{1,3})\s*$", etiquette)
+        num = int(m.group(1)) if m else None
         lignes.append({"num": num, "cands": cands})
-    if len(lignes) < 2:
+    if len(lignes) < 2 or len(lignes) < 0.8 * len(rangs) - 1:   # des pastilles illisibles : liste incomplète, on ne la garde pas
         return []
     bases = Counter(x["num"] - i for i, x in enumerate(lignes) if x["num"] is not None)
     if not bases:
@@ -1278,6 +1286,16 @@ def analyser_pastilles(image_octets: bytes) -> list[dict]:
               for i, x in enumerate(lignes)]
     sortie = _pages_sures(sortie)
     return [{"num": x["num"], "titre": x["titre"], "page": x["page"]} for x in sortie] if sortie and _vraisemblable(sortie) else []
+
+
+def analyser_pastilles(image_octets: bytes) -> list[dict]:
+    """Voir _pastilles ; essaie aussi les pastilles noires à texte blanc."""
+    r = _pastilles(image_octets)
+    if len(r) < 3:
+        r2 = _pastilles(image_octets, inverse=True)
+        if len(r2) > len(r):
+            r = r2
+    return r
 
 
 # ---------------------------------------------------------------- Symboles de cartes (Alice in Borderland)
