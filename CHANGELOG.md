@@ -5,6 +5,7 @@
   🌫 enlever le grain, ▦ adoucir les trames (aplats gris pointillés → gris uni), 🧼 blanchir le papier (fond gris, jauni ou inégal, sans halo dans les grandes zones noires), ⬛ noirs plus francs, 🧽 effacer les poussières isolées (les points de suspension restent), 〰 lisser les traits (fini l'effet escalier, même taille de page), 🔪 plus net, 🔍 agrandir ×2 (petits scans).
 - 🧼 L'ancien « Éclaircir le papier » ne changeait presque rien sur un vieux scan (quelques points déjà blancs faisaient croire la page propre) : il est remplacé par ces traitements.
 - ↔ Aperçu avant / après en « rideau » : l'original à gauche du trait, le résultat à droite ; glisse le doigt sur l'image ou la barre. Toucher un endroit montre le détail à l'échelle réelle, avec le rideau aussi. Chaque changement de réglage met l'aperçu à jour, plus vite qu'avant (un seul calcul pour les deux images).
+- 🪶 La ligne « Analyse prête » en haut d'une série s'affiche de nouveau (une erreur de la page l'empêchait depuis le 12 octobre).
 - 📏 Une amélioration peut alourdir un tome : l'analyse le dit (« x Go de plus ») et le bouton « Appliquer » reste proposé.
 
 ## Résumé de tome sans la présentation de la série ; boutons sous les chapitres (13 octobre 2026)

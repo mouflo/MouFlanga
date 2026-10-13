@@ -217,7 +217,7 @@
     drawSeries();
     window.scrollTo(0, 0);
     majNavSeries();
-    if (!document.body.classList.contains('lecteur')) api('/api/optimiser?series=' + encodeURIComponent(id)).then(function (o) { if (o && o.en_cours) veillerAllegement(id); majLigneAllege(id, o); });
+    if (!document.body.classList.contains('lecteur')) api('/api/optimiser?series=' + encodeURIComponent(id)).then(function (o) { if (!window.MFAllege) return; if (o && o.en_cours) window.MFAllege.veiller(id); window.MFAllege.ligne(id, o); });
     else $('sAllege').hidden = true;
   }
 
@@ -829,6 +829,7 @@
       l.hidden = !pret;
       if (pret) l.innerHTML = '🪶 Analyse prête : ' + esc(o.message) + ' <button type="button" class="mou-btn small" id="sAllegeVoir">👁 Comparer et alléger</button>';
     }
+    window.MFAllege = {ligne: function (id, o) { return majLigneAllege(id, o); }, veiller: function (id) { veillerAllegement(id); }};   // appelé à l'ouverture d'une série (autre bloc)
     var veilleAllege = {};
     function veillerAllegement(id) {
       if (veilleAllege[id]) return;
