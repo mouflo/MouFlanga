@@ -1202,13 +1202,17 @@ def api_doubles():
     name = request.args.get("series", "")
     if name not in _scan() or name == "(Sans série)":
         return jsonify({"error": "Série introuvable."}), 404
+    import edition
+    marques = edition.lire(MANGA_DIR / name).get("doubles_coupees") or {}
     tomes_ = []
     for f in _fichiers_a_alleger(name):
         if not zipfile.is_zipfile(f) or (f.stat().st_nlink > 1 and not optimiser._dossier_a_lui(f, name)):
             continue
         pages_ = optimiser.reperer_doubles(f)
-        if pages_:
-            tomes_.append({"fichier": f.name, "pages": pages_})
+        m = marques.get(f.name) or {}
+        fait = m.get("taille") == f.stat().st_size             # le fichier n'a pas changé depuis la découpe : point vert
+        if pages_ or fait:
+            tomes_.append({"fichier": f.name, "pages": pages_, "fait": fait, "date": m.get("date", "") if fait else ""})
     return jsonify({"tomes": tomes_, "total": sum(len(t["pages"]) for t in tomes_)})
 
 
@@ -1253,6 +1257,11 @@ def api_doubles_couper():
 
     def apres(chemin, carte):
         _recaler_progression(name, _rel(chemin), carte)
+        import edition                                       # retenu pour le point vert de la liste des tomes
+        infos = edition.lire(MANGA_DIR / name)
+        infos.setdefault("doubles_coupees", {})[chemin.name] = {"date": datetime.now().strftime("%d/%m/%Y"), "taille": chemin.stat().st_size}
+        edition.ecrire(MANGA_DIR / name, infos)
+        edition.invalider(MANGA_DIR / name)
     if not optimiser.lancer_coupes(name, travaux, sens, _vers_corbeille, apres):
         return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
     return jsonify({"ok": True, "message": "Découpe lancée…"})
@@ -2706,8 +2715,32 @@ def _elements_torrents():
             continue
         serie = _nom_depuis_archive(d.name + ".zip", existantes)
         out.append({"nom": d.name, "serie": serie, "existe": serie in existantes, "fichiers": len(fichiers),
-                    "taille_go": round(sum(f.stat().st_size for f in fichiers) / 1e9, 2)})
+                    "taille_go": round(sum(f.stat().st_size for f in fichiers) / 1e9, 2),
+                    **_doublons_torrent(serie, d, fichiers)})
     return racine, out
+
+
+def _doublons_torrent(serie, source, fichiers=None):
+    """Tomes que le torrent apporte : déjà dans la bibliothèque (« deja »), pas encore là (« nouveaux »), et le choix
+    retenu pour cette série (« regle »). Sert à décider DANS la fenêtre d'import, sans aller dans une autre page."""
+    try:
+        fichiers = fichiers if fichiers is not None else torrents.fichiers_du_torrent(Path(source))
+        numeros = sorted({_numero_tome(f.stem) for f in fichiers if f.suffix.lower() in (".cbz", ".cbr") and _numero_tome(f.stem) is not None})
+        deja = sorted(_tomes_deja_la(serie, source))
+    except OSError:
+        numeros, deja = [], []
+    return {"deja": deja, "nouveaux": [t for t in numeros if t not in deja], "regle": _regle_import(serie)}
+
+
+@app.route("/api/import/torrents/doublons")
+def api_import_torrents_doublons():
+    """Recalcule les doublons quand le nom de série est corrigé à la main dans la fenêtre d'import."""
+    racine = torrents.reglages()["nok"]
+    nom, serie = Path(request.args.get("nom", "")).name, _nom_serie(request.args.get("serie", "").strip())
+    source = Path(racine) / nom if racine and nom else None
+    if source is None or not source.exists() or not serie:
+        return jsonify({"deja": [], "nouveaux": [], "regle": None})
+    return jsonify(_doublons_torrent(serie, source))
 
 
 def _travail_rescan():
@@ -2722,10 +2755,21 @@ def _travail_rescan():
             _RESCAN["en_cours"] = g["serie"]
         try:
             source = Path(torrents.reglages()["nok"]) / g["nom"]
-            deja = _tomes_deja_la(g["serie"], source)
-            if deja:
-                raise RuntimeError(f"{len(deja)} tome(s) déjà dans la bibliothèque, rien n'est écrasé (utilise Télécharger pour remplacer)")
-            fin = _importer_torrent(g["serie"], source, False)
+            info = _doublons_torrent(g["serie"], source)
+            deja, nouveaux = info["deja"], info["nouveaux"]
+            choix = g.get("choix") or info["regle"]
+            if deja and choix not in ("remplacer", "manquants", "ignorer"):
+                raise RuntimeError(f"{len(deja)} tome(s) déjà dans la bibliothèque : choisis remplacer, ajouter les manquants ou ne rien faire")
+            if deja and choix == "ignorer":
+                with _RESCAN_VERROU:
+                    _RESCAN["faits"].append(f"⏭ {g['serie']} : ignoré à ta demande ({len(deja)} tome(s) déjà là, rien n'a été changé)")
+                continue
+            if deja and choix == "manquants" and not nouveaux:
+                with _RESCAN_VERROU:
+                    _RESCAN["faits"].append(f"⏭ {g['serie']} : rien de nouveau, les {len(deja)} tome(s) sont déjà là (rien n'a été changé)")
+                continue
+            remplacer = bool(deja) and choix == "remplacer"
+            fin = _importer_torrent(g["serie"], source, remplacer)
             _noter_volumes_torrent(g["serie"], g["nom"])
             try:
                 rapport = _rapport_serie(g["serie"], g["nom"], "🔄 Rescan")
@@ -2733,8 +2777,10 @@ def _travail_rescan():
                 logger.warning("Compte rendu de %s : %s", g["serie"], e)
                 rapport = None
             notifier.envoyer(rapport or f"🔄 MouFlanga : « {g['serie']} » importé depuis {g['nom'][:80]}\n{fin or ''}".strip())
+            resume = ", ".join(x for x in (f"{len(nouveaux)} tome(s) ajouté(s)" if nouveaux else "",
+                                           f"{len(deja)} remplacé(s) (anciens à la corbeille 30 jours)" if remplacer else "") if x)
             with _RESCAN_VERROU:
-                _RESCAN["faits"].append(f"{g['serie']} ← {g['nom']}")
+                _RESCAN["faits"].append(f"✅ {g['serie']} ← {g['nom']}" + (f" : {resume}" if resume else ""))
         except Exception as e:
             logger.warning("Rescan de %s : %s", g["nom"], e)
             with _RESCAN_VERROU:
@@ -2761,7 +2807,13 @@ def api_import_torrents():
             nom = Path(str(g.get("nom", ""))).name
             serie = _nom_serie(str(g.get("serie", "")).strip())
             if nom in connus and serie and not serie.startswith("."):
-                ajout.append({"nom": nom, "serie": serie})
+                choix = str(g.get("choix", ""))
+                choix = choix if choix in ("remplacer", "manquants", "ignorer") else ""
+                ajout.append({"nom": nom, "serie": serie, "choix": choix})
+                if choix and g.get("toujours"):             # « retenir ce choix pour cette série » (⚙️ Réglages → règles d'import)
+                    regles = _read_json(REGLES_IMPORT, {})
+                    regles[serie] = {"choix": choix, "date": datetime.now().strftime("%Y-%m-%d %H:%M")}
+                    _write_json(REGLES_IMPORT, regles)
         if not ajout:
             return jsonify({"ok": False, "error": "Rien à importer."}), 400
         with _RESCAN_VERROU:

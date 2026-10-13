@@ -19,20 +19,20 @@
     <a class="back" href="/">← Retour à la bibliothèque</a>
 
     <div class="panel" id="fileBox" hidden>
-        <h2>⏳ Import en cours</h2>
+        <h2 id="fileTitre">⏳ Import en cours</h2>
         <div id="fileEtat"></div>
-        <details id="fileFaitsBox" style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted)">Séries déjà importées</summary><ul id="fileFaits"></ul></details>
+        <details id="fileFaitsBox" style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted)">Détail série par série</summary><ul id="fileFaits"></ul></details>
     </div>
 
     <div class="panel" id="rescanFileBox" hidden>
-        <h2>⏳ Rescan en cours</h2>
+        <h2 id="rescanTitre">⏳ Rescan en cours</h2>
         <div id="rescanFileEtat"></div>
-        <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted)">Séries déjà importées</summary><ul id="rescanFaits"></ul></details>
+        <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted)" id="rescanDetailTitre">Détail élément par élément</summary><ul id="rescanFaits"></ul></details>
     </div>
 
     <div class="panel">
         <h2>🔄 Dossier des torrents</h2>
-        <div class="sub">Relit le dossier d'arrivée des torrents (<span id="rescanDossier">…</span>) et montre le nom de série que l'appli devine pour chaque élément. Coche ceux à importer : ils passent dans le <b>même traitement automatique</b> qu'un vrai téléchargement (rangement, identification, fiche, couverture, message Telegram). Rien n'est modifié dans le dossier des torrents, l'appli travaille sur une copie.</div>
+        <div class="sub">Relit le dossier d'arrivée des torrents (<span id="rescanDossier">…</span>) et montre le nom de série que l'appli devine pour chaque élément. Coche ceux à importer : ils passent dans le <b>même traitement automatique</b> qu'un vrai téléchargement (rangement, identification, fiche, couverture, message Telegram). Quand des tomes sont <b>déjà dans la bibliothèque</b>, tu choisis ici même : ajouter seulement les manquants, remplacer les tomes en double ou ne rien faire. Rien n'est modifié dans le dossier des torrents, l'appli travaille sur une copie.</div>
         <div class="row" style="margin:10px 0"><button class="btn ghost" id="rescanLire" type="button">🔄 Rescanner</button> <button class="btn" id="rescanGo" type="button" hidden>📥 Importer la sélection</button></div>
         <div id="rescanMsg"></div>
         <div id="rescanListe" class="groupes"></div>

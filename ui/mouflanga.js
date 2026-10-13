@@ -1001,7 +1001,8 @@
       dblTomes = r.tomes || []; dblGardees = {}; dblCourant = '';
       if (!dblTomes.length) { $('dblPlanche').innerHTML = '<div class="dem-sous">Aucune double page dans cette série.</div>'; return; }
       $('dblPlanche').innerHTML = '<div class="dem-sous">Choisis un tome :</div><div class="dbl-liste">' + dblTomes.map(function (t) {
-        return '<button type="button" class="mou-btn ghost" data-dbl-tome="' + esc(t.fichier) + '">' + esc(t.fichier.replace(/\.(cbz|zip)$/i, '')) + ' · ' + t.pages.length + ' double(s)</button>';
+        return '<button type="button" class="mou-btn ghost" data-dbl-tome="' + esc(t.fichier) + '">' + (t.fait ? '<span class="dbl-point" title="Déjà découpé"></span>' : '') +
+          esc(t.fichier.replace(/\.(cbz|zip)$/i, '')) + ' · ' + (t.fait ? 'déjà découpé' + (t.date ? ' le ' + esc(t.date) : '') + (t.pages.length ? ' · ' + t.pages.length + ' double(s) gardée(s)' : '') : t.pages.length + ' double(s)') + '</button>';
       }).join('') + '</div><div id="dblTome"></div><div id="dblEtat">' + ancien + '</div>';
     }
     function grilleDoubles() {
@@ -1018,7 +1019,10 @@
     function planchesDoubles(fichier) {
       dblCourant = fichier; dblGardees = {};
       document.querySelectorAll('[data-dbl-tome]').forEach(function (b) { b.classList.toggle('ghost', b.dataset.dblTome !== fichier); });
-      $('dblTome').innerHTML = '<div class="ident-actions"><label>Vignettes par ligne : <select id="dblCols">' +
+      var deja = dblTome();
+      if (deja && deja.fait && !deja.pages.length) { $('dblTome').innerHTML = '<div class="dem-sous">🟢 Ce tome est déjà découpé : plus aucune double page.</div>'; return; }
+      $('dblTome').innerHTML = (deja && deja.fait ? '<div class="dem-sous">🟢 Ce tome est déjà découpé : les doubles ci-dessous sont celles que tu avais gardées entières.</div>' : '') +
+        '<div class="ident-actions"><label>Vignettes par ligne : <select id="dblCols">' +
         [1, 2, 3].map(function (n) { return '<option value="' + n + '"' + (n === dblCol ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></label></div>' +
         '<div class="dbl-grille" id="dblGrille"></div><div class="ident-actions" id="dblBilan"></div>';
       grilleDoubles(); majBilanDoubles();

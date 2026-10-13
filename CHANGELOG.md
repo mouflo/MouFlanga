@@ -1,5 +1,10 @@
 # Historique des versions
 
+## Importer : les choix se font dans la fenêtre d'import ; point vert du découpeur (13 octobre 2026)
+- 🔄 Fenêtre « Importer » (dossier des torrents) : quand un élément apporte des tomes déjà dans la bibliothèque, l'appli ne s'arrête plus sur « utilise Télécharger pour remplacer ». Sous l'élément, tu vois quels tomes sont déjà là et lesquels sont nouveaux, et tu choisis sur place : ➕ ajouter seulement les manquants (par défaut, rien n'est touché), ♻️ remplacer les tomes en double (les anciens vont à la corbeille 30 jours) ou ⛔ ne rien faire. Case « Retenir ce choix pour cette série » (les règles se gèrent comme avant dans ⚙️ Réglages).
+- 📋 Le compte rendu dit ce qui s'est passé élément par élément (« 1 tome ajouté, 2 remplacés ») ; le titre devient « ✅ Dernier rescan » quand c'est fini ; si tu corriges le nom de la série, les tomes déjà là sont recalculés.
+- 🟢 Découpeur de doubles pages : un point vert et « déjà découpé le … » dans la liste des tomes (retenu dans les infos de la série ; il disparaît si le fichier est remplacé).
+
 ## 📖 Doubles pages découpées en simples pages (13 octobre 2026)
 - ✂️ Dans 🪶 Alléger ou ✨ améliorer : « Doubles pages en simples pages ». Une planche de vignettes montre toutes les images plus larges que hautes du tome ; tout est coupé en deux par défaut, tu touches uniquement les vraies doubles (une seule illustration) pour les garder entières. Sens manga (moitié droite d'abord) ou occidental.
 - 🔖 La découpe garde les repères : la page où tu en étais est recalée (pour chaque lecteur), les signets et le nombre de pages du ComicInfo sont mis à jour, les pages d'un chapitre sont renumérotées. L'ancien fichier va à la corbeille (30 jours) ; un fichier partagé par qBittorrent est traité à part comme pour l'allègement.
