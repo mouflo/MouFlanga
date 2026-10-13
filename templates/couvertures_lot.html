@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aperçu de l'envoi groupé · MouFlanga</title>
+    <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+    <link rel="stylesheet" href="/ui/mou-settings.css?v={{ version|urlencode }}">
+    <style>
+        .cv-tete { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+        .cv-lot-ligne { display: flex; gap: 12px; align-items: flex-start; border: 1px solid #2c2f36; border-radius: 12px; padding: 12px; margin-bottom: 12px; background: #17181c; }
+        .cv-lot-ligne img { width: 96px; height: 136px; object-fit: cover; border-radius: 8px; border: 1px solid #2c2f36; background: #0f1012; flex: none; }
+        .cv-lot-ligne .droite { flex: 1; min-width: 0; }
+        .cv-lot-ligne select { width: 100%; padding: 10px; font-size: 16px; border-radius: 8px; background: #0f1012; color: #ddd; border: 1px solid #2c2f36; margin-top: 6px; }
+        .cv-langue { color: #888; font-size: 0.9em; margin-top: 4px; }
+        .cv-langue.ok { color: #9be3a6; }
+        .cv-langue.doute { color: #e3c77b; }
+        .cv-valider button { width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; background: #52b54b; color: #0b0c0e; border: none; font-weight: 600; cursor: pointer; margin: 10px 0; }
+        .msg { padding: 10px 12px; border-radius: 8px; margin: 10px 0; }
+        .msg.err { background: #2a1416; color: #ffb4b4; border: 1px solid #6b2f35; }
+        .cv-liens a { display: inline-block; padding: 8px 12px; border-radius: 8px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="cv-tete">
+            <a href="/couvertures?id={{ nom|urlencode }}" class="back">← Retour aux couvertures</a>
+            <h1 style="margin: 0;">🖼 Aperçu de l'envoi groupé</h1>
+        </div>
+        <p class="sub">{{ nom }}</p>
+        <p class="note">Vérifiez le tome choisi pour chaque image. Rien n'est enregistré avant « Enregistrer ». Mettez « ne pas utiliser » pour écarter une image.</p>
+
+        {% for r in refusees %}<div class="msg err">Refusée : {{ r }}</div>{% endfor %}
+        {% if not ocr %}<div class="msg err">La lecture automatique des numéros n'est pas disponible : choisissez le tome de chaque image.</div>{% endif %}
+
+        <form method="post" action="/couvertures/lot/valider">
+            <input type="hidden" name="id" value="{{ nom }}">
+            <input type="hidden" name="jeton" value="{{ jeton }}">
+            {% for l in lignes %}
+            <div class="cv-lot-ligne">
+                <img src="/couvertures/lot/image/{{ jeton }}/{{ l.index }}" alt="Image {{ l.index + 1 }}">
+                <div class="droite">
+                    <div>Image {{ l.index + 1 }}</div>
+                    {% if l.lu is none %}
+                        <div class="cv-langue doute">numéro non reconnu : à choisir</div>
+                    {% elif l.suggere is none %}
+                        <div class="cv-langue doute">numéro lu : {{ l.lu }} (pas dans cette série)</div>
+                    {% else %}
+                        <div class="cv-langue ok">numéro lu : {{ l.lu }}</div>
+                    {% endif %}
+                    <select name="tome_{{ l.index }}">
+                        <option value="">— ne pas utiliser —</option>
+                        {% for n in presents %}
+                        <option value="{{ n }}"{% if n == l.suggere %} selected{% endif %}>Tome {{ '%02d'|format(n) }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            {% endfor %}
+            <div class="cv-valider"><button type="submit">Enregistrer les couvertures choisies</button></div>
+        </form>
+    </div>
+</body>
+</html>

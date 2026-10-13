@@ -25,6 +25,9 @@
         .msg.ok { background: #14291a; color: #9be3a6; border: 1px solid #2f6b3a; }
         .msg.err { background: #2a1416; color: #ffb4b4; border: 1px solid #6b2f35; }
         .cv-retirer button { background: none; border: none; color: #ffb4b4; text-decoration: underline; cursor: pointer; font-size: 14px; margin-top: 8px; }
+        .cv-lot { border: 1px solid #2c2f36; border-radius: 12px; padding: 12px; margin: 14px 0; background: #17181c; }
+        .cv-lot input[type=file] { display: block; width: 100%; margin: 10px 0; color: #ddd; }
+        .cv-lot button { width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; background: #52b54b; color: #0b0c0e; border: none; font-weight: 600; cursor: pointer; }
         .cv-liens a { display: inline-block; padding: 8px 12px; border-radius: 8px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; text-decoration: none; margin-right: 6px; }
     </style>
 </head>
@@ -43,6 +46,13 @@
         <div class="cv-liens" style="margin-bottom: 12px;">
             <a href="/couvertures?id={{ nom|urlencode }}&chercher=1">🔎 Chercher en ligne (MangaDex)</a>
         </div>
+
+        <form class="cv-lot" method="post" action="/couvertures/lot" enctype="multipart/form-data">
+            <input type="hidden" name="id" value="{{ nom }}">
+            <b>Envoi groupé</b> : plusieurs images d'un coup, pour plusieurs tomes. Le numéro de chaque tome est lu sur l'image, et vous vérifiez l'affectation avant l'enregistrement. Pour un seul tome, utilisez « Choisir une image » sur sa ligne.
+            <input type="file" name="images" accept="image/*" multiple>
+            <button type="submit">Voir l'aperçu</button>
+        </form>
 
         {% if total_trouvees %}
         <form class="cv-tout" method="post" action="/couvertures/appliquer" onsubmit="return confirm('Remplacer les couvertures de tous les tomes par celles trouvées en ligne ? Les anciennes sont gardées.');">

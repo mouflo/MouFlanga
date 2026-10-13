@@ -8,3 +8,4 @@ patchright
 camoufox
 pymupdf
 pywebpush
+pillow-heif

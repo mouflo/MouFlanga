@@ -79,6 +79,33 @@ class CouverturesTest(unittest.TestCase):
             self.assertIsNone(ct._mangadex_manga(["Again"]))
             self.assertEqual(ct._mangadex_manga(["Again!!"]), "again-kubo")
 
+    def test_formats_courants_acceptes(self):
+        """WebP et PNG transparent sont convertis en JPEG ; la transparence devient blanche."""
+        from PIL import Image
+        for format_, mode in (("WEBP", "RGB"), ("PNG", "RGBA")):
+            b = io.BytesIO()
+            Image.new(mode, (300, 450), (200, 30, 30, 0) if mode == "RGBA" else (200, 30, 30)).save(b, format_)
+            with tempfile.TemporaryDirectory() as tmp:
+                cible = ct.enregistrer_image(Path(tmp), 1, b.getvalue())
+                with Image.open(cible) as img:
+                    self.assertEqual(img.format, "JPEG")
+                    attendu = (255, 255, 255) if mode == "RGBA" else (200, 30, 30)
+                    self.assertTrue(all(abs(a - b) <= 8 for a, b in zip(img.getpixel((5, 5)), attendu)))  # JPEG : marge
+
+    def test_heic_accepte(self):
+        """Les photos d'iPhone (HEIC) sont lues une fois pillow-heif installé."""
+        try:
+            import pillow_heif
+        except ImportError:
+            self.skipTest("pillow-heif non installé")
+        from PIL import Image
+        pillow_heif.register_heif_opener()
+        b = io.BytesIO()
+        Image.new("RGB", (300, 450), (30, 30, 200)).save(b, "HEIF")
+        with tempfile.TemporaryDirectory() as tmp:
+            cible = ct.enregistrer_image(Path(tmp), 2, b.getvalue())
+            self.assertTrue(cible.is_file())
+
     def test_plus_au_lieu_du_signe_plus(self):
         """« + Again » est trouvé sous son titre anglais « Plus Again » (l'API ignore le « + »)."""
         reponse = mock.Mock()

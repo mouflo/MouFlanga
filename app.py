@@ -1345,6 +1345,86 @@ def couvertures_appliquer():
     return _retour_couvertures(name, ok=msg)
 
 
+
+@app.route("/couvertures/lot", methods=["POST"])
+def couvertures_lot():
+    """Envoi groupé : lit le numéro de chaque image et montre l'aperçu (rien n'est enregistré avant la validation)."""
+    name = request.form.get("id", "")
+    if name not in _scan():
+        return Response("Série introuvable", status=404)
+    fichiers = [f for f in request.files.getlist("images") if f and f.filename]
+    if not fichiers:
+        return _retour_couvertures(name, erreur="Choisis au moins une image.")
+    images, refusees = [], []
+    for f in fichiers:
+        octets = f.read()
+        try:
+            couvertures_tomes.verifier_image(octets)
+            images.append(octets)
+        except ValueError as e:
+            refusees.append(f"{f.filename} : {e}")
+    if not images:
+        return _retour_couvertures(name, erreur="Aucune image utilisable dans l'envoi.")
+    import sommaire
+    jeton = couvertures_tomes.attente_creer(images)
+    presents = _tomes_presents(name)
+    lignes = []
+    for i, octets in enumerate(images):
+        lu = couvertures_tomes.numero_lu(octets)
+        lignes.append({"index": i, "lu": lu, "suggere": lu if lu in presents else None})
+    return render_template("couvertures_lot.html", version=APP_VERSION, nom=name, jeton=jeton, lignes=lignes,
+                           presents=presents, refusees=refusees, ocr=sommaire.disponible())
+
+
+@app.route("/couvertures/lot/image/<jeton>/<int:index>")
+def couvertures_lot_image(jeton, index):
+    octets = couvertures_tomes.attente_image(jeton, index)
+    if octets is None:
+        return Response("Image introuvable", status=404)
+    return Response(octets, mimetype="image/jpeg")
+
+
+@app.route("/couvertures/lot/valider", methods=["POST"])
+def couvertures_lot_valider():
+    """Enregistre les couvertures de l'aperçu : une image par tome, chaque tome une seule fois."""
+    name = request.form.get("id", "")
+    jeton = request.form.get("jeton", "")
+    if name not in _scan():
+        return Response("Série introuvable", status=404)
+    presents = set(_tomes_presents(name))
+    choix = {}
+    for cle, valeur in request.form.items():
+        if not cle.startswith("tome_") or not valeur:
+            continue
+        try:
+            index, tome = int(cle[5:]), int(valeur)
+        except ValueError:
+            continue
+        if tome not in presents:
+            return _retour_couvertures(name, erreur=f"Le tome {tome} n'est pas dans la série.")
+        if tome in choix:
+            return _retour_couvertures(name, erreur=f"Le tome {tome} est choisi pour deux images : corrige l'aperçu.")
+        choix[tome] = index
+    if not choix:
+        return _retour_couvertures(name, erreur="Aucune image affectée à un tome.")
+    dossier = MANGA_DIR / name
+    faits, echecs = 0, 0
+    for tome, index in sorted(choix.items()):
+        octets = couvertures_tomes.attente_image(jeton, index)
+        try:
+            if octets is None:
+                raise ValueError("image absente (aperçu périmé ?)")
+            couvertures_tomes.enregistrer_image(dossier, tome, octets)
+            faits += 1
+        except (ValueError, OSError) as e:
+            logger.warning("Envoi groupé, tome %s de %s : %s", tome, name, e)
+            echecs += 1
+    couvertures_tomes.attente_supprimer(jeton)
+    msg = f"{faits} couverture(s) enregistrée(s) (les anciennes sont gardées)."
+    if echecs:
+        return _retour_couvertures(name, erreur=f"{echecs} échec(s). " + msg)
+    return _retour_couvertures(name, ok=msg)
+
 # ---------------- 🔎 Identification des hors-série (admin) ----------------
 def _hors_serie_du_fichier(name, key):
     files = _scan().get(name) or []

@@ -12,7 +12,9 @@ import json
 import logging
 import os
 import re
+import shutil
 import time
+import uuid
 from pathlib import Path
 
 import requests
@@ -42,18 +44,41 @@ def remplacement(dossier_serie: Path, tome: int) -> Path | None:
     return f if f.is_file() else None
 
 
-def enregistrer_image(dossier_serie: Path, tome: int, octets: bytes) -> Path:
-    """Enregistre une image (photo, ou téléchargée) en JPEG. L'ancienne image part en « .ancienne.jpg »."""
+try:  # HEIC/HEIF (photos d'iPhone) : lu seulement si le module est installé
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    pass
+
+
+def _image_rgb(octets: bytes):
+    """L'image décodée en RGB, réduite à 1200 × 1800 ; ValueError si ce n'est pas une image utilisable.
+    Tous les formats que Pillow lit (JPEG, PNG, WebP, GIF, BMP, TIFF, AVIF, HEIC…) sont acceptés.
+    Une zone transparente (PNG, WebP) devient blanche, pas noire."""
     from PIL import Image
     try:
         img = Image.open(io.BytesIO(octets))
         img.load()
     except Exception:
-        raise ValueError("Ce fichier n'est pas une image lisible.")
+        raise ValueError("Ce format d'image n'est pas lu. Essayez en JPEG ou PNG.")
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        fond = Image.new("RGB", img.size, (255, 255, 255))
+        fond.paste(img.convert("RGBA"), mask=img.convert("RGBA").getchannel("A"))
+        img = fond
     img = img.convert("RGB")
     if img.width < 200 or img.height < 200:
         raise ValueError("Image trop petite pour une couverture (il faut au moins 200 × 200 pixels).")
     img.thumbnail((1200, 1800))
+    return img
+
+
+def verifier_image(octets: bytes) -> None:
+    _image_rgb(octets)
+
+
+def enregistrer_image(dossier_serie: Path, tome: int, octets: bytes) -> Path:
+    """Enregistre une image (photo, ou téléchargée) en JPEG. L'ancienne image part en « .ancienne.jpg »."""
+    img = _image_rgb(octets)
     dossier = dossier_couvertures(dossier_serie)
     dossier.mkdir(parents=True, exist_ok=True)
     cible = chemin(dossier_serie, tome)
@@ -72,6 +97,56 @@ def retirer(dossier_serie: Path, tome: int) -> bool:
         return False
     os.replace(f, f.with_name(f"{int(tome):03d}.ancienne.jpg"))
     return True
+
+
+# ---------------- Envoi groupé : numéro lu sur chaque image, aperçu avant enregistrement ----------------
+ATTENTE_DIR = DOSSIER_CACHE.parent / "couvertures-attente"   # images d'un envoi groupé, le temps de l'aperçu
+DUREE_ATTENTE = 86400
+_JETON = re.compile(r"^[0-9a-f]{32}$")
+
+
+def numero_lu(octets: bytes) -> int | None:
+    """Numéro de tome lu sur une couverture (OCR tesseract) : « Tome 3 », « No. 3 » ou un chiffre seul.
+    None si rien de clair à lire (ou plusieurs numéros différents)."""
+    from sommaire import disponible, ocr
+    if not disponible():
+        return None
+    try:
+        texte = ocr(octets)
+    except Exception as e:
+        logger.info("Lecture du numéro de couverture : %s", e.__class__.__name__)
+        return None
+    trouves = {int(n) for n in re.findall(r"\b(?:tome|t|vol|no|n°)\.?\s*0*(\d{1,3})\b", texte, re.I)}
+    if not trouves:
+        trouves = {int(n) for n in re.findall(r"^\s*0*(\d{1,3})\s*$", texte, re.M)}
+    return trouves.pop() if len(trouves) == 1 else None
+
+
+def attente_creer(images: list[bytes]) -> str:
+    """Garde les images d'un envoi groupé (JPEG) pour l'aperçu. Les envois de plus d'un jour sont effacés."""
+    ATTENTE_DIR.mkdir(parents=True, exist_ok=True)
+    maintenant = time.time()
+    for ancien in ATTENTE_DIR.iterdir():
+        if maintenant - ancien.stat().st_mtime > DUREE_ATTENTE:
+            shutil.rmtree(ancien, ignore_errors=True)
+    jeton = uuid.uuid4().hex
+    dossier = ATTENTE_DIR / jeton
+    dossier.mkdir()
+    for i, octets in enumerate(images):
+        _image_rgb(octets).save(dossier / f"{i}.jpg", "JPEG", quality=92)
+    return jeton
+
+
+def attente_image(jeton: str, index: int) -> bytes | None:
+    if not _JETON.match(jeton or ""):
+        return None
+    f = ATTENTE_DIR / jeton / f"{int(index)}.jpg"
+    return f.read_bytes() if f.is_file() else None
+
+
+def attente_supprimer(jeton: str) -> None:
+    if _JETON.match(jeton or ""):
+        shutil.rmtree(ATTENTE_DIR / jeton, ignore_errors=True)
 
 
 def _cle(texte: str) -> str:
