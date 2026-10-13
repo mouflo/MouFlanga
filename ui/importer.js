@@ -8,7 +8,7 @@ function ligne(g, i) {
             <input type="text" class="groupe-nom" value="${esc(g.nom)}" aria-label="Nom de la série" spellcheck="false">
             <button class="btn ghost groupe-go" type="button">Importer</button>
         </div>
-        <div class="groupe-info">${g.existe ? '<span class="existe">➕ complète la série existante</span> · ' : ''}${g.archives.length} archive${g.archives.length > 1 ? 's' : ''} · ${String(total.toFixed(1)).replace('.', ',')} Go</div>
+        <div class="groupe-info">${g.base === 'ok' ? '<span class="existe">📦 déjà importé (dossier OK)</span> · ' : ''}${g.existe ? '<span class="existe">➕ complète la série existante</span> · ' : ''}${g.archives.length} archive${g.archives.length > 1 ? 's' : ''} · ${String(total.toFixed(1)).replace('.', ',')} Go</div>
         <ul class="groupe-archives">${g.archives.map(a => `<li>${esc(a.nom)}</li>`).join('')}</ul>
     </div>`;
 }
@@ -88,7 +88,7 @@ function ligneTorrent(g, i) {
 
 async function lireTorrents(garderCoches) {
     const gardees = garderCoches ? new Set([...document.querySelectorAll('#rescanListe .groupe')].filter(el => el.querySelector('.rescan-coche').checked).map(el => elements[+el.dataset.i].nom)) : new Set();
-    const r = await api('/api/import/torrents');
+    const r = await api('/api/import/torrents' + ($('rescanOk') && $('rescanOk').checked ? '?ok=1' : ''));
     if (r.error) { say('rescanMsg', r.error, false); return; }
     elements = r.elements || [];
     $('rescanDossier').textContent = r.dossier || 'non réglé';
@@ -109,11 +109,12 @@ async function lireTorrents(garderCoches) {
 }
 
 $('rescanLire').addEventListener('click', () => lireTorrents(true));
+if ($('rescanOk')) $('rescanOk').addEventListener('change', () => lireTorrents(false));
 $('rescanGo').addEventListener('click', async () => {
     const choisis = [...document.querySelectorAll('#rescanListe .groupe')].filter(el => el.querySelector('.rescan-coche').checked)
         .map(el => {
             const radio = el.querySelector('.rescan-choix input[type=radio]:checked'), toujours = el.querySelector('.rescan-toujours');
-            return {nom: elements[+el.dataset.i].nom, serie: el.querySelector('.groupe-nom').value.trim(),
+            return {nom: elements[+el.dataset.i].nom, base: elements[+el.dataset.i].base || 'nok', serie: el.querySelector('.groupe-nom').value.trim(),
                     choix: radio ? radio.value : '', toujours: !!(toujours && toujours.checked)};
         });
     if (!choisis.length) { say('rescanMsg', 'Coche au moins un élément.', false); return; }
@@ -131,7 +132,7 @@ lireTorrents(false);
 document.getElementById('rescanListe').addEventListener('change', async e => {
     if (!e.target.classList.contains('groupe-nom')) return;
     const el = e.target.closest('.groupe'), g = elements[+el.dataset.i];
-    const r = await api('/api/import/torrents/doublons?nom=' + encodeURIComponent(g.nom) + '&serie=' + encodeURIComponent(e.target.value.trim()));
+    const r = await api('/api/import/torrents/doublons?base=' + encodeURIComponent(g.base || 'nok') + '&nom=' + encodeURIComponent(g.nom) + '&serie=' + encodeURIComponent(e.target.value.trim()));
     Object.assign(g, {deja: r.deja || [], nouveaux: r.nouveaux || [], regle: r.regle || null});
     el.querySelector('.rescan-choix-zone').innerHTML = blocChoix(g, +el.dataset.i);
 });

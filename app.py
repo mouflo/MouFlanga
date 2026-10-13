@@ -2897,27 +2897,31 @@ _RESCAN = {"en_cours": None, "attente": [], "faits": [], "erreurs": [], "message
 _RESCAN_VERROU = threading.Lock()
 
 
-def _elements_torrents():
+def _elements_torrents(avec_ok=False):
     """Éléments du dossier d'arrivée des torrents (TORRENTS_NOK) : dossiers et fichiers de manga, avec le nom de série deviné
-    par le MÊME code que pour un torrent ajouté à la main."""
-    racine = torrents.reglages()["nok"]
+    par le MÊME code que pour un torrent ajouté à la main. avec_ok : aussi ceux déjà rangés dans le dossier OK
+    (pour réimporter une série supprimée ou à refaire)."""
+    reg = torrents.reglages()
+    racine = reg["nok"]
     if not racine or not Path(racine).is_dir():
         return None, []
     existantes = sorted(n for n in _scan() if n != "(Sans série)")
     out = []
-    for d in sorted(Path(racine).iterdir(), key=lambda x: archives.natural_key(x.name)):
-        if d.name.startswith((".", "@")):
-            continue
-        try:
-            fichiers = torrents.fichiers_du_torrent(d)
-        except OSError:
-            continue
-        if not any(f.suffix.lower() in (".cbz", ".cbr", ".zip", ".rar", ".7z", ".pdf") for f in fichiers):
-            continue
-        serie = _nom_depuis_archive(d.name + ".zip", existantes)
-        out.append({"nom": d.name, "serie": serie, "existe": serie in existantes, "fichiers": len(fichiers),
-                    "taille_go": round(sum(f.stat().st_size for f in fichiers) / 1e9, 2),
-                    **_doublons_torrent(serie, d, fichiers)})
+    bases = [("nok", racine)] + ([("ok", reg["ok"])] if avec_ok and reg.get("ok") and Path(reg["ok"]).is_dir() else [])
+    for base, dossier in bases:
+        for d in sorted(Path(dossier).iterdir(), key=lambda x: archives.natural_key(x.name)):
+            if d.name.startswith((".", "@")):
+                continue
+            try:
+                fichiers = torrents.fichiers_du_torrent(d)
+            except OSError:
+                continue
+            if not any(f.suffix.lower() in (".cbz", ".cbr", ".zip", ".rar", ".7z", ".pdf") for f in fichiers):
+                continue
+            serie = _nom_depuis_archive(d.name + ".zip", existantes)
+            out.append({"nom": d.name, "base": base, "serie": serie, "existe": serie in existantes, "fichiers": len(fichiers),
+                        "taille_go": round(sum(f.stat().st_size for f in fichiers) / 1e9, 2),
+                        **_doublons_torrent(serie, d, fichiers)})
     return racine, out
 
 
@@ -2936,7 +2940,8 @@ def _doublons_torrent(serie, source, fichiers=None):
 @app.route("/api/import/torrents/doublons")
 def api_import_torrents_doublons():
     """Recalcule les doublons quand le nom de série est corrigé à la main dans la fenêtre d'import."""
-    racine = torrents.reglages()["nok"]
+    reg = torrents.reglages()
+    racine = reg["ok"] if request.args.get("base") == "ok" else reg["nok"]
     nom, serie = Path(request.args.get("nom", "")).name, _nom_serie(request.args.get("serie", "").strip())
     source = Path(racine) / nom if racine and nom else None
     if source is None or not source.exists() or not serie:
@@ -2955,7 +2960,7 @@ def _travail_rescan():
             g = _RESCAN["attente"].pop(0)
             _RESCAN["en_cours"] = g["serie"]
         try:
-            source = Path(torrents.reglages()["nok"]) / g["nom"]
+            source = Path(torrents.reglages()["ok" if g.get("base") == "ok" else "nok"]) / g["nom"]
             info = _doublons_torrent(g["serie"], source)
             deja, nouveaux = info["deja"], info["nouveaux"]
             choix = g.get("choix") or info["regle"]
@@ -2999,18 +3004,19 @@ def _travail_rescan():
 def api_import_torrents():
     """GET : éléments du dossier des torrents et état de la file. POST {elements: [{nom, serie}]} : ajout à la file."""
     if request.method == "POST":
-        racine, presents = _elements_torrents()
+        racine, presents = _elements_torrents(avec_ok=True)
         if racine is None:
             return jsonify({"ok": False, "error": "Dossier des torrents introuvable (⚙️ Réglages → Torrents)."}), 400
-        connus = {x["nom"] for x in presents}
+        connus = {(x["nom"], x["base"]) for x in presents}
         ajout = []
         for g in (request.get_json(silent=True) or {}).get("elements") or []:
             nom = Path(str(g.get("nom", ""))).name
+            base = "ok" if g.get("base") == "ok" else "nok"
             serie = _nom_serie(str(g.get("serie", "")).strip())
-            if nom in connus and serie and not serie.startswith("."):
+            if (nom, base) in connus and serie and not serie.startswith("."):
                 choix = str(g.get("choix", ""))
                 choix = choix if choix in ("remplacer", "manquants", "ignorer") else ""
-                ajout.append({"nom": nom, "serie": serie, "choix": choix})
+                ajout.append({"nom": nom, "base": base, "serie": serie, "choix": choix})
                 if choix and g.get("toujours"):             # « retenir ce choix pour cette série » (⚙️ Réglages → règles d'import)
                     regles = _read_json(REGLES_IMPORT, {})
                     regles[serie] = {"choix": choix, "date": datetime.now().strftime("%Y-%m-%d %H:%M")}
@@ -3026,7 +3032,7 @@ def api_import_torrents():
         if demarrer:
             threading.Thread(target=_travail_rescan, daemon=True).start()
         return jsonify({"ok": True, "message": f"{len(ajout)} élément(s) ajouté(s) à la file."})
-    racine, elements = _elements_torrents()
+    racine, elements = _elements_torrents(avec_ok=request.args.get("ok") == "1")
     with _RESCAN_VERROU:
         file = {"en_cours": _RESCAN["en_cours"], "attente": [g["serie"] for g in _RESCAN["attente"]],
                 "faits": list(_RESCAN["faits"]), "erreurs": list(_RESCAN["erreurs"]), "message": _RESCAN["message"]}
