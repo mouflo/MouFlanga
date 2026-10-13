@@ -20,7 +20,7 @@ import unicodedata
 logger = logging.getLogger("mouflanga")
 
 PAGES_MAX = 14                  # images lues au début du tome
-VERSION = 3                     # version du lecteur : un tome « sans sommaire » lu par une version plus ancienne est relu
+VERSION = 4                     # version du lecteur : un tome « sans sommaire » lu par une version plus ancienne est relu
 _MOTS = r"(?:chapitre|kapitel|chap|ch|sc[eè]ne|[ée]pisode|ep|acte|round|le[cç]on|lesson|partie|nuit|jour|histoire|file|stage|level|#)"
 _CHIFFRES_OCR = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1", "S": "5", "A": "4", "B": "8", "Z": "2"})
 # « SCÈNE 1 La tueuse aux yeux d'argent .......5 », « Chapitre 12 : Le retour 45 », « 12. Le retour ...... 45 »
@@ -421,6 +421,7 @@ def analyser_colonnes(image_octets: bytes, mots=None) -> list[dict]:
         titre = re.sub(r"\s+[^\W\d_]?[\"'‘’*%®]+(?=\s|$)", "", titre)
         if page is None and len(lignes) >= 2:                # dernière ligne = numéro de page mal lu, pas du titre
             titre = re.sub(r"\s+\S{1,3}$", "", titre) if not re.search(r"[A-Za-zÀ-ÿ]{4}", titre.split(" ")[-1]) else titre
+        titre = _ordinal_part(titre)
         titre = titre.strip(" .:-–—,'\"=~_")
         sortie.append({"num": e["num"], "titre": titre, "page": page, "_pos": (round(e["m"]["y"] / 60), e["m"]["x"])})
     if sum(x["page"] is not None for x in sortie) < max(2, len(sortie) // 2):
@@ -455,6 +456,37 @@ def analyser_colonnes(image_octets: bytes, mots=None) -> list[dict]:
     if len(sortie) < 2 or any(b["num"] != a["num"] + 1 for a, b in zip(sortie, sortie[1:])):
         return []                                            # chapitre manquant : on ne devine pas
     return [dict(x, num=int(x["num"]) if float(x["num"]).is_integer() else x["num"]) for x in _pages_sures(sortie)]
+
+
+def _completer_ordinaux(chapitres):
+    """Suite « Nightmare 1st part », « Nightmare 2nd part » dont les rangs n'ont pas tous été lus (symboles d'exposant) :
+    déduits d'un voisin lu ; sans aucun rang lu, la suite de deux chapitres ou plus de même titre commence à 1."""
+    def decoupe(c):
+        m = re.match(r"^(.*?)(?:\s+(\d+)(?:st|nd|rd|th))?(?:\s+part)?$", (c.get("titre") or "").strip())
+        return (m.group(1), int(m.group(2)) if m.group(2) else None) if m and m.group(1) else (None, None)
+    k = 0
+    while k < len(chapitres):
+        base = decoupe(chapitres[k])[0]
+        j = k
+        while base and j + 1 < len(chapitres) and decoupe(chapitres[j + 1])[0] == base:
+            j += 1
+        groupe = chapitres[k:j + 1]
+        if base and len(groupe) >= 2 and any(re.search(r"\bpart$", c["titre"]) or decoupe(c)[1] for c in groupe):
+            connu = next(((i, decoupe(c)[1]) for i, c in enumerate(groupe) if decoupe(c)[1]), None)
+            depart = connu[1] - connu[0] if connu else 1
+            if depart >= 1:
+                for i, c in enumerate(groupe):
+                    c["titre"] = _ordinal_part(f"{base} {depart + i} part")
+        k = j + 1
+
+
+def _ordinal_part(titre):
+    """« Nightmare 1=)part », « Nightmare 3"* part », « Nightmare 10°" part » → « Nightmare 1st part » ; « Nigh tmare » recollé."""
+    titre = re.sub(r"\bNigh\s+tmare\b", "Nightmare", titre)
+    def ordinal(m):
+        n = int(m.group(1).translate(str.maketrans("SB", "58")))
+        return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')} part"
+    return re.sub(r"\b([0-9SB]{1,2})\W{0,4}(?:st|nd|rd|th|e)?\W{0,3}\s*part\b", ordinal, titre)
 
 
 def _pages_sures(sortie):
@@ -541,6 +573,7 @@ def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
             except Exception as e:
                 logger.info("Sommaire par Claude impossible pour %s : %s", chemin, e)
         return {"chapitres": [], "page_sommaire": None, "decalage": None}
+    _completer_ordinaux(trouve)
     images, decalage = _images(trouve, textes, page_sommaire, lire_page, nb_pages, noms)
     for c, image in zip(trouve, images):
         c["image"] = image if image is not None and image < nb_pages else None

@@ -307,6 +307,10 @@ def _edition_differente(serie):
     la répartition des chapitres par tome de Wikipédia ne s'applique alors pas."""
     v = _edition_vue(serie).get("volumes_attendus") or max(
         [n for n in (__import__("edition").volumes_du_titre(a) for a in _edition_vue(serie).get("archives", [])) if n] or [0]) or None
+    if not v and any(re.search(r"int[ée]gral|deluxe", a, re.I) for a in _edition_vue(serie).get("archives", [])):
+        # intégrale sans nombre dans son nom (« 20th Century Boys [Intégrale] ») : le nombre de tomes reçus fait foi
+        v = len({m.group(1) for f in (_scan().get(serie) or [])
+                 for m in [re.match(r"Tome (\d+)$", f.parent.name)] if m}) or None
     officiel = ((tomes._charger(serie) or {}).get("statut_officiel") or {}).get("volumes")
     return bool(v and officiel and int(v) != int(officiel))
 
@@ -3829,6 +3833,10 @@ def api_tome():
     except (TypeError, ValueError):
         return jsonify({"error": "Tome inconnu"}), 400
     d = tomes.details_tome(name, tome)
+    differente = _edition_differente(name)               # Deluxe, Perfect… : le tome 1 n'est pas le tome 1 de Wikipédia
+    if differente:
+        d = {k: v for k, v in d.items() if k == "couverture"}
+        d["edition_differente"] = True
     import edition
     prov = provenance.lire(edition.lire(MANGA_DIR / name)).get(str(int(tome))) or {}
     if not prov:                                         # pas encore notée : d'après le nom du fichier du tome
@@ -3848,7 +3856,7 @@ def api_tome():
         d["resume"], d["resume_source"], d["resume_manuel"] = perso, "écrit à la main", True
     if du_fichier.get("resume") and not d.get("resume_manuel") and nf.get("resume") == "manuel":
         d["resume"], d["resume_source"], d["resume_manuel"] = du_fichier["resume"], "écrit dans le fichier", True
-    if not d.get("resume"):                              # Wikipédia n'a pas de résumé de ce tome : notice Google Books en français
+    if not d.get("resume") and not differente:           # Wikipédia n'a pas de résumé de ce tome : notice Google Books en français
         try:
             d["resume"] = tomes.resume_tome_google(name, tome)
         except Exception as e:
@@ -3908,9 +3916,26 @@ def _sommaire_du_tome(name, tome, d):
         if e:
             d["chapitres_pages"] = [c.get("image") for c in lu["chapitres"]]
             d["fichier"] = e["key"]
-    ancien = bool(lu and not lu.get("chapitres") and not lu.get("manuel") and not lu.get("fichier")
-                  and lu.get("version", 1) < sommaire.VERSION)       # « pas de sommaire » dit par un lecteur plus ancien : on relit
-    if e and sommaire.disponible() and (not lu or ancien) and besoin and auth.role() != "lecteur":
+    elif lu and lu.get("chapitres") and e and d.get("chapitres") and d.get("chapitres_langue") != "en":
+        # Wikipédia donne déjà les titres : on les garde (sauf si le sommaire du tome les complète : « Nightmare » →
+        # « Nightmare 1st part »), mais les chapitres sont tout de même reliés à leur page de lecture.
+        par_num = {float(c["num"]): c for c in lu["chapitres"] if c.get("num") is not None}
+        titres, pages, ok = [], [], 0
+        for ligne in d["chapitres"]:
+            m = re.match(r"^(\d+(?:[.,]\d)?)\.?\s*(.*)$", ligne)
+            c = par_num.get(float(m.group(1).replace(",", "."))) if m else None
+            if c is not None:
+                ok += 1
+                wiki, ocr = m.group(2).strip(), (c.get("titre") or "").strip()
+                if ocr and len(ocr) > len(wiki) and ocr.lower().startswith(wiki.lower()):
+                    ligne = f"{m.group(1)}. {ocr}"
+            titres.append(ligne)
+            pages.append(c.get("image") if c is not None else None)
+        if ok:
+            d["chapitres"], d["chapitres_pages"], d["fichier"] = titres, pages, e["key"]
+    ancien = bool(lu and not lu.get("manuel") and not lu.get("fichier") and not lu.get("valide_le")
+                  and lu.get("version", 1) < sommaire.VERSION)       # lu par un lecteur plus ancien : on relit (pas ce qu'elle a validé)
+    if e and sommaire.disponible() and (not lu or ancien) and (besoin or ancien) and auth.role() != "lecteur":
         _lire_sommaire(name, tome, e)
     et = sommaire.etat(name, tome)
     d["sommaire"] = {"possible": bool(e) and sommaire.disponible(), "en_cours": bool(et.get("en_cours")),

@@ -5,6 +5,8 @@
 - 🔢 Numéros de page : les chiffres rouges sur halo clair (« 131 »), les « 7 » penchés et les chiffres collés sont mieux lus ; un numéro qui casse l'ordre croissant est écarté, et une page illisible est estimée entre ses voisines (le titre cherché dans les pages voisines tranche ensuite). Le sommaire lui-même n'est plus pris pour une page de chapitre.
 - ♻️ Les tomes « sans sommaire » sont relus une fois avec ce nouveau lecteur.
 - ◀️ Bouton retour du téléphone : sur la fiche d'un tome (ⓘ), il ferme la fenêtre et laisse sur la fiche du manga, au lieu de revenir à la liste des séries.
+- 📖 Chapitres d'un tome : quand Wikipédia donne déjà les titres, ils sont gardés mais les chapitres sont maintenant reliés à leurs pages (lien de lecture), et un titre incomplet est complété par le sommaire du tome (« Nightmare » → « Nightmare 1st part »). Les sommaires lus par une ancienne version sont relus tout seuls.
+- 📚 Intégrale d'une autre édition (ex. 20th Century Boys Deluxe, 12 tomes au lieu de 22) : le nombre de tomes reçus fait foi ; la fiche d'un tome n'affiche plus le titre, le résumé ni les chapitres du tome de l'édition standard, qui ne correspondent pas.
 - 🧩 Filtres de la bibliothèque : sur téléphone, deux par ligne ; les textes ne débordent plus de leur case.
 
 ## ⭐ Notes des séries (13 octobre 2026)
