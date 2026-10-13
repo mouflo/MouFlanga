@@ -24,6 +24,7 @@ _SESSION = requests.Session()
 _SESSION.headers["User-Agent"] = "MouFlanga/2 (bibliotheque personnelle)"
 _VERROU = threading.Lock()
 _CACHE = {"cle": None, "notes": {}}
+_JIKAN_HS = {"depuis": 0.0}      # dernière panne de connexion à Jikan
 
 
 def _simple(t):
@@ -73,16 +74,18 @@ def _anilist(anilist_id, titres):
         q, v = "query($i:Int){Media(id:$i,type:MANGA){averageScore meanScore idMal}}", {"i": int(anilist_id)}
         m = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": v}, timeout=15).json()["data"]["Media"]
     else:
-        q = "query($s:String){Media(search:$s,type:MANGA,format_not:NOVEL){averageScore meanScore idMal title{romaji english}}}"
+        q = "query($s:String){Media(search:$s,type:MANGA,format_not:NOVEL){averageScore meanScore idMal title{romaji english} synonyms}}"
         m = None
-        for t in [x for x in titres if x][:2]:
+        for t in [x for x in titres if x][:5]:
             r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": t}}, timeout=15)
             if r.status_code == 429:
                 raise RuntimeError("AniList demande de ralentir")
             m = (r.json().get("data") or {}).get("Media")
-            if m and any(_simple(t) == _simple((m.get("title") or {}).get(k) or "") for k in ("romaji", "english")):
+            noms = [(m or {}).get("title", {}).get(k) or "" for k in ("romaji", "english")] + list((m or {}).get("synonyms") or [])
+            if m and _simple(t) in {_simple(n) for n in noms if n}:
                 break
             m = None
+            time.sleep(0.8)
     if not m:
         return None, None
     score = m.get("averageScore") or m.get("meanScore")
@@ -139,12 +142,16 @@ def chercher(serie: str, anilist_id=None, titres=()) -> tuple:
             return v, "Kitsu"
     except Exception as e:
         logger.info("Note de %s (Kitsu) : %s", serie, e.__class__.__name__)
-    try:                                           # MyAnimeList : en dernier (api.jikan.moe n'est pas toujours joignable d'ici)
-        v = _jikan(mal, titres)
-        if v:
-            return v, "MyAnimeList"
-    except Exception as e:
-        logger.info("Note de %s (MyAnimeList) : %s", serie, e.__class__.__name__)
+    if time.time() - _JIKAN_HS["depuis"] > 3600:      # MyAnimeList : en dernier (api.jikan.moe n'est pas toujours joignable d'ici)
+        try:
+            v = _jikan(mal, titres)
+            if v:
+                return v, "MyAnimeList"
+        except requests.ConnectionError as e:
+            _JIKAN_HS["depuis"] = time.time()          # injoignable : on n'insiste pas pendant une heure
+            logger.info("MyAnimeList (Jikan) injoignable : %s", e.__class__.__name__)
+        except Exception as e:
+            logger.info("Note de %s (MyAnimeList) : %s", serie, e.__class__.__name__)
     return None, ""
 
 

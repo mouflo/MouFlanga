@@ -769,7 +769,12 @@ def _note_de(name):
 def _identifiants_note(serie):
     """(identifiant AniList, titres à essayer) d'une série d'après sa fiche déjà en mémoire."""
     st = (tomes._charger(serie) or {}).get("statut_officiel") or {}
-    return st.get("anilist"), [t for t in (st.get("titre"), st.get("titre_en")) if t]
+    titres = [t for t in (st.get("titre"), st.get("titre_en")) if t]
+    try:                                               # « Kurokos Basket » → « Kuroko's Basket » : variantes du nom du dossier
+        titres += [v for v in tomes._variantes(serie) if v not in titres and v != serie]
+    except Exception:
+        pass
+    return st.get("anilist"), titres
 
 
 def _auteur_editeur(name):
