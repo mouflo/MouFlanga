@@ -35,7 +35,7 @@
     parution: {titre: '🗞 Parution', choix: [['', 'Toutes'], ['fini', 'Complètes'], ['manque', 'Il en manque'], ['parution', 'En cours de parution', 'En parution']],
       garde: {fini: function (s) { return s.etat === 'fini'; }, manque: function (s) { return !!s.manque; }, parution: enParution}},
     univers: {titre: '🌌 Univers', choix: [['', 'Tous']]},
-    tri: {titre: '↕ Tri', choix: [['az', 'A → Z'], ['za', 'Z → A'], ['added', 'Ajoutées récemment', 'Ajoutées'], ['recent', 'Lues récemment', 'Lues réc.'], ['progression', 'Progression'], ['univers', 'Univers (ordre de lecture)', 'Univers'], ['auteur', 'Auteur', 'Auteur'], ['editeur', 'Éditeur', 'Éditeur']]}
+    tri: {titre: '↕ Tri', choix: [['az', 'A → Z'], ['za', 'Z → A'], ['added', 'Ajoutées récemment', 'Ajoutées'], ['recent', 'Lues récemment', 'Lues réc.'], ['progression', 'Progression'], ['univers', 'Univers (ordre de lecture)', 'Univers'], ['auteur', 'Auteur', 'Auteur'], ['editeur', 'Éditeur', 'Éditeur'], ['note', 'Mieux notées', 'Notes'], ['note_bas', 'Moins bien notées', 'Pires notes']]}
   };
   var choixFiltre = {lecture: pref('mfLecture', ''), parution: pref('mfParution', ''), univers: '', tri: pref('mfTri2', 'az')};
   Object.keys(FILTRES).forEach(function (k) {     // ancien choix qui n'existe plus : valeur par défaut
@@ -80,7 +80,10 @@
           || ((a.ordre_univers || 9999) - (b.ordre_univers || 9999)) || titre(a, b);
       },
       auteur: function (a, b) { return (a.auteur || '\uffff').localeCompare(b.auteur || '\uffff', 'fr') || titre(a, b); },
-      editeur: function (a, b) { return (a.editeur || '\uffff').localeCompare(b.editeur || '\uffff', 'fr') || titre(a, b); }
+      editeur: function (a, b) { return (a.editeur || '\uffff').localeCompare(b.editeur || '\uffff', 'fr') || titre(a, b); },
+      // séries sans note toujours en dernier, dans les deux sens
+      note: function (a, b) { return (b.note || -1) - (a.note || -1) || titre(a, b); },
+      note_bas: function (a, b) { return (a.note || 99) - (b.note || 99) || titre(a, b); }
     };
     return list.sort(by[choixFiltre.tri] || titre);
   }
@@ -149,7 +152,8 @@
         (lue(s) ? (enParution(s) ? '<span class="lue attente" title="À jour : en attente du prochain tome">⏳</span>'
                                  : '<span class="lue" title="Déjà lue">✔</span>') : '') +
         '<div class="nm">' + esc(s.title) + '</div>' +
-        '<div class="st">' + esc(s.compte || (s.chapters + ' chapitre(s)')) + ' · ' + taille(s.size_mb) + '</div>' +
+        '<div class="st">' + esc(s.compte || (s.chapters + ' chapitre(s)')) + ' · ' + taille(s.size_mb) +
+        (s.note ? ' · <span class="note" title="Note ' + esc(s.note_source) + '">' + String(s.note).replace('.', ',') + '/10</span>' : '') + '</div>' +
         '<div class="bar"><i style="width:' + pct + '%"></i></div></div>';
   }
 
@@ -1327,7 +1331,7 @@
       var lignes = [
         ['Titre original', [f.titre_original, f.romaji].filter(Boolean).join(' · ')],
         ['Parution', f.debut ? f.debut + (f.fin ? ' → ' + f.fin : ' → ' + (st || '…')) + (f.fin && st ? ' (' + st + ')' : '') : st],
-        ['Scénario', f.scenario], ['Dessin', f.dessin && f.dessin !== f.scenario ? f.dessin : (f.dessin ? '(même auteur)' : '')],
+        ['Note', f.note ? String(f.note).replace('.', ',') + ' / 10 (' + f.note_source + ')' : ''], ['Scénario', f.scenario], ['Dessin', f.dessin && f.dessin !== f.scenario ? f.dessin : (f.dessin ? '(même auteur)' : '')],
         ['Genres', f.genres], ['Éditeur japonais', f.editeur_jp], ['Éditeur français', f.editeur_fr], ['Autres éditeurs (MangaUpdates)', f.editeurs_mu], ['Tomes de ton édition', f.volumes_edition ? String(f.volumes_edition) : ''], ['Volumes (MangaUpdates)', f.volumes_mu ? String(f.volumes_mu) : ''], ['Sources consultées', (f.sources || []).join(', ')],
         ['Univers', f.univers ? f.univers + (f.ordre_univers ? ' · tome ' + f.ordre_univers + ' de la lecture' : '') : ''], ['Autres œuvres de l\'univers', (f.membres_univers || []).join(' → ')],
         ['Trouvée sur', f.source_suivi], ['Version', (f.versions || []).join(', ')], ['Source', [ed.source ? ed.source + (ed.devine ? ' (deviné)' : '') : '', ed.resolution].filter(Boolean).join(' · ')]

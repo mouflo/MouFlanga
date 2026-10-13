@@ -741,7 +741,7 @@ def api_library():
             "size_mb": round(total_size / 1048576, 1),
             "last_read": p.get("last", ""), "added": newest, "favori": bool(p.get("favori")),
             "cover": f"/api/cover?id={_q(name)}&v={int(max(newest, _couverture_mtime(name)))}",
-            **_auteur_editeur(name), **_univers_de(name),
+            **_auteur_editeur(name), **_univers_de(name), **_note_de(name),
         })
     presentes = {x["id"] for x in out}
     for nom, x in suivi.lire()["series"].items():          # ➕ séries ajoutées mais encore vides : grisées
@@ -757,6 +757,19 @@ def api_library():
     except OSError:
         racine = 0
     return jsonify({"series": out, "a_importer": racine, "import_en_cours": _FILE_IMPORT["en_cours"]})
+
+
+def _note_de(name):
+    """Note de la série (sur 10) déjà enregistrée dans data/notes.json : aucun appel Internet ici."""
+    import notes
+    n = None if name == "(Sans série)" else notes.note(name)
+    return {"note": n[0], "note_source": n[1]} if n else {"note": None, "note_source": ""}
+
+
+def _identifiants_note(serie):
+    """(identifiant AniList, titres à essayer) d'une série d'après sa fiche déjà en mémoire."""
+    st = (tomes._charger(serie) or {}).get("statut_officiel") or {}
+    return st.get("anilist"), [t for t in (st.get("titre"), st.get("titre_en")) if t]
 
 
 def _auteur_editeur(name):
@@ -3797,7 +3810,7 @@ def api_fiche():
     return jsonify({**{k: v for k, v in f.items() if k != "date"}, "versions": versions,
                     "edition": _infos_edition(name, files),
                     "source_suivi": s.get("source", ""), "lien_source": s.get("lien", ""), "volumes_edition": _volumes_edition(name) or "",
-                    "univers": u["univers"], "ordre_univers": u["ordre_univers"], "membres_univers": membres})
+                    "univers": u["univers"], "ordre_univers": u["ordre_univers"], "membres_univers": membres, **_note_de(name)})
 
 
 @app.route("/api/tome")
@@ -4818,4 +4831,7 @@ if __name__ == "__main__":
     threading.Thread(target=torrents.surveiller, args=(_importer_torrent, lambda t: notifier.envoyer(t), MANGA_DIR), daemon=True).start()
     threading.Thread(target=demandes._boucle_rappels, args=(lambda t: notifier.envoyer(t), lambda: os.getenv("APP_URL", "").strip()),
                      daemon=True).start()
+    import notes
+    threading.Thread(target=notes.boucle, args=(lambda: [s for s in _scan() if s != "(Sans série)"], _identifiants_note),
+                     daemon=True).start()          # notes des séries : une mise à jour par jour, en arrière-plan
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

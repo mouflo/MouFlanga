@@ -83,3 +83,6 @@ Sorti de `CLAUDE.md` pour l'alléger : lire la section utile avant de toucher au
 - Parcours complet (tailles relues) toutes les 10 min en arrière-plan. Seul le dossier réel est enregistré dans index.sqlite (pas ceux des tests).
 - Page : `drawGrid()` affiche `GRILLE_PAGE` = 36 cartes puis `grilleSuite()` (IntersectionObserver, sentinelle `#grilleSuite`).
 - Piste suivante (pas faite) : données des lecteurs (progression, favoris, demandes) vers SQLite si le nombre d'utilisateurs augmente ; aujourd'hui un fichier par lecteur, écriture atomique et verrouillée (`_progress_lock`).
+
+## Notes des séries (13/10/2026)
+- `notes.py` : `chercher()` AniList (id AniList de la fiche, sinon recherche par titre) → Kitsu → MyAnimeList (Jikan : api.jikan.moe injoignable depuis le serveur le 13/10, donc en dernier). Valeur sur 10 (AniList 0-100 ÷ 10, Kitsu idem). Stockage `data/notes.json` {série: valeur, source, date, essai}. `a_rafraichir()` : jamais notée ou dernière tentative > 24 h. `boucle()` lancée dans `__main__` (1 h, pause 2,5 s entre séries). `app._note_de()` ajoute note/note_source à `/api/library` et `/api/fiche` (lecture seule du fichier).

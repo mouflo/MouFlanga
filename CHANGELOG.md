@@ -1,5 +1,10 @@
 # Historique des versions
 
+## ⭐ Notes des séries (13 octobre 2026)
+- 📊 Chaque série affiche sa note sur 10 : sur la carte de la bibliothèque (« 7,3/10 », en jaune) et dans ℹ️ (avec la source). Sources, dans l'ordre : AniList, Kitsu, MyAnimeList (sans clé).
+- 💾 Les notes sont enregistrées (`data/notes.json`) : rien n'est demandé à Internet quand tu ouvres la page. Une série sans note, ou dont la note a plus d'un jour, est mise à jour en arrière-plan, une série à la fois avec une pause (les limites des sites sont respectées) ; un échec n'efface jamais une note déjà connue.
+- ↕ Nouveaux tris : « Mieux notées » et « Moins bien notées » (les séries sans note restent en dernier).
+
 ## ⚡ Bibliothèque rapide : index SQLite, défilement infini, fiches des tomes instantanées (13 octobre 2026)
 - 🗂 Index de la bibliothèque (`data/index.sqlite`, SQLite) : l'appli ne refait plus le tour du NAS à chaque demande. Elle compare seulement la date des dossiers (environ 10 ms) et ne reparcourt que quand quelque chose a changé ; après un redémarrage, la bibliothèque est prête tout de suite. Les tailles et dates des fichiers sont retenues (vérifiées en arrière-plan toutes les 10 minutes).
 - ⓘ Fiche d'un tome : de 1,5 à 6 secondes avant, environ 0,05 s maintenant (même en revenant sur un tome déjà ouvert).

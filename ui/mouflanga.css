@@ -372,3 +372,5 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .dbl-tuile.garde::after { content:"entière"; position:absolute; right:4px; top:4px; padding:1px 6px; border-radius:6px; background:#52b54b; color:#000; font-size:12px; }
 
 .dbl-point { display:inline-block; width:10px; height:10px; margin-right:8px; border-radius:50%; background:#52b54b; box-shadow:0 0 0 2px rgba(82,181,75,.35); vertical-align:middle; }
+
+.card .st .note { color:#f0c040; font-weight:700; white-space:nowrap; }
