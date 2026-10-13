@@ -1586,6 +1586,26 @@
       history.pushState({}, '', location.pathname); showList();
     });
     $('sAllUnread').addEventListener('click', function () { if (confirm('Tout marquer comme non lu pour cette série ?')) markAll(false); });
+    // Bouton retour du téléphone : une fenêtre ouverte (ⓘ d'un tome, infos, affichage…) se ferme et on reste sur la fiche
+    ['infosVue', 'affVue'].forEach(function (id) {
+      var el = $(id); if (!el) return;
+      new MutationObserver(function () {
+        if (!el.hidden && !el._pousse) { history.pushState({modal: id}, '', location.href); el._pousse = true; }
+        else if (el.hidden && el._pousse) {
+          el._pousse = false;
+          if (history.state && history.state.modal === id) { window._retourModal = true; history.back(); }
+        }
+      }).observe(el, {attributes: true, attributeFilter: ['hidden']});
+    });
+    window.addEventListener('popstate', function (e) {
+      if (window._retourModal) { window._retourModal = false; e.stopImmediatePropagation(); return; }   // fermeture par le code
+      var ferme = false;
+      ['infosVue', 'affVue'].forEach(function (id) {
+        var el = $(id);
+        if (el && !el.hidden && el._pousse) { el._pousse = false; el.hidden = true; ferme = true; }
+      });
+      if (ferme) e.stopImmediatePropagation();
+    });
     window.addEventListener('popstate', route);
     route();
   });

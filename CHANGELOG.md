@@ -1,5 +1,12 @@
 # Historique des versions
 
+## 🔧 Sommaires difficiles, bouton retour, filtres (13 octobre 2026)
+- 📖 Sommaire des tomes 2 et 3 de 07-Ghost enfin lu : un chapitre écrit sur fond sombre (« Kapitel·9 ») n'était pas vu par la lecture de la page entière, ce qui faisait refuser tout le tome. Les trous entre deux chapitres sont maintenant relus seuls, et le texte clair sur un dessin (vert pâle sur blanc) est lu en colonnes.
+- 🔢 Numéros de page : les chiffres rouges sur halo clair (« 131 »), les « 7 » penchés et les chiffres collés sont mieux lus ; un numéro qui casse l'ordre croissant est écarté, et une page illisible est estimée entre ses voisines (le titre cherché dans les pages voisines tranche ensuite). Le sommaire lui-même n'est plus pris pour une page de chapitre.
+- ♻️ Les tomes « sans sommaire » sont relus une fois avec ce nouveau lecteur.
+- ◀️ Bouton retour du téléphone : sur la fiche d'un tome (ⓘ), il ferme la fenêtre et laisse sur la fiche du manga, au lieu de revenir à la liste des séries.
+- 🧩 Filtres de la bibliothèque : sur téléphone, deux par ligne ; les textes ne débordent plus de leur case.
+
 ## ⭐ Notes des séries (13 octobre 2026)
 - 📊 Chaque série affiche sa note sur 10 : sur la carte de la bibliothèque (« 7,3/10 », en jaune) et dans ℹ️ (avec la source). Sources, dans l'ordre : AniList, Kitsu, MyAnimeList (sans clé).
 - 💾 Les notes sont enregistrées (`data/notes.json`) : rien n'est demandé à Internet quand tu ouvres la page. Une série sans note, ou dont la note a plus d'un jour, est mise à jour en arrière-plan, une série à la fois avec une pause (les limites des sites sont respectées) ; un échec n'efface jamais une note déjà connue.

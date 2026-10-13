@@ -86,3 +86,15 @@ class Resume(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PagesSures(unittest.TestCase):
+    def test_page_hors_ordre_ecartee_et_page_manquante_estimee(self):
+        chap = [{"num": n, "titre": "t", "page": p} for n, p in ((6, None), (7, 35), (8, 68), (9, 8), (10, 131), (11, 165))]
+        r = sommaire._pages_sures(chap)
+        self.assertEqual([x["page"] for x in r][1:], [35, 68, 100, 131, 165])
+        self.assertTrue(r[3]["estimee"])
+        self.assertIsNotNone(r[0]["page"])
+
+    def test_moins_de_deux_pages_sures(self):
+        self.assertEqual(sommaire._pages_sures([{"num": 1, "titre": "a", "page": 5}, {"num": 2, "titre": "b", "page": None}]), [])
