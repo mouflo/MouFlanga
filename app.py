@@ -1184,6 +1184,79 @@ def api_optimiser_comparer():
     return jsonify(info)
 
 
+# ---------------- 📖 Doubles pages : découpe en simples pages (admin) ----------------
+def _recaler_progression(name, rel, carte):
+    """Après une découpe, la page où l'on était devient celle de la moitié qui la remplace (chaque lecteur)."""
+    with _progress_lock:
+        for _pf in _fichiers_progression():
+            data = _read_json(_pf, {})
+            p = data.get(name)
+            if p and p.get("current") == rel and p.get("page") is not None:
+                p["page"] = carte.get(int(p["page"]), p["page"])
+                _write_json(_pf, data)
+
+
+@app.route("/api/doubles")
+def api_doubles():
+    """Doubles pages de chaque tome de la série (vignettes à choisir) : {"tomes": [{"fichier", "pages": [{"index", "nom"}]}]}."""
+    name = request.args.get("series", "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"error": "Série introuvable."}), 404
+    tomes_ = []
+    for f in _fichiers_a_alleger(name):
+        if not zipfile.is_zipfile(f) or (f.stat().st_nlink > 1 and not optimiser._dossier_a_lui(f, name)):
+            continue
+        pages_ = optimiser.reperer_doubles(f)
+        if pages_:
+            tomes_.append({"fichier": f.name, "pages": pages_})
+    return jsonify({"tomes": tomes_, "total": sum(len(t["pages"]) for t in tomes_)})
+
+
+@app.route("/api/doubles/image")
+def api_doubles_image():
+    name = request.args.get("series", "")
+    f = next((x for x in _fichiers_a_alleger(name) if x.name == request.args.get("fichier", "")), None) if name in _scan() else None
+    if f is None:
+        return Response("Introuvable", status=404)
+    try:
+        jpeg = optimiser.apercu_page(f, int(request.args.get("n", "0")))
+    except (ValueError, archives.ArchiveError) as e:
+        return Response(str(e), status=404)
+    return Response(jpeg, mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
+
+
+@app.route("/api/doubles/etat")
+def api_doubles_etat():
+    return jsonify(optimiser.coupes_etat(request.args.get("series", "")))
+
+
+@app.route("/api/doubles/couper", methods=["POST"])
+def api_doubles_couper():
+    """POST {series, sens: "manga"|"occidental", plan: [{fichier, indices: [numéros de page à couper]}]} : découpe en arrière-plan."""
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if _en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours") or optimiser.etat(name).get("en_cours"):
+        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    fichiers = {f.name: f for f in _fichiers_a_alleger(name) if zipfile.is_zipfile(f)}
+    travaux = []
+    for t in body.get("plan") or []:
+        f = fichiers.get(str(t.get("fichier", "")))
+        indices = {int(i) for i in t.get("indices") or [] if str(i).isdigit()}
+        if f and indices:
+            travaux.append((f, indices))
+    if not travaux:
+        return jsonify({"ok": False, "error": "Aucune double page à couper."}), 400
+    sens = str(body.get("sens", "manga")) != "occidental"
+
+    def apres(chemin, carte):
+        _recaler_progression(name, _rel(chemin), carte)
+    if not optimiser.lancer_coupes(name, travaux, sens, _vers_corbeille, apres):
+        return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
+    return jsonify({"ok": True, "message": "Découpe lancée…"})
+
+
 # ---------------- 📱 Notifications sur le téléphone (Web Push) ----------------
 import notifier
 import push

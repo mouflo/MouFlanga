@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 📖 Doubles pages découpées en simples pages (13 octobre 2026)
+- ✂️ Dans 🪶 Alléger ou ✨ améliorer : « Doubles pages en simples pages ». Une planche de vignettes montre toutes les images plus larges que hautes du tome ; tout est coupé en deux par défaut, tu touches uniquement les vraies doubles (une seule illustration) pour les garder entières. Sens manga (moitié droite d'abord) ou occidental.
+- 🔖 La découpe garde les repères : la page où tu en étais est recalée (pour chaque lecteur), les signets et le nombre de pages du ComicInfo sont mis à jour, les pages d'un chapitre sont renumérotées. L'ancien fichier va à la corbeille (30 jours) ; un fichier partagé par qBittorrent est traité à part comme pour l'allègement.
+- 🧪 Option à essayer : rien n'est coupé sans ton accord (planche + confirmation).
+
 ## ✨ Améliorer les vieux scans, aperçu à rideau (13 octobre 2026)
 - ✨ Nouvelle partie « Améliorer l'image » dans 🪶 Alléger : rien n'est fait tout seul, tu choisis un niveau (Légère, Vieux scan, Très abîmé) ou tu règles chaque traitement de Non à Fort :
   🌫 enlever le grain, ▦ adoucir les trames (aplats gris pointillés → gris uni), 🧼 blanchir le papier (fond gris, jauni ou inégal, sans halo dans les grandes zones noires), ⬛ noirs plus francs, 🧽 effacer les poussières isolées (les points de suspension restent), 〰 lisser les traits (fini l'effet escalier, même taille de page), 🔪 plus net, 🔍 agrandir ×2 (petits scans).

@@ -427,3 +427,205 @@ def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom):
            "page": index, "pages": len(noms), "inchange": nouveau is data, "dimensions": [list(im.size), list(apres.size)],
            "ameliore": traitee is not im, "couleur": couleur}
     return res
+
+
+# ---------------- 📖 Pages doubles : une image large contient souvent deux pages collées ----------------
+import archives                         # ordre et numérotation des pages tels que le lecteur les voit
+import xml.etree.ElementTree as ET
+
+_RATIO_DOUBLE = 1.2                     # largeur / hauteur à partir de laquelle une image est une double page
+_DOUBLES_CACHE = {}                     # (fichier, date, taille) → liste repérée
+_COUPES_ETAT = {}                       # série → {"en_cours", "fait", "total", "message", "rapport"}
+_COUPE_FORMATS = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def reperer_doubles(chemin: Path) -> list[dict]:
+    """Doubles pages d'un tome (image plus large que haute) : [{"index", "nom"}], index = numéro de page du lecteur.
+    Le repérage automatique ne sait pas distinguer une double normale d'une vraie double (une illustration) : c'est
+    toi qui gardes les secondes entières dans la planche de vignettes."""
+    chemin = Path(chemin)
+    st = chemin.stat()
+    cle = (str(chemin), st.st_mtime_ns, st.st_size)
+    if cle in _DOUBLES_CACHE:
+        return _DOUBLES_CACHE[cle]
+    res = []
+    with zipfile.ZipFile(chemin) as z:
+        for i, nom in enumerate(archives.pages(chemin)):
+            if Path(nom).suffix.lower() not in _COUPE_FORMATS:
+                continue
+            try:
+                with Image.open(io.BytesIO(z.read(nom))) as im:
+                    if im.width >= im.height * _RATIO_DOUBLE:
+                        res.append({"index": i, "nom": nom})
+            except Exception as e:
+                logger.info("Page %s de %s ignorée pour les doubles : %s", nom, chemin.name, e)
+    if len(_DOUBLES_CACHE) > 256:
+        _DOUBLES_CACHE.clear()
+    _DOUBLES_CACHE[cle] = res
+    return res
+
+
+def apercu_page(chemin: Path, index: int, largeur=300) -> bytes:
+    """Une page du tome en JPEG réduit (vignette pour choisir les doubles pages)."""
+    data, _ = archives.read_page(Path(chemin), index)
+    im = Image.open(io.BytesIO(data))
+    im.load()
+    im = im.convert("RGB")
+    im.thumbnail((largeur, largeur * 2))
+    return _jpeg(im, 85)
+
+
+def _moities(im, sens_manga):
+    """Les deux moitiés d'une double page. Manga : la moitié droite se lit d'abord."""
+    w, h = im.size
+    m = w // 2
+    gauche, droite = im.crop((0, 0, m, h)), im.crop((m, 0, w, h))
+    return (droite, gauche) if sens_manga else (gauche, droite)
+
+
+def _octets_page(im, nom):
+    out = io.BytesIO()
+    ext = Path(nom).suffix.lower()
+    if ext == ".png":
+        im.save(out, "PNG", optimize=True)
+    elif ext == ".webp":
+        im.save(out, "WEBP", quality=95)
+    else:
+        im.convert("RGB" if im.mode not in ("L", "RGB") else im.mode).save(out, "JPEG", quality=95, optimize=True, progressive=True)
+    return out.getvalue()
+
+
+def _comicinfo_maj(donnees: bytes, carte: dict, nb: int) -> bytes:
+    """Numéros de page des signets (ComicInfo) suivis, et nombre total de pages mis à jour."""
+    try:
+        racine = ET.fromstring(donnees)
+    except ET.ParseError:
+        return donnees
+    for p in racine.iter("Page"):
+        try:
+            ancien = int(p.get("Image", ""))
+        except ValueError:
+            continue
+        if ancien in carte:
+            p.set("Image", str(carte[ancien]))
+    pc = racine.find("PageCount")
+    if pc is not None:
+        pc.text = str(nb)
+    return ET.tostring(racine, encoding="utf-8", xml_declaration=True)
+
+
+def couper(chemin: Path, indices, sens_manga=True, destination=None) -> dict:
+    """Écrit le tome avec les pages « indices » (numéros du lecteur) coupées en deux. Même principe que reecrire : version
+    à côté (ou « destination » pour un fichier partagé), relue, puis remplacée ; l'ancien part dans « avant » (corbeille).
+    Renvoie {"carte": {ancien numéro: nouveau}, "pages_avant", "pages", "avant"}. Les noms des pages de chapitre
+    (c0012.00-p003.jpg) sont renumérotés dans les chapitres touchés ; les autres moitiés s'appellent « 0008b.jpg »."""
+    import tomes_cbz
+    chemin = Path(chemin)
+    ordre = archives.pages(chemin)
+    coupees = {ordre[i] for i in indices if 0 <= i < len(ordre) and Path(ordre[i]).suffix.lower() in _COUPE_FORMATS}
+    if not coupees:
+        raise RuntimeError("aucune page double à couper")
+    entrees = []                                  # [nom, octets, numéro ancien ou None, numéro de chapitre ou None, date]
+    with zipfile.ZipFile(chemin) as z:
+        for info in z.infolist():
+            nom, data = info.filename, z.read(info.filename)
+            num = tomes_cbz.num_page(nom)
+            if nom not in coupees:
+                entrees.append([nom, data, ordre.index(nom) if nom in ordre else None, num, info.date_time])
+                continue
+            a, b = _moities(Image.open(io.BytesIO(data)), sens_manga)
+            a.load()
+            stem, suf = Path(nom).stem, Path(nom).suffix
+            entrees.append([nom, _octets_page(a, nom), ordre.index(nom), num, info.date_time])
+            entrees.append([nom if num is not None else f"{stem}b{suf}", _octets_page(b, nom), None, num, info.date_time])
+    touches = {tomes_cbz.num_page(n) for n in coupees} - {None}          # chapitres où une page a été coupée
+    compte = {}
+    for e in entrees:
+        if e[3] is None or e[3] not in touches:
+            continue
+        compte[e[3]] = compte.get(e[3], 0) + 1
+        e[0] = tomes_cbz.nom_page(e[3], compte[e[3]], ext=Path(e[0]).suffix.lstrip(".") or "jpg")
+    nouvel_ordre = sorted((e[0] for e in entrees if e[0].lower().endswith(archives.IMAGE_EXT)
+                           and "__MACOSX" not in e[0] and not Path(e[0]).name.startswith(".")), key=archives.natural_key)
+    position = {nom: i for i, nom in enumerate(nouvel_ordre)}
+    carte = {e[2]: position[e[0]] for e in entrees if e[2] is not None and e[0] in position}
+    nb = len(nouvel_ordre)
+    tmp = Path(destination) if destination is not None else chemin.with_name("." + chemin.name + ".coupe")
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as dst:
+        for nom, data, _, _, date in entrees:
+            if Path(nom).name == "ComicInfo.xml":
+                data = _comicinfo_maj(data, carte, nb)
+            info2 = zipfile.ZipInfo(nom, date_time=date)
+            info2.compress_type = zipfile.ZIP_STORED
+            dst.writestr(info2, data)
+    with zipfile.ZipFile(tmp) as z:                   # relecture : archive saine, mêmes pages dans le même ordre
+        if z.testzip() is not None:
+            tmp.unlink()
+            raise RuntimeError("archive coupée illisible")
+        if archives._names(z) != nouvel_ordre:
+            tmp.unlink()
+            raise RuntimeError("pages différentes après coupe")
+    res = {"carte": carte, "pages_avant": len(ordre), "pages": nb}
+    if destination is not None:
+        return res
+    avant = chemin.with_name(chemin.name + ".avant")
+    chemin.rename(avant)
+    tmp.rename(chemin)
+    res["avant"] = avant
+    return res
+
+
+def lancer_coupes(serie, travaux, sens_manga, vers_corbeille, apres=None) -> bool:
+    """En arrière-plan : coupe les pages doubles de chaque tome. travaux = [(chemin, {numéros de page})].
+    apres(chemin, carte) est appelé après chaque tome (pour recaler la position de lecture). Un fichier partagé par
+    qBittorrent suit la même règle que l'allègement : version à part, le torrent n'est pas touché."""
+    with _VERROU:
+        if (_COUPES_ETAT.get(serie) or {}).get("en_cours"):
+            return False
+        _COUPES_ETAT[serie] = {"en_cours": True, "fait": 0, "total": len(travaux), "message": "Coupe…", "rapport": []}
+
+    def travail():
+        rapport, pages_coupees = [], 0
+        try:
+            for chemin, indices in travaux:
+                chemin = Path(chemin)
+                ligne = {"fichier": chemin.name}
+                try:
+                    if chemin.stat().st_nlink > 1 and not _dossier_a_lui(chemin, serie):
+                        ligne["note"] = "partagé par qBittorrent hors d'un dossier de tome : jamais modifié"
+                    elif chemin.stat().st_nlink > 1:
+                        res = {}
+
+                        def ecrire(dest):
+                            res.update(couper(chemin, indices, sens_manga, destination=dest))
+                            return True
+                        echanger_dossier(chemin, ecrire, vers_corbeille)
+                        ligne["note"] = "partagé par qBittorrent : version coupée à part, le torrent n'est pas touché"
+                    else:
+                        res = couper(chemin, indices, sens_manga)
+                        vers_corbeille(res.pop("avant"))
+                    if res:
+                        ligne.update(pages_avant=res["pages_avant"], pages=res["pages"])
+                        pages_coupees += len(indices)
+                        if apres:
+                            apres(chemin, res["carte"])
+                except Exception as e:
+                    logger.warning("Coupe de %s : %s", chemin, e)
+                    ligne["note"] = f"erreur : {e}"
+                rapport.append(ligne)
+                with _VERROU:
+                    _COUPES_ETAT[serie]["fait"] += 1
+                    _COUPES_ETAT[serie]["rapport"] = list(rapport)
+            msg = f"{pages_coupees} page(s) coupée(s) dans {len(travaux)} tome(s)"
+        except Exception as e:
+            msg = f"Erreur : {e}"
+        with _VERROU:
+            _COUPES_ETAT[serie].update(en_cours=False, message=msg, rapport=rapport)
+        logger.info("Pages doubles de « %s » : %s", serie, msg)
+    threading.Thread(target=travail, daemon=True).start()
+    return True
+
+
+def coupes_etat(serie):
+    with _VERROU:
+        return dict(_COUPES_ETAT.get(serie) or {})

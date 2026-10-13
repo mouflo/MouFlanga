@@ -784,6 +784,12 @@
         '<div id="allQualManuelle" hidden><input type="range" id="allQual" min="40" max="98" step="1" value="85" style="width:100%"> <div class="dem-sous"><b id="allQualVal">85</b> / 100 : 100 = identique à l\'original, plus bas = fichier plus léger. 90 et plus : aucune différence visible ; 80-88 : très léger, visible seulement en zoomant ; sous 70 : défauts qui se voient.</div></div>' +
         '<div class="ident-actions"><button type="button" class="mou-btn" id="allComparer">👁 Comparer avant / après (en direct)</button></div>' +
         '<div id="allCmp"></div>' +
+        '<div class="dbl"><div class="dem-titre">📖 Doubles pages en simples pages</div>' +
+        '<div class="dem-sous">Chaque image plus large que haute est coupée en deux pages (pour tout le monde, pas seulement à l\'écran). ' +
+        'Les vraies doubles (une seule grande image) restent entières : touche-les dans la planche pour les garder.</div>' +
+        '<div class="ident-actions"><label>Sens : <select id="dblSens"><option value="manga">manga (droite → gauche)</option><option value="occidental">occidental (gauche → droite)</option></select></label></div>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn" id="dblVoir">🔍 Voir les doubles pages</button></div>' +
+        '<div id="dblPlanche"></div></div>' +
         '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser tous les tomes (rien n\'est modifié)</button></div><div id="allRes"></div>';
       $('infosVue').hidden = false;
       suivreAllegement();
@@ -982,6 +988,65 @@
         dessinerComparaison();
       }
     });
+    // 📖 Doubles pages : planche de vignettes ; tout est coupé par défaut, on touche les vraies doubles pour les garder
+    var dblGardees = {}, dblTomes = [];
+    function dblSerie() { return encodeURIComponent(current.id); }
+    async function voirDoubles() {
+      $('dblPlanche').innerHTML = '<div class="dem-sous">Recherche des doubles pages…</div>';
+      var r = await api('/api/doubles?series=' + dblSerie());
+      if (r.error) { $('dblPlanche').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
+      dblTomes = r.tomes || []; dblGardees = {};
+      if (!dblTomes.length) { $('dblPlanche').innerHTML = '<div class="dem-sous">Aucune double page dans cette série.</div>'; return; }
+      $('dblPlanche').innerHTML = dblTomes.map(function (t) {
+        return '<div class="dem-titre dbl-tome">' + esc(t.fichier) + ' · ' + t.pages.length + ' double(s)</div><div class="dbl-grille">' +
+          t.pages.map(function (pg, i) {
+            return '<button type="button" class="dbl-tuile" data-dbl-tuile="' + esc(t.fichier) + '|' + pg.index + '">' +
+              '<img loading="lazy" alt="" src="/api/doubles/image?series=' + dblSerie() + '&fichier=' + encodeURIComponent(t.fichier) + '&n=' + pg.index + '">' +
+              '<span>' + (i + 1) + '</span></button>';
+          }).join('') + '</div>';
+      }).join('') + '<div class="ident-actions" id="dblBilan"></div><div id="dblEtat"></div>';
+      majBilanDoubles();
+    }
+    function majBilanDoubles() {
+      var total = dblTomes.reduce(function (n, t) { return n + t.pages.length; }, 0);
+      var gardees = Object.keys(dblGardees).length;
+      if ($('dblBilan')) $('dblBilan').innerHTML = '<div class="dem-sous">' + (total - gardees) + ' double(s) seront coupées, ' + gardees + ' gardée(s) entière(s).</div>' +
+        '<button type="button" class="mou-btn" id="dblCouper">✂️ Découper ces tomes en simples pages</button>';
+    }
+    $('infosCorps').addEventListener('click', async function (e) {
+      if (e.target.closest('#dblVoir')) { voirDoubles(); return; }
+      var t = e.target.closest('[data-dbl-tuile]');
+      if (t) {
+        var c = t.dataset.dblTuile;
+        if (dblGardees[c]) delete dblGardees[c]; else dblGardees[c] = true;
+        t.classList.toggle('garde', !!dblGardees[c]); majBilanDoubles(); return;
+      }
+      if (e.target.closest('#dblCouper')) {
+        var plan = dblTomes.map(function (tm) {
+          return {fichier: tm.fichier, indices: tm.pages.filter(function (pg) { return !dblGardees[tm.fichier + '|' + pg.index]; }).map(function (pg) { return pg.index; })};
+        }).filter(function (x) { return x.indices.length; });
+        var nb = plan.reduce(function (n, x) { return n + x.indices.length; }, 0);
+        if (!confirm('Couper ' + nb + ' double(s) en deux dans ' + plan.length + ' tome(s) ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
+        var r = await post('/api/doubles/couper', {series: current.id, sens: $('dblSens').value, plan: plan});
+        if (!r.ok) { alert(r.error || 'Impossible'); return; }
+        suivreDoubles();
+      }
+    });
+    async function suivreDoubles() {
+      var r = await api('/api/doubles/etat?series=' + dblSerie());
+      if (!$('dblEtat')) return;
+      if (r.en_cours) {
+        $('dblEtat').innerHTML = '<div class="dem-sous">Découpe en cours : ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' tome(s)…</div>';
+        setTimeout(suivreDoubles, 3000); return;
+      }
+      if (r.message) {
+        $('dblEtat').innerHTML = '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' + (r.rapport || []).map(function (x) {
+          return '<div class="dem-sous">' + esc(x.fichier) + (x.pages ? ' : ' + x.pages_avant + ' → ' + x.pages + ' pages' : '') + (x.note ? ' (' + esc(x.note) + ')' : '') + '</div>';
+        }).join('');
+        window.MouToast && window.MouToast('📖 ' + r.message, 'ok');
+        openSeries(current.id, false);
+      }
+    }
     $('infosCorps').addEventListener('click', async function (e) {
       var b = e.target.closest('[data-alleger]'); if (!b) return;
       var appliquer = b.dataset.alleger === '1';

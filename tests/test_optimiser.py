@@ -13,6 +13,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import archives  # noqa: E402
 import optimiser  # noqa: E402
 
 
@@ -151,3 +152,68 @@ class OptimiserTest(unittest.TestCase):
         couleur = Image.new("RGB", (100, 150), (200, 30, 30))
         self.assertTrue(optimiser.est_couleur(couleur))
         self.assertFalse(optimiser.est_couleur(Image.new("RGB", (100, 150), (120, 120, 120))))
+
+
+class DoublesTest(unittest.TestCase):
+    """📖 Doubles pages : découpe en deux, numéros et ComicInfo recalés, moitié droite d'abord (manga)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.f = Path(self.tmp.name) / "Serie - Tome 01.cbz"
+        gauche = Image.new("RGB", (100, 150), (255, 0, 0))
+        droite = Image.new("RGB", (100, 150), (0, 0, 255))
+        double = Image.new("RGB", (200, 150))
+        double.paste(gauche, (0, 0))
+        double.paste(droite, (100, 0))
+        buf = io.BytesIO()
+        Image.new("RGB", (100, 150), (0, 255, 0)).save(buf, "JPEG", quality=95)
+        with zipfile.ZipFile(self.f, "w") as z:
+            z.writestr("c0001.00-p001.jpg", buf.getvalue())
+            z.writestr("c0001.00-p002.jpg", _page(2))
+            z.writestr("c0001.00-p003.jpg", _page(3))
+            z.writestr("c0002.00-p001.jpg", _page(4))
+            z.writestr("ComicInfo.xml", "<ComicInfo><PageCount>4</PageCount><Pages><Page Image=\"0\"/><Page Image=\"2\"/><Page Image=\"3\"/></Pages></ComicInfo>")
+        # la double page est la 2e image (numéro 1) : on la remplace dans le fichier
+        with zipfile.ZipFile(self.f) as z:
+            contenus = {n: z.read(n) for n in z.namelist()}
+        b = io.BytesIO()
+        double.save(b, "JPEG", quality=95)
+        contenus["c0001.00-p002.jpg"] = b.getvalue()
+        with zipfile.ZipFile(self.f, "w") as z:
+            for n, d in contenus.items():
+                z.writestr(n, d)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_repere_les_doubles(self):
+        self.assertEqual([d["index"] for d in optimiser.reperer_doubles(self.f)], [1])
+
+    def test_coupe_moitie_droite_d_abord_et_recale(self):
+        res = optimiser.couper(self.f, {1}, sens_manga=True)
+        self.assertEqual((res["pages_avant"], res["pages"]), (4, 5))
+        self.assertEqual(res["carte"], {0: 0, 1: 1, 2: 3, 3: 4})         # la moitié droite (1) suit l'ancienne page 1
+        with zipfile.ZipFile(self.f) as z:
+            pages = archives.pages(self.f)
+            self.assertEqual(len(pages), 5)
+            premiere = Image.open(io.BytesIO(z.read(pages[1]))).convert("RGB")
+            self.assertGreater(premiere.getpixel((50, 75))[2], 150)      # bleu = moitié droite, lue en premier
+            self.assertEqual(Image.open(io.BytesIO(z.read(pages[2]))).convert("RGB").getpixel((50, 75))[0] > 150, True)
+            info = z.read("ComicInfo.xml").decode()
+            self.assertIn("<PageCount>5</PageCount>", info)
+            self.assertIn('Image="3"', info)                             # signet de l'ancienne page 2 recalé
+        self.assertTrue(self.f.with_name(self.f.name + ".avant").exists())   # l'ancien attend la corbeille
+
+    def test_recalage_de_la_position_manga_et_occidental(self):
+        res = optimiser.couper(self.f, {1}, sens_manga=False)
+        with zipfile.ZipFile(self.f) as z:
+            premiere = Image.open(io.BytesIO(z.read(archives.pages(self.f)[1]))).convert("RGB")
+            self.assertGreater(premiere.getpixel((50, 75))[0], 150)      # occidental : la moitié gauche d'abord
+        self.assertEqual(res["pages"], 5)
+
+    def test_fichier_partage_coupe_a_part(self):
+        dest = Path(self.tmp.name) / "coupe.cbz"
+        res = optimiser.couper(self.f, {1}, True, destination=dest)
+        self.assertTrue(dest.exists())
+        self.assertEqual(res["pages"], 5)
+        self.assertEqual(zipfile.ZipFile(self.f).namelist().count("c0001.00-p002.jpg"), 1)   # l'original est intact

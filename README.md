@@ -62,6 +62,7 @@ Pour installer l'appli sur le serveur et la remettre en route après une panne, 
 - **➕ Séries suivies** (comme Sonarr) : ajoute une série depuis AniList, elle apparaît grisée ; MouFlanga surveille Prowlarr chaque jour et propose les tomes manquants ou une meilleure version (Digital), à valider d'un appui.
 - **🏷 Édition** : résolution et source (Digital, Scan, Web) de chaque série, NFO gardé à l'import.
 - **🪶 Alléger / ✨ améliorer les tomes** (menu ⋯ d'une série) : recompression sans perte visible, et pour les vieux scans, sur ta demande seulement : grain enlevé, trames adoucies, papier blanchi, noirs plus francs, poussières effacées, traits lissés. Aperçu avant / après en rideau avant d'appliquer.
+- **📖 Doubles pages en simples pages** : une planche de vignettes ; tout est coupé en deux sauf les vraies doubles que tu touches pour les garder entières. La position de lecture et les signets suivent.
 
 ## 📁 Comment ranger les fichiers
 

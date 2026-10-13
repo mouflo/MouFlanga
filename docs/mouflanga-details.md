@@ -67,5 +67,11 @@ Sorti de `CLAUDE.md` pour l'alléger : lire la section utile avant de toucher au
 - Paramètre `am=` (comparer) / `amelio` (POST). `eclairer=True` (ancien) = papier 2 + noirs 1. Dépendance : `opencv-python-headless`.
 - Aperçu : `comparer` sous verrou (avant/après/infos arrivent ensemble), qualité auto de l'aperçu sur 3 pages d'essai.
 
+## 📖 Doubles pages en simples pages (13/10/2026)
+- `optimiser.reperer_doubles` (image plus large que haute, ratio ≥ 1,2, mise en cache), `apercu_page` (vignette), `couper(chemin, indices, sens_manga, destination)` et `lancer_coupes` (arrière-plan, état `coupes_etat`). Routes : `/api/doubles`, `/api/doubles/image`, `/api/doubles/etat`, `/api/doubles/couper`.
+- Le repérage automatique d'une VRAIE double a été essayé (blocs noirs qui traversent le milieu) : inutilisable, 83 pages sur 94 « douteuses » sur + Again tome 3 (fonds noirs, cases). D'où la planche manuelle.
+- Les numéros de page sont ceux du lecteur (`archives.pages`, tri naturel). `carte` {ancien: nouveau} recale `p["page"]` de chaque progression (`_recaler_progression`) et les `Page Image` du ComicInfo. Pages de chapitre `cNNNN.00-pNNN` renumérotées dans les chapitres touchés ; autres moitiés nommées `0008b.jpg`.
+- Piège de test : `MANGA_DIR` de `data/secrets.env` écrase l'environnement ; forcer `app.MANGA_DIR` après l'import (voir mémoire).
+
 ## Alléger un tome partagé par qBittorrent (12/10/2026)
 - Le NAS (NFS) refuse de renommer ou d'effacer un fichier lié au torrent (même après pause du torrent, même chmod), mais accepte de renommer un DOSSIER. `optimiser.reecrire_partage` : version légère dans `.<Tome NN>.allege/`, puis `Tome NN` → `.Tome NN.avant` → corbeille et `.allege` → `Tome NN`. Seulement si le tome est seul dans son dossier (`_dossier_a_lui`).
