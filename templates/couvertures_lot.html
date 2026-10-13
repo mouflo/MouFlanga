@@ -60,5 +60,26 @@
             <div class="cv-valider"><button type="submit">Enregistrer les couvertures choisies</button></div>
         </form>
     </div>
+    <script>
+        // Un tome attribué à une image disparaît des listes des autres images (le serveur vérifie aussi).
+        (function () {
+            var selects = Array.prototype.slice.call(document.querySelectorAll('select[name^="tome_"]'));
+            if (!selects.length) return;
+            var tous = Array.prototype.slice.call(selects[0].options).map(function (o) { return o.cloneNode(true); });
+            function rafraichir() {
+                selects.forEach(function (s) {
+                    var pris = {};
+                    selects.forEach(function (x) { if (x !== s && x.value) pris[x.value] = true; });
+                    var garde = s.value;
+                    s.innerHTML = '';
+                    tous.forEach(function (o) {
+                        if (o.value === '' || o.value === garde || !pris[o.value]) s.appendChild(o.cloneNode(true));
+                    });
+                    s.value = garde;
+                });
+            }
+            selects.forEach(function (s) { s.addEventListener('change', rafraichir); });
+        })();
+    </script>
 </body>
 </html>
