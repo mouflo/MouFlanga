@@ -1176,8 +1176,7 @@
         (chap.length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') +
           (d.chapitres_source ? ' <small>(' + esc(d.chapitres_source) + ')</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c, i) { return '<li>' + lien(c, i) + '</li>'; }).join('') + '</ol>' +
           '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEditer">✏️ Corriger les chapitres</button>' +
-          (d.fichier && d.chapitres_source !== 'écrits dans le fichier' ? '<button type="button" class="mou-btn ghost" id="chapEcrire" data-tome="' + n + '" title="Pour que les chapitres suivent quand tu partages la série">📝 Écrire dans le fichier</button>' : '') + '</div>' +
-          '<div id="chapEcrireMsg" class="dem-sous"></div>' +
+          '</div>' +
           '<div id="chapEdition" hidden><textarea id="chapTexte" class="mou-field" rows="' + Math.min(14, chap.length + 2) + '" spellcheck="false" style="width:100%"></textarea>' +
           '<div class="dem-sous">Une ligne par chapitre, avec son numéro : « 2. La valeur de la vie ». Après <b>@</b> : la page du lecteur où le chapitre commence (« 2. La valeur de la vie @64 »). Sans @, la page déjà connue est gardée.</div>' +
           '<div class="ident-actions"><label>Décaler toutes les pages de <input type="number" id="chapDecalage" value="0" style="width:4.5em"></label>' +
@@ -1186,7 +1185,9 @@
           '<button type="button" class="mou-btn ghost" id="chapAnnuler">Annuler</button></div></div>' : '') +
         boutonGarder(n) +
         '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-prov="' + n + '">✏️ Noter la provenance (équipe, origine)</button>' +
-        (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '"' + (som.manuel ? ' data-manuel="1"' : '') + '>🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' ;
+        (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '"' + (som.manuel ? ' data-manuel="1"' : '') + '>🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' +
+        (d.ecriture_possible ? '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEcrire" data-tome="' + n + '" title="Résumé, chapitres, provenance… suivent le fichier quand tu le partages">📝 Écrire les infos dans le fichier</button></div>' : '') +
+        '<div id="chapEcrireMsg" class="dem-sous"></div>' ;
       var zone = $('chapTexte');
       if (zone) zone.value = chap.map(function (c, i) { return c + (d.fichier && pagesCh[i] != null ? ' @' + (pagesCh[i] + 1) : ''); }).join('\n');
       var im = $('infosCorps').querySelector('.tome-couv');
@@ -1228,7 +1229,7 @@
       if (e.target.closest('#chapEditer')) { $('chapEdition').hidden = false; $('chapEditer').hidden = true; $('chapTexte').focus(); return; }
       var w = e.target.closest('#chapEcrire');
       if (w) {                                                              // 📝 chapitres écrits dans le .cbz (partage de la série)
-        if (!confirm('Écrire les chapitres et leurs pages dans le fichier du tome ? Le fichier est réécrit (l\'ancien va à la corbeille 30 jours).')) return;
+        if (!confirm('Écrire les infos du tome (résumé, chapitres, provenance…) dans son fichier ? Le fichier est réécrit (l\'ancien va à la corbeille 30 jours).')) return;
         w.disabled = true;
         var rr = await post('/api/tome/chapitres/ecrire', {series: current.id, tome: w.dataset.tome});
         if (!rr.ok) { w.disabled = false; alert(rr.error || 'Impossible'); return; }

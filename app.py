@@ -211,6 +211,68 @@ def _edition_differente(serie):
     return bool(v and officiel and int(v) != int(officiel))
 
 
+_MOIS_FR = {m: i for i, m in enumerate(["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre",
+                                          "octobre", "novembre", "décembre"], 1)}
+
+
+def _date_sortie(texte):
+    """« 7 janvier 2020 », « janvier 2020 » ou « 2020 » → (année, mois, jour) en texte, ou ()."""
+    t = (texte or "").lower()
+    a = re.search(r"\b(1[89]\d\d|20\d\d)\b", t)
+    if not a:
+        return ()
+    mois = next((n for m, n in _MOIS_FR.items() if re.search(r"\b" + m + r"\b", t.replace("fevrier", "février").replace("aout", "août").replace("decembre", "décembre"))), 0)
+    j = re.search(r"\b(\d{1,2})(?:er)?\s+[a-zéûè]+\s+" + a.group(1), t) if mois else None
+    return (a.group(1), str(mois) if mois else "", j.group(1) if j else "")
+
+
+def _fichier_du_tome(name, tome):
+    """Chemin (relatif) du fichier du tome : tome complet ou fichier de tome assemblé par l'appli ; "" sinon."""
+    groupe = tomes_cbz.dossier_tome(tome)
+    for e in _entrees(_scan().get(name) or []):
+        if e.get("tome") == tome or e.get("groupe") == groupe:
+            return e.get("path") or ""
+    return ""
+
+
+def _infos_tome(name, tome):
+    """Tout ce que l'appli sait du tome, en balises ComicInfo.xml (écrites DANS le fichier pour qu'elles suivent quand il est
+    transmis) : titre, résumé, sortie, nombre de tomes, auteur… et, dans Notes, la ligne « MouFlanga: {…} » (source du résumé,
+    provenance, statut du sommaire). Mémoire seulement : aucun appel Internet."""
+    import edition
+    import signets
+    ed = edition.lire(MANGA_DIR / name)
+    if tome is None:
+        return {}
+    tome = int(tome)
+    differente = _edition_differente(name)           # autre édition que celle de Wikipédia : titres et dates ne valent pas
+    det = {} if differente else tomes.details_tome(name, tome)
+    perso = (ed.get("resumes_tomes") or {}).get(str(tome)) or ""
+    resume = perso or det.get("resume") or tomes.resume_tome_memoire(name, tome)
+    prov = provenance.lire(ed).get(str(tome)) or {}
+    lu = (ed.get("sommaires") or {}).get(str(tome)) or {}
+    notes = {"v": 1, "resume": "manuel" if perso else ("web" if resume else ""),
+             "equipe": prov.get("equipe", ""), "origine": prov.get("origine", ""), "provenance_manuelle": bool(prov.get("manuel")),
+             "sommaire": "manuel" if lu.get("manuel") else ("lu" if lu.get("chapitres") else ""), "valide_le": lu.get("valide_le", ""),
+             "sortie": det.get("sortie", "")}
+    notes = {k: v for k, v in notes.items() if v not in ("", False)}
+    infos = {"Title": det.get("titre", ""), "Summary": resume, "Number": str(tome), "Volume": str(tome),
+             "Notes": signets.MARQUE + " " + json.dumps(notes, ensure_ascii=False, separators=(",", ":"))}
+    for balise, v in zip(("Year", "Month", "Day"), _date_sortie(det.get("sortie", ""))):
+        infos[balise] = v
+    serie = _infos_comicinfo(name) or {}
+    for balise, cle in tomes_cbz._CHAMPS_COMICINFO:
+        if serie.get(cle) and balise not in infos:
+            infos[balise] = str(serie[cle])
+    nb = _volumes_edition(name)
+    if nb:
+        infos["Count"] = str(nb)
+    return {k: v for k, v in infos.items() if v}
+
+
+tomes_cbz.INFOS_TOME = lambda serie, tome: _infos_tome(serie, tome)
+
+
 def _sommaire_connu(serie, tome):
     """Les chapitres de ce tome sont connus par un sommaire : lu dans le tome, validé ou corrigé à la main, ou écrit dans le fichier."""
     if tome is None:
@@ -3427,10 +3489,19 @@ def api_tome():
         nom_fichier = next((Path(e["path"]).name for e in _entrees(_scan().get(name) or []) if e.get("tome") == int(tome)), "")
         if provenance.equipe_du_nom(nom_fichier):
             prov = {"equipe": provenance.equipe_du_nom(nom_fichier), "origine": f"Nom du fichier : {nom_fichier}", "manuel": False}
+    import signets
+    fic = _fichier_du_tome(name, int(tome))
+    du_fichier = signets.lire_infos(MANGA_DIR / fic) if fic else {}
+    nf = du_fichier.get("notes") or {}
+    if not prov and (nf.get("equipe") or nf.get("origine")):     # série reçue sans ses infos : la provenance est dans le fichier
+        prov = {"equipe": nf.get("equipe", ""), "origine": nf.get("origine", ""), "manuel": bool(nf.get("provenance_manuelle"))}
     d["provenance"] = prov
+    d["ecriture_possible"] = bool(_tome_complet(name, int(tome))) and not fic.lower().endswith(".cbr") and tomes_cbz.lire_info(MANGA_DIR / fic) is None
     perso = (edition.lire(MANGA_DIR / name).get("resumes_tomes") or {}).get(str(int(tome)))
     if perso:                                            # résumé écrit à la main : prioritaire sur Internet
         d["resume"], d["resume_source"], d["resume_manuel"] = perso, "écrit à la main", True
+    if du_fichier.get("resume") and not d.get("resume_manuel") and nf.get("resume") == "manuel":
+        d["resume"], d["resume_source"], d["resume_manuel"] = du_fichier["resume"], "écrit dans le fichier", True
     if not d.get("resume"):                              # Wikipédia n'a pas de résumé de ce tome : notice Google Books en français
         try:
             d["resume"] = tomes.resume_tome_google(name, tome)
@@ -3438,6 +3509,8 @@ def api_tome():
             logger.info("Résumé du tome %s de %s : %s", tome, name, e.__class__.__name__)
         if d.get("resume"):
             d["resume_source"] = "Google Books"
+    if not d.get("resume") and du_fichier.get("resume"):          # rien sur Internet : celui écrit dans le fichier du tome
+        d["resume"], d["resume_source"] = du_fichier["resume"], "écrit dans le fichier"
     _sommaire_du_tome(name, int(tome), d)
     if d.get("chapitres_langue") == "en" or not d.get("chapitres"):      # Wikipédia FR n'a rien : titres FR du tome local avant l'anglais
         groupe = tomes_cbz.dossier_tome(int(tome))
@@ -3611,7 +3684,7 @@ _SIGNETS = {}              # (série, tome) → {"en_cours", "message", "ok"} : 
 
 @app.route("/api/tome/chapitres/ecrire", methods=["GET", "POST"])
 def api_tome_chapitres_ecrire():
-    """📝 Écrit les chapitres (et leurs pages) du tome DANS son fichier .cbz (ComicInfo.xml), pour le partage.
+    """📝 Écrit les chapitres (et leurs pages) et les infos du tome (résumé, provenance…) DANS son fichier .cbz (ComicInfo.xml), pour le partage.
     Fichier partagé par qBittorrent : version à part et échange de dossiers, le torrent n'est pas touché."""
     import edition
     import signets
@@ -3635,7 +3708,8 @@ def api_tome_chapitres_ecrire():
     lu = (edition.lire(MANGA_DIR / name).get("sommaires") or {}).get(str(tome)) or {}
     chapitres = lu.get("chapitres") or []
     if not signets.nb_signets(chapitres):
-        return jsonify({"ok": False, "error": "Aucun chapitre avec une page connue : lis le sommaire ou corrige les chapitres d'abord."}), 400
+        chapitres = None                                 # pas de chapitres avec page : seules les infos du tome sont écrites
+    infos = _infos_tome(name, tome)
     partage = chemin.stat().st_nlink > 1
     import optimiser
     if partage and not optimiser._dossier_a_lui(chemin, name):
@@ -3647,17 +3721,17 @@ def api_tome_chapitres_ecrire():
     def travail():
         try:
             if partage:
-                optimiser.echanger_dossier(chemin, lambda dest: bool(signets.ecrire(chemin, chapitres, dest)), _vers_corbeille)
+                optimiser.echanger_dossier(chemin, lambda dest: bool(signets.ecrire(chemin, chapitres, dest, infos)), _vers_corbeille)
             else:
                 tmp = chemin.with_name("." + chemin.name + ".signets")
-                signets.ecrire(chemin, chapitres, tmp)
+                signets.ecrire(chemin, chapitres, tmp, infos)
                 ancien = chemin.with_name(chemin.name + ".avant")
                 chemin.rename(ancien)
                 tmp.rename(chemin)
                 _vers_corbeille(ancien)
             tomes_cbz._CACHE.clear()
-            n = signets.nb_signets(chapitres)
-            _SIGNETS[cle] = {"en_cours": False, "ok": True, "message": f"{n} chapitres écrits dans le fichier du tome {tome}."
+            n = signets.nb_signets(chapitres or [])
+            _SIGNETS[cle] = {"en_cours": False, "ok": True, "message": f"Infos du tome {tome} écrites dans le fichier" + (f" ({n} chapitres)." if n else ".")
                              + (" Le fichier du torrent n'est pas touché." if partage else "")}
         except Exception as ex:
             logger.warning("Chapitres écrits dans %s : %s", chemin, ex)

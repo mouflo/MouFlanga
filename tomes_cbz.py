@@ -93,6 +93,7 @@ def chapitres(path: Path) -> list[dict]:
     return out
 
 
+INFOS_TOME = lambda serie, tome: {}  # remplacé par l'appli : {balise ComicInfo: texte} du tome (résumé, notes, date…)
 INFOS_SERIE = lambda serie: {}      # remplacé par l'appli : fiche de la série si elle est identifiée avec certitude
 
 _CHAMPS_COMICINFO = (("Writer", "auteur"), ("Penciller", "dessin"), ("Publisher", "editeur"), ("Year", "annee"),
@@ -107,11 +108,18 @@ def _comicinfo(serie: str, tome, titres: dict, nb_pages: int) -> str:
         infos = INFOS_SERIE(serie) or {}
     except Exception:
         infos = {}
-    extra = "".join(f"<{balise}>{escape(str(infos[cle]))}</{balise}>" for balise, cle in _CHAMPS_COMICINFO if infos.get(cle))
+    try:
+        du_tome = INFOS_TOME(serie, tome) or {}
+    except Exception:
+        du_tome = {}
+    extra = "".join(f"<{balise}>{escape(str(infos[cle]))}</{balise}>" for balise, cle in _CHAMPS_COMICINFO
+                    if infos.get(cle) and balise not in du_tome)
+    extra += "".join(f"<{b}>{escape(str(du_tome[b]))}</{b}>" for b in ("Year", "Month", "Day", "Notes") if du_tome.get(b))
+    resume = du_tome.get("Summary") or ""
     return ('<?xml version="1.0" encoding="utf-8"?>\n<ComicInfo>'
             f"<Series>{escape(serie)}</Series>{volume}"
-            f"<Title>{escape(dossier_tome(tome))}</Title>"
-            f"<Summary>{escape('Chapitres ' + liste)}</Summary>{extra}"
+            f"<Title>{escape(du_tome.get('Title') or dossier_tome(tome))}</Title>"
+            f"<Summary>{escape((resume + chr(10) * 2 if resume else '') + 'Chapitres ' + liste)}</Summary>{extra}"
             f"<PageCount>{nb_pages}</PageCount><LanguageISO>fr</LanguageISO><Manga>YesAndRightToLeft</Manga>"
             "</ComicInfo>\n")
 

@@ -706,6 +706,13 @@ def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
     return texte if len(texte) >= 40 else ""
 
 
+def resume_tome_memoire(serie: str, tome) -> str:
+    """Résumé Google Books déjà gardé en mémoire pour ce tome (aucun appel Internet), sans la présentation de la série."""
+    brut = _charger(serie) or {}
+    garde = (brut.get("resumes_tomes") or {}).get(str(int(tome)))
+    return _resume_de_serie(garde.get("texte", ""), brut, int(tome)) if garde else ""
+
+
 def resume_tome_google(serie: str, tome) -> str:
     """Résumé en français d'un tome d'après Google Books (clé requise) : la notice de « <série> tome N » en français.
     Gardé 30 jours dans data/tomes/<série>.json (« resumes_tomes »), y compris « rien trouvé »."""
