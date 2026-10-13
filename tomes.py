@@ -342,7 +342,7 @@ def statut_a_jour(st) -> bool:
     """Le statut gardé est-il encore bon ? 7 jours s'il est complet, un jour seulement s'il manque la série ou le résumé."""
     if not st or "resume" not in st:
         return False
-    duree = STATUT_DUREE if st.get("statut") and st.get("resume") else STATUT_VIDE_DUREE
+    duree = STATUT_DUREE if st.get("statut") and len(st.get("resume") or "") >= 40 else STATUT_VIDE_DUREE   # un mot seul : refait
     return time.time() - st.get("date", 0) < duree
 
 
@@ -380,8 +380,9 @@ def _resume(m, serie=""):
             a = d.get("attributes", {})
             if str((a.get("links") or {}).get("al", "")) == str(m.get("id")):
                 desc = a.get("description") or {}
-                if desc.get("fr"):
-                    return _sans_suites(_texte_propre(desc["fr"])), "fr"
+                fr = _sans_suites(_texte_propre(desc.get("fr") or ""))
+                if len(fr) >= 60:                       # « [Wikipedia](lien) » devient « Wikipedia » : pas un résumé
+                    return fr, "fr"
                 break
     except Exception:
         pass
@@ -880,6 +881,7 @@ def fiche(serie: str, forcer=False) -> dict:
 # ---------------------------------------------------------------- Titres des tomes (« Romance Dawn »)
 
 def _wiki_propre(v: str) -> str:
+    v = re.sub(r"\{\{\s*(\d+)\s*(?:e|er|re|ème)\s*\|\s*([^}|]*)\}\}", lambda m: m.group(1) + "e " + m.group(2), v or "")   # {{7e|district}}
     v = re.sub(r"\{\{\s*(1e|1re|1er|e|er|re)\s*\|([^}]*)\}\}", lambda m: ("1re " if m.group(1).startswith("1") else "e ") + m.group(2), v or "")
     v = re.sub(r"<ref.*?(</ref>|/>)|<[^>]+>", "", v or "", flags=re.S)
     v = re.sub(r"\{\{\s*(?:nowrap|lang|nihongo|japonais)\s*\|(?:[a-z]{2}\|)?([^|}]*)[^}]*\}\}", r"\1", v, flags=re.I)
@@ -977,7 +979,8 @@ def titres_tomes(serie: str, forcer=False) -> dict:
                 break
         # Liens de la fiche Wikipédia de la série et des pages « Liste… » qui renvoient vers leurs parties (One Piece : 6 parties)
         principale = _page_wikipedia([serie, st.get("titre"), st.get("titre_en")])
-        pages = list(dict.fromkeys(pages + _liens_listes([principale] if principale else []) + _liens_listes(pages)))
+        pages = list(dict.fromkeys(pages + _liens_listes([principale] if principale else []) + _liens_listes(pages)
+                                   + ([principale] if principale else [])))      # la fiche elle-même : TomeBD dans « Liste des volumes »
         for page in pages[:12]:
             r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "parse", "page": page, "prop": "wikitext",
                                                                              "format": "json", "redirects": 1}, timeout=15).json()
@@ -1001,6 +1004,11 @@ def titres_tomes(serie: str, forcer=False) -> dict:
                 # « * Ch.1 : … », « * [gras]Plat 1 :[/gras] … », « * Chapitre 12 : … » (le mot avant le numéro varie)
                 brut = champs.get("chapitre", "").replace("'" * 3, "")
                 chap = [(float(n), _wiki_propre(t)) for n, t in re.findall(r"^\*\s*[^\d:\n]{0,15}?(\d+(?:\.\d+)?)\s*:\s*(.+)$", brut, re.M)]
+                if not chap:                              # « Kapitel.1 {{japonais|La fuite|…}}<br />Kapitel.2 … »
+                    for morceau in re.split(r"<br\s*/?>|\n", brut):
+                        mc = re.match(r"^\W*[^\W\d_]{2,15}[.\s·:]*(\d+(?:\.\d+)?)\s*[:.\-–]?\s*(.+)$", morceau.strip())
+                        if mc and _wiki_propre(mc.group(2)):
+                            chap.append((float(mc.group(1)), _wiki_propre(mc.group(2))))
                 resume = re.sub(r"'{3}\s*Résumé\s*:?\s*'{3}", "", champs.get("résumé", ""), flags=re.I)
                 d = {"titre": titre, "sortie": _wiki_propre(_dates(champs.get("sortie_" + langue_fr, ""))),
                      "couverture": _wiki_propre(m_c.group(1)) if m_c else "",

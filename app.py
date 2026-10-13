@@ -3761,7 +3761,9 @@ def _sommaire_du_tome(name, tome, d):
         if e:
             d["chapitres_pages"] = [c.get("image") for c in lu["chapitres"]]
             d["fichier"] = e["key"]
-    if e and sommaire.disponible() and not lu and besoin and auth.role() != "lecteur":
+    ancien = bool(lu and not lu.get("chapitres") and not lu.get("manuel") and not lu.get("fichier")
+                  and lu.get("version", 1) < sommaire.VERSION)       # « pas de sommaire » dit par un lecteur plus ancien : on relit
+    if e and sommaire.disponible() and (not lu or ancien) and besoin and auth.role() != "lecteur":
         _lire_sommaire(name, tome, e)
     et = sommaire.etat(name, tome)
     d["sommaire"] = {"possible": bool(e) and sommaire.disponible(), "en_cours": bool(et.get("en_cours")),

@@ -20,7 +20,8 @@ import unicodedata
 logger = logging.getLogger("mouflanga")
 
 PAGES_MAX = 14                  # images lues au début du tome
-_MOTS = r"(?:chapitre|chap|ch|sc[eè]ne|[ée]pisode|ep|acte|round|le[cç]on|lesson|partie|nuit|jour|histoire|file|stage|level|#)"
+VERSION = 2                     # version du lecteur : un tome « sans sommaire » lu par une version plus ancienne est relu
+_MOTS = r"(?:chapitre|kapitel|chap|ch|sc[eè]ne|[ée]pisode|ep|acte|round|le[cç]on|lesson|partie|nuit|jour|histoire|file|stage|level|#)"
 _CHIFFRES_OCR = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1", "S": "5", "A": "4", "B": "8", "Z": "2"})
 # « SCÈNE 1 La tueuse aux yeux d'argent .......5 », « Chapitre 12 : Le retour 45 », « 12. Le retour ...... 45 »
 _LIGNE_MOT = re.compile(r"^\W*" + _MOTS + r"\.?\s*([0-9OoIlSABZ|]{1,4})\b\s*[:.\-–—]?\s*(.*?)[\s.·…_,]+(\d{1,3})\s*$", re.I)
@@ -136,6 +137,239 @@ def _vraisemblable(lignes) -> bool:
     return all(b > a for a, b in zip(nums, nums[1:])) and all(b > a for a, b in zip(pages, pages[1:]))
 
 
+# ---------------------------------------------------------------- Sommaire en colonnes (titres décoratifs)
+# « Kapitel·1 / La fuite / 5 » côte à côte : l'OCR par lignes mélange les colonnes et lit mal les chiffres d'une police
+# carrée. Ici : mots avec leurs positions (tesseract TSV), regroupés sous chaque « Kapitel N », et numéros de page lus
+# par segments (7 segments, « 1 » reconnu à sa finesse), voté sur plusieurs seuils.
+
+_SEGMENTS = {"abcdef": "0", "bc": "1", "abdeg": "2", "abcdg": "3", "bcfg": "4", "acdfg": "5", "acdefg": "6", "abc": "7",
+             "abcdefg": "8", "abcdfg": "9"}
+_ENTETE = re.compile(r"^\W*" + _MOTS + r"\W*([0-9OoIl|]{1,3})?\W*$", re.I)
+
+
+def mots_ocr(image_octets: bytes, clair: bool = False) -> list[dict]:
+    """Mots d'une page avec leur boîte : [{"t", "x", "y", "w", "h"}] (tesseract, texte épars)."""
+    from PIL import Image, ImageChops, ImageOps
+    im = Image.open(io.BytesIO(image_octets))
+    if clair and im.mode in ("RGB", "RGBA"):
+        r, g, b = im.convert("RGB").split()
+        im = ImageChops.darker(ImageChops.darker(r, g), b).point(lambda v: 255 if v > 180 else 0)
+    else:
+        im = ImageOps.grayscale(im)
+    buf = io.BytesIO()
+    im.save(buf, "PNG")
+    env = dict(os.environ, OMP_THREAD_LIMIT="1")
+    r = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "11", "tsv"],
+                       input=buf.getvalue(), capture_output=True, timeout=120, env=env)
+    mots = []
+    for ligne in r.stdout.decode("utf-8", "replace").splitlines()[1:]:
+        c = ligne.split("\t")
+        if len(c) >= 12 and c[11].strip():
+            try:
+                mots.append({"t": c[11].strip(), "x": int(c[6]), "y": int(c[7]), "w": int(c[8]), "h": int(c[9]),
+                             "c": float(c[10])})
+            except ValueError:
+                continue
+    return mots
+
+
+def _glyphes(masque):
+    import numpy as np
+    colonnes = masque.any(axis=0)
+    out, debut = [], None
+    for i, v in enumerate(list(colonnes) + [False]):
+        if v and debut is None:
+            debut = i
+        elif not v and debut is not None:
+            if i - debut >= 3:
+                out.append((debut, i))
+            debut = None
+    return out
+
+
+def _segments(g) -> str:
+    """Segments allumés (a=haut, b=haut droite, c=bas droite, d=bas, e=bas gauche, f=haut gauche, g=milieu).
+    "?" si un segment est à moitié rempli : ce n'est pas une police à segments (chiffres arrondis, penchés)."""
+    h, w = g.shape
+    douteux = []
+
+    def mesure(r, axe, seuil):
+        v = r.mean(axis=axe).max()
+        if .3 < v < seuil:
+            douteux.append(v)
+        return v >= seuil
+
+    def barre(y0, y1):
+        return mesure(g[int(y0 * h):max(int(y0 * h) + 1, int(y1 * h)), int(.2 * w):max(int(.2 * w) + 1, int(.8 * w))], 1, .8)
+
+    def montant(y0, y1, x0, x1):
+        return mesure(g[int(y0 * h):max(int(y0 * h) + 1, int(y1 * h)), int(x0 * w):max(int(x0 * w) + 1, int(x1 * w))], 0, .75)
+    etat = (barre(0, .22), montant(.22, .42, .65, 1), montant(.58, .8, .65, 1), barre(.78, 1),
+            montant(.58, .8, 0, .35), montant(.22, .42, 0, .35), barre(.38, .62))
+    if douteux:
+        return "?"
+    return "".join(k for k, v in zip("abcdefg", etat) if v)
+
+
+def lire_numero(image_octets: bytes, boite, marge: int = 10, marge_x: int = 45) -> int | None:
+    """Numéro de page écrit dans la boîte (x, y, w, h) de l'image, en police « à segments » : le plus voté sur plusieurs
+    seuils, parmi les lectures complètes. None si rien de sûr."""
+    import numpy as np
+    from PIL import Image
+    im = Image.open(io.BytesIO(image_octets)).convert("RGB")
+    x, y, w, h = boite
+    c = np.asarray(im.crop((max(0, x - marge_x), max(0, y - marge), x + w + marge_x, y + h + marge))).astype(float)
+    if c.size == 0:
+        return None
+    fond = np.median(c.reshape(-1, 3), axis=0)
+    d = np.abs(c - fond).sum(axis=2)
+    if d.max() < 90:
+        return None
+    votes = Counter()
+    for f in (.3, .4, .5, .6):
+        m = d > d.max() * f
+        gl = _glyphes(m)
+        haut = max((np.ptp(m[:, a:b].any(axis=1).nonzero()[0]) + 1 for a, b in gl), default=0)
+        groupes, cx = [], x - max(0, x - marge_x) + w / 2        # chiffres voisins du mot lu (pas le dessin autour)
+        for g in gl:
+            if groupes and g[0] - groupes[-1][-1][1] <= 0.9 * haut:
+                groupes[-1].append(g)
+            else:
+                groupes.append([g])
+        if not groupes:
+            continue
+        gl = min(groupes, key=lambda gr: abs((gr[0][0] + gr[-1][1]) / 2 - cx))
+        if not 1 <= len(gl) <= 3:
+            continue
+        lu = ""
+        for a, b in gl:
+            sub = m[:, a:b]
+            lignes = np.where(sub.any(axis=1))[0]
+            g = sub[lignes[0]:lignes[-1] + 1]
+            if g.shape[0] < 8:
+                lu = ""
+                break
+            lu += "1" if (b - a) < 0.45 * g.shape[0] else _SEGMENTS.get(_segments(g), "?")
+        if lu and "?" not in lu:
+            votes[lu] += 1
+    return int(votes.most_common(1)[0][0]) if votes else None
+
+
+_LETTRES_CHIFFRES = str.maketrans({"O": "0", "o": "0", "D": "0", "I": "1", "l": "1", "|": "1", "i": "1", "S": "5", "s": "5",
+                                   "B": "8", "Z": "2", "z": "2", "b": "6", "G": "6", "g": "9", "q": "9"})
+
+
+def _page_de_ligne(image_octets, ligne):
+    """Numéro de page au bout d'une ligne de mots, ou None : le mot de l'OCR s'il est fait de chiffres sûrs, sinon la
+    lecture par segments, sinon le mot avec les confusions courantes (« 1D1 » → 101)."""
+    m = ligne[-1]
+    brut = m["t"]
+    jeton = int(brut) if re.fullmatch(r"\d{1,3}", brut) and m.get("c", 0) >= 70 else None
+    if jeton is None and (len(re.sub(r"\W", "", brut)) > 4 or re.fullmatch(r"[^\W\d_]{3,}", brut)):
+        return None
+    p = lire_numero(image_octets, (m["x"], m["y"], m["w"], m["h"]))
+    if p is not None and (jeton is None or len(str(p)) == len(str(jeton))):
+        return p                                             # police à segments : plus sûre que l'OCR (153 pour 163)
+    if jeton is not None:
+        return jeton
+    t = brut.translate(_LETTRES_CHIFFRES)
+    return int(t) if re.fullmatch(r"\d{1,3}", t) and m.get("c", 0) >= 50 else None
+
+
+def _lignes_de(mots):
+    """Mots d'une colonne regroupés par ligne (même hauteur à peu près), de haut en bas."""
+    lignes = []
+    for m in sorted(mots, key=lambda m: (m["y"] + m["h"] / 2, m["x"])):
+        centre = m["y"] + m["h"] / 2
+        if lignes and abs(centre - lignes[-1][0]) <= max(12, m["h"] * 0.7):
+            lignes[-1][1].append(m)
+        else:
+            lignes.append([centre, [m]])
+    return [sorted(l[1], key=lambda m: m["x"]) for l in lignes]
+
+
+def analyser_colonnes(image_octets: bytes, mots=None) -> list[dict]:
+    """Sommaire en colonnes : [{"num", "titre", "page"}] ou []. Les en-têtes « Kapitel·N » placés côte à côte
+    (même hauteur) ouvrent chacun une colonne ; sous chacun, le titre (une ou plusieurs lignes) puis le numéro de page,
+    à n'importe quelle hauteur."""
+    mots = mots if mots is not None else mots_ocr(image_octets)
+    entetes = []
+    for i, m in enumerate(mots):
+        suite, brut = None, m["t"]
+        mm = re.match(r"^([^\W\d_]{4,9})(.*)$", brut)
+        if not mm or m["h"] < 10 or m["c"] < 20 and len(brut) < 6:
+            continue
+        mot, reste = mm.group(1).lower(), mm.group(2)
+        if not (re.fullmatch(_MOTS, mot, re.I) or any(difflib.SequenceMatcher(None, mot, r).ratio() >= .75
+                                                       for r in ("kapitel", "chapitre", "chapter"))):
+            continue
+        if not re.search(r"[0-9OoIlBSZ|]", reste) and i + 1 < len(mots):      # « Kapitel » puis « 1 » séparés
+            n = mots[i + 1]
+            if abs(n["y"] - m["y"]) < 20 and 0 < n["x"] - (m["x"] + m["w"]) < 60:
+                reste, suite = n["t"], n
+        chiffres = re.findall(r"[0-9OoIlBSZ|]", re.sub(r"^[\W_]*", "", reste))
+        num = _numero("".join(chiffres)) if 1 <= len(chiffres) <= 3 else None
+        entetes.append({"m": m, "num": num, "suite": suite})
+    if len(entetes) < 2:
+        return []
+    utilises = {id(e["m"]) for e in entetes} | {id(e["suite"]) for e in entetes if e["suite"]}
+    centre = lambda m: m["x"] + m["w"] / 2
+    blocs = {id(e["m"]): [] for e in entetes}
+    for m in mots:                                           # chaque mot va sous l'en-tête le plus proche au-dessus
+        if id(m) in utilises:
+            continue
+        for e in sorted((e for e in entetes if e["m"]["y"] < m["y"] < e["m"]["y"] + 450
+                         and abs(centre(m) - centre(e["m"])) <= 170), key=lambda e: -e["m"]["y"])[:1]:
+            blocs[id(e["m"])].append(m)
+    sortie = []
+    for e in entetes:
+        titre, page = [], None
+        lignes = _lignes_de(blocs[id(e["m"])])
+        for n, ligne in enumerate(lignes):
+            if n >= 1:
+                p = _page_de_ligne(image_octets, ligne)
+                if p is not None:
+                    page = p
+                    ligne = ligne[:-1]
+            titre.append(" ".join(m["t"] for m in ligne if m.get("c", 100) >= 30))
+            if page is not None:                             # le numéro clôt la colonne (le reste est du dessin)
+                break
+        if page is None and 0 < len(lignes) <= 3:            # numéro non lu par l'OCR : zone sous le titre
+            bas = max(m["y"] + m["h"] for m in lignes[-1])
+            page = lire_numero(image_octets, (int(centre(e["m"])) - 110, bas + 4, 220, 60), marge=0)
+        if page is None:
+            continue                                         # colonne illisible : le chapitre manquera
+        titre = re.sub(r"\s+", " ", " ".join(t for t in titre if t)).strip(" .:-–—,'\"")
+        sortie.append({"num": e["num"], "titre": titre, "page": page})
+    sortie.sort(key=lambda x: x["page"])
+    # numéros : on garde la plus longue suite croissante des numéros lus (« Kapitel·6 » lu « B »), le reste s'en déduit
+    nums = [x["num"] for x in sortie]
+    meilleure = []
+    for k in range(len(nums)):
+        if nums[k] is None:
+            continue
+        chaine = max(([*c, k] for c in (meilleure[j] for j in range(len(meilleure))) if nums[c[-1]] < nums[k]),
+                     key=len, default=[k])
+        meilleure.append(chaine)
+    garde = set(max(meilleure, key=len, default=[]))
+    if len(garde) < max(2, len(sortie) // 2):
+        return []
+    reparee, dernier = [], None
+    for k, x in enumerate(sortie):
+        if k not in garde:
+            suivant = next((nums[j] for j in sorted(garde) if j > k), None)
+            nouveau = (dernier + 1) if dernier is not None else (suivant - 1 if suivant is not None else None)
+            if nouveau is None or (suivant is not None and nouveau >= suivant):
+                continue
+            x = dict(x, num=nouveau)
+        dernier = x["num"]
+        reparee.append(x)
+    sortie = reparee
+    if len(sortie) < 2 or any(b["num"] != a["num"] + 1 or b["page"] <= a["page"] for a, b in zip(sortie, sortie[1:])):
+        return []                                            # chapitre manquant ou page douteuse : on ne devine pas
+    return sortie
+
+
 def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
     """{"chapitres": [{"num", "titre", "page" (imprimée), "image" (position dans le fichier ou None)}], "page_sommaire"}
     lire_page(i) → octets de l'image i. Sans sommaire trouvé : chapitres vide."""
@@ -148,6 +382,13 @@ def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
             logger.info("Sommaire de %s, page %d : %s", chemin, i, e.__class__.__name__)
             continue
         lignes = _numeros_suivis(analyser(textes[i]))
+        if not _vraisemblable(lignes) and re.search(r"(?i)sommaire|kapitel|chapitre|table", textes[i]):
+            try:                                             # colonnes côte à côte (Kapitel·1 … Kapitel·5)
+                cols = _numeros_suivis(analyser_colonnes(octets))
+                if _vraisemblable(cols):
+                    lignes = cols
+            except Exception as e:
+                logger.info("Sommaire de %s, page %d (colonnes) : %s", chemin, i, e.__class__.__name__)
         if not _vraisemblable(lignes):                       # titre en blanc sur couleur : seconde lecture (canal bleu)
             try:
                 clair = ocr(octets, clair=True)
@@ -203,9 +444,50 @@ def _score(texte, mots, num):
             total += 1
         elif _proche(m, morceaux):
             total += 0.7
-    if num is not None and re.search(r"\bchap\w*\s+0*%d\b" % int(num), simple):
+    if num is not None and re.search(r"\b(?:chap\w*|kapitel)\s+0*%d\b" % int(num), simple):
         total += 2
     return total
+
+
+def numero_imprime(image_octets: bytes) -> int | None:
+    """Numéro de page imprimé en bas de l'image (coin gauche ou droit), ou None (page sans numéro, pleine page…)."""
+    from PIL import Image, ImageOps
+    im = ImageOps.grayscale(Image.open(io.BytesIO(image_octets)))
+    w, h = im.size
+    env = dict(os.environ, OMP_THREAD_LIMIT="1")
+    for x0, x1 in ((0, 0.3), (0.7, 1.0), (0.3, 0.7)):
+        bande = im.crop((int(w * x0), int(h * 0.93), int(w * x1), h))
+        bande = ImageOps.expand(bande.resize((bande.width * 2, bande.height * 2)), border=20, fill=255)
+        buf = io.BytesIO()
+        bande.save(buf, "PNG")
+        r = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "7",
+                            "-c", "tessedit_char_whitelist=0123456789"], input=buf.getvalue(), capture_output=True,
+                           timeout=60, env=env)
+        t = r.stdout.decode("utf-8", "replace").strip()
+        if re.fullmatch(r"\d{1,3}", t):
+            return int(t)
+    return None
+
+
+def _ecart_imprime(lire_page, nb_pages, page, image):
+    """Écart (image - page imprimée) lu sur les numéros imprimés en bas des pages voisines de l'estimation, ou None.
+    Les pages d'ouverture de chapitre n'ont souvent pas de numéro (ou une bannière qui trompe l'OCR) : on lit les pages
+    autour et on garde l'écart que plusieurs d'entre elles confirment."""
+    ecarts = Counter()
+    for d in (-1, 0, 1, 2, 3, -2):
+        i = image + d
+        if i < 0 or (nb_pages and i >= nb_pages):
+            continue
+        try:
+            n = numero_imprime(lire_page(i))
+        except Exception:
+            continue
+        if n is not None and abs(n - page) <= 8:
+            ecarts[i - n] += 1
+    if not ecarts:
+        return None
+    ecart, fois = ecarts.most_common(1)[0]
+    return ecart if fois >= 2 or len(ecarts) == 1 else None
 
 
 def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=None):
@@ -215,10 +497,11 @@ def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=N
        1er, de -2 à +10) reçoivent un score (voir _score) et la meilleure est gardée.
     Les doubles pages font varier l'écart d'un chapitre à l'autre : la recherche se fait chapitre par chapitre."""
     images, decalage, ecart, precedente = [], None, None, page_sommaire
+    confirme = {}                                           # chapitre → écart lu sur un numéro imprimé
 
-    def meilleure(plage, mots, num, seuil):
+    def meilleure(plage, mots, num, seuil, estimation=0):
         gagnante, maxi = None, 0.0
-        for i in plage:
+        for i in sorted(plage, key=lambda j: abs(j - estimation)):       # à score égal : la page la plus proche de l'estimation
             if i <= precedente or i < 0 or (nb_pages and i >= nb_pages):
                 continue
             if i not in textes:
@@ -243,18 +526,30 @@ def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=N
                 plage = sorted(textes) if (k == 0 and lire_page is None) else range(c["page"] - 2, c["page"] + 11)
             else:
                 plage = range(c["page"] + ecart - 3, c["page"] + ecart + 4)
-            image = meilleure(plage, mots, c.get("num"), max(1.0, len(mots) / 2))
+            estimation = c["page"] + (ecart if ecart is not None else 1)
+            image = meilleure(plage, mots, c.get("num"), max(1.0, len(mots) / 2), estimation)
             if image is None and ecart is not None:
                 image = c["page"] + ecart                    # estimation, sans titre lu
             if image is None and k == 0:                     # aucun titre lu : numéro du fichier en dernier recours
                 e = _decalage_par_nom(c["page"], noms, page_sommaire)
                 image = c["page"] + e if e is not None else None
+        if image is not None and lire_page is not None:
+            ecart_lu = _ecart_imprime(lire_page, nb_pages, c["page"], image)   # le numéro imprimé tranche
+            if ecart_lu is not None and 0 <= c["page"] + ecart_lu < (nb_pages or 10 ** 6) and c["page"] + ecart_lu > page_sommaire:
+                image = c["page"] + ecart_lu
+                confirme[k] = ecart_lu
         images.append(image)
         if image is not None:
             precedente = max(precedente, image)
             ecart = image - c["page"]
             if decalage is None:
                 decalage = ecart
+    for k, c in enumerate(chapitres):                        # chapitre sans numéro lu : l'écart confirmé le plus proche
+        if k in confirme or images[k] is None or not confirme:
+            continue
+        proche = confirme[min(confirme, key=lambda j: abs(j - k))]
+        if abs(images[k] - c["page"] - proche) <= 4 and c["page"] + proche > page_sommaire:
+            images[k] = c["page"] + proche
     return images, decalage
 
 
@@ -301,6 +596,7 @@ def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer, noms=None):
             try:
                 r = lire(chemin, lire_page, nb_pages, noms)
                 r["date"] = time.strftime("%Y-%m-%d")
+                r["version"] = VERSION
                 enregistrer(r)
                 msg = f"{len(r['chapitres'])} chapitre(s) lus dans le sommaire" if r["chapitres"] else "Pas de sommaire trouvé dans les premières pages"
                 logger.info("Sommaire de « %s » tome %s : %s", serie, tome, msg)

@@ -1,5 +1,12 @@
 # Historique des versions
 
+## 07-Ghost : résumé, chapitres et sommaire en colonnes (13 octobre 2026)
+- 📖 Résumé en français : MangaDex renvoyait parfois un simple lien « Wikipedia » à la place du résumé, et l'appli le gardait (07-Ghost). Un résumé trop court est maintenant ignoré et Wikipédia en français prend le relais ; les séries qui n'avaient qu'un mot sont refaites toutes seules dès le lendemain.
+- 🔖 Chapitres en français : la fiche Wikipédia de la série est lue elle-même (titres « Kapitel.1 La fuite<br />… » rangés par tome), plus seulement les pages « Liste des chapitres ».
+- 🔍 Sommaire imprimé en colonnes (« Kapitel·1 / La fuite / 5 » côte à côte, empilés ou en quinconce) : lecture par positions des mots, numéros de page lus par segments (police carrée), chapitres sans numéro refusés plutôt que devinés.
+- 📄 Début de chaque chapitre : les numéros imprimés en bas des pages voisines tranchent (plus de décalage d'une page), le titre le plus proche gagne à score égal, et « Kapitel N » compte comme « Chapitre N ».
+- ♻️ Un tome noté « pas de sommaire » par l'ancien lecteur est relu tout seul une fois.
+
 ## Importer : les choix se font dans la fenêtre d'import ; point vert du découpeur (13 octobre 2026)
 - 🔄 Fenêtre « Importer » (dossier des torrents) : quand un élément apporte des tomes déjà dans la bibliothèque, l'appli ne s'arrête plus sur « utilise Télécharger pour remplacer ». Sous l'élément, tu vois quels tomes sont déjà là et lesquels sont nouveaux, et tu choisis sur place : ➕ ajouter seulement les manquants (par défaut, rien n'est touché), ♻️ remplacer les tomes en double (les anciens vont à la corbeille 30 jours) ou ⛔ ne rien faire. Case « Retenir ce choix pour cette série » (les règles se gèrent comme avant dans ⚙️ Réglages).
 - 📋 Le compte rendu dit ce qui s'est passé élément par élément (« 1 tome ajouté, 2 remplacés ») ; le titre devient « ✅ Dernier rescan » quand c'est fini ; si tu corriges le nom de la série, les tomes déjà là sont recalculés.
