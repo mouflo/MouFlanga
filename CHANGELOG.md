@@ -3,6 +3,7 @@
 ## Sommaire : numéros de pages des tomes 7 et 8 (13 octobre 2026)
 - 🔗 Les chapitres du tome 8 n'avaient pas de page cliquable : le titre du premier chapitre était mal lu (« tefrent » pour « torrent ») et le décalage n'était pas trouvé. La comparaison tolère maintenant une lettre mal lue sur les mots longs.
 - 🔢 En dernier recours, le décalage est pris dans le numéro des images (« 005.jpg » = page imprimée 5), comme dans le tome 7.
+- 🗳️ Le décalage n'est plus pris sur le seul premier chapitre : chaque chapitre dont le titre est lu vote, et le décalage le plus fréquent (entre −2 et +10) est gardé. Un titre écrit en 2e ou 3e page d'un chapitre ne fausse plus le résultat.
 
 ## Sommaire en blanc sur couleur (13 octobre 2026)
 - 🔍 Un sommaire imprimé en blanc sur fond orange (FullMetal Alchemist Perfect) n'était pas lu. Quand la lecture normale ne trouve rien, l'appli relit la page avec le canal bleu (le blanc y ressort). Le sceau « @ » devant chaque titre n'est plus repris.

@@ -81,3 +81,10 @@ class VisionTest(unittest.TestCase):
         noms = ["000.jpg", "000a.jpg", "000b.jpg", "000c.jpg", "001.jpg", "002.jpg", "003.jpg", "004.jpg", "005.jpg", "006.jpg"]
         self.assertEqual(sommaire._decalage_par_nom(5, noms, 7), 3)                 # « 005.jpg » est la 9e image : décalage 3
         self.assertIsNone(sommaire._decalage_par_nom(5, noms[:4], 1))
+
+    def test_decalage_par_vote_titre_en_page_2(self):
+        # le titre du chapitre 1 est en page 2 de son chapitre (décalage +1), ceux des chapitres 2 et 3 en 1re page
+        ch = [{"num": 1.0, "titre": "Le retour du héros", "page": 5}, {"num": 2.0, "titre": "Les marais sombres", "page": 25},
+              {"num": 3.0, "titre": "La tour de cristal", "page": 45}]
+        textes = {2: "sommaire", 8: "rien", 9: "Le retour du heros", 28: "Les marais sombres", 48: "La tour de cristal"}
+        self.assertEqual(sommaire._decalage(ch, textes, 2), 3)

@@ -6,6 +6,7 @@ fichier (décalage entre le numéro imprimé et la position de l'image, trouvé 
 Le résultat est gardé dans <série>/.mouflanga-infos.json (« sommaires ») : rien n'est relu ensuite.
 """
 import difflib
+from collections import Counter
 import io
 import logging
 import os
@@ -147,21 +148,36 @@ def _proche(mot, morceaux):
     return False
 
 
+def _mots_titre(titre):
+    return [m for m in _simple(titre).split() if len(m) > 3][:4]
+
+
+def _contient(t, mots):
+    morceaux = _simple(t).split()
+    return sum(_proche(m, morceaux) for m in mots) >= max(1, (len(mots) + 1) // 2)
+
+
 def _decalage(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=None):
-    """Image où commence le 1er chapitre (son titre y est écrit, APRÈS le sommaire : la couverture porte souvent
-    le même titre) moins sa page imprimée. Pas vu dans les pages déjà lues : quelques images autour de la page annoncée."""
-    mots = [m for m in _simple(chapitres[0]["titre"]).split() if len(m) > 3][:4]
+    """Décalage entre la page imprimée et la position de l'image dans le fichier.
+    Chaque chapitre dont le titre est lu après le sommaire donne un vote (position de l'image − page imprimée).
+    Le titre n'est pas toujours sur la 1re page d'un chapitre (parfois la 2e ou 3e) : cela décale le vote de 1 à 3,
+    donc on garde le décalage le plus souvent trouvé, à égalité le plus petit."""
+    votes = Counter()
+    for c in chapitres:
+        mots = _mots_titre(c["titre"])
+        if not mots:
+            continue
+        for i, t in sorted(textes.items()):
+            if i > page_sommaire and _contient(t, mots) and -2 <= i - c["page"] <= 10:   # hors plage : un mot banal
+                votes[i - c["page"]] += 1
+    if votes:
+        return max(votes.items(), key=lambda kv: (kv[1], -kv[0]))[0]
+    if lire_page is None or not chapitres:
+        return _decalage_par_nom(chapitres[0]["page"], noms, page_sommaire) if chapitres else None
+    mots = _mots_titre(chapitres[0]["titre"])
     if not mots:
-        return None
-    def contient(t):
-        morceaux = _simple(t).split()
-        return sum(_proche(m, morceaux) for m in mots) >= max(1, (len(mots) + 1) // 2)
-    for i, t in sorted(textes.items()):
-        if i > page_sommaire and contient(t):
-            return i - chapitres[0]["page"]
-    if lire_page is None:
-        return None
-    for o in (0, 1, 2, -1, 3, 4, -2):
+        return _decalage_par_nom(chapitres[0]["page"], noms, page_sommaire)
+    for o in (0, 1, 2, -1, 3, 4, -2):                     # pages non lues : autour de la page annoncée du 1er chapitre
         i = chapitres[0]["page"] + o
         if i <= page_sommaire or i >= nb_pages or i in textes:
             continue
@@ -169,7 +185,7 @@ def _decalage(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms
             textes[i] = ocr(lire_page(i))
         except Exception:
             continue
-        if contient(textes[i]):
+        if _contient(textes[i], mots):
             return o
     return _decalage_par_nom(chapitres[0]["page"], noms, page_sommaire)
 
