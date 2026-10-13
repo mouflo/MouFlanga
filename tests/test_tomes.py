@@ -1014,3 +1014,14 @@ class DetailsTomeTest(unittest.TestCase):
     def test_apostrophe_doublee_corrigee(self):
         d = self._details({"titres_tomes": {"details": {"1": {"chapitres": ["1. Sugimoto L''Immortel"]}}}})
         self.assertEqual(d["chapitres"], ["1. Sugimoto L'Immortel"])
+
+
+class NumerosManquantsTest(unittest.TestCase):
+    def test_trous_dans_la_suite_des_chapitres(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        import app as A
+        self.assertEqual(A._numeros_manquants([55.0, 56.0, 57.0, 60.0]), [58, 59])
+        self.assertEqual(A._numeros_manquants([67.0, 68.0, 69.0]), [])
+        self.assertEqual(A._numeros_manquants([1.0, 2.0, 40.0]), [])          # trop grand : autre découpage, pas d'alerte
+        self.assertEqual(A._numeros_manquants([5.0, 6.0, 6.5, 7.0]), [])      # chapitre bonus « 6,5 » : rien ne manque
+        self.assertEqual(A._numeros_manquants([5.0, 6.5, 7.0]), [6])

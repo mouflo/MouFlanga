@@ -3,6 +3,7 @@
 ## Sommaire : tomes sur fond rose et pages calées par le nom des images (13 octobre 2026)
 - 🌸 Sommaire en blanc sur fond rose (FullMetal Alchemist Perfect tome 12) : la lecture du texte clair garde ce qui est clair dans les trois couleurs (avant : le bleu seul, que le rose laissait passer).
 - ✂️ Un titre de chapitre écrit sur deux lignes (« Une spirale négative / et un pas vers le salut ····· 215 ») est maintenant rassemblé, même avec une ligne vide entre les deux.
+- ⚠️ Quand la suite des chapitres d'un tome a un trou (55, 56, 57, 60 : il manque 58 et 59), la fiche du tome le signale, même si le tome est « validé ». Cela évite de valider une liste incomplète sans s'en apercevoir.
 - 🖼️ La page de départ d'un chapitre est d'abord cherchée par le **nom des images** (« 077.jpg » = page imprimée 77, « 042-043.jpg » pour une double page). Sur tes corrections des tomes 4 à 11, 29 chapitres sur 45 tombent exactement sur la bonne image (16 avec la lecture des titres seule), les autres à 1–3 images près. Sans nom exploitable, la recherche par titre sert encore.
 
 ## Sommaire : pages mieux calées et chapitres « validés » (13 octobre 2026)

@@ -1164,6 +1164,8 @@
         (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '"' + (som.manuel ? ' data-manuel="1"' : '') + '>🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' +
         (som.en_cours ? '<div class="dem-sous">🔍 Lecture du sommaire dans les premières pages… (environ une minute)</div>'
           : (som.message && !chap.length ? '<div class="dem-sous">' + esc(som.message) + '</div>' : '')) +
+        (som.manquants && som.manquants.length ? '<div class="tome-statut verif">⚠️ Il manque dans la liste le' + (som.manquants.length > 1 ? 's chapitres ' : ' chapitre ') +
+          esc(som.manquants.join(', ')) + ' : le sommaire du tome les compte-t-il ? Corrige la liste (✏️) ou relis le sommaire.</div>' : '') +
         (som.lu ? '<div class="tome-statut ' + (som.manuel || som.fichier ? 'ok' : 'verif') + '">' +
           (som.fichier ? '✅ Chapitres écrits dans le fichier' :
            som.manuel ? '✅ Validé à la main' + (som.valide_le ? ' le ' + esc(som.valide_le) : '') + ' : rien à revérifier' :

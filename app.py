@@ -3426,6 +3426,17 @@ def _tome_complet(name, tome):
     return None
 
 
+def _numeros_manquants(nums):
+    """Numéros entiers absents de la suite des chapitres d'un tome (55, 56, 57, 60 → [58, 59]) : le sommaire a été mal
+    lu ou la liste a perdu des chapitres. Seulement les trous d'au plus 5 chapitres (au-delà : autre découpage)."""
+    entiers = sorted({int(n) for n in nums if n is not None and float(n) == int(n)})
+    trous = []
+    for a, b in zip(entiers, entiers[1:]):
+        if 1 < b - a <= 6:
+            trous += range(a + 1, b)
+    return trous
+
+
 def _sommaire_du_tome(name, tome, d):
     """Chapitres lus dans le sommaire imprimé du tome (OCR). Pas encore lu : lecture lancée toute seule en arrière-plan
     quand aucune source n'a les chapitres en français."""
@@ -3453,7 +3464,8 @@ def _sommaire_du_tome(name, tome, d):
     et = sommaire.etat(name, tome)
     d["sommaire"] = {"possible": bool(e) and sommaire.disponible(), "en_cours": bool(et.get("en_cours")),
                      "message": et.get("message", ""), "lu": bool(lu), "manuel": bool(lu and lu.get("manuel")),
-                     "valide_le": (lu or {}).get("valide_le", ""), "fichier": bool(lu and lu.get("fichier"))}
+                     "valide_le": (lu or {}).get("valide_le", ""), "fichier": bool(lu and lu.get("fichier")),
+                     "manquants": _numeros_manquants([c.get("num") for c in (lu or {}).get("chapitres", [])])}
 
 
 def _lire_sommaire(name, tome, e):
