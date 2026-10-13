@@ -1290,6 +1290,29 @@
       var r = await post('/api/suivies', {action: 'ignorer', nom: current.id, id: b.dataset.ignorer});
       if (r.ok) await openSeries(current.id, false);
     });
+    // 📝 Réécrire les infos de chaque tome complet dans son fichier (résumé, provenance, sommaire, chapitres lus)
+    async function suivreInfosTous(serie) {
+      var st = await api('/api/tomes/infos-ecrire?series=' + encodeURIComponent(serie));
+      if (st && st.en_cours) { setTimeout(function () { suivreInfosTous(serie); }, 3000); return; }
+      if (st && st.message) window.MouToast('📝 ' + st.message, /Erreurs|Échec/.test(st.message) ? 'err' : 'ok');
+    }
+    $('sInfosTous').addEventListener('click', async function () {
+      fermerMenus();
+      var etat = await api('/api/tomes/infos-ecrire?series=' + encodeURIComponent(current.id));
+      if (!etat || !etat.total) { note('sMsg', 'Aucun tome complet en .cbz à réécrire pour cette série.', 'err'); return; }
+      if (etat.en_cours) { note('sMsg', 'Une réécriture est déjà en cours pour cette série.'); suivreInfosTous(current.id); return; }
+      var exclus = (etat.exclus || []).map(function (x) { return 'tome ' + x.tome + ' (' + x.raison + ')'; });
+      var question = 'Réécrire DANS LE FICHIER de ' + etat.total + ' tome(s) de « ' + current.title + ' » ?\n\n' +
+        'Pour chaque tome : le résumé, la date de sortie, la provenance, l\'état du sommaire et les chapitres lus sont écrits dans le fichier du tome.\n' +
+        'Chaque fichier est réécrit ; l\'ancien part à la corbeille (30 jours).\n' +
+        'Les fichiers partagés par qBittorrent ne sont pas touchés dans le torrent.' +
+        (exclus.length ? '\n\nNon réécrits : ' + exclus.join(', ') + '.' : '') + '\n\nLe travail continue même si tu fermes la page.';
+      if (!confirm(question)) return;
+      var r = await post('/api/tomes/infos-ecrire', {series: current.id});
+      if (!r.ok) { note('sMsg', r.error, 'err'); return; }
+      note('sMsg', '📝 Réécriture de ' + etat.total + ' tome(s) en cours…', 'ok');
+      suivreInfosTous(current.id);
+    });
     $('sSource').addEventListener('click', async function () {
       fermerMenus();
       var v = await new Promise(function (fin) {

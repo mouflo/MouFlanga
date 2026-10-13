@@ -3682,6 +3682,87 @@ def api_tome_valider():
 _SIGNETS = {}              # (série, tome) → {"en_cours", "message", "ok"} : écriture des chapitres dans le .cbz
 
 
+def _ecrire_fichier_tome(name, tome, chemin, chapitres, infos, partage):
+    """Écrit chapitres et infos DANS le fichier du tome (fichier partagé : version à part et échange de dossiers)."""
+    import optimiser
+    import signets
+    if partage:
+        optimiser.echanger_dossier(chemin, lambda dest: bool(signets.ecrire(chemin, chapitres, dest, infos)), _vers_corbeille)
+    else:
+        tmp = chemin.with_name("." + chemin.name + ".signets")
+        signets.ecrire(chemin, chapitres, tmp, infos)
+        ancien = chemin.with_name(chemin.name + ".avant")
+        chemin.rename(ancien)
+        tmp.rename(chemin)
+        _vers_corbeille(ancien)
+    tomes_cbz._CACHE.clear()
+
+
+_ECRITURE_SERIE = {}                                     # série → avancement de « réécrire les infos de tous les tomes »
+
+
+def _tomes_a_ecrire(name):
+    """Tomes complets en .cbz que l'appli peut écrire : (tome, chemin, partage_ok, raison_si_non)."""
+    import optimiser
+    out = []
+    for e in sorted((x for x in _entrees(_scan().get(name) or []) if x.get("tome") is not None and x.get("key") == x.get("path")
+                     and not x.get("a_importer")), key=lambda x: x["tome"]):
+        chemin = MANGA_DIR / e["path"]
+        if e["path"].lower().endswith(".cbr"):
+            out.append((e["tome"], chemin, False, "format .cbr"))
+        elif tomes_cbz.lire_info(chemin) is not None:
+            out.append((e["tome"], chemin, False, "fichier assemblé par MouFlanga (déjà à jour)"))
+        elif chemin.stat().st_nlink > 1 and not optimiser._dossier_a_lui(chemin, name):
+            out.append((e["tome"], chemin, False, "partagé par qBittorrent, hors d'un dossier de tome : jamais modifié"))
+        else:
+            out.append((e["tome"], chemin, True, ""))
+    return out
+
+
+@app.route("/api/tomes/infos-ecrire", methods=["GET", "POST"])
+def api_tomes_infos_ecrire():
+    """Réécrit les infos (résumé, provenance, sommaire, chapitres lus) dans le fichier de CHAQUE tome complet de la série.
+    GET : combien de tomes seront réécrits, et l'avancement. POST : lance la réécriture en arrière-plan."""
+    import edition
+    import signets
+    name = str((request.get_json(silent=True) or {}).get("series", "") if request.method == "POST" else request.args.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    cibles = _tomes_a_ecrire(name)
+    ok_cibles = [c for c in cibles if c[2]]
+    if request.method == "GET":
+        st = _ECRITURE_SERIE.get(name) or {}
+        return jsonify({"total": len(ok_cibles), "exclus": [{"tome": c[0], "raison": c[3]} for c in cibles if not c[2]],
+                        "en_cours": bool(st.get("en_cours")), "fait": st.get("fait", 0), "message": st.get("message", "")})
+    if (_ECRITURE_SERIE.get(name) or {}).get("en_cours"):
+        return jsonify({"ok": False, "error": "Réécriture déjà en cours pour cette série."}), 409
+    if not ok_cibles:
+        return jsonify({"ok": False, "error": "Aucun tome à réécrire (il faut des tomes complets en .cbz)."}), 400
+    edition_infos = edition.lire(MANGA_DIR / name)
+    _ECRITURE_SERIE[name] = {"en_cours": True, "fait": 0, "message": f"Réécriture de {len(ok_cibles)} tome(s)…"}
+
+    def travail():
+        erreurs = []
+        try:
+            for tome, chemin, _, _ in ok_cibles:
+                try:
+                    lu = (edition_infos.get("sommaires") or {}).get(str(tome)) or {}
+                    chapitres = lu.get("chapitres") or []
+                    if not signets.nb_signets(chapitres):
+                        chapitres = None
+                    _ecrire_fichier_tome(name, tome, chemin, chapitres, _infos_tome(name, tome), chemin.stat().st_nlink > 1)
+                    _ECRITURE_SERIE[name]["fait"] += 1
+                except Exception as ex:
+                    logger.warning("Infos écrites dans %s : %s", chemin, ex)
+                    erreurs.append(f"tome {tome} : {ex}")
+            msg = f"{len(ok_cibles) - len(erreurs)} tome(s) réécrit(s) sur {len(ok_cibles)}." + (" Erreurs : " + " ; ".join(erreurs) if erreurs else "")
+        except Exception as ex:
+            msg = f"Échec : {ex}"
+        _ECRITURE_SERIE[name] = {"en_cours": False, "fait": _ECRITURE_SERIE[name].get("fait", 0), "message": msg, "ok": not erreurs}
+    threading.Thread(target=travail, daemon=True).start()
+    return jsonify({"ok": True, "message": "Réécriture lancée…"})
+
+
 @app.route("/api/tome/chapitres/ecrire", methods=["GET", "POST"])
 def api_tome_chapitres_ecrire():
     """📝 Écrit les chapitres (et leurs pages) et les infos du tome (résumé, provenance…) DANS son fichier .cbz (ComicInfo.xml), pour le partage.
@@ -3720,16 +3801,7 @@ def api_tome_chapitres_ecrire():
 
     def travail():
         try:
-            if partage:
-                optimiser.echanger_dossier(chemin, lambda dest: bool(signets.ecrire(chemin, chapitres, dest, infos)), _vers_corbeille)
-            else:
-                tmp = chemin.with_name("." + chemin.name + ".signets")
-                signets.ecrire(chemin, chapitres, tmp, infos)
-                ancien = chemin.with_name(chemin.name + ".avant")
-                chemin.rename(ancien)
-                tmp.rename(chemin)
-                _vers_corbeille(ancien)
-            tomes_cbz._CACHE.clear()
+            _ecrire_fichier_tome(name, tome, chemin, chapitres, infos, partage)
             n = signets.nb_signets(chapitres or [])
             _SIGNETS[cle] = {"en_cours": False, "ok": True, "message": f"Infos du tome {tome} écrites dans le fichier" + (f" ({n} chapitres)." if n else ".")
                              + (" Le fichier du torrent n'est pas touché." if partage else "")}
