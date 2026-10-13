@@ -302,15 +302,10 @@ def comparer(chemin: Path, index: int, qualite, eclairer=False, largeur_max=None
         x0 = int(max(0, min(apres.width - c, zoom[0] * apres.width - c / 2)))
         y0 = int(max(0, min(apres.height - c, zoom[1] * apres.height - c / 2)))
         boite = (x0, y0, min(apres.width, x0 + c), min(apres.height, y0 + c))
-        vues = [x.crop(boite) for x in (avant, apres)]
-        sortie = [_jpeg(v, 95) for v in vues]
+        sortie = [_jpeg(x.crop(boite), 100) for x in (avant, apres)]
     else:
-        vues = []
-        for x in (avant, apres):
-            v = x.copy()
-            v.thumbnail((1100, 1650))
-            vues.append(v)
-        sortie = [_jpeg(v, 88) for v in vues]
+        # Vue entière : la page « Après » est exactement ce que « Appliquer » écrirait (pas de recompression en plus)
+        sortie = [_jpeg(avant, 100), nouveau]
     res = {"avant": sortie[0], "apres": sortie[1], "avant_ko": round(len(data) / 1024), "apres_ko": round(len(nouveau) / 1024),
            "page": index, "pages": len(noms), "inchange": nouveau is data, "dimensions": [list(im.size), list(apres.size)]}
     if len(_CACHE_COMPARAISON) >= 8:

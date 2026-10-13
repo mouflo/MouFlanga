@@ -1,5 +1,9 @@
 # Historique des versions
 
+## Aperçu d'allègement fidèle, fiche d'infos lisible (13 octobre 2026)
+- 👁 L'aperçu « Après » affiche désormais exactement les octets qu'« Appliquer » écrirait. Avant, il était recompressé en qualité 88 et réduit : les différences entre 98 et 40 étaient masquées. Le détail zoomé est encodé sans perte visible.
+- 📋 La fiche d'infos de la série (ℹ️) passe les libellés au-dessus de chaque valeur : plus de colonne écrasée sur téléphone.
+
 ## Chapitres par tome d'une autre édition (12 octobre 2026, soir)
 - 📖 « Chapitres 1 à 4 » sur le tome 1 d'une Perfect Édition venait de la répartition de l'édition standard (Wikipédia). La plage affichée vient maintenant du sommaire lu dans le tome (ou corrigé à la main), et quand l'édition importée n'a pas le même nombre de tomes que l'édition standard (18 au lieu de 27), la répartition de Wikipédia n'est plus utilisée : le sommaire de chaque tome est lu dans le fichier.
 

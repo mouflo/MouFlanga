@@ -228,9 +228,9 @@ body.mou-skin #sVerifier { margin-top:8px; padding:6px 10px; font-size:.82rem; w
 body.lecteur #sSurveiller, body.lecteur #sProps { display:none !important; }
 
 /* ℹ️ Infos de la série */
-.infos-corps dl { display:grid; grid-template-columns:auto 1fr; gap:6px 12px; margin:10px 0; font-size:.9rem; }
-.infos-corps dt { color:var(--muted); }
-.infos-corps dd { margin:0; overflow-wrap:anywhere; }
+.infos-corps dl { display:grid; grid-template-columns:1fr; gap:2px 0; margin:10px 0; font-size:.95rem; }
+.infos-corps dt { color:var(--muted); font-size:.8rem; margin-top:10px; }
+.infos-corps dd { margin:0; overflow-wrap:anywhere; line-height:1.4; }
 .infos-lien { font-size:.85rem; color:var(--accent, #52b54b); }
 
 .tome-titre .tome-nom { display:block; font-weight:400; color:var(--muted); font-size:.78rem; margin-top:2px; }
