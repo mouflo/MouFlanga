@@ -894,6 +894,13 @@ def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
                     textes[i], lignes = clair, _numeros_suivis(analyser(clair))
             except Exception as e:
                 logger.info("Sommaire de %s, page %d (couleur) : %s", chemin, i, e.__class__.__name__)
+        if not _vraisemblable(lignes) and re.search(r"(?i)sommaire|s\s?o\s?m\s?m", textes[i]) and re.search(r"#\s?\w", textes[i]):
+            try:                                             # « #1 Keiji Kiriya ..... 3 » en police stylisée
+                rt = analyser_rangees_titrees(octets)
+                if _vraisemblable(rt):
+                    lignes = rt
+            except Exception as e:
+                logger.info("Sommaire de %s, page %d (rangées titrées) : %s", chemin, i, e.__class__.__name__)
         if not _vraisemblable(lignes) and re.search(r"(?i)tri[ck]k?[:.\s]|sommaire", textes[i]):
             try:                                             # une rangée par chapitre, sans titre (« Trick:6 ..... 5 »)
                 rang = analyser_rangees(octets)
@@ -1296,6 +1303,54 @@ def analyser_pastilles(image_octets: bytes) -> list[dict]:
         if len(r2) > len(r):
             r = r2
     return r
+
+
+def analyser_rangees_titrees(image_octets: bytes) -> list[dict]:
+    """Sommaire en rangées « #1 Keiji Kiriya ......... 3 » (police stylisée, texte clair sur fond sombre) : lu par mots
+    (normal + clair), numéros déduits de la suite, pages choisies parmi leurs lectures possibles. [{"num","titre","page"}] ou []."""
+    mots = mots_fusionnes(image_octets)
+    try:
+        normaux = mots_ocr(image_octets, psm=6) + mots_ocr(image_octets, clair=True, psm=6)
+    except Exception:
+        normaux = []
+    rangees = []
+    for m in sorted(mots, key=lambda m: (m["y"] + m["h"] / 2, m["x"])):
+        cy = m["y"] + m["h"] / 2
+        if rangees and abs(cy - rangees[-1][0]) <= max(10, m["h"] * 0.6):
+            rangees[-1][1].append(m)
+        else:
+            rangees.append([cy, [m]])
+    marques = [(cy, r) for cy, r in rangees if re.fullmatch(r"#\s?[0-9A-Za-z|]{1,3}[.:]?", sorted(r, key=lambda m: m["x"])[0]["t"])]
+    if len(marques) < 3:
+        return []
+    page_x = sorted(m["x"] for _, r in marques for m in r if re.search(r"\d", m["t"]) and m["x"] > 0)[-1] if marques else 0
+    xs_droite = [m["x"] for _, r in marques for m in r[1:] if re.fullmatch(r"\.*\d{1,4}\.*", m["t"])]
+    colonne = min(xs_droite) if xs_droite else page_x
+    lignes = []
+    for cy, r in marques:
+        r = sorted(r, key=lambda m: m["x"])
+        marque = r[0]["t"]
+        chiffres = marque.lstrip("#").strip(" .:").translate(str.maketrans({"I": "1", "l": "1", "|": "1", "b": "6", "o": "0", "O": "0"}))
+        num = int(chiffres) if re.fullmatch(r"\d{1,3}", chiffres) else None
+        titre_mots = [m for m in r[1:] if m["x"] + m["w"] <= colonne - 4 and re.search(r"[A-Za-zÀ-ÿ]{2}", m["t"])
+                      and not re.fullmatch(r"[.\W]+", m["t"]) and (m["c"] >= 40 or len(re.sub(r"[^A-Za-zÀ-ÿ]", "", m["t"])) >= 4)]
+        cands = Counter()
+        for m in normaux + mots:
+            if abs((m["y"] + m["h"] / 2) - cy) <= max(10, m["h"] * 0.6) and m["x"] + m["w"] >= colonne - 10:
+                for d in re.findall(r"\d{1,4}", m["t"]):
+                    if len(d) <= 3 and int(d) > 0:
+                        cands[int(d)] += 2 if m["c"] >= 50 else 1
+        lignes.append({"num": num, "titre": " ".join(m["t"].strip(".,:;") for m in titre_mots), "cands": cands, "y": cy})
+    if len(lignes) < 3:
+        return []
+    bases = Counter(x["num"] - i for i, x in enumerate(lignes) if x["num"] is not None)
+    if not bases:
+        return []
+    base = bases.most_common(1)[0][0]
+    sortie = [{"num": float(base + i), "titre": x["titre"], "page": None, "_cands": dict(x["cands"]), "_xy": (0, i)}
+              for i, x in enumerate(lignes)]
+    sortie = _pages_sures(sortie)
+    return [{"num": x["num"], "titre": x["titre"], "page": x["page"]} for x in sortie] if sortie and _vraisemblable(sortie) else []
 
 
 # ---------------------------------------------------------------- Symboles de cartes (Alice in Borderland)

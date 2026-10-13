@@ -272,6 +272,33 @@ def lier(f: Path, cible: Path):
             tmp.unlink()
 
 
+def corriger_series():
+    """« Kurokos Basket Extra Game » rangé à tort dans « Kurokos Basket » : un torrent en attente ou à valider dont le nom
+    est en fait celui d'une suite (« Kurokos Basket : Extra Game ») change de série ; s'il est déjà rangé à part, il est clos."""
+    if not _ETAT.get("nom_serie"):
+        return
+    with _verrou:
+        d = _lire()
+    for j in d:
+        if j.get("etat") not in ("telechargement", "a_valider") or j.get("manuel"):
+            continue
+        try:
+            nouveau = _ETAT["nom_serie"](j.get("titre") or "")
+        except Exception:
+            continue
+        if not nouveau or not nouveau.startswith(j["serie"] + " : "):
+            continue
+        existantes = _ETAT["existantes"]() if _ETAT.get("existantes") else []
+        deja = next((e for e in existantes if e == nouveau or e.startswith(nouveau + " - ") or e.startswith(nouveau + " (")), None)
+        if deja:
+            logger.info("Torrent %s : déjà rangé dans « %s »", j.get("titre"), deja)
+            _maj(j["id"], serie=deja, etat="fini", progression=100, message=f"Déjà rangé à part dans « {deja} » (suite de « {j['serie']} »).")
+            continue
+        logger.info("Torrent %s : série corrigée « %s » → « %s »", j.get("titre"), j["serie"], nouveau)
+        _maj(j["id"], serie=nouveau, etat="telechargement", remplacer=None,
+             message=f"Série corrigée : suite de « {j['serie']} », rangée à part.")
+
+
 def surveiller(importer_serie, envoyer, manga_dir):
     """Boucle (toutes les minutes) : téléchargement fini → copie, import, puis déplacement vers « OK »."""
     with _verrou:                                 # import coupé par un redémarrage : on le reprend
@@ -290,6 +317,10 @@ def surveiller(importer_serie, envoyer, manga_dir):
         except Exception as e:
             logger.warning("Suivi des torrents : %s", e)
             continue
+        try:
+            corriger_series()
+        except Exception as e:
+            logger.warning("Correction des séries de torrents : %s", e)
         en_cours = [j for j in _lire() if j["etat"] in ("telechargement", "import")]
         if en_cours:
             traiter(q, en_cours, importer_serie, envoyer, manga_dir)
@@ -320,16 +351,6 @@ def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
     """Un passage du suivi : progression, ou copie + import + déplacement vers « OK » quand c'est fini."""
     if True:
         for j in en_cours:
-            if j["etat"] in ("telechargement", "a_valider") and _ETAT.get("nom_serie"):
-                try:                                   # « Kurokos Basket Extra Game » rangé à tort dans « Kurokos Basket » : c'est une suite
-                    nouveau = _ETAT["nom_serie"](j.get("titre") or "")
-                except Exception:
-                    nouveau = ""
-                if nouveau and nouveau.startswith(j["serie"] + " : "):
-                    logger.info("Torrent %s : série corrigée « %s » → « %s »", j.get("titre"), j["serie"], nouveau)
-                    _maj(j["id"], serie=nouveau, etat="telechargement", remplacer=None,
-                         message=f"Série corrigée : suite de « {j['serie']} », rangée à part.")
-                    j["serie"], j["etat"], j["remplacer"] = nouveau, "telechargement", None
             if j["etat"] != "telechargement":
                 continue
             try:

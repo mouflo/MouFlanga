@@ -3323,6 +3323,7 @@ def _rapport_serie(nom, titre_torrent, origine="🧲 Torrent"):
 
 
 torrents._ETAT["rapport"] = _rapport_serie
+torrents._ETAT["existantes"] = lambda: sorted(n for n in _scan() if n != "(Sans série)")
 torrents._ETAT["nom_serie"] = lambda nom: _nom_depuis_archive(nom + ".zip", sorted(n for n in _scan() if n != "(Sans série)"))
 
 

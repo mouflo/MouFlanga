@@ -153,7 +153,7 @@
                                  : '<span class="lue" title="Déjà lue">✔</span>') : '') +
         '<div class="nm">' + esc(s.title) + '</div>' +
         '<div class="st">' + esc(s.compte || (s.chapters + ' chapitre(s)')) + ' · ' + taille(s.size_mb) +
-        (s.note ? ' · <span class="note" title="Note ' + esc(s.note_source) + '">' + String(s.note).replace('.', ',') + '/10</span>' : '') + '</div>' +
+        (s.note ? ' · <span class="note-serie" title="Note ' + esc(s.note_source) + '">' + String(s.note).replace('.', ',') + '/10</span>' : '') + '</div>' +
         '<div class="bar"><i style="width:' + pct + '%"></i></div></div>';
   }
 
