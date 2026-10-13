@@ -6,6 +6,7 @@ Couvertures des tomes : une image de remplacement par tome, rangée à part du f
 - Sources en ligne : MangaDex (couvertures par volume, en bonne résolution). Les résultats sont gardés 7 jours dans
   « data/couvertures-trouvees/<série>.json ».
 """
+import hashlib
 import io
 import json
 import logging
@@ -20,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 DOSSIER_CACHE = Path(__file__).resolve().parent / "data" / "couvertures-trouvees"
 DUREE_CACHE = 7 * 86400
+# À augmenter quand la logique de recherche change : les résultats anciens (possiblement faux) sont alors refaits seuls.
+VERSION_CACHE = 2
 PREFIXE_MANGADEX = "https://uploads.mangadex.org/covers/"
 _SESSION = requests.Session()
 _SESSION.headers["User-Agent"] = "MouFlanga/2.0 (bibliotheque de mangas personnelle)"
@@ -72,13 +75,19 @@ def retirer(dossier_serie: Path, tome: int) -> bool:
 
 
 def _cle(texte: str) -> str:
-    """Lettres de toutes les langues, minuscules, sans ponctuation : « WORST » ≠ « WORST外伝 »."""
-    return re.sub(r"[\W_]+", "", (texte or "").lower())
+    """Lettres de toutes les langues, minuscules, sans espaces ni tirets : « WORST » ≠ « WORST外伝 ».
+    Les ! ? et autres signes restent : « Again » ≠ « Again!! » (deux séries différentes)."""
+    return re.sub(r"[\s\-'’:.,_]+", "", (texte or "").lower())
+
+
+def _variantes(titre: str) -> list[str]:
+    """« + Again » s'écrit aussi « Plus Again » : l'API de recherche ignore le « + », on essaie donc les deux."""
+    return [titre, re.sub(r"^\+\s*", "Plus ", titre)] if titre.startswith("+") else [titre]
 
 
 def _mangadex_manga(titres: list[str]) -> str | None:
     """Identifiant MangaDex de la série : seulement un titre identique (jamais une série au nom voisin)."""
-    for titre in dict.fromkeys(t for t in titres if t):
+    for titre in dict.fromkeys(v for t in titres if t for v in _variantes(t)):
         try:
             r = _SESSION.get("https://api.mangadex.org/manga", params={"title": titre, "limit": 100}, timeout=15).json()
         except Exception:
@@ -94,11 +103,13 @@ def _mangadex_manga(titres: list[str]) -> str | None:
 def couvertures_en_ligne(serie: str, titres: list[str], forcer: bool = False) -> dict:
     """{numéro de tome: [{"url", "vignette", "langue"}]} : couvertures trouvées sur MangaDex (gardées 7 jours)."""
     DOSSIER_CACHE.mkdir(parents=True, exist_ok=True)
-    f = DOSSIER_CACHE / (re.sub(r"[^A-Za-z0-9]+", "_", serie).strip("_") + ".json")
+    # Le nom du fichier garde un empreinte : « + Again » et « Again » ne doivent pas partager le même cache.
+    empreinte = hashlib.sha1(serie.encode("utf-8")).hexdigest()[:8]
+    f = DOSSIER_CACHE / (re.sub(r"[^A-Za-z0-9]+", "_", serie).strip("_") + "_" + empreinte + ".json")
     if f.is_file() and not forcer:
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
-            if time.time() - d.get("date", 0) < DUREE_CACHE:
+            if d.get("version") == VERSION_CACHE and time.time() - d.get("date", 0) < DUREE_CACHE:
                 return {int(k): v for k, v in d.get("tomes", {}).items()}
         except (OSError, ValueError):
             pass
@@ -124,7 +135,8 @@ def couvertures_en_ligne(serie: str, titres: list[str], forcer: bool = False) ->
             offset += 100
             if offset >= (r.get("total") or 0) or not r.get("data"):
                 break
-    f.write_text(json.dumps({"date": time.time(), "manga": manga, "tomes": {str(k): v for k, v in tomes.items()}},
+    f.write_text(json.dumps({"version": VERSION_CACHE, "date": time.time(), "manga": manga,
+                             "tomes": {str(k): v for k, v in tomes.items()}},
                             ensure_ascii=False, indent=1), encoding="utf-8")
     return tomes
 

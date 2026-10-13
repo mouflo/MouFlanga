@@ -1,7 +1,9 @@
 """Couvertures des tomes : remplacement à part du fichier, retour en arrière, sources en ligne acceptées seulement de MangaDex."""
 import io
+import json
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -67,6 +69,42 @@ class CouverturesTest(unittest.TestCase):
             {"id": "principal", "attributes": {"title": {"ja-ro": "WORST"}, "altTitles": []}}]}
         with mock.patch.object(ct._SESSION, "get", return_value=reponse):
             self.assertEqual(ct._mangadex_manga(["WORST"]), "principal")
+
+    def test_ponctuation_gardee(self):
+        """« Again!! » (Mitsurou Kubo) ne doit pas passer pour « Again » (autre série)."""
+        reponse = mock.Mock()
+        reponse.json.return_value = {"data": [
+            {"id": "again-kubo", "attributes": {"title": {"ja-ro": "Again!!"}, "altTitles": []}}]}
+        with mock.patch.object(ct._SESSION, "get", return_value=reponse):
+            self.assertIsNone(ct._mangadex_manga(["Again"]))
+            self.assertEqual(ct._mangadex_manga(["Again!!"]), "again-kubo")
+
+    def test_plus_au_lieu_du_signe_plus(self):
+        """« + Again » est trouvé sous son titre anglais « Plus Again » (l'API ignore le « + »)."""
+        reponse = mock.Mock()
+        reponse.json.return_value = {"data": [
+            {"id": "plus-again", "attributes": {"title": {"en": "+Again"}, "altTitles": [{"en": "Plus Again"}]}}]}
+        with mock.patch.object(ct._SESSION, "get", return_value=reponse):
+            self.assertEqual(ct._mangadex_manga(["+ Again"]), "plus-again")
+
+    def test_cache_separe_par_serie(self):
+        """« + Again » et « Again » n'ont pas le même fichier de cache."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(ct, "DOSSIER_CACHE", Path(tmp)), mock.patch.object(ct, "_mangadex_manga", return_value=None):
+                ct.couvertures_en_ligne("+ Again", ["+ Again"])
+                ct.couvertures_en_ligne("Again", ["Again"])
+                self.assertEqual(len(list(Path(tmp).glob("*.json"))), 2)
+
+    def test_ancien_cache_refait(self):
+        """Un cache d'une ancienne version (résultats possiblement faux) est ignoré et refait."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(ct, "DOSSIER_CACHE", Path(tmp)):
+                (Path(tmp) / "Again.json").write_text(json.dumps({"date": time.time(), "manga": "faux", "tomes": {
+                    "1": [{"url": "https://uploads.mangadex.org/covers/faux/x.jpg", "vignette": "", "langue": "en"}]}}),
+                    encoding="utf-8")
+                with mock.patch.object(ct, "_mangadex_manga", return_value=None) as recherche:
+                    self.assertEqual(ct.couvertures_en_ligne("Again", ["Again"]), {})
+                    recherche.assert_called_once()
 
 
 if __name__ == "__main__":
