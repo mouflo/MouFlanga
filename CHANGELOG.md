@@ -3,6 +3,8 @@
 ## 📖 Doubles pages découpées en simples pages (13 octobre 2026)
 - ✂️ Dans 🪶 Alléger ou ✨ améliorer : « Doubles pages en simples pages ». Une planche de vignettes montre toutes les images plus larges que hautes du tome ; tout est coupé en deux par défaut, tu touches uniquement les vraies doubles (une seule illustration) pour les garder entières. Sens manga (moitié droite d'abord) ou occidental.
 - 🔖 La découpe garde les repères : la page où tu en étais est recalée (pour chaque lecteur), les signets et le nombre de pages du ComicInfo sont mis à jour, les pages d'un chapitre sont renumérotées. L'ancien fichier va à la corbeille (30 jours) ; un fichier partagé par qBittorrent est traité à part comme pour l'allègement.
+- 📚 Un tome à la fois : tu choisis le tome dans une liste, seules ses vignettes se chargent et la découpe ne concerne que lui.
+- 🔲 Réglage « Vignettes par ligne » : 1, 2 ou 3 (retenu sur le téléphone).
 - 🧪 Option à essayer : rien n'est coupé sans ton accord (planche + confirmation).
 
 ## ✨ Améliorer les vieux scans, aperçu à rideau (13 octobre 2026)

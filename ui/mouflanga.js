@@ -988,33 +988,57 @@
         dessinerComparaison();
       }
     });
-    // 📖 Doubles pages : planche de vignettes ; tout est coupé par défaut, on touche les vraies doubles pour les garder
-    var dblGardees = {}, dblTomes = [];
+    // 📖 Doubles pages : un tome à la fois ; planche de vignettes, tout est coupé par défaut, on touche les vraies doubles pour les garder
+    var dblGardees = {}, dblTomes = [], dblCourant = '', dblCol = 2;
+    try { dblCol = Math.max(1, Math.min(3, parseInt(localStorage.getItem('mfDblCol'), 10) || 2)); } catch (e) {}
     function dblSerie() { return encodeURIComponent(current.id); }
+    function dblTome() { return dblTomes.filter(function (t) { return t.fichier === dblCourant; })[0]; }
     async function voirDoubles() {
+      var ancien = $('dblEtat') ? $('dblEtat').innerHTML : '';          // le message de la dernière découpe reste affiché
       $('dblPlanche').innerHTML = '<div class="dem-sous">Recherche des doubles pages…</div>';
       var r = await api('/api/doubles?series=' + dblSerie());
       if (r.error) { $('dblPlanche').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
-      dblTomes = r.tomes || []; dblGardees = {};
+      dblTomes = r.tomes || []; dblGardees = {}; dblCourant = '';
       if (!dblTomes.length) { $('dblPlanche').innerHTML = '<div class="dem-sous">Aucune double page dans cette série.</div>'; return; }
-      $('dblPlanche').innerHTML = dblTomes.map(function (t) {
-        return '<div class="dem-titre dbl-tome">' + esc(t.fichier) + ' · ' + t.pages.length + ' double(s)</div><div class="dbl-grille">' +
-          t.pages.map(function (pg, i) {
-            return '<button type="button" class="dbl-tuile" data-dbl-tuile="' + esc(t.fichier) + '|' + pg.index + '">' +
-              '<img loading="lazy" alt="" src="/api/doubles/image?series=' + dblSerie() + '&fichier=' + encodeURIComponent(t.fichier) + '&n=' + pg.index + '">' +
-              '<span>' + (i + 1) + '</span></button>';
-          }).join('') + '</div>';
-      }).join('') + '<div class="ident-actions" id="dblBilan"></div><div id="dblEtat"></div>';
-      majBilanDoubles();
+      $('dblPlanche').innerHTML = '<div class="dem-sous">Choisis un tome :</div><div class="dbl-liste">' + dblTomes.map(function (t) {
+        return '<button type="button" class="mou-btn ghost" data-dbl-tome="' + esc(t.fichier) + '">' + esc(t.fichier.replace(/\.(cbz|zip)$/i, '')) + ' · ' + t.pages.length + ' double(s)</button>';
+      }).join('') + '</div><div id="dblTome"></div><div id="dblEtat">' + ancien + '</div>';
+    }
+    function grilleDoubles() {
+      var t = dblTome(); if (!t || !$('dblGrille')) return;
+      var w = {1: 700, 2: 450, 3: 300}[dblCol];
+      $('dblGrille').style.gridTemplateColumns = 'repeat(' + dblCol + ', 1fr)';
+      $('dblGrille').innerHTML = t.pages.map(function (pg, i) {
+        var c = t.fichier + '|' + pg.index;
+        return '<button type="button" class="dbl-tuile' + (dblGardees[c] ? ' garde' : '') + '" data-dbl-tuile="' + esc(c) + '">' +
+          '<img loading="lazy" alt="" src="/api/doubles/image?series=' + dblSerie() + '&fichier=' + encodeURIComponent(t.fichier) + '&n=' + pg.index + '&w=' + w + '">' +
+          '<span>' + (i + 1) + '</span></button>';
+      }).join('');
+    }
+    function planchesDoubles(fichier) {
+      dblCourant = fichier; dblGardees = {};
+      document.querySelectorAll('[data-dbl-tome]').forEach(function (b) { b.classList.toggle('ghost', b.dataset.dblTome !== fichier); });
+      $('dblTome').innerHTML = '<div class="ident-actions"><label>Vignettes par ligne : <select id="dblCols">' +
+        [1, 2, 3].map(function (n) { return '<option value="' + n + '"' + (n === dblCol ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></label></div>' +
+        '<div class="dbl-grille" id="dblGrille"></div><div class="ident-actions" id="dblBilan"></div>';
+      grilleDoubles(); majBilanDoubles();
     }
     function majBilanDoubles() {
-      var total = dblTomes.reduce(function (n, t) { return n + t.pages.length; }, 0);
+      var t = dblTome(); if (!t || !$('dblBilan')) return;
       var gardees = Object.keys(dblGardees).length;
-      if ($('dblBilan')) $('dblBilan').innerHTML = '<div class="dem-sous">' + (total - gardees) + ' double(s) seront coupées, ' + gardees + ' gardée(s) entière(s).</div>' +
-        '<button type="button" class="mou-btn" id="dblCouper">✂️ Découper ces tomes en simples pages</button>';
+      $('dblBilan').innerHTML = '<div class="dem-sous">' + (t.pages.length - gardees) + ' double(s) seront coupées, ' + gardees + ' gardée(s) entière(s).</div>' +
+        '<button type="button" class="mou-btn" id="dblCouper">✂️ Découper ce tome en simples pages</button>';
     }
+    $('infosCorps').addEventListener('change', function (e) {
+      if (e.target.id !== 'dblCols') return;
+      dblCol = parseInt(e.target.value, 10) || 2;
+      try { localStorage.setItem('mfDblCol', String(dblCol)); } catch (x) {}
+      grilleDoubles();
+    });
     $('infosCorps').addEventListener('click', async function (e) {
       if (e.target.closest('#dblVoir')) { voirDoubles(); return; }
+      var tm = e.target.closest('[data-dbl-tome]');
+      if (tm) { planchesDoubles(tm.dataset.dblTome); return; }
       var t = e.target.closest('[data-dbl-tuile]');
       if (t) {
         var c = t.dataset.dblTuile;
@@ -1022,12 +1046,11 @@
         t.classList.toggle('garde', !!dblGardees[c]); majBilanDoubles(); return;
       }
       if (e.target.closest('#dblCouper')) {
-        var plan = dblTomes.map(function (tm) {
-          return {fichier: tm.fichier, indices: tm.pages.filter(function (pg) { return !dblGardees[tm.fichier + '|' + pg.index]; }).map(function (pg) { return pg.index; })};
-        }).filter(function (x) { return x.indices.length; });
-        var nb = plan.reduce(function (n, x) { return n + x.indices.length; }, 0);
-        if (!confirm('Couper ' + nb + ' double(s) en deux dans ' + plan.length + ' tome(s) ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
-        var r = await post('/api/doubles/couper', {series: current.id, sens: $('dblSens').value, plan: plan});
+        var tome = dblTome(); if (!tome) return;
+        var indices = tome.pages.filter(function (pg) { return !dblGardees[tome.fichier + '|' + pg.index]; }).map(function (pg) { return pg.index; });
+        if (!indices.length) { alert('Toutes les doubles sont gardées entières : rien à couper.'); return; }
+        if (!confirm('Couper ' + indices.length + ' double(s) en deux dans « ' + tome.fichier + ' » ? L\'ancien fichier va à la corbeille (30 jours).')) return;
+        var r = await post('/api/doubles/couper', {series: current.id, sens: $('dblSens').value, plan: [{fichier: tome.fichier, indices: indices}]});
         if (!r.ok) { alert(r.error || 'Impossible'); return; }
         suivreDoubles();
       }
@@ -1044,7 +1067,8 @@
           return '<div class="dem-sous">' + esc(x.fichier) + (x.pages ? ' : ' + x.pages_avant + ' → ' + x.pages + ' pages' : '') + (x.note ? ' (' + esc(x.note) + ')' : '') + '</div>';
         }).join('');
         window.MouToast && window.MouToast('📖 ' + r.message, 'ok');
-        openSeries(current.id, false);
+        rafraichirSerie(current.id);
+        voirDoubles();                                               // la liste des tomes se met à jour (nombre de doubles restantes)
       }
     }
     $('infosCorps').addEventListener('click', async function (e) {

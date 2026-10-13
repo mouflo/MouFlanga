@@ -1219,7 +1219,8 @@ def api_doubles_image():
     if f is None:
         return Response("Introuvable", status=404)
     try:
-        jpeg = optimiser.apercu_page(f, int(request.args.get("n", "0")))
+        largeur = max(150, min(900, int(request.args.get("w", "300"))))
+        jpeg = optimiser.apercu_page(f, int(request.args.get("n", "0")), largeur)
     except (ValueError, archives.ArchiveError) as e:
         return Response(str(e), status=404)
     return Response(jpeg, mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
