@@ -3917,8 +3917,8 @@ def _sommaire_du_tome(name, tome, d):
             d["chapitres_pages"] = [c.get("image") for c in lu["chapitres"]]
             d["fichier"] = e["key"]
     elif lu and lu.get("chapitres") and e and d.get("chapitres") and d.get("chapitres_langue") != "en":
-        # Wikipédia donne déjà les titres : on les garde (sauf si le sommaire du tome les complète : « Nightmare » →
-        # « Nightmare 1st part »), mais les chapitres sont tout de même reliés à leur page de lecture.
+        # Wikipédia donne déjà des titres : ceux du sommaire du tome (son édition) les remplacent, et les chapitres
+        # sont reliés à leur page de lecture ; Wikipédia ne sert que pour un chapitre absent du sommaire.
         par_num = {float(c["num"]): c for c in lu["chapitres"] if c.get("num") is not None}
         titres, pages, ok = [], [], 0
         for ligne in d["chapitres"]:
@@ -3927,7 +3927,7 @@ def _sommaire_du_tome(name, tome, d):
             if c is not None:
                 ok += 1
                 wiki, ocr = m.group(2).strip(), (c.get("titre") or "").strip()
-                if ocr and len(ocr) > len(wiki) and ocr.lower().startswith(wiki.lower()):
+                if len(ocr) >= 3:                            # le sommaire imprimé de SON édition fait foi
                     ligne = f"{m.group(1)}. {ocr}"
             titres.append(ligne)
             pages.append(c.get("image") if c is not None else None)
