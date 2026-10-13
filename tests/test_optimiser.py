@@ -115,13 +115,39 @@ class OptimiserTest(unittest.TestCase):
             time.sleep(0.05)
         self.assertEqual(optimiser.etat("Serie")["rapport"][0]["qualite"], 70)
 
-    def test_eclaircir_seulement_le_gris(self):
-        gris = Image.new("L", (100, 150), 200)
-        self.assertEqual(optimiser.eclaircir(gris.point(lambda v: 40 if v < 100 else v)).getextrema()[1], 200)
+    def test_ameliorer_un_vieux_scan(self):
+        import numpy as np
+        rng = np.random.default_rng(1)
+        page = np.full((300, 200), 185, np.float32) + rng.normal(0, 8, (300, 200))   # papier gris et granuleux
+        page[:, :100] -= 20                                                            # jauni d'un côté
+        page[100:200, 40:160] = 70                                                     # grande zone d'encre délavée
+        page[20:22, 150:152] = 90                                                      # une poussière isolée
+        page[250:253, 30:33] = page[250:253, 37:40] = page[250:253, 44:47] = 60        # des points de suspension
+        im = Image.fromarray(np.clip(page, 0, 255).astype(np.uint8), "L")
+        r = np.asarray(optimiser.ameliorer(im, "2,2,2,1,2,0,0,0"), dtype=np.float32)
+        self.assertGreater(r[20:90, 10:90].mean(), 245)                  # papier blanchi, même du côté jauni
+        self.assertGreater(r[20:90, 110:190].mean(), 245)
+        self.assertLess(r[130:170, 70:130].mean(), 40)                   # l'encre reste noire, sans halo au milieu
+        self.assertGreater(r[19:23, 149:153].min(), 200)                 # la poussière est partie
+        self.assertLess(r[250:253, 44:47].mean(), 120)                   # les points de suspension restent
+        self.assertEqual(optimiser.ameliorer(Image.new("RGB", (100, 150), (200, 30, 30)), "3,3,3,3,3,3,3").mode, "RGB")   # couleur : intacte
+        self.assertIsNone(optimiser.reglages_amelioration("0,0,0,0,0,0,0,0"))
+        self.assertEqual(optimiser.reglages_amelioration("9,a,1")["debruit"], 3)
+        self.assertEqual(optimiser.reglages_amelioration(True)["papier"], 2)              # ancien « 🧼 éclaircir »
+        trame = np.full((300, 200), 235, np.uint8)
+        trame[100:200, 40:160] = 200
+        trame[100:200:3, 40:160:3] = 60                                                # aplat gris en petits points
+        t = np.asarray(optimiser.ameliorer(Image.fromarray(trame), "0,2,0,0,0,0,0,0"), dtype=np.float32)
+        self.assertLess(t[120:180, 60:140].std(), 12)                    # devenu un gris uni
+        self.assertEqual(optimiser.ameliorer(im, "0,0,0,0,0,2,0,0").size, (200, 300))   # lissé : taille gardée
+        self.assertEqual(optimiser.ameliorer(im, "0,0,0,0,0,2,0,1").size, (400, 600))   # petite page agrandie ×2
+
+    def test_comparer_avec_amelioration(self):
+        r = optimiser.comparer(self.f, 2, 85, "2,2,2,1,1,2,0,0")
+        self.assertTrue(r["ameliore"] or r["couleur"])
+        self.assertNotEqual(r["avant"], r["apres"])
+
+    def test_couleur(self):
         couleur = Image.new("RGB", (100, 150), (200, 30, 30))
         self.assertTrue(optimiser.est_couleur(couleur))
         self.assertFalse(optimiser.est_couleur(Image.new("RGB", (100, 150), (120, 120, 120))))
-
-
-if __name__ == "__main__":
-    unittest.main()

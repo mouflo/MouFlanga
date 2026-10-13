@@ -1097,7 +1097,7 @@ def _fichiers_a_alleger(name):
 
 @app.route("/api/optimiser", methods=["GET", "POST"])
 def api_optimiser():
-    """GET : où en est l'analyse ou l'allègement. POST {series, appliquer, eclairer, largeur} : lance l'un ou l'autre."""
+    """GET : où en est l'analyse ou l'allègement. POST {series, appliquer, amelio (« 2,2,1,1,1 »), largeur} : lance l'un ou l'autre."""
     if request.method == "GET":
         return jsonify(optimiser.etat(request.args.get("series", "")))
     body = request.get_json(silent=True) or {}
@@ -1107,7 +1107,8 @@ def api_optimiser():
     if _en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours"):
         return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
     largeur = int(body["largeur"]) if str(body.get("largeur", "")).isdigit() and int(body["largeur"]) >= 800 else None
-    appliquer, eclairer = bool(body.get("appliquer")), bool(body.get("eclairer"))
+    appliquer = bool(body.get("appliquer"))
+    eclairer = optimiser.reglages_amelioration(str(body.get("amelio", ""))) or optimiser.reglages_amelioration(bool(body.get("eclairer")))
     q = str(body.get("qualite", ""))
     manuelle = int(q) if q.isdigit() and 30 <= int(q) <= 98 else None        # réglage manuel ; vide = automatique
 
@@ -1115,7 +1116,7 @@ def api_optimiser():
         if appliquer:
             import edition
             infos = edition.lire(MANGA_DIR / name)
-            infos["allegement"] = {"date": datetime.now().strftime("%Y-%m-%d"), "largeur": largeur, "eclairci": eclairer}
+            infos["allegement"] = {"date": datetime.now().strftime("%Y-%m-%d"), "largeur": largeur, "eclairci": bool(eclairer), "amelioration": eclairer}
             edition.ecrire(MANGA_DIR / name, infos)
             edition.invalider(MANGA_DIR / name)              # résolution et source refaites d'après les nouveaux fichiers
         try:                                                 # Telegram + notification du téléphone : on n'a pas à rester sur la page
@@ -1132,6 +1133,7 @@ def api_optimiser():
 
 
 _QUALITE_AUTO = {}
+_VERROU_QUALITE_AUTO = threading.Lock()
 
 
 @app.route("/api/optimiser/comparer")
@@ -1156,17 +1158,19 @@ def api_optimiser_comparer():
         except ValueError:
             zoom = None
     largeur = int(request.args["largeur"]) if request.args.get("largeur", "").isdigit() and int(request.args["largeur"]) >= 800 else None
-    eclairer = request.args.get("eclairer") == "1"
+    eclairer = optimiser.reglages_amelioration(request.args.get("am", "")) or optimiser.reglages_amelioration(request.args.get("eclairer") == "1")
     q = request.args.get("q", "")
     try:
         if q.isdigit() and 30 <= int(q) <= 98:
             qualite, auto = int(q), False
         else:                                                # automatique : même choix que l'analyse (mis en mémoire)
-            cle = (str(chemin), chemin.stat().st_mtime_ns, eclairer, largeur)
-            if cle not in _QUALITE_AUTO:
-                if len(_QUALITE_AUTO) > 64:
-                    _QUALITE_AUTO.clear()
-                _QUALITE_AUTO[cle] = optimiser.analyser(chemin, eclairer=eclairer, largeur_max=largeur)["qualite"]
+            cle = (str(chemin), chemin.stat().st_mtime_ns, tuple((eclairer or {}).values()), largeur)
+            with _VERROU_QUALITE_AUTO:                       # avant, après et infos arrivent ensemble : un seul calcul
+                if cle not in _QUALITE_AUTO:
+                    if len(_QUALITE_AUTO) > 64:
+                        _QUALITE_AUTO.clear()
+                    # 3 pages d'essai suffisent pour l'aperçu (l'analyse de la série en prend 8)
+                    _QUALITE_AUTO[cle] = optimiser.analyser(chemin, nb_essai=3, eclairer=eclairer, largeur_max=largeur)["qualite"]
             qualite, auto = _QUALITE_AUTO[cle], True
         r = optimiser.comparer(chemin, page, qualite, eclairer, largeur, zoom)
     except Exception as e:
@@ -1178,17 +1182,6 @@ def api_optimiser_comparer():
     info = {k: v for k, v in r.items() if k not in ("avant", "apres")}
     info.update(fichier=chemin.name, tomes=[f.name for f in tomes], qualite=qualite, auto=auto)
     return jsonify(info)
-
-
-@app.route("/api/optimiser/apercu")
-def api_optimiser_apercu():
-    """Une page avant / après l'éclaircissement (pour juger à l'œil)."""
-    name = request.args.get("series", "")
-    fichiers = [f for f in _fichiers_a_alleger(name) if zipfile.is_zipfile(f)] if name in _scan() else []
-    if not fichiers:
-        return Response("Introuvable", status=404)
-    avant, apres = optimiser.apercu(fichiers[0], 8, eclairer=True)
-    return Response(avant if request.args.get("avant") else apres, mimetype="image/jpeg")
 
 
 # ---------------- 📱 Notifications sur le téléphone (Web Push) ----------------

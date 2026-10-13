@@ -770,11 +770,16 @@
     $('sAllege').addEventListener('click', function (e) { if (e.target.closest('#sAllegeVoir')) $('sAlleger').click(); });
     $('sAlleger').addEventListener('click', function () {
       fermerMenus();
-      $('infosTitre').textContent = '🪶 Alléger « ' + current.title + ' »';
+      $('infosTitre').textContent = '🪶 Alléger ou ✨ améliorer « ' + current.title + ' »';
       $('infosCorps').innerHTML = '<div class="dem-sous">Chaque tome est recompressé à la qualité la plus légère qui reste invisible à l\'écran (vérifiée sur des pages d\'essai). ' +
         'Les tomes encore partagés par qBittorrent sont allégés à part : le fichier du torrent n\'est jamais touché (la place n\'est rendue qu\'une fois le torrent supprimé). Les anciens fichiers vont à la corbeille (30 jours).</div>' +
         '<div class="ident-actions"><label>Largeur des pages : <select id="allLargeur"><option value="">garder</option><option value="1600" selected>1600 px (tablette)</option><option value="1200">1200 px (téléphone)</option></select></label></div>' +
-        '<div class="ident-actions"><label><input type="checkbox" id="allEclairer"> 🧼 Éclaircir le papier (scans gris ; pages en couleur jamais touchées)</label></div>' +
+        '<div class="amel"><div class="ident-actions"><label>✨ Améliorer l\'image (vieux scans) : <select id="allProfil">' + PROFILS_AMEL.map(function (p) { return '<option value="' + p[0] + '">' + p[1] + '</option>'; }).join('') + '<option value="perso">Personnalisée</option></select></label></div>' +
+        '<div class="dem-sous">Rien n\'est fait tout seul : choisis un niveau, regarde l\'aperçu, et seulement si ça te plaît, applique. Les pages en couleur ne sont jamais touchées.</div>' +
+        '<details id="allFin"><summary>Réglage fin</summary>' + REGLAGES_AMEL.map(function (r) {
+          return '<div class="amel-ligne"><label for="am_' + r[0] + '">' + r[1] + '<small>' + r[2] + '</small></label><select id="am_' + r[0] + '" data-am="' + r[0] + '">' +
+            (r[3] || ['Non', 'Léger', 'Moyen', 'Fort']).map(function (n, i) { return '<option value="' + i + '">' + n + '</option>'; }).join('') + '</select></div>';
+        }).join('') + '</details></div>' +
         '<div class="ident-actions"><label>Qualité de l\'image : <select id="allQualMode"><option value="">Automatique (recommandé)</option><option value="m">Manuelle</option></select></label></div>' +
         '<div id="allQualManuelle" hidden><input type="range" id="allQual" min="40" max="98" step="1" value="85" style="width:100%"> <div class="dem-sous"><b id="allQualVal">85</b> / 100 : 100 = identique à l\'original, plus bas = fichier plus léger. 90 et plus : aucune différence visible ; 80-88 : très léger, visible seulement en zoomant ; sous 70 : défauts qui se voient.</div></div>' +
         '<div class="ident-actions"><button type="button" class="mou-btn" id="allComparer">👁 Comparer avant / après (en direct)</button></div>' +
@@ -783,8 +788,22 @@
       $('infosVue').hidden = false;
       suivreAllegement();
     });
+    // ✨ Profils d'amélioration (ordre d'optimiser.AMELIORATIONS ; 0 = non … 3 = fort)
+    var PROFILS_AMEL = [['0,0,0,0,0,0,0,0', 'Non (image d\'origine)'], ['1,1,1,1,0,1,0,0', 'Légère (scan un peu gris)'],
+      ['2,2,2,1,1,2,0,0', 'Vieux scan (papier gris, trames, escaliers)'], ['3,3,3,2,2,3,0,0', 'Très abîmé (crado, délavé)']];
+    var REGLAGES_AMEL = [['debruit', '🌫 Enlever le grain', 'le grain et les petits carrés de compression'],
+      ['trames', '▦ Adoucir les trames', 'aplats gris pointillés → gris uni ; fort = textures fines aussi lissées'],
+      ['papier', '🧼 Blanchir le papier', 'fond gris ou jauni, bulles comprises ; fort = gris très pâles effacés'],
+      ['noirs', '⬛ Noirs plus francs', 'encre et texte délavés'],
+      ['taches', '🧽 Effacer les poussières', 'petits points isolés sur le papier'],
+      ['lisser', '〰 Lisser les traits', 'fini l\'effet escalier (bords arrondis), même taille de page'],
+      ['nettete', '🔪 Plus net', 'à éviter avec « Lisser » ; fort = peut faire des contours'],
+      ['agrandir', '🔍 Agrandir ×2', 'petits scans seulement : plus fin en zoomant, mais fichier 2 à 3 fois plus lourd', ['Non', '×2']]];
+    function amelioration() {
+      return REGLAGES_AMEL.map(function (r) { var e = $('am_' + r[0]); return e ? e.value : '0'; }).join(',');
+    }
     function optionsAllegement() {
-      return {largeur: $('allLargeur').value, eclairer: $('allEclairer').checked, qualite: $('allQualMode').value === 'm' ? $('allQual').value : ''};
+      return {largeur: $('allLargeur').value, amelio: amelioration(), qualite: $('allQualMode').value === 'm' ? $('allQual').value : ''};
     }
     async function suivreAllegement() {
       clearTimeout(suiviAllege);
@@ -792,12 +811,12 @@
       var r = await api('/api/optimiser?series=' + encodeURIComponent(current.id));
       if (!$('allRes')) return;
       var lignes = (r.rapport || []).map(function (x) {
-        return '<li>' + esc(x.fichier) + (!r.appliquer && !r.en_cours && x.qualite ? ' <button type="button" class="tog" data-comparer="' + esc(x.fichier) + '" title="Comparer avant / après">👁</button>' : '') + ' <small>' + (x.note ? esc(x.note) : (x.taille_mo + ' Mo · ' + (x.gagne_mo != null ? '−' + x.gagne_mo + ' Mo' : '≈ −' + Math.round(x.gain * 100) + ' %') + ' (qualité JPEG ' + x.qualite + '/100, écart ' + x.psnr + ' dB)')) + '</small></li>';
+        return '<li>' + esc(x.fichier) + (!r.appliquer && !r.en_cours && x.qualite ? ' <button type="button" class="tog" data-comparer="' + esc(x.fichier) + '" title="Comparer avant / après">👁</button>' : '') + ' <small>' + (x.note ? esc(x.note) : (x.taille_mo + ' Mo · ' + (x.gagne_mo != null ? (x.gagne_mo >= 0 ? '−' : '+') + Math.abs(x.gagne_mo) + ' Mo' : '≈ ' + (x.gain >= 0 ? '−' : '+') + Math.abs(Math.round(x.gain * 100)) + ' %') + ' (qualité JPEG ' + x.qualite + '/100, écart ' + x.psnr + ' dB)')) + '</small></li>';
       }).join('');
       $('allRes').innerHTML = (r.en_cours ? '<div class="dem-sous">' + esc(r.message || '') + ' ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' tomes · ça continue en arrière-plan, tu peux fermer cette fenêtre : une notification arrive à la fin.</div>' +
           '<progress max="' + (r.total || 1) + '" value="' + (r.fait || 0) + '" style="width:100%"></progress>' : (r.message ? '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' : '')) +
         (lignes ? '<ol class="tchap">' + lignes + '</ol>' : '') +
-        (!r.en_cours && r.message && !r.appliquer && r.gain > 0 ? '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="1">🪶 Appliquer à toute la série</button></div>' : '');
+        (!r.en_cours && r.message && !r.appliquer && (r.gain > 0 || r.eclairer) ? '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="1">🪶 Appliquer à toute la série</button></div>' : '');
       if (r.en_cours) suiviAllege = setTimeout(suivreAllegement, 3000);
     }
     // Bulle « terminé » même si la fenêtre est fermée (le travail, lui, tourne sur le serveur)
@@ -806,7 +825,7 @@
       var l = $('sAllege'); if (!l) return;
       if (!o) o = await api('/api/optimiser?series=' + encodeURIComponent(id));
       if (!current || current.id !== id) return;
-      var pret = o && !o.en_cours && o.message && (o.rapport || []).length && !o.appliquer && o.gain > 0;
+      var pret = o && !o.en_cours && o.message && (o.rapport || []).length && !o.appliquer && (o.gain > 0 || o.eclairer);
       l.hidden = !pret;
       if (pret) l.innerHTML = '🪶 Analyse prête : ' + esc(o.message) + ' <button type="button" class="mou-btn small" id="sAllegeVoir">👁 Comparer et alléger</button>';
     }
@@ -831,22 +850,21 @@
     function urlCmp(cote) {
       var o = optionsAllegement();
       return '/api/optimiser/comparer?series=' + encodeURIComponent(current.id) + '&fichier=' + encodeURIComponent(cmp.fichier) + '&page=' + cmp.page +
-        '&largeur=' + encodeURIComponent(o.largeur) + '&eclairer=' + (o.eclairer ? 1 : 0) + '&q=' + encodeURIComponent(o.qualite) +
+        '&largeur=' + encodeURIComponent(o.largeur) + '&am=' + encodeURIComponent(o.amelio) + '&q=' + encodeURIComponent(o.qualite) +
         (cmp.zoom ? '&fx=' + cmp.zoom[0].toFixed(3) + '&fy=' + cmp.zoom[1].toFixed(3) : '') + '&cote=' + cote;
     }
     function ouvrirComparaison(fichier) {
-      cmp = {fichier: fichier || '', page: 5, cote: 'apres', zoom: null, pages: 0, tomes: []};
+      cmp = {fichier: fichier || '', page: 5, cote: 'rideau', rideau: 50, zoom: null, pages: 0, tomes: []};
       dessinerComparaison(); $('allCmp').scrollIntoView({block: 'start'});
     }
     function majComparaison() {                                   // un réglage a bougé : l'image se recalcule (après une courte pause)
       if (!cmp) return;
       clearTimeout(cmpMinuterie);
       cmpMinuterie = setTimeout(function () {
-        var im = $('cmpImg'); if (!im || !cmp) return;
+        if (!$('cmpImg') || !cmp) return;
         $('cmpInfo').textContent = 'Calcul…';
-        im.src = urlCmp(cmp.cote);
+        imagesCmp();
         chargerInfoCmp();
-        (new Image()).src = urlCmp(cmp.cote === 'avant' ? 'apres' : 'avant');
       }, 350);
     }
     function chargerInfoCmp() {
@@ -859,8 +877,8 @@
         if (sel) sel.value = i.fichier;
         $('cmpPage').textContent = 'page ' + (i.page + 1) + ' / ' + i.pages;
         var gain = i.avant_ko ? Math.round(100 * (1 - i.apres_ko / i.avant_ko)) : 0;
-        $('cmpInfo').textContent = i.inchange || !i.qualite && !$('allEclairer').checked && !$('allLargeur').value ? 'Cette page garde ses octets d\'origine (' + i.avant_ko + ' Ko) : rien à gagner à ce réglage.'
-          : 'Qualité ' + i.qualite + '/100 (' + (i.auto ? 'choisie automatiquement' : 'manuelle') + ') · Avant ' + i.avant_ko + ' Ko (' + i.dimensions[0][0] + '×' + i.dimensions[0][1] + ') → Après ' + i.apres_ko + ' Ko (' + i.dimensions[1][0] + '×' + i.dimensions[1][1] + ') · ' + (gain >= 0 ? '−' : '+') + Math.abs(gain) + ' % sur cette page';
+        $('cmpInfo').textContent = (i.couleur ? '🎨 Page en couleur : l\'amélioration ne la touche pas. ' : i.ameliore ? '✨ Amélioration appliquée. ' : '') + (i.inchange ? 'Cette page garde ses octets d\'origine (' + i.avant_ko + ' Ko) : rien à gagner à ce réglage.'
+          : 'Qualité ' + i.qualite + '/100 (' + (i.auto ? 'choisie automatiquement' : 'manuelle') + ') · Avant ' + i.avant_ko + ' Ko (' + i.dimensions[0][0] + '×' + i.dimensions[0][1] + ') → Après ' + i.apres_ko + ' Ko (' + i.dimensions[1][0] + '×' + i.dimensions[1][1] + ') · ' + (gain >= 0 ? '−' : '+') + Math.abs(gain) + ' % sur cette page');
       });
     }
     function dessinerComparaison() {
@@ -871,20 +889,73 @@
         '<span id="cmpPage">page ' + (cmp.page + 1) + (cmp.pages ? ' / ' + cmp.pages : '') + '</span>' +
         '<button type="button" class="mou-btn ghost small" data-cmp="suiv">▶</button>' +
         '<button type="button" class="mou-btn ghost small" data-cmp="fermer">✕</button></div>' +
-        '<div class="cmp-cote"><button type="button" class="mou-btn' + (cmp.cote === 'avant' ? '' : ' ghost') + '" data-cmp="avant">Avant</button>' +
-        '<button type="button" class="mou-btn' + (cmp.cote === 'apres' ? '' : ' ghost') + '" data-cmp="apres">Après</button></div>' +
-        '<img id="cmpImg" class="cmp-img" alt="" src="' + urlCmp(cmp.cote) + '">' +
+        '<div class="cmp-cote">' + [['avant', 'Avant'], ['rideau', '↔ Rideau'], ['apres', 'Après']].map(function (c) {
+          return '<button type="button" class="mou-btn' + (cmp.cote === c[0] ? '' : ' ghost') + '" data-cmp="' + c[0] + '">' + c[1] + '</button>'; }).join('') + '</div>' +
+        '<div class="cmp-boite" id="cmpBoite"><img id="cmpImg" class="cmp-img" alt="">' +
+        '<img id="cmpImg2" class="cmp-img cmp-dessus" alt=""><div class="cmp-trait" id="cmpTrait"></div>' +
+        '<span class="cmp-et g">Avant</span><span class="cmp-et d">Après</span></div>' +
+        '<input type="range" id="cmpRideau" min="0" max="100" value="' + cmp.rideau + '" aria-label="Rideau avant / après">' +
         '<div class="dem-sous" id="cmpInfo">Calcul…</div>' +
-        '<div class="dem-sous">' + (cmp.zoom ? 'Détail à l\'échelle réelle : touche l\'image pour revenir à la page entière.' : 'Change la largeur, l\'éclaircissement ou la qualité au-dessus : l\'image se met à jour. Touche un endroit de la page pour le voir de près.') + '</div></div>';
+        '<div class="dem-sous">' + (cmp.zoom ? 'Détail à l\'échelle réelle : touche l\'image pour revenir à la page entière.' : 'Rideau : glisse le doigt sur l\'image (ou la barre) : à gauche l\'original, à droite le résultat. Touche un endroit pour le voir de près. Les réglages au-dessus mettent l\'image à jour.') + '</div></div>';
+      imagesCmp();
       chargerInfoCmp();
-      (new Image()).src = urlCmp(cmp.cote === 'avant' ? 'apres' : 'avant');         // l'autre côté se charge déjà
     }
+    // Avant, Après, ou les deux superposés avec un rideau (l'original à gauche du trait, le résultat à droite)
+    function imagesCmp() {
+      var a = $('cmpImg'), b = $('cmpImg2'); if (!a || !cmp) return;
+      var rideau = cmp.cote === 'rideau';
+      a.onload = function () { if (cmp && cmp.cote === 'rideau') poserRideau(cmp.rideau); };
+      a.src = urlCmp(rideau ? 'avant' : cmp.cote);
+      b.hidden = $('cmpTrait').hidden = $('cmpRideau').hidden = !rideau;
+      document.querySelectorAll('.cmp-et').forEach(function (x) { x.hidden = !rideau; });
+      if (rideau) { b.src = urlCmp('apres'); poserRideau(cmp.rideau); }
+      else (new Image()).src = urlCmp(cmp.cote === 'avant' ? 'apres' : 'avant');   // l'autre côté se charge déjà
+      document.querySelectorAll('[data-cmp=avant],[data-cmp=apres],[data-cmp=rideau]').forEach(function (x) { x.classList.toggle('ghost', x.dataset.cmp !== cmp.cote); });
+    }
+    function poserRideau(v) {
+      cmp.rideau = Math.max(0, Math.min(100, v));
+      var b = $('cmpImg2'), t = $('cmpTrait'), a = $('cmpImg'); if (!b) return;
+      // le trait suit l'image réellement affichée (elle peut être centrée avec des bandes noires)
+      var bw = a.clientWidth, dw = a.naturalWidth && a.naturalHeight ? Math.min(bw, a.naturalWidth * a.clientHeight / a.naturalHeight) : bw,
+          x = (bw - dw) / 2 + dw * cmp.rideau / 100;
+      b.style.clipPath = 'inset(0 0 0 ' + x + 'px)';
+      t.style.left = x + 'px';
+      if ($('cmpRideau')) $('cmpRideau').value = Math.round(cmp.rideau);
+    }
+    var glisse = null;                          // doigt qui fait glisser le rideau (sinon : simple toucher = zoom)
+    function xRideau(e) {
+      var a = $('cmpImg'), r = a.getBoundingClientRect(),
+          dw = a.naturalWidth ? Math.min(r.width, a.naturalWidth * r.height / a.naturalHeight) : r.width;
+      return 100 * (e.clientX - r.left - (r.width - dw) / 2) / dw;
+    }
+    $('infosCorps').addEventListener('pointerdown', function (e) {
+      if (!cmp || cmp.cote !== 'rideau' || !e.target.closest('#cmpBoite')) return;
+      glisse = {x: e.clientX, bouge: false};
+    });
+    $('infosCorps').addEventListener('pointermove', function (e) {
+      if (!glisse) return;
+      if (!glisse.bouge && Math.abs(e.clientX - glisse.x) < 8) return;
+      glisse.bouge = true; poserRideau(xRideau(e));
+    });
+    document.addEventListener('pointerup', function () { if (glisse) setTimeout(function () { glisse = null; }, 0); });
+    document.addEventListener('pointercancel', function () { glisse = null; });
+    window.addEventListener('resize', function () { if (cmp && cmp.cote === 'rideau') poserRideau(cmp.rideau); });
     $('infosCorps').addEventListener('input', function (e) {
       if (e.target.id === 'allQual') { $('allQualVal').textContent = e.target.value; majComparaison(); }
+      else if (e.target.id === 'cmpRideau' && cmp) poserRideau(+e.target.value);
     });
     $('infosCorps').addEventListener('change', function (e) {
       if (e.target.id === 'allQualMode') { $('allQualManuelle').hidden = e.target.value !== 'm'; majComparaison(); }
-      else if (e.target.id === 'allLargeur' || e.target.id === 'allEclairer') majComparaison();
+      else if (e.target.id === 'allLargeur') majComparaison();
+      else if (e.target.id === 'allProfil') {
+        if (e.target.value !== 'perso') { var v = e.target.value.split(','); REGLAGES_AMEL.forEach(function (r, i) { $('am_' + r[0]).value = v[i]; }); }
+        else $('allFin').open = true;
+        if (!cmp) ouvrirComparaison(''); else majComparaison();
+      }
+      else if (e.target.dataset && e.target.dataset.am) {
+        var am = amelioration(); $('allProfil').value = PROFILS_AMEL.some(function (p) { return p[0] === am; }) ? am : 'perso';
+        if (!cmp) ouvrirComparaison(''); else majComparaison();
+      }
       else if (e.target.id === 'cmpTome' && cmp) { cmp.fichier = e.target.value; cmp.zoom = null; dessinerComparaison(); }
     });
     $('infosCorps').addEventListener('click', function (e) {
@@ -895,11 +966,11 @@
       if (b && cmp) {
         var a = b.dataset.cmp;
         if (a === 'fermer') { cmp = null; $('allCmp').innerHTML = ''; return; }
-        if (a === 'avant' || a === 'apres') { cmp.cote = a; var im = $('cmpImg'); if (im) im.src = urlCmp(a);
-          document.querySelectorAll('[data-cmp=avant],[data-cmp=apres]').forEach(function (x) { x.classList.toggle('ghost', x.dataset.cmp !== a); }); return; }
+        if (a === 'avant' || a === 'apres' || a === 'rideau') { cmp.cote = a; imagesCmp(); return; }
         cmp.page = Math.max(0, Math.min((cmp.pages || 1) - 1, cmp.page + (a === 'suiv' ? 1 : -1))); cmp.zoom = null; dessinerComparaison(); return;
       }
-      var img = e.target.closest('#cmpImg');
+      var img = e.target.closest('#cmpBoite') && $('cmpImg');
+      if (img && cmp && glisse && glisse.bouge) return;               // c'était un glissement du rideau, pas un toucher
       if (img && cmp) {
         if (cmp.zoom) cmp.zoom = null;
         else {                                   // position réelle dans l'image (elle est centrée dans son cadre)

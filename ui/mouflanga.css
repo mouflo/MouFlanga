@@ -343,3 +343,18 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .tome-statut { margin: 10px 0; padding: 8px 10px; border-radius: 8px; font-size: .92rem; line-height: 1.35; border: 1px solid transparent; }
 .tome-statut.ok { background: rgba(82, 181, 75, .12); border-color: rgba(82, 181, 75, .4); }
 .tome-statut.verif { background: rgba(230, 160, 40, .12); border-color: rgba(230, 160, 40, .45); }
+/* ✨ Amélioration des vieux scans + aperçu à rideau */
+.amel { margin:8px 0; padding:8px 10px; border:1px solid var(--line, #333); border-radius:10px; }
+.amel details summary { cursor:pointer; padding:6px 0; color:#52b54b; }
+.amel-ligne { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; border-top:1px solid var(--line, #333); }
+.amel-ligne label { flex:1; }
+.amel-ligne small { display:block; opacity:.7; }
+.amel-ligne select { font-size:16px; min-width:96px; }
+.cmp-cote { grid-template-columns:1fr 1fr 1fr; }
+.cmp-boite { position:relative; touch-action:pan-y; user-select:none; -webkit-user-select:none; }
+.cmp-boite .cmp-dessus { position:absolute; inset:0; height:100%; }
+.cmp-trait { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:#52b54b; box-shadow:0 0 4px #000; pointer-events:none; }
+.cmp-et { position:absolute; top:6px; padding:2px 8px; border-radius:6px; background:rgba(0,0,0,.65); color:#fff; font-size:13px; pointer-events:none; }
+.cmp-et.g { left:6px; } .cmp-et.d { right:6px; }
+#cmpRideau { width:100%; margin:8px 0 2px; }
+.cmp-boite [hidden] { display:none; }

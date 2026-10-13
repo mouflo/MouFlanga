@@ -62,5 +62,10 @@ Sorti de `CLAUDE.md` pour l'alléger : lire la section utile avant de toucher au
 - Identification : `_titre_anilist` (alphabet latin seulement ; réponse en cache non latine refaite), `_BRUIT`/`_COUPURE` connaissent NOTAG et HYBRID, `_appris` ne retire un mot partout que s'il est technique ou retiré deux fois, auteur final écarté dans `_nom_sans_edition`.
 - Série ajoutée (suivi) sans dossier : `/api/series` renvoie `recherchee: true` (+ `cover_externe`, infos dans `compte`) ; poster enregistré dans `<série>/cover.jpg` (dossier créé), servi par `/api/cover`.
 
+## ✨ Améliorer les vieux scans (13/10/2026)
+- `optimiser.ameliorer(im, "d,t,p,n,ta,l,ne,a")` (ordre `AMELIORATIONS`, 0 à 3) : débruit NLM d'OpenCV (h 4/7/10 : 14 effaçait les points de suspension), trames floutées hors des traits (`_traits` = gradient sur version floue), papier = division par le fond (fermeture sur la page réduite ×4, bornée à 85 % du papier pour ne pas blanchir les cheveux), noirs (LUT), poussières (composantes < 200 sans autre encre autour), lissage à ×2 puis retour à la taille (flou + courbe en S sur les traits seulement), netteté, agrandir ×2 (h < 1700). Couleur : jamais touchée.
+- Paramètre `am=` (comparer) / `amelio` (POST). `eclairer=True` (ancien) = papier 2 + noirs 1. Dépendance : `opencv-python-headless`.
+- Aperçu : `comparer` sous verrou (avant/après/infos arrivent ensemble), qualité auto de l'aperçu sur 3 pages d'essai.
+
 ## Alléger un tome partagé par qBittorrent (12/10/2026)
 - Le NAS (NFS) refuse de renommer ou d'effacer un fichier lié au torrent (même après pause du torrent, même chmod), mais accepte de renommer un DOSSIER. `optimiser.reecrire_partage` : version légère dans `.<Tome NN>.allege/`, puis `Tome NN` → `.Tome NN.avant` → corbeille et `.allege` → `Tome NN`. Seulement si le tome est seul dans son dossier (`_dossier_a_lui`).
