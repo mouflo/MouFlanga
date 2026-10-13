@@ -3452,7 +3452,8 @@ def _sommaire_du_tome(name, tome, d):
         _lire_sommaire(name, tome, e)
     et = sommaire.etat(name, tome)
     d["sommaire"] = {"possible": bool(e) and sommaire.disponible(), "en_cours": bool(et.get("en_cours")),
-                     "message": et.get("message", ""), "lu": bool(lu), "manuel": bool(lu and lu.get("manuel"))}
+                     "message": et.get("message", ""), "lu": bool(lu), "manuel": bool(lu and lu.get("manuel")),
+                     "valide_le": (lu or {}).get("valide_le", ""), "fichier": bool(lu and lu.get("fichier"))}
 
 
 def _lire_sommaire(name, tome, e):
@@ -3535,10 +3536,32 @@ def api_tome_chapitres():
         return jsonify({"ok": False, "error": "Aucun chapitre : ajoute au moins une ligne."}), 400
     chapitres.sort(key=lambda c: c["num"])
     nouveau = dict(ancien)
-    nouveau.update(chapitres=chapitres, manuel=True)
+    nouveau.update(chapitres=chapitres, manuel=True, valide_le=time.strftime("%Y-%m-%d"))
     infos.setdefault("sommaires", {})[str(tome)] = nouveau
     edition.ecrire(MANGA_DIR / name, infos)
     return jsonify({"ok": True, "message": f"Tome {tome} : {len(chapitres)} chapitres enregistrés."})
+
+
+@app.route("/api/tome/valider", methods=["POST"])
+def api_tome_valider():
+    """✅ « C'est bon » : le sommaire lu automatiquement est vérifié, il passe en « validé à la main » (il n'est plus
+    remplacé par une relecture sans confirmation, et le tome n'est plus signalé « à vérifier »)."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    try:
+        tome = int(float(body.get("tome", "")))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Tome inconnu"}), 400
+    infos = edition.lire(MANGA_DIR / name)
+    lu = (infos.get("sommaires") or {}).get(str(tome))
+    if not lu or not lu.get("chapitres"):
+        return jsonify({"ok": False, "error": "Pas de chapitres lus pour ce tome : lis le sommaire d'abord."}), 400
+    lu.update(manuel=True, valide_le=time.strftime("%Y-%m-%d"))
+    edition.ecrire(MANGA_DIR / name, infos)
+    return jsonify({"ok": True, "message": f"Tome {tome} : chapitres validés."})
 
 
 _SIGNETS = {}              # (série, tome) → {"en_cours", "message", "ok"} : écriture des chapitres dans le .cbz

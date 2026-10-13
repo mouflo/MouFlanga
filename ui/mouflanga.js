@@ -1164,6 +1164,11 @@
         (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '"' + (som.manuel ? ' data-manuel="1"' : '') + '>🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' +
         (som.en_cours ? '<div class="dem-sous">🔍 Lecture du sommaire dans les premières pages… (environ une minute)</div>'
           : (som.message && !chap.length ? '<div class="dem-sous">' + esc(som.message) + '</div>' : '')) +
+        (som.lu ? '<div class="tome-statut ' + (som.manuel || som.fichier ? 'ok' : 'verif') + '">' +
+          (som.fichier ? '✅ Chapitres écrits dans le fichier' :
+           som.manuel ? '✅ Validé à la main' + (som.valide_le ? ' le ' + esc(som.valide_le) : '') + ' : rien à revérifier' :
+           '⚠️ Lu automatiquement : titres fiables, pages approximatives. À vérifier, puis valider.' +
+           '<div class="ident-actions admin-seul"><button type="button" class="mou-btn" data-valider="' + n + '">✅ C\'est bon, valider</button></div>') + '</div>' : '') +
         (chap.length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') +
           (d.chapitres_source ? ' <small>(' + esc(d.chapitres_source) + ')</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c, i) { return '<li>' + lien(c, i) + '</li>'; }).join('') + '</ol>' +
           '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEditer">✏️ Corriger les chapitres</button>' +
@@ -1188,6 +1193,14 @@
       var r = await post('/api/tome/sommaire', {series: current.id, tome: b.dataset.sommaire, force: !!b.dataset.manuel});
       if (!r.ok) { b.disabled = false; alert(r.error || 'Impossible'); return; }
       afficherTome(b.dataset.sommaire, false);
+    });
+    $('infosCorps').addEventListener('click', async function (e) {         // ✅ chapitres lus automatiquement : vérifiés, validés
+      var v = e.target.closest('[data-valider]'); if (!v) return;
+      v.disabled = true;
+      var r = await post('/api/tome/valider', {series: current.id, tome: v.dataset.valider});
+      if (!r.ok) { v.disabled = false; alert(r.error || 'Impossible'); return; }
+      window.MouToast('✅ ' + r.message, 'ok');
+      afficherTome(v.dataset.valider, false);
     });
     $('infosCorps').addEventListener('click', async function (e) {         // ✏️ corriger la liste des chapitres à la main
       if (e.target.closest('#chapEditer')) { $('chapEdition').hidden = false; $('chapEditer').hidden = true; $('chapTexte').focus(); return; }

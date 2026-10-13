@@ -1,5 +1,10 @@
 # Historique des versions
 
+## Sommaire : pages mieux calées et chapitres « validés » (13 octobre 2026)
+- 🎯 Chaque chapitre cherche sa page d'ouverture près de l'estimation du chapitre précédent, et la page qui ressemble le plus gagne : mots du titre et surtout la mention « Chapitre N ». Les doubles pages (« 042-043 ») ne décalent plus tous les chapitres suivants. Sur les tomes 4 à 7 de FullMetal Alchemist, 17 chapitres sur 24 retombent exactement sur les pages corrigées à la main (9 sur 24 avant), les autres à 1 à 3 pages près.
+- 🔧 Le sommaire du tome 4 n'était plus lu : la seconde lecture (texte blanc sur couleur) n'était tentée que si la première ne donnait aucune ligne, et un numéro mal lu (« 24 » lu « 21 ») faisait rejeter toute la liste. Les deux cas sont corrigés.
+- ✅ La fiche d'un tome indique maintenant si ses chapitres sont **validés à la main** (rien à revérifier) ou **lus automatiquement** (titres fiables, pages approximatives, à vérifier). Un bouton « C'est bon, valider » marque la liste comme vérifiée sans rien changer ; une correction enregistrée la valide aussi.
+
 ## Sommaire : numéros de pages des tomes 7 et 8 (13 octobre 2026)
 - 🔗 Les chapitres du tome 8 n'avaient pas de page cliquable : le titre du premier chapitre était mal lu (« tefrent » pour « torrent ») et le décalage n'était pas trouvé. La comparaison tolère maintenant une lettre mal lue sur les mots longs.
 - 🔢 En dernier recours, le décalage est pris dans le numéro des images (« 005.jpg » = page imprimée 5), comme dans le tome 7.

@@ -386,6 +386,20 @@ class OrganiserTest(BibliothequeTest):
         double = self.client.post("/api/tome/chapitres", json={"series": "Serie", "tome": 1, "texte": "1. A\n1. B"})
         self.assertEqual(double.status_code, 400)
 
+    def test_valider_les_chapitres_lus_automatiquement(self):
+        import edition
+        infos = edition.lire(self.root / "Serie")
+        infos["sommaires"] = {"1": {"chapitres": [{"num": 1.0, "titre": "Début", "page": 5, "image": 8}], "decalage": 3}}
+        edition.ecrire(self.root / "Serie", infos)
+        sans = self.client.post("/api/tome/valider", json={"series": "Serie", "tome": 2})
+        self.assertEqual(sans.status_code, 400)                          # rien de lu pour ce tome
+        r = self.client.post("/api/tome/valider", json={"series": "Serie", "tome": 1})
+        self.assertTrue(r.json["ok"], r.json)
+        som = edition.lire(self.root / "Serie")["sommaires"]["1"]
+        self.assertTrue(som["manuel"])                                    # validé : une relecture demandera confirmation
+        self.assertTrue(som["valide_le"])
+        self.assertEqual(som["chapitres"][0]["image"], 8)                 # les pages ne sont pas touchées
+
     def test_chapitres_ecrits_dans_le_fichier(self):
         import signets
         f = self.root / "Tome complet.cbz"

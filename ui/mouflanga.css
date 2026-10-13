@@ -338,3 +338,8 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .cmp-barre { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 0; }
 .cmp-cote { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:6px 0; }
 .cmp-img { display:block; width:100%; max-height:70vh; object-fit:contain; background:#000; border-radius:6px; cursor:zoom-in; }
+
+/* Statut des chapitres d'un tome : validé à la main ou lu automatiquement (à vérifier) */
+.tome-statut { margin: 10px 0; padding: 8px 10px; border-radius: 8px; font-size: .92rem; line-height: 1.35; border: 1px solid transparent; }
+.tome-statut.ok { background: rgba(82, 181, 75, .12); border-color: rgba(82, 181, 75, .4); }
+.tome-statut.verif { background: rgba(230, 160, 40, .12); border-color: rgba(230, 160, 40, .45); }

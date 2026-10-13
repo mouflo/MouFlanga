@@ -92,6 +92,17 @@ def analyser(texte: str) -> list[dict]:
     return out
 
 
+def _numeros_suivis(lignes):
+    """« 24 » lu « 21 » après « 23 » : un numéro qui ne suit pas le précédent devient précédent + 1
+    (les pages imprimées, elles, doivent déjà croître : sinon la ligne n'est pas un chapitre)."""
+    sortie = []
+    for x in lignes:
+        if sortie and x["num"] <= sortie[-1]["num"]:
+            x = dict(x, num=sortie[-1]["num"] + 1)
+        sortie.append(x)
+    return sortie
+
+
 def _vraisemblable(lignes) -> bool:
     """Au moins 2 chapitres, numéros et pages qui augmentent : c'est bien un sommaire."""
     if len(lignes) < 2:
@@ -112,12 +123,12 @@ def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
         except Exception as e:                               # image illisible, tesseract en panne : page suivante
             logger.info("Sommaire de %s, page %d : %s", chemin, i, e.__class__.__name__)
             continue
-        lignes = analyser(textes[i])
-        if not lignes:                                       # titre en blanc sur couleur : seconde lecture (canal bleu)
+        lignes = _numeros_suivis(analyser(textes[i]))
+        if not _vraisemblable(lignes):                       # titre en blanc sur couleur : seconde lecture (canal bleu)
             try:
                 clair = ocr(octets, clair=True)
-                if analyser(clair):
-                    textes[i], lignes = clair, analyser(clair)
+                if _vraisemblable(_numeros_suivis(analyser(clair))) or (analyser(clair) and not lignes):
+                    textes[i], lignes = clair, _numeros_suivis(analyser(clair))
             except Exception as e:
                 logger.info("Sommaire de %s, page %d (couleur) : %s", chemin, i, e.__class__.__name__)
         if trouve and lignes and lignes[0]["num"] > trouve[-1]["num"] and _vraisemblable(trouve + lignes):
@@ -133,9 +144,9 @@ def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
             except Exception as e:
                 logger.info("Sommaire par Claude impossible pour %s : %s", chemin, e)
         return {"chapitres": [], "page_sommaire": None, "decalage": None}
-    decalage = _decalage(trouve, textes, page_sommaire, lire_page, nb_pages, noms)
-    for c in trouve:
-        c["image"] = c["page"] + decalage if decalage is not None and c["page"] + decalage < nb_pages else None
+    images, decalage = _images(trouve, textes, page_sommaire, lire_page, nb_pages, noms)
+    for c, image in zip(trouve, images):
+        c["image"] = image if image is not None and image < nb_pages else None
     return {"chapitres": trouve, "page_sommaire": page_sommaire, "decalage": decalage}
 
 
@@ -157,37 +168,67 @@ def _contient(t, mots):
     return sum(_proche(m, morceaux) for m in mots) >= max(1, (len(mots) + 1) // 2)
 
 
-def _decalage(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=None):
-    """Décalage entre la page imprimée et la position de l'image dans le fichier.
-    Chaque chapitre dont le titre est lu après le sommaire donne un vote (position de l'image − page imprimée).
-    Le titre n'est pas toujours sur la 1re page d'un chapitre (parfois la 2e ou 3e) : cela décale le vote de 1 à 3,
-    donc on garde le décalage le plus souvent trouvé, à égalité le plus petit."""
-    votes = Counter()
-    for c in chapitres:
+def _score(texte, mots, num):
+    """Ressemblance d'une page avec l'ouverture d'un chapitre : chaque mot du titre lu (entier = 1, à quelques lettres
+    près = 0,7) et surtout la mention « Chapitre N » avec le bon numéro (+2), que portent les pages d'ouverture."""
+    simple = _simple(texte)
+    morceaux = simple.split()
+    total = 0.0
+    for m in mots:
+        if any(m in x for x in morceaux):
+            total += 1
+        elif _proche(m, morceaux):
+            total += 0.7
+    if num is not None and re.search(r"\bchap\w*\s+0*%d\b" % int(num), simple):
+        total += 2
+    return total
+
+
+def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=None):
+    """Image où commence chaque chapitre, et décalage du 1er (pour information).
+    Pour chaque chapitre, les pages proches de l'estimation (page imprimée + écart du chapitre précédent ; pour le
+    1er, de -2 à +10) reçoivent un score (voir _score) et la meilleure est gardée. Les doubles pages (« 042-043 »)
+    font varier l'écart d'un chapitre à l'autre, d'où une recherche par chapitre et non un décalage unique."""
+    images, decalage, ecart, precedente = [], None, None, page_sommaire
+    for k, c in enumerate(chapitres):
         mots = _mots_titre(c["titre"])
-        if not mots:
-            continue
-        for i, t in sorted(textes.items()):
-            if i > page_sommaire and _contient(t, mots) and -2 <= i - c["page"] <= 10:   # hors plage : un mot banal
-                votes[i - c["page"]] += 1
-    if votes:
-        return max(votes.items(), key=lambda kv: (kv[1], -kv[0]))[0]
-    if lire_page is None or not chapitres:
-        return _decalage_par_nom(chapitres[0]["page"], noms, page_sommaire) if chapitres else None
-    mots = _mots_titre(chapitres[0]["titre"])
-    if not mots:
-        return _decalage_par_nom(chapitres[0]["page"], noms, page_sommaire)
-    for o in (0, 1, 2, -1, 3, 4, -2):                     # pages non lues : autour de la page annoncée du 1er chapitre
-        i = chapitres[0]["page"] + o
-        if i <= page_sommaire or i >= nb_pages or i in textes:
-            continue
-        try:
-            textes[i] = ocr(lire_page(i))
-        except Exception:
-            continue
-        if _contient(textes[i], mots):
-            return o
-    return _decalage_par_nom(chapitres[0]["page"], noms, page_sommaire)
+        if ecart is None:
+            plage = sorted(textes) if (k == 0 and lire_page is None) else range(c["page"] - 2, c["page"] + 11)
+        else:
+            plage = range(c["page"] + ecart - 3, c["page"] + ecart + 4)
+        seuil = max(1.0, len(mots) / 2)
+        meilleur, score_max = None, 0.0
+        for i in plage:
+            if i <= precedente or i < 0 or (nb_pages and i >= nb_pages):
+                continue
+            if i not in textes:
+                if lire_page is None:
+                    continue
+                try:
+                    textes[i] = ocr(lire_page(i))
+                except Exception:
+                    continue
+            sc = _score(textes[i], mots, c.get("num"))
+            if sc >= seuil and sc > score_max:               # à égalité : la première page
+                meilleur, score_max = i, sc
+        if meilleur is not None:
+            images.append(meilleur)
+            precedente = meilleur
+            ecart = meilleur - c["page"]
+            if decalage is None:
+                decalage = ecart
+        else:
+            images.append(c["page"] + ecart if ecart is not None else None)
+            if ecart is None and k == 0:                       # aucun titre lu : numéro du fichier en dernier recours
+                ecart = _decalage_par_nom(c["page"], noms, page_sommaire)
+                images[-1] = c["page"] + ecart if ecart is not None else None
+                decalage = ecart
+    return images, decalage
+
+
+def _decalage(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=None):
+    """Décalage du 1er chapitre seulement (voir _images)."""
+    return _images(chapitres, textes, page_sommaire, lire_page, nb_pages, noms)[1]
 
 
 def _decalage_par_nom(page, noms, page_sommaire):

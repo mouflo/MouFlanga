@@ -87,4 +87,17 @@ class VisionTest(unittest.TestCase):
         ch = [{"num": 1.0, "titre": "Le retour du héros", "page": 5}, {"num": 2.0, "titre": "Les marais sombres", "page": 25},
               {"num": 3.0, "titre": "La tour de cristal", "page": 45}]
         textes = {2: "sommaire", 8: "rien", 9: "Le retour du heros", 28: "Les marais sombres", 48: "La tour de cristal"}
-        self.assertEqual(sommaire._decalage(ch, textes, 2), 3)
+        # chaque titre donne l'image où il est lu : 9 pour le 1er (page 2 de son chapitre), puis 28 et 48
+        self.assertEqual(sommaire._images(ch, textes, 2)[0], [9, 28, 48])
+        self.assertEqual(sommaire._decalage(ch, textes, 2), 4)
+
+    def test_seconde_lecture_meme_si_la_premiere_donne_du_bruit(self):
+        # la lecture normale sort une ligne parasite : le canal bleu doit quand même être essayé
+        with mock.patch.object(sommaire, "ocr", side_effect=lambda o, clair=False: "Chapitre 19 : À votre place ...... 5\nChapitre 20 : Un maître ...... 41" if clair else "bruit\n3 . 12 ..... 4"):
+            r = sommaire.lire("x", lambda i: b"", 1)
+        self.assertEqual([c["page"] for c in r["chapitres"]], [5, 41])
+
+    def test_numero_mal_lu_dans_la_suite(self):
+        lignes = [{"num": 22.0, "titre": "a", "page": 115}, {"num": 23.0, "titre": "b", "page": 161}, {"num": 21.0, "titre": "c", "page": 207}]
+        self.assertEqual([x["num"] for x in sommaire._numeros_suivis(lignes)], [22.0, 23.0, 24.0])
+        self.assertTrue(sommaire._vraisemblable(sommaire._numeros_suivis(lignes)))
