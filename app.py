@@ -3901,6 +3901,7 @@ def _sommaire_du_tome(name, tome, d):
     import edition
     lu = (edition.lire(MANGA_DIR / name).get("sommaires") or {}).get(str(tome))
     e = _tome_complet(name, tome)
+    wiki_avant = [re.sub(r"^\d+(?:[.,]\d)?\.?\s*", "", c).strip().lower() for c in (d.get("chapitres") or [])]
     if not lu and e:                                     # chapitres déjà écrits dans le fichier (série reçue d'un partage)
         import signets
         notes = signets.lire(MANGA_DIR / e["path"])
@@ -3926,15 +3927,17 @@ def _sommaire_du_tome(name, tome, d):
             c = par_num.get(float(m.group(1).replace(",", "."))) if m else None
             if c is not None:
                 ok += 1
-                wiki, ocr = m.group(2).strip(), (c.get("titre") or "").strip()
+                ocr = (c.get("titre") or "").strip()
                 if len(ocr) >= 3:                            # le sommaire imprimé de SON édition fait foi
                     ligne = f"{m.group(1)}. {ocr}"
             titres.append(ligne)
             pages.append(c.get("image") if c is not None else None)
         if ok:
             d["chapitres"], d["chapitres_pages"], d["fichier"] = titres, pages, e["key"]
-    ancien = bool(lu and not lu.get("manuel") and not lu.get("fichier") and not lu.get("valide_le")
-                  and lu.get("version", 1) < sommaire.VERSION)       # lu par un lecteur plus ancien : on relit (pas ce qu'elle a validé)
+    copie = bool(lu and (lu.get("manuel") or lu.get("valide_le")) and wiki_avant and sum(
+        (c.get("titre") or "").strip().lower() in wiki_avant for c in lu.get("chapitres", [])) * 2 >= len(lu.get("chapitres", [])))
+    ancien = bool(lu and not lu.get("fichier") and lu.get("version", 1) < sommaire.VERSION
+                  and (copie or not (lu.get("manuel") or lu.get("valide_le"))))   # validé avec les titres de Wikipédia, ou pas validé
     if e and sommaire.disponible() and (not lu or ancien) and (besoin or ancien) and auth.role() != "lecteur":
         _lire_sommaire(name, tome, e)
     et = sommaire.etat(name, tome)
@@ -3951,6 +3954,14 @@ def _lire_sommaire(name, tome, e):
 
     def enregistrer(r):
         infos = edition.lire(MANGA_DIR / name)
+        avant = (infos.get("sommaires") or {}).get(str(tome)) or {}
+        if avant.get("manuel") or avant.get("valide_le"):
+            # fiche déjà validée avec des titres d'avant (souvent ceux de Wikipédia) : relue une fois avec le lecteur
+            # amélioré ; les titres du sommaire imprimé la remplacent si ce sont les mêmes chapitres, sinon on la garde
+            if [c.get("num") for c in r.get("chapitres", [])] == [c.get("num") for c in avant.get("chapitres", [])] and r.get("chapitres"):
+                r["manuel"], r["valide_le"] = avant.get("manuel", False), avant.get("valide_le", "")
+            else:
+                r = dict(avant, version=r["version"])
         infos.setdefault("sommaires", {})[str(tome)] = r
         edition.ecrire(MANGA_DIR / name, infos)
     return sommaire.lancer(name, tome, chemin, lambda i: archives.read_page(chemin, i)[0], len(archives.pages(chemin)), enregistrer,
