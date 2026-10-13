@@ -680,6 +680,15 @@ def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
     On retire le début commun aux autres tomes gardés en mémoire (coupé à la fin d'une phrase) ; s'il ne reste rien
     de propre à ce tome, on ne met rien."""
     texte = texte or ""
+    for k, v in (brut.get("resumes_tomes") or {}).items():   # fin commune (liste de prix de la série, etc.) : coupée aussi
+        autre = v.get("texte") or ""
+        if k == str(n) or not autre or not texte:
+            continue
+        j = 0
+        while j < min(len(texte), len(autre)) and texte[-1 - j] == autre[-1 - j]:
+            j += 1
+        if j >= 60 and len(texte) - j >= 40:
+            texte = texte[:len(texte) - j].rstrip(" -–—\n")
     intros = brut.setdefault("intros", [])
     for intro in intros:                               # début déjà reconnu comme parasite sur d'autres tomes
         if intro and texte.startswith(intro):

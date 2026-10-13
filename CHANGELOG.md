@@ -7,6 +7,7 @@
 - 🟢 Le ⓘ d'un tome est vert aussi quand ses chapitres viennent d'un sommaire lu dans le tome, validé ou corrigé à la main, ou écrit dans le fichier (avant : seulement si la liste venait de Wikipédia ou du fichier).
 - 📖 Résumés de tomes : la recherche Google Books réessaie 3 fois quand Google répond « indisponible » (503) au lieu d'abandonner.
 - ✏️ Fiche d'un tome : bouton « Modifier le résumé du tome » (ou « Écrire » s'il n'y en a pas). Ton texte passe avant celui d'Internet, reste avec la série, et « Remettre le résumé automatique » le retire.
+- 📖 Résumés de tomes : la fin commune à plusieurs tomes (ex. la liste des prix de la série) est retirée comme le début.
 - 📝 Infos du tome écrites DANS son fichier (ComicInfo.xml), pour qu'elles suivent quand le fichier est transmis : titre, résumé du tome, date de sortie, auteur, éditeur, nombre de tomes, et dans « Notes » la provenance, la source du résumé et le statut du sommaire. Le bouton « 📝 Écrire les infos dans le fichier » le fait (même sans chapitres). Les tomes assemblés par l'appli les reçoivent à chaque réécriture. À la lecture, l'appli reprend le résumé écrit à la main et la provenance depuis le fichier quand le dossier de la série ne les a pas.
 - ↕️ Fiche d'un tome : les boutons « Garder sur ce téléphone », « Noter la provenance » et « Relire le sommaire » passent sous la liste des chapitres.
 
