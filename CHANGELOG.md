@@ -4,6 +4,8 @@
 - 📖 Le résumé d'un tome ne commence plus par la présentation de la série entière (la même phrase d'accroche sur chaque tome) : le début commun aux autres tomes est retiré ; s'il ne reste rien de propre au tome, rien n'est affiché.
 - 🛟 Les résumés de tomes déjà trouvés ne sont plus effacés quand la série est ré-identifiée (c'était la cause des résumés qui disparaissaient) ; le début parasite reconnu est mémorisé et retiré d'office des nouveaux tomes.
 - 🔢 Nombre de tomes : l'identification affiche « 18 tomes dans ton édition (AniList en annonce 27 pour l'édition standard) » au lieu du seul chiffre d'AniList ; la fiche ⓘ a une ligne « Tomes de ton édition » ; les ComicInfo des tomes portent aussi le nombre de ton édition.
+- 🟢 Le ⓘ d'un tome est vert aussi quand ses chapitres viennent d'un sommaire lu dans le tome, validé ou corrigé à la main, ou écrit dans le fichier (avant : seulement si la liste venait de Wikipédia ou du fichier).
+- 📖 Résumés de tomes : la recherche Google Books réessaie 3 fois quand Google répond « indisponible » (503) au lieu d'abandonner.
 - ↕️ Fiche d'un tome : les boutons « Garder sur ce téléphone », « Noter la provenance » et « Relire le sommaire » passent sous la liste des chapitres.
 
 ## Sommaire : épilogue sans numéro et symboles parasites (13 octobre 2026)

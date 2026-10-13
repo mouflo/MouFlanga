@@ -211,6 +211,13 @@ def _edition_differente(serie):
     return bool(v and officiel and int(v) != int(officiel))
 
 
+def _sommaire_connu(serie, tome):
+    """Les chapitres de ce tome sont connus par un sommaire : lu dans le tome, validé ou corrigé à la main, ou écrit dans le fichier."""
+    if tome is None:
+        return False
+    return bool(((_edition_vue(serie).get("sommaires") or {}).get(str(int(tome))) or {}).get("chapitres"))
+
+
 def _plage_chapitres(serie, tome):
     """« chapitres 1 à 8 » pour un tome complet : d'abord le sommaire lu dans le tome (ou corrigé à la main), sinon la
     répartition de la série si elle est déjà connue (sans aller sur Internet) et si l'édition est l'édition standard."""
@@ -336,7 +343,8 @@ def _entrees(files):
                 nom_tome = titre_tome(f.relative_to(MANGA_DIR).parts[0], tome)
                 sous = " · ".join(x for x in (f"« {nom_tome} »" if nom_tome else "", plage[:1].upper() + plage[1:] if plage else "") if x)
                 entree.update(num=None, tome=tome, couverts=couverts, title=tomes_cbz.dossier_tome(tome), sous=sous,   # 2e ligne
-                              titres_ch=wiki_fr(f.relative_to(MANGA_DIR).parts[0], tome))
+                              titres_ch=wiki_fr(f.relative_to(MANGA_DIR).parts[0], tome)
+                              or _sommaire_connu(f.relative_to(MANGA_DIR).parts[0], tome))
             out.append(entree)
             continue
         try:
@@ -350,7 +358,8 @@ def _entrees(files):
                         "groupe": tomes_cbz.dossier_tome(info.get("tome")), "debut": c["debut"], "nb": c["nb"],
                         "groupe_titre": titre_tome(f.relative_to(MANGA_DIR).parts[0], info.get("tome")) or "",
                         "titre_ch": c["titre"],
-                        "titres_ch": bool(c["titre"]) or wiki_fr(f.relative_to(MANGA_DIR).parts[0], info.get("tome")),
+                        "titres_ch": bool(c["titre"]) or wiki_fr(f.relative_to(MANGA_DIR).parts[0], info.get("tome"))
+                                      or _sommaire_connu(f.relative_to(MANGA_DIR).parts[0], info.get("tome")),
                         "size_mb": round(taille * c["nb"] / total / 1048576, 1)})
     if any(e["groupe"] or e.get("tome") is not None for e in out):
         out.sort(key=_ordre_entree)

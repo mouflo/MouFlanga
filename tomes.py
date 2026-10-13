@@ -721,7 +721,11 @@ def resume_tome_google(serie: str, tome) -> str:
     texte = ""
     for titre in list(dict.fromkeys(x for x in (serie, st.get("titre")) if x)):
         try:
-            r = _SESSION.get(GOOGLE_BOOKS, params={"q": f"{titre} tome {n}", "langRestrict": "fr", "maxResults": 20, "key": cle}, timeout=15)
+            for essai in range(3):                         # Google répond parfois 503 : on réessaie avant d'abandonner
+                r = _SESSION.get(GOOGLE_BOOKS, params={"q": f"{titre} tome {n}", "langRestrict": "fr", "maxResults": 20, "key": cle}, timeout=15)
+                if r.status_code < 500:
+                    break
+                time.sleep(1.5)
             if r.status_code != 200:
                 return ""                                  # quota, clé refusée : on réessaiera, rien n'est gardé
             items = r.json().get("items") or []
