@@ -182,16 +182,17 @@
   }
 
   // ---------- 📮 Demandes de mangas (lecteur : chercher et demander ; admin : accepter ou refuser) ----------
-  var demResultats = [];
+  var demResultats = [], demListeCourante = [];
   var DEM_STATUT = {attente: '⏳ En attente', accepte: '✅ Acceptée', refuse: '❌ Refusée', dispo: '📚 Disponible'};
   async function chargerDemandes() {
     var r = await api('/api/demandes');
     var n = r.attente || 0;
     $('nbDemandes').hidden = !(r.admin && n); $('nbDemandes').textContent = n;
     var l = r.demandes || [];
-    $('demListe').innerHTML = l.length ? l.map(function (x) {
+    demListeCourante = l;
+    $('demListe').innerHTML = l.length ? l.map(function (x, i) {
       return '<div class="dem-ligne ' + x.statut + '">' + (x.couverture ? '<img src="' + esc(x.couverture) + '" alt="" loading="lazy">' : '<span class="dem-vide"></span>') +
-        '<div class="dem-info"><b class="dem-nom" role="link" tabindex="0" data-voir="' + i + '" title="Ouvrir la fiche">' + esc(x.titre) + '</b><small>' + (x.annee ? x.annee + ' · ' : '') + (r.admin ? 'par ' + esc(x.par) + ' · ' : '') + esc(x.date.slice(0, 10)) +
+        '<div class="dem-info"><b class="dem-nom" role="link" tabindex="0" data-voir-dem="' + i + '" title="Ouvrir la fiche">' + esc(x.titre) + '</b><small>' + (x.annee ? x.annee + ' · ' : '') + (r.admin ? 'par ' + esc(x.par) + ' · ' : '') + esc(x.date.slice(0, 10)) +
         '</small><span class="dem-statut">' + DEM_STATUT[x.statut] + (x.motif ? ' — ' + esc(x.motif) : '') + '</span></div><div class="dem-act">' +
         (x.statut === 'attente' ? (r.admin ? '<button type="button" data-dem="accepter" data-id="' + x.id + '">✅</button><button type="button" class="ghost" data-dem="refuser" data-id="' + x.id + '">❌</button>'
                                            : '<button type="button" class="ghost" data-dem="retirer" data-id="' + x.id + '">Retirer</button>') : '') + '</div></div>';
@@ -546,9 +547,11 @@
         if (rm.ok) loadList();
         return;
       }
-      var vo = e.target.closest('[data-voir]');
+      var vo = e.target.closest('[data-voir],[data-voir-dem]');
       if (vo && !document.body.classList.contains('lecteur')) {      // toucher le nom : la fiche dans MouFlanga (la série est ajoutée si besoin)
-        var xv = demResultats[+vo.dataset.voir], cv = sansAccents(xv.titre).replace(/[^a-z0-9]/g, '');
+        var xv = vo.dataset.voirDem !== undefined ? demListeCourante[+vo.dataset.voirDem] : demResultats[+vo.dataset.voir];
+        if (!xv) return;
+        var cv = sansAccents(xv.titre).replace(/[^a-z0-9]/g, '');
         var ex = series.filter(function (z) { return sansAccents(z.title).replace(/[^a-z0-9]/g, '') === cv; })[0];
         var nomv = ex ? ex.id : xv.titre.trim();
         if (!ex) {

@@ -5,6 +5,7 @@
 - ⓘ Fiche d'un tome : de 1,5 à 6 secondes avant, environ 0,05 s maintenant (même en revenant sur un tome déjà ouvert).
 - 📚 Liste de la bibliothèque : de 1,3 à 5,7 secondes avant, environ 0,25 s une fois chaud ; les fiches d'identification et les infos de chaque tome ne sont plus relues à chaque affichage tant que leur fichier n'a pas changé.
 - ♾️ Défilement infini : la page affiche les 36 premières séries, les suivantes arrivent en descendant. La recherche, les lettres et les filtres portent toujours sur toute la bibliothèque.
+- 📮 Demandes : la liste des demandes ne s'affichait plus (erreur de page, `i is not defined`) ; elle est réparée, et toucher le nom d'une demande ouvre bien sa fiche.
 - 👥 Plusieurs lecteurs en même temps : chaque écriture de progression utilise son propre fichier temporaire (plus de collision entre deux enregistrements simultanés).
 
 ## 07-Ghost : résumé, chapitres et sommaire en colonnes (13 octobre 2026)
