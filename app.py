@@ -412,6 +412,24 @@ def _volumes_attendus(name):
     return v or ((tomes._charger(name) or {}).get("statut_officiel") or {}).get("volumes")
 
 
+def _volumes_edition(name):
+    """Nombre de tomes de l'édition importée (nom de l'archive « … (01-18) », « Intégrale 15 tomes »), ou None."""
+    import edition
+    infos = edition.lire(MANGA_DIR / name)
+    return infos.get("volumes_attendus") or max(
+        [n for n in (edition.volumes_du_titre(a) for a in infos.get("archives", [])) if n] or [0]) or None
+
+
+def _texte_volumes(name, officiel):
+    """« 18 tomes dans ton édition (AniList en annonce 27) » : l'édition importée prime sur l'édition standard."""
+    ed = _volumes_edition(name)
+    if ed and officiel and int(ed) != int(officiel):
+        return f" · {ed} tomes dans ton édition (AniList en annonce {officiel} pour l'édition standard)"
+    if ed:
+        return f" · {ed} tomes"
+    return f" · {officiel} tome(s) annoncés" if officiel else ""
+
+
 def _etat_serie(name, entrees):
     """Marque de la couverture : fini (et tout est là), incomplet (fini officiellement mais il manque des tomes ou
     chapitres), en_cours, pause, arrete ; None si inconnu. Avec un résumé lisible pour la page de la série."""
@@ -3023,7 +3041,7 @@ def _relancer_identification(serie):
         resume_txt = " · résumé " + ({"fr": "en français", "en": "en anglais"}.get(brut_st.get("resume_langue"), "trouvé") if brut_st.get("resume") else "introuvable")
         if st:
             _etape(serie, 2, "ok", f"{ {'FINISHED': 'terminée', 'RELEASING': 'en cours', 'HIATUS': 'en pause', 'CANCELLED': 'arrêtée'}.get(st.get('statut'), st.get('statut') or '?') }"
-                                   + (f" · {st['volumes']} tome(s) annoncés" if st.get("volumes") else "") + resume_txt)
+                                   + _texte_volumes(serie, st.get("volumes")) + resume_txt)
         elif _etapes_etat(serie, 2) != "echec":
             _etape(serie, 2, "ok", "pas trouvé sur AniList" + resume_txt)
         tome_info = lancer(1, lambda: tomes.chercher(serie, forcer=True))
@@ -3135,7 +3153,7 @@ def _infos_comicinfo(serie):
         return {}
     annee = re.search(r"(\d{4})", f.get("debut") or "")
     return {"auteur": f.get("scenario", ""), "dessin": f.get("dessin", ""), "editeur": f.get("editeur_fr") or f.get("editeur_jp", ""),
-            "annee": annee.group(1) if annee else "", "tomes": st.get("volumes") or "", "genres": f.get("genres", ""),
+            "annee": annee.group(1) if annee else "", "tomes": _volumes_edition(serie) or st.get("volumes") or "", "genres": f.get("genres", ""),
             "lien": f"https://anilist.co/manga/{st['anilist']}"}
 
 
@@ -3379,7 +3397,7 @@ def api_fiche():
     membres = sorted((x for x in _scan() if x != name and _univers_de(x)["univers"] == u["univers"]), key=lambda x: (_univers_de(x)["ordre_univers"] or 0, x)) if u["univers"] else []
     return jsonify({**{k: v for k, v in f.items() if k != "date"}, "versions": versions,
                     "edition": _infos_edition(name, files),
-                    "source_suivi": s.get("source", ""), "lien_source": s.get("lien", ""),
+                    "source_suivi": s.get("source", ""), "lien_source": s.get("lien", ""), "volumes_edition": _volumes_edition(name) or "",
                     "univers": u["univers"], "ordre_univers": u["ordre_univers"], "membres_univers": membres})
 
 

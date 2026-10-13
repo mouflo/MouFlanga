@@ -3,6 +3,7 @@
 ## Résumé de tome sans la présentation de la série ; boutons sous les chapitres (13 octobre 2026)
 - 📖 Le résumé d'un tome ne commence plus par la présentation de la série entière (la même phrase d'accroche sur chaque tome) : le début commun aux autres tomes est retiré ; s'il ne reste rien de propre au tome, rien n'est affiché.
 - 🛟 Les résumés de tomes déjà trouvés ne sont plus effacés quand la série est ré-identifiée (c'était la cause des résumés qui disparaissaient) ; le début parasite reconnu est mémorisé et retiré d'office des nouveaux tomes.
+- 🔢 Nombre de tomes : l'identification affiche « 18 tomes dans ton édition (AniList en annonce 27 pour l'édition standard) » au lieu du seul chiffre d'AniList ; la fiche ⓘ a une ligne « Tomes de ton édition » ; les ComicInfo des tomes portent aussi le nombre de ton édition.
 - ↕️ Fiche d'un tome : les boutons « Garder sur ce téléphone », « Noter la provenance » et « Relire le sommaire » passent sous la liste des chapitres.
 
 ## Sommaire : épilogue sans numéro et symboles parasites (13 octobre 2026)
