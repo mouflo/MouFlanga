@@ -2616,6 +2616,10 @@ def _remplacer_tomes(nom, numeros):
                     p["read"] = sorted(set(p["read"]) - chap | {cle})
                     _write_json(_pf, data)
         _vers_corbeille(ancien)
+        try:
+            ancien.parent.rmdir()                       # « Tome NN » vidé par le remplacement : pas de dossier vide qui traîne
+        except OSError:
+            pass
         n += 1
     if n:
         import edition

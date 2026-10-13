@@ -1,5 +1,11 @@
 # Historique des versions
 
+## Remplacement : plus de dossiers « Tome NN » vides
+- 🧹 Quand un remplacement met un tome à la corbeille, son dossier « Tome NN » vide est supprimé aussi (avant il restait vide).
+
+## Rescan des torrents accessible depuis la bibliothèque (13 octobre 2026)
+- 🔄 Un bouton **Rescanner les torrents** est maintenant sur la page d'accueil, à côté de « Télécharger des mangas » (admin seulement). Il ouvre la page Importer → Dossier des torrents, qui relit `Mouflanga.NOK`.
+
 ## Remplacer par une intégrale : les tomes absents partent aussi (13 octobre 2026)
 - 🧲 Quand un torrent d'intégrale (« Perfect INTEGRALE », « Perfect Édition (01-18) »…) remplace les tomes, les tomes de l'ancienne édition qu'il ne contient pas (ex. 19 à 27) vont aussi à la corbeille (30 jours). Seulement si l'intégrale annonce N tomes et les apporte tous (1 à N) ; sinon rien de plus n'est retiré.
 
