@@ -261,6 +261,9 @@ def _enregistrer(serie: str, info: dict):
         ancien = json.loads(_fichier(serie).read_text(encoding="utf-8"))
         if ancien.get("statut_officiel"):
             donnees["statut_officiel"] = ancien["statut_officiel"]
+        for k in ("resumes_tomes", "intros"):              # résumés de tomes et débuts parasites appris : jamais perdus
+            if ancien.get(k):
+                donnees[k] = ancien[k]
     except (OSError, ValueError):
         pass
     tmp = _fichier(serie).with_suffix(".tmp")
@@ -677,6 +680,10 @@ def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
     On retire le début commun aux autres tomes gardés en mémoire (coupé à la fin d'une phrase) ; s'il ne reste rien
     de propre à ce tome, on ne met rien."""
     texte = texte or ""
+    intros = brut.setdefault("intros", [])
+    for intro in intros:                               # début déjà reconnu comme parasite sur d'autres tomes
+        if intro and texte.startswith(intro):
+            texte = texte[len(intro):].lstrip()
     for k, v in (brut.get("resumes_tomes") or {}).items():
         autre = v.get("texte") or ""
         if k == str(n) or not autre or not texte:
@@ -689,6 +696,9 @@ def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
         if i == len(texte) == len(autre):
             return ""                                  # exactement le même texte : présentation de la série
         if coupe >= 40:
+            intro = texte[:coupe + 2]
+            if intro not in intros:
+                intros.append(intro)
             texte = texte[coupe + 2:].lstrip()
     st = brut.get("statut") or brut.get("statut_officiel") or {}
     if texte and st.get("resume") and _simple(texte)[:160] == _simple(st["resume"])[:160]:
