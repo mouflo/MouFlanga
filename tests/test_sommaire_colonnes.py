@@ -98,3 +98,33 @@ class PagesSures(unittest.TestCase):
 
     def test_moins_de_deux_pages_sures(self):
         self.assertEqual(sommaire._pages_sures([{"num": 1, "titre": "a", "page": 5}, {"num": 2, "titre": "b", "page": None}]), [])
+
+
+class EpisodesEnLettres(unittest.TestCase):
+    def test_nombres_en_lettres(self):
+        for t, n in (("Trente-troisième", 33), ("Trentième et unième", 31), ("Vingt et unième", 21), ("Quatre-vingt-dixième", 90),
+                     ("Quatre-vingtième", 80), ("Dix-septième", 17)):
+            self.assertEqual(sommaire.nombre_fr(t), n)
+        self.assertIsNone(sommaire.nombre_fr("Interlude"))
+
+    def test_sommaire_avec_cartes_et_speciaux(self):
+        r = sommaire.analyser("SOMMAIRE\nÉpisode spécial 2 : 4♣ - Première partie page 3\nTrentième épisode : Vingt-troisième jour page 71\n"
+                              "Trente-deuxième épisode : K♣ - Première partie page 137\nÉpisode spécial 3 : 6♦ - Première partie page 150")
+        self.assertEqual([x["num"] for x in r], [29.1, 30.0, 32.0, 32.1])
+        self.assertEqual(r[2]["titre"], "K♣ - Première partie")
+        self.assertEqual(r[0]["titre"], "Épisode spécial 2 : 4♣ - Première partie")
+
+    def test_couleurs_de_cartes(self):
+        from PIL import Image, ImageDraw, ImageFont
+        police = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+        if not Path(police).exists():
+            self.skipTest("police absente")
+        for signe in "♠♣♥♦":
+            im = Image.new("L", (80, 80), 255)
+            ImageDraw.Draw(im).text((15, 10), signe, font=ImageFont.truetype(police, 48), fill=0)
+            self.assertEqual(sommaire.couleur_de_carte(im), signe)
+
+    def test_isbn(self):
+        self.assertEqual(sommaire.isbn_du_texte("ISBN : 978-2-82030-279-3"), "9782820302793")
+        self.assertTrue(sommaire.isbn_valide("9782756058061"))
+        self.assertFalse(sommaire.isbn_valide("9782756058062"))

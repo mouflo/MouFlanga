@@ -320,6 +320,16 @@ def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
     """Un passage du suivi : progression, ou copie + import + déplacement vers « OK » quand c'est fini."""
     if True:
         for j in en_cours:
+            if j["etat"] in ("telechargement", "a_valider") and _ETAT.get("nom_serie"):
+                try:                                   # « Kurokos Basket Extra Game » rangé à tort dans « Kurokos Basket » : c'est une suite
+                    nouveau = _ETAT["nom_serie"](j.get("titre") or "")
+                except Exception:
+                    nouveau = ""
+                if nouveau and nouveau.startswith(j["serie"] + " : "):
+                    logger.info("Torrent %s : série corrigée « %s » → « %s »", j.get("titre"), j["serie"], nouveau)
+                    _maj(j["id"], serie=nouveau, etat="telechargement", remplacer=None,
+                         message=f"Série corrigée : suite de « {j['serie']} », rangée à part.")
+                    j["serie"], j["etat"], j["remplacer"] = nouveau, "telechargement", None
             if j["etat"] != "telechargement":
                 continue
             try:

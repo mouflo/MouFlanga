@@ -1358,7 +1358,7 @@
       var cov = '/api/tome/couverture?id=' + encodeURIComponent(current.id) + '&tome=' + n;
       var prov = d.provenance || {};
       var provTexte = (prov.equipe ? 'Équipe : ' + prov.equipe + ' · ' : '') + (prov.origine || '') + (prov.manuel ? ' (saisi à la main)' : '');
-      var champs = [['Titre', d.titre], ['Sortie en France', d.sortie], ['Provenance', provTexte.trim() ? provTexte : '']].filter(function (x) { return x[1]; });
+      var champs = [['Titre', d.titre], ['Sortie en France', d.sortie], ['ISBN', d.isbn], ['Provenance', provTexte.trim() ? provTexte : '']].filter(function (x) { return x[1]; });
       var chap = d.chapitres || [], pagesCh = d.chapitres_pages || [];
       var lien = function (c, i) {                    // chapitre lu dans le sommaire d'un tome complet : ouvert à sa page
         if (d.fichier && pagesCh[i] != null) return '<a href="/lire?s=' + encodeURIComponent(current.id) + '&c=' + encodeURIComponent(d.fichier) + '&p=' + pagesCh[i] + '">' + esc(c) + '</a>';
@@ -1394,6 +1394,7 @@
           '<button type="button" class="mou-btn ghost" id="chapAnnuler">Annuler</button></div></div>' : '') +
         boutonGarder(n) +
         '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-prov="' + n + '">✏️ Noter la provenance (équipe, origine)</button>' +
+        '<button type="button" class="mou-btn ghost admin-seul" data-isbn="' + n + '">📚 Noter les ISBN de la série</button>' +
         (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '"' + (som.manuel ? ' data-manuel="1"' : '') + '>🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' +
         (d.ecriture_possible ? '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEcrire" data-tome="' + n + '" title="Résumé, chapitres, provenance… suivent le fichier quand tu le partages">📝 Écrire les infos dans le fichier</button></div>' : '') +
         '<div id="chapEcrireMsg" class="dem-sous"></div>' ;
@@ -1403,6 +1404,15 @@
       if (im) im.addEventListener('error', function () { im.style.display = 'none'; });
       if (som.en_cours) suiviSommaire = setTimeout(function () { afficherTome(n, false); }, 4000);
     }
+    $('infosCorps').addEventListener('click', async function (e) {         // 📚 ISBN collés (Tome 01 : 978…, Tome 02 : 978…)
+      var bi = e.target.closest('[data-isbn]'); if (!bi) return;
+      var t = prompt('Colle les ISBN de la série (ex. « Tome 01 : 9782756058061 Tome 02 : 9782756058078 … »)', '');
+      if (!t) return;
+      var r = await post('/api/serie/isbn', {series: current.id, texte: t});
+      if (!r.ok) { alert(r.error || 'Impossible'); return; }
+      window.MouToast('✅ ' + r.message, 'ok');
+      afficherTome(bi.dataset.isbn, false);
+    });
     $('infosCorps').addEventListener('click', async function (e) {         // ✏️ résumé du tome écrit à la main
       var m = e.target.closest('#tomeResumeModif');
       if (m) {

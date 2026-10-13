@@ -1,5 +1,13 @@
 # Historique des versions
 
+## 📖 Sommaires : Alice in Borderland, Air Gear, ISBN, spin-offs (13 octobre 2026)
+- ♠️♣️♥️♦️ **Alice in Borderland** : les épisodes écrits en lettres (« Trente-troisième épisode », « Trentième et unième »), les « Épisode spécial N » (numérotés 33,1 ; 33,2…) et les figures de cartes des titres (« K♣ - Première partie », « 10♥ ») sont lus ; la couleur de chaque carte est reconnue d'après sa forme.
+- 🛹 **Air Gear** : les rangées « Trick:6 ..... 5 » (sans titre, en pastilles) sont lues ; les chapitres s'appellent « Trick 6 », leurs pages sont retrouvées par les numéros imprimés.
+- 📚 **ISBN** : l'ISBN imprimé dans le tome est gardé comme info (fiche ⓘ) ; « 📚 Noter les ISBN de la série » enregistre une liste collée (« Tome 01 : 978… »), avec contrôle de la somme de contrôle.
+- 07-Ghost : lecture des sommaires en colonnes bien plus fidèle (mots lus en normal et en texte clair, ordre des chapitres en quinconce, pages candidates, titres relus en entier).
+- 🖼 Remplacer toutes les couvertures : on choisit la langue voulue (automatique, français, anglais ou japonais seulement) ; les tomes sans couverture dans cette langue sont laissés tels quels.
+- 🧲 « Kurokos Basket Extra Game » et « Replace Plus » (spin-offs) ne sont plus pris pour la série principale : ils vont dans leur propre dossier « Kurokos Basket : Extra Game » ; un torrent déjà ajouté est corrigé tout seul.
+
 ## 🔧 Sommaires difficiles, bouton retour, filtres (13 octobre 2026)
 - 📖 Sommaire des tomes 2 et 3 de 07-Ghost enfin lu : un chapitre écrit sur fond sombre (« Kapitel·9 ») n'était pas vu par la lecture de la page entière, ce qui faisait refuser tout le tome. Les trous entre deux chapitres sont maintenant relus seuls, et le texte clair sur un dessin (vert pâle sur blanc) est lu en colonnes.
 - 🔢 Numéros de page : les chiffres rouges sur halo clair (« 131 »), les « 7 » penchés et les chiffres collés sont mieux lus ; un numéro qui casse l'ordre croissant est écarté, et une page illisible est estimée entre ses voisines (le titre cherché dans les pages voisines tranche ensuite). Le sommaire lui-même n'est plus pris pour une page de chapitre.

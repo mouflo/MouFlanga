@@ -1084,6 +1084,33 @@ def api_tome_provenance():
     return jsonify({"ok": True, "message": f"Tome {tome} : provenance enregistrée."})
 
 
+@app.route("/api/serie/isbn", methods=["POST"])
+def api_serie_isbn():
+    """Enregistre des ISBN collés à la main : « Tome 01 : 9782756058061 » (un par tome, même sur une seule ligne)."""
+    import edition
+    import sommaire
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    texte = str(body.get("texte", ""))
+    trouves = {}
+    for m in re.finditer(r"(?:tome|t|vol(?:ume)?\.?)?\s*0*(\d{1,3})\s*[:=\-–]?\s*(97[89][\d\- ]{10,16})", texte, re.I):
+        c = re.sub(r"\D", "", m.group(2))[:13]
+        trouves[str(int(m.group(1)))] = c
+    if not trouves:
+        return jsonify({"ok": False, "error": "Aucun ISBN reconnu (ex. « Tome 01 : 9782756058061 »)."}), 400
+    mauvais = [t for t, c in trouves.items() if not sommaire.isbn_valide(c)]
+    dossier = MANGA_DIR / name
+    infos = edition.lire(dossier)
+    infos.setdefault("isbn", {}).update({t: c for t, c in trouves.items() if t not in mauvais})
+    edition.ecrire(dossier, infos)
+    msg = f"{len(trouves) - len(mauvais)} ISBN enregistrés."
+    if mauvais:
+        msg += " Refusés (somme de contrôle fausse) : tome " + ", ".join(sorted(mauvais, key=int)) + "."
+    return jsonify({"ok": True, "message": msg})
+
+
 @app.route("/api/tome/couverture")
 def api_tome_couverture():
     """Couverture d'un tome = première page de son fichier (déjà sur le NAS), petite ou grande (?grand=1)."""
@@ -1552,7 +1579,16 @@ def couvertures_appliquer():
     if request.form.get("tout") == "1":
         trouvees = couvertures_tomes.couvertures_en_ligne(name, _titres_serie(name))
         presents = set(_tomes_presents(name))
-        cibles = [(n, _preferees(c)[0]["url"]) for n, c in trouvees.items() if c and n in presents]
+        langue = request.form.get("langue", "auto")             # auto : français, sinon anglais, sinon japonais ; sinon seulement cette langue
+        cibles, sans_langue = [], 0
+        for n, c in trouvees.items():
+            if not c or n not in presents:
+                continue
+            choix = _preferees(c) if langue == "auto" else [x for x in _preferees(c) if x.get("langue") == langue]
+            if choix:
+                cibles.append((n, choix[0]["url"]))
+            else:
+                sans_langue += 1
     else:
         try:
             cibles = [(int(request.form.get("tome", "")), request.form.get("url", ""))]
@@ -1567,8 +1603,11 @@ def couvertures_appliquer():
             logger.warning("Couverture du tome %s de %s : %s", n, name, e)
             echecs += 1
     if not faits:
-        return _retour_couvertures(name, erreur="Aucune couverture remplacée" + (f" ({echecs} échec(s))." if echecs else "."))
+        return _retour_couvertures(name, erreur="Aucune couverture remplacée" + (f" ({echecs} échec(s))." if echecs else ".")
+                                   + (f" {sans_langue} tome(s) sans couverture dans cette langue." if request.form.get("tout") == "1" and sans_langue else ""))
     msg = f"{faits} couverture(s) remplacée(s)" + (f" · {echecs} échec(s)" if echecs else "") + " (les anciennes sont gardées)."
+    if request.form.get("tout") == "1" and sans_langue:
+        msg += f" {sans_langue} tome(s) sans couverture dans la langue choisie : laissés tels quels."
     return _retour_couvertures(name, ok=msg)
 
 
@@ -2679,6 +2718,12 @@ def _titre_officiel(t):
     return _titre_anilist(t) or t
 
 
+_MOTS_SUITE = {"extra", "game", "replace", "plus", "zero", "gaiden", "side", "story", "stories", "special", "spécial", "hors",
+               "série", "serie", "ova", "omake", "artbook", "fanbook", "databook", "origin", "origins", "next", "after", "new",
+               "returns", "season", "saison", "final", "last", "ex", "bonus", "memories", "chronicle", "chronicles", "revival",
+               "reboot", "remake", "prologue", "épilogue", "epilogue", "sequel", "generation", "generations", "next", "re"}
+
+
 def _nom_depuis_archive(nom_fichier, existantes):
     """Nom de série d'une archive (voir _nom_sans_edition). Une autre édition d'une série déjà là (« Gantz - Perfect Édition »
     alors que « Gantz » existe) a son propre dossier « Gantz : Perfect Édition » : les deux éditions ne se mélangent pas."""
@@ -2721,17 +2766,22 @@ def _nom_sans_edition(nom_fichier, existantes):
             # « Jujutsu Kaisen Gege Akutami » : si le nom entier est inconnu, les deux derniers mots sont peut-être l'auteur
             mots_t = t.split()
             avant = " ".join(mots_t[:-2])
+            # « Kurokos Basket Extra Game » : « Extra Game » est une suite (spin-off), pas des noms d'auteur
+            suite = any(m.lower().strip(":-–") in _MOTS_SUITE for m in mots_t[-2:])
             deja = next((e for e in existantes if _cle_nom(e) == _cle_nom(avant)), None)
-            if deja:
+            if deja and not suite:
                 return deja
-            officiel = _titre_anilist(avant) or None
+            officiel = (_titre_anilist(avant) or None) if not suite else None
         t = _nom_serie(officiel or t)
     # Suite d'une série déjà là (« Akame ga Kill! Zero » et « Akame ga Kill ! ») → « Akame ga Kill ! : Zero »
     mots = t.split()
     for e in sorted(existantes, key=len, reverse=True):
         for k in range(1, len(mots)):
             if _cle_nom(" ".join(mots[:k])) == _cle_nom(e) and _cle_nom(" ".join(mots[k:])):
-                return _nom_serie(f"{e} : {' '.join(mots[k:]).lstrip(':-– ')}")
+                reste = mots[k:]
+                while len(reste) >= 3 and all(m.isupper() and len(m) >= 3 for m in reste[-2:]) and not reste[-3].isupper():
+                    reste = reste[:-2]                         # « Replace Plus TAKAHASHI FUJIMAKI » : noms d'auteurs en fin de nom
+                return _nom_serie(f"{e} : {' '.join(reste).lstrip(':-– ')}")
     for e in existantes:                                   # série déjà dans la bibliothèque (ex. Gamaran)
         if _cle_nom(e) == _cle_nom(t):
             return e
@@ -3850,6 +3900,8 @@ def api_tome():
     if not prov and (nf.get("equipe") or nf.get("origine")):     # série reçue sans ses infos : la provenance est dans le fichier
         prov = {"equipe": nf.get("equipe", ""), "origine": nf.get("origine", ""), "manuel": bool(nf.get("provenance_manuelle"))}
     d["provenance"] = prov
+    isbn_infos = edition.lire(MANGA_DIR / name)
+    d["isbn"] = (isbn_infos.get("isbn") or {}).get(str(int(tome))) or ((isbn_infos.get("sommaires") or {}).get(str(int(tome))) or {}).get("isbn", "")
     d["ecriture_possible"] = bool(_tome_complet(name, int(tome))) and not fic.lower().endswith(".cbr") and tomes_cbz.lire_info(MANGA_DIR / fic) is None
     perso = (edition.lire(MANGA_DIR / name).get("resumes_tomes") or {}).get(str(int(tome)))
     if perso:                                            # résumé écrit à la main : prioritaire sur Internet
@@ -3954,6 +4006,8 @@ def _lire_sommaire(name, tome, e):
 
     def enregistrer(r):
         infos = edition.lire(MANGA_DIR / name)
+        if r.get("isbn") and not (infos.get("isbn") or {}).get(str(tome)):        # ISBN imprimé dans le tome : gardé comme info
+            infos.setdefault("isbn", {})[str(tome)] = r["isbn"]
         avant = (infos.get("sommaires") or {}).get(str(tome)) or {}
         if avant.get("manuel") or avant.get("valide_le"):
             # fiche déjà validée avec des titres d'avant (souvent ceux de Wikipédia) : relue une fois avec le lecteur

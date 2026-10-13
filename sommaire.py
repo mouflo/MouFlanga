@@ -73,6 +73,63 @@ def _numero(brut):
     except ValueError:
         return None
 
+_UNITES = {"zéro": 0, "zero": 0, "un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "six": 6, "sept": 7, "huit": 8,
+           "neuf": 9, "dix": 10, "onze": 11, "douze": 12, "treize": 13, "quatorze": 14, "quinze": 15, "seize": 16}
+_DIZAINES = {"vingt": 20, "trente": 30, "quarante": 40, "cinquante": 50, "soixante": 60, "cent": 100}
+_ORDINAUX = {"premier": 1, "première": 1, "premiere": 1, "second": 2, "seconde": 2, "unième": 1, "deuxième": 2, "troisième": 3,
+             "quatrième": 4, "cinquième": 5, "sixième": 6, "septième": 7, "huitième": 8, "neuvième": 9, "dixième": 10,
+             "onzième": 11, "douzième": 12, "treizième": 13, "quatorzième": 14, "quinzième": 15, "seizième": 16,
+             "vingtième": 20, "trentième": 30, "quarantième": 40, "cinquantième": 50, "soixantième": 60, "centième": 100}
+
+
+def isbn_du_texte(texte: str):
+    """ISBN-13 imprimé (« ISBN : 978-2-82030-279-3 »), chiffres seuls, ou None. Seule la somme de contrôle valide le garde."""
+    for m in re.finditer(r"ISBN[\s:\-]*((?:97[89])[\d\s\-]{10,17})", texte or "", re.I):
+        c = re.sub(r"\D", "", m.group(1))[:13]
+        if isbn_valide(c):
+            return c
+    return None
+
+
+def isbn_valide(c: str) -> bool:
+    if not re.fullmatch(r"97[89]\d{10}", c or ""):
+        return False
+    somme = sum(int(d) * (1 if i % 2 == 0 else 3) for i, d in enumerate(c[:12]))
+    return (10 - somme % 10) % 10 == int(c[12])
+
+
+def nombre_fr(texte: str):
+    """« Trente-troisième », « Trentième et unième », « Vingt et unième », « Quatre-vingt-dixième » → 33, 31, 21, 90 ;
+    None si ce n'est pas un nombre en lettres."""
+    mots = [m for m in re.split(r"[\s\-]+", (texte or "").lower().strip()) if m and m != "et"]
+    if not mots:
+        return None
+    total, courant = 0, 0
+    for k, m in enumerate(mots):
+        if m in _ORDINAUX:
+            v = _ORDINAUX[m]
+        elif m in _UNITES:
+            v = _UNITES[m]
+        elif m in _DIZAINES:
+            v = _DIZAINES[m]
+        elif m in ("quatre", "vingts", "cents"):
+            v = 0
+        else:
+            return None
+        if m in ("vingt", "vingts", "vingtième") and mots[k - 1:k] == ["quatre"]:
+            courant = courant - 4 + 80 if courant >= 4 else 80
+        elif m in ("cent", "cents") and courant in range(2, 10):
+            courant *= 100
+        else:
+            courant += v
+    return courant or None
+
+
+_LIGNE_EPISODE = re.compile(r"^\W*(?P<ord>[A-Za-zéèêîïôûùàçÉ'’\- ]+?)\s+(?:[ée]pisode|chapitre)\s*:?\s*(?P<titre>.*?)[\s.·…_]*"
+                            r"(?:page\s*)?(?P<page>\d{1,3})\s*$", re.I)
+_LIGNE_EPISODE_SPECIAL = re.compile(r"^\W*[ée]pisodes?\s+sp[ée]cial(?:e)?\s*(?P<n>\d{1,2})?\s*:?\s*(?P<titre>.*?)[\s.·…_]*"
+                                    r"(?:page\s*)?(?P<page>\d{1,3})\s*$", re.I)
+
 
 def analyser(texte: str) -> list[dict]:
     """Lignes de sommaire d'une page : [{"num", "titre", "page"}] (numéro illisible → suite du précédent)."""
@@ -83,6 +140,20 @@ def analyser(texte: str) -> list[dict]:
             continue
         m = _LIGNE_MOT.match(ligne)
         num = titre = page = None
+        speciale = _LIGNE_EPISODE_SPECIAL.match(ligne)
+        ordinal = None if speciale else _LIGNE_EPISODE.match(ligne)
+        if speciale:                                          # « Épisode spécial 3 : 6♦ - Première partie page 99 »
+            reste = speciale.group("titre").strip(" .:-–—,'\"")
+            nom = "Épisode spécial" + (" " + speciale.group("n") if speciale.group("n") else "")
+            out.append({"num": None, "titre": nom + (" : " + reste if reste else ""), "page": int(speciale.group("page")),
+                        "special": True})
+            attente = None
+            continue
+        if ordinal and nombre_fr(ordinal.group("ord")) is not None:   # « Trente-troisième épisode : K♣ - Première partie page 3 »
+            out.append({"num": float(nombre_fr(ordinal.group("ord"))), "titre": ordinal.group("titre").strip(" .:-–—,'\""),
+                        "page": int(ordinal.group("page"))})
+            attente = None
+            continue
         if m:
             num, titre, page = _numero(m.group(1)), m.group(2), int(m.group(3))
             attente = None
@@ -114,7 +185,28 @@ def analyser(texte: str) -> list[dict]:
         if num is None:
             continue
         out.append({"num": num, "titre": titre, "page": page})
-    return out
+    return _numeroter_speciaux(out)
+
+
+def _numeroter_speciaux(lignes):
+    """Chapitres spéciaux (« Épisode spécial 3 ») : numérotés 33,1 ; 33,2… après le chapitre qui les précède (ou avant le
+    premier chapitre ordinaire s'ils ouvrent le tome), sans perturber la suite des chapitres."""
+    if not any(x.get("special") for x in lignes):
+        return lignes
+    reguliers = [x["num"] for x in lignes if not x.get("special") and x["num"] is not None]
+    if not reguliers:
+        return [x for x in lignes if not x.get("special")]
+    sortie, dernier, k = [], None, 0
+    premier = reguliers[0]
+    for x in lignes:
+        if x.get("special"):
+            base = dernier if dernier is not None else premier - 1
+            k += 1
+            sortie.append(dict(x, num=round(base + 0.1 * k, 1)))
+        else:
+            sortie.append(x)
+            dernier, k = x["num"], 0
+    return sortie
 
 
 def _numeros_suivis(lignes):
@@ -772,6 +864,13 @@ def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
         except Exception as e:                               # image illisible, tesseract en panne : page suivante
             logger.info("Sommaire de %s, page %d : %s", chemin, i, e.__class__.__name__)
             continue
+        if re.search(r"(?i)sommaire", textes[i]) and re.search(r"(?i)[ée]pisode", textes[i]) and _SUSPECT.search(textes[i]):
+            try:                                             # figures de cartes (♠ ♣ ♥ ♦) dans les titres : remises d'après leur forme
+                avec = texte_avec_cartes(octets)
+                if avec:
+                    textes[i] = avec
+            except Exception as e:
+                logger.info("Sommaire de %s, page %d (cartes) : %s", chemin, i, e.__class__.__name__)
         lignes = _numeros_suivis(analyser(textes[i]))
         clair = None
         if re.search(r"(?i)kapitel|chapitre|sommaire", textes[i]) and not _vraisemblable(lignes[:0]):
@@ -795,6 +894,13 @@ def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
                     textes[i], lignes = clair, _numeros_suivis(analyser(clair))
             except Exception as e:
                 logger.info("Sommaire de %s, page %d (couleur) : %s", chemin, i, e.__class__.__name__)
+        if not _vraisemblable(lignes) and re.search(r"(?i)tri[ck]k?[:.\s]|sommaire", textes[i]):
+            try:                                             # une rangée par chapitre, sans titre (« Trick:6 ..... 5 »)
+                rang = analyser_rangees(octets)
+                if _vraisemblable(rang):
+                    lignes = rang
+            except Exception as e:
+                logger.info("Sommaire de %s, page %d (rangées) : %s", chemin, i, e.__class__.__name__)
         if not _vraisemblable(lignes) and clair and re.search(r"(?i)kapitel|chapitre|sommaire", clair):
             try:                                             # texte clair sur dessin (Kapitel·12 vert pâle) en colonnes
                 cols = _numeros_suivis(analyser_colonnes(octets, mots_ocr(octets, clair=True)))
@@ -808,18 +914,30 @@ def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
             trouve, page_sommaire = lignes, i
         elif trouve and i > page_sommaire + 2:
             break
+    isbn = next((v for v in (isbn_du_texte(t) for t in textes.values()) if v), None)
+    if not trouve:                                           # pastilles empilées sans titre (« Trick:24 ..... 5 »)
+        for i in sorted(textes):
+            try:
+                octets = lire_page(i)
+                past = _numeros_suivis(analyser_pastilles(octets))
+            except Exception as e:
+                logger.info("Sommaire de %s, page %d (pastilles) : %s", chemin, i, e.__class__.__name__)
+                continue
+            if _vraisemblable(past):
+                trouve, page_sommaire = past, i
+                break
     if not trouve:
         if cle_claude():                                   # sommaire stylisé (Bakuman) : lu par l'analyse d'image de Claude
             try:
                 return lire_vision(lire_page, nb_pages, cle_claude())
             except Exception as e:
                 logger.info("Sommaire par Claude impossible pour %s : %s", chemin, e)
-        return {"chapitres": [], "page_sommaire": None, "decalage": None}
+        return {"chapitres": [], "page_sommaire": None, "decalage": None, **({"isbn": isbn} if isbn else {})}
     _completer_ordinaux(trouve)
     images, decalage = _images(trouve, textes, page_sommaire, lire_page, nb_pages, noms)
     for c, image in zip(trouve, images):
         c["image"] = image if image is not None and image < nb_pages else None
-    return {"chapitres": trouve, "page_sommaire": page_sommaire, "decalage": decalage}
+    return {"chapitres": trouve, "page_sommaire": page_sommaire, "decalage": decalage, **({"isbn": isbn} if isbn else {})}
 
 
 def _proche(mot, morceaux):
@@ -923,9 +1041,24 @@ def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=N
                 gagnante, maxi = i, sc
         return gagnante
 
+    generique = len(chapitres) >= 2 and lire_page is not None and all(
+        re.fullmatch(r"[A-Za-zÀ-ÿ]+\s*:?\s*\d+(?:[.,]\d)?", c.get("titre") or "") for c in chapitres)
+    glob = None
+    if generique:                                            # « Trick 6 » : aucun titre à chercher, les numéros imprimés décident
+        votes = Counter()
+        for c in chapitres:
+            for i in range(max(page_sommaire + 1, c["page"] - 2), min(nb_pages or 10 ** 6, c["page"] + 12)):
+                try:
+                    n = numero_imprime(lire_page(i))
+                except Exception:
+                    continue
+                if n is not None and abs(n - c["page"]) <= 6:
+                    votes[i - n] += 1
+        if votes:
+            glob = votes.most_common(1)[0][0]
     for k, c in enumerate(chapitres):
         mots = _mots_titre(c["titre"])
-        par_nom = _image_par_nom(c["page"], noms, page_sommaire)
+        par_nom = _image_par_nom(c["page"], noms, page_sommaire) if glob is None else c["page"] + glob
         if par_nom is not None:
             image = par_nom             # essayé : ajuster sur le titre des pages voisines accorde moins (23/45 contre 29/45)
         else:
@@ -1014,6 +1147,205 @@ def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer, noms=None):
                 _ETAT[cle] = {"en_cours": False, "message": msg}
     threading.Thread(target=travail, daemon=True).start()
     return True
+
+
+# ---------------------------------------------------------------- Rangées « Trick:6 ........ 5 » (sans titre : Air Gear)
+
+_MOT_CLE_RANGEE = ("trick", "chapitre", "kapitel", "chapter", "episode", "épisode", "scene", "scène", "acte", "round", "stage",
+                   "mission", "file", "level", "lesson", "leçon")
+
+
+def analyser_rangees(image_octets: bytes, mots=None) -> list[dict]:
+    """Sommaire fait d'une rangée par chapitre, « Trick:6 ........ 5 » : le chapitre n'a pas de titre, il s'appelle « Trick 6 ».
+    [{"num", "titre", "page"}] ou []. Les numéros se déduisent de la suite (les rangées se suivent)."""
+    mots = mots if mots is not None else mots_ocr(image_octets, psm=6)
+    rangees = []
+    for m in sorted(mots, key=lambda m: (m["y"] + m["h"] / 2, m["x"])):
+        cy = m["y"] + m["h"] / 2
+        if rangees and abs(cy - rangees[-1][0]) <= max(10, m["h"] * 0.6):
+            rangees[-1][1].append(m)
+        else:
+            rangees.append([cy, [m]])
+    lignes = []
+    for _, r in rangees:
+        r.sort(key=lambda m: m["x"])
+        cle = None
+        for k, m in enumerate(r):
+            lettres = re.sub(r"[^a-zéè]", "", m["t"].lower().split(":")[0].split(".")[0])
+            lettres = re.sub(r"^c(?=trick)", "", lettres)
+            if len(lettres) >= 4 and any(difflib.SequenceMatcher(None, lettres, c).ratio() >= .8 for c in _MOT_CLE_RANGEE):
+                cle = k
+                break
+        if cle is None or len(r) < 2:
+            continue
+        reste = r[cle + 1:]
+        chiffres = re.sub(r"^[^:.\-–—]*[:.\-–—]?", "", r[cle]["t"])
+        num_txt = re.sub(r"\W", "", chiffres)
+        # tokens voisins du mot-clé (« Trick:1 » puis « 1 ») : suite du numéro
+        while reste and re.fullmatch(r"[0-9OolI|]{1,2}", reste[0]["t"]) and reste[0]["x"] - (r[cle]["x"] + r[cle]["w"]) < 60 \
+                and len(reste) > 1:
+            num_txt += reste[0]["t"]
+            r[cle] = dict(r[cle], w=r[cle]["w"] + reste[0]["w"] + 5)
+            reste = reste[1:]
+        page = None
+        for m in reversed(reste):
+            t = re.sub(r"[^\dOolIS|]", "", m["t"])
+            if t and re.fullmatch(r"[\dOolIS|]{1,3}", t):
+                page = _numero(t)
+                break
+        if page is None:
+            continue
+        lignes.append({"num": _numero(num_txt) if num_txt else None, "page": int(page), "y": r[0]["y"]})
+    if len(lignes) < 2:
+        return []
+    # les rangées se suivent : numéro = début + rang ; le début est le plus souvent lu
+    bases = Counter(int(x["num"]) - i for i, x in enumerate(lignes) if x["num"] is not None)
+    if not bases:
+        return []
+    base = bases.most_common(1)[0][0]
+    mot = "Trick"
+    sortie = [{"num": float(base + i), "titre": f"{mot} {base + i}", "page": x["page"]} for i, x in enumerate(lignes)]
+    return sortie if _vraisemblable(sortie) else []
+
+
+def analyser_pastilles(image_octets: bytes) -> list[dict]:
+    """Sommaire en pastilles empilées (Air Gear : « Trick:24 ......... 5 » dans une pilule par chapitre, sans titre) :
+    chaque pastille est repérée à ses deux traits horizontaux, puis le nom et la page sont lus séparément.
+    [{"num", "titre": "Trick 24", "page", "_cands"}] ou []."""
+    import numpy as np
+    from PIL import Image, ImageOps
+    im = Image.open(io.BytesIO(image_octets))
+    g = np.asarray(ImageOps.grayscale(im)).astype(int)
+    h, w = g.shape
+    x0, x1 = int(.40 * w), int(.95 * w)
+    bord = (g[:, x0:x1] < 110).mean(axis=1) > .6
+    groupes, i = [], 0
+    while i < h:
+        if bord[i]:
+            j = i
+            while j < h and bord[j]:
+                j += 1
+            groupes.append((i, j))
+            i = j
+        else:
+            i += 1
+    rangs = [(a1, b0) for (_, a1), (b0, _) in zip(groupes, groupes[1:]) if 18 <= b0 - a1 <= 0.06 * h]
+    # une pastille sur deux est un vrai rang (l'autre est l'espace entre deux pastilles) : on prend les plus hautes
+    if len(rangs) < 3:
+        return []
+    haut = sorted(b - a for a, b in rangs)[len(rangs) // 2 + len(rangs) // 4]
+    rangs = [(a, b) for a, b in rangs if b - a >= haut * .8]
+    if len(rangs) < 2:
+        return []
+    ink = (g[rangs[0][0]:rangs[-1][1], int(.2 * w):int(.8 * w)] < 110).any(axis=0)
+    xs = np.where(ink)[0] + int(.2 * w)
+    if not len(xs):
+        return []
+    px0, px1 = int(xs.min()), int(xs.max())
+
+    def lire_zone(img, liste_blanche=None, psm=7):
+        img = ImageOps.expand(img.resize((img.width * 3, img.height * 3), Image.LANCZOS), border=30, fill=255)
+        buf = io.BytesIO()
+        img.save(buf, "PNG")
+        cmd = ["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", str(psm)]
+        if liste_blanche:
+            cmd += ["-c", "tessedit_char_whitelist=" + liste_blanche]
+        return subprocess.run(cmd, input=buf.getvalue(), capture_output=True, timeout=60,
+                              env=dict(os.environ, OMP_THREAD_LIMIT="1")).stdout.decode("utf-8", "replace").strip()
+    lignes = []
+    for r0, r1 in rangs:
+        coupe = g[r0 + 3:r1 - 3, px0:px1].astype("uint8")
+        if coupe.size == 0:
+            continue
+        bande = Image.fromarray(coupe).point(lambda v: 255 if v > 100 else 0)
+        gauche = bande.crop((0, 0, int(bande.width * .55), bande.height))
+        droite = bande.crop((int(bande.width * .6), 0, bande.width, bande.height))
+        m = re.search(r"(\d{1,3})\s*$", re.sub(r"[^\w]", "", lire_zone(gauche)).replace("e", "2") if False else lire_zone(gauche))
+        num = int(m.group(1)) if m else None
+        cands = Counter()
+        for psm in (7, 8):
+            t = lire_zone(droite, "0123456789", psm)
+            if re.fullmatch(r"\d{1,3}", t):
+                cands[int(t)] += 2
+        lignes.append({"num": num, "cands": cands})
+    if len(lignes) < 2:
+        return []
+    bases = Counter(x["num"] - i for i, x in enumerate(lignes) if x["num"] is not None)
+    if not bases:
+        return []
+    base = bases.most_common(1)[0][0]
+    sortie = [{"num": float(base + i), "titre": f"Trick {base + i}", "page": None, "_cands": dict(x["cands"]), "_xy": (0, i)}
+              for i, x in enumerate(lignes)]
+    sortie = _pages_sures(sortie)
+    return [{"num": x["num"], "titre": x["titre"], "page": x["page"]} for x in sortie] if sortie and _vraisemblable(sortie) else []
+
+
+# ---------------------------------------------------------------- Symboles de cartes (Alice in Borderland)
+# Les titres portent des figures de cartes (« K♣ - Première partie ») que l'OCR lit n'importe comment (« Ÿ », « # », « & ») :
+# la forme du signe est classée d'après l'image (cœur, carreau, pique, trèfle).
+
+def couleur_de_carte(image) -> str | None:
+    """♠ ♣ ♥ ♦ d'après la forme d'un signe noir (image PIL découpée autour du signe), ou None."""
+    import numpy as np
+    from PIL import Image
+    g = np.asarray(image.convert("L")).astype(float)
+    if g.size == 0 or g.max() - g.min() < 60:
+        return None
+    m = g < (g.min() + g.max()) / 2
+    if m.sum() < 25:
+        return None
+    ys, xs = np.where(m)
+    m = m[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    r = np.asarray(Image.fromarray((m * 255).astype("uint8")).resize((40, 40), Image.BILINEAR)) > 110
+    w = r.sum(axis=1).astype(float)
+    w = w / max(w.max(), 1)
+    w20 = w.reshape(20, 2).mean(axis=1)
+    pic = int(np.argmax(w20))
+    chute = max((w20[i] - w20[i + 1] for i in range(11, 19)), default=0)       # tige : le calice s'arrête net
+    if chute >= .3:
+        return "♣" if np.ptp(w20[2:7]) <= .22 else "♠"
+    return "♥" if pic <= 6 else "♦"
+
+
+_RANG = re.compile(r"^(?:10|[2-9]|[AJQKajqk])$")
+_SUSPECT = re.compile(r"(?:\b(?:10|[2-9]|[AJQK])\s*[^\w\s'’\-–:.,;!?()«»]|[ÿŸ#&@€¢♠♣♥♦])")
+
+
+def texte_avec_cartes(image_octets: bytes) -> str | None:
+    """Texte de la page, ligne par ligne, avec les figures de cartes remises à leur place ; None si rien à corriger."""
+    from PIL import Image
+    mots = mots_ocr(image_octets, psm=6)
+    if not mots:
+        return None
+    im = Image.open(io.BytesIO(image_octets)).convert("RGB")
+    lignes = []
+    for m in sorted(mots, key=lambda m: (m["y"] + m["h"] / 2, m["x"])):
+        cy = m["y"] + m["h"] / 2
+        if lignes and abs(cy - lignes[-1][0]) <= max(10, m["h"] * 0.6):
+            lignes[-1][1].append(m)
+        else:
+            lignes.append([cy, [m]])
+    change = False
+    sortie = []
+    for _, ligne in lignes:
+        ligne.sort(key=lambda m: m["x"])
+        for k, m in enumerate(ligne):
+            t = m["t"]
+            suspect = (k > 0 and _RANG.match(ligne[k - 1]["t"]) and len(re.sub(r"\w", "", t)) >= 1 and len(t) <= 2
+                       and not re.fullmatch(r"[:\-–—.,;!?]", t) and 0 <= m["x"] - (ligne[k - 1]["x"] + ligne[k - 1]["w"]) <= 1.5 * m["h"]) \
+                or (k > 0 and _RANG.match(ligne[k - 1]["t"]) and t in ("Ÿ", "ÿ") )
+            if not suspect:
+                continue
+            c = couleur_de_carte(im.crop((m["x"] - 3, m["y"] - 3, m["x"] + m["w"] + 3, m["y"] + m["h"] + 3)))
+            if c:
+                m["t"], change = c, True
+                ligne[k - 1]["t"] = ligne[k - 1]["t"].upper()          # « j » → « J »
+                ligne[k - 1]["colle"] = True                         # « K♣ » : pas d'espace entre le rang et la couleur
+        texte = ""
+        for m in ligne:
+            texte += ("" if m.get("t") in "♠♣♥♦" and texte.endswith(" ") is False else "") + m["t"] + ("" if m.get("colle") else " ")
+        sortie.append(texte.strip())
+    return "\n".join(sortie) if change else None
 
 
 # ---------------------------------------------------------------- Lecture par Claude (facultative, clé payante)

@@ -59,6 +59,14 @@
             <input type="hidden" name="id" value="{{ nom }}">
             <input type="hidden" name="tout" value="1">
             <p class="note" style="margin-top: 0;">{{ total_trouvees }} tome(s) ont une couverture trouvée en ligne.</p>
+            <label class="note" style="display:block;margin:6px 0;">Langue voulue quand il y a plusieurs choix par tome :
+                <select name="langue" style="width:100%;padding:10px;font-size:16px;margin-top:4px;">
+                    <option value="auto">Automatique : français, sinon anglais, sinon japonais</option>
+                    <option value="fr">Français seulement</option>
+                    <option value="en">Anglais seulement</option>
+                    <option value="ja">Japonais seulement</option>
+                </select>
+            </label>
             <button type="submit">🔄 Remplacer toutes les couvertures trouvées ({{ total_trouvees }})</button>
         </form>
         {% endif %}
