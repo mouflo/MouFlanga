@@ -1173,6 +1173,52 @@ def api_serie_isbn():
     return jsonify({"ok": True, "message": msg})
 
 
+_CACHE_ECRIT = {}                                        # (chemin, date, taille) → le fichier porte-t-il les infos écrites par MouFlanga ?
+
+
+@app.route("/api/series/travail/comptes")
+def api_series_travail_comptes():
+    """Pour la fenêtre « 📋 Où j'en suis » : combien de tomes sont déjà faits, étape par étape, sans ouvrir les tomes un par un.
+    {total: nombre de tomes, comptes: {étape: nombre de tomes faits}}. Les étapes qui ne se comptent pas par tome sont absentes."""
+    import edition
+    import signets
+    name = request.args.get("series", "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"error": "Série introuvable"}), 404
+    numeros = sorted(_tomes_de(name))
+    infos = edition.lire(MANGA_DIR / name)
+    brut = tomes._charger(name) or {}
+    details = (brut.get("titres_tomes") or {}).get("details") or {}
+    manuels = infos.get("resumes_tomes") or {}
+    sommaires = infos.get("sommaires") or {}
+    comptes = {}
+    comptes["resumes"] = sum(1 for t in numeros if manuels.get(str(t)) or (details.get(str(t)) or {}).get("resume")
+                             or tomes.resume_tome_memoire(name, t))
+    chap = lambda t: (sommaires.get(str(t)) or {}).get("chapitres") or []
+    comptes["titres"] = sum(1 for t in numeros if chap(t))
+    comptes["liens"] = sum(1 for t in numeros if signets.nb_signets(chap(t)))
+    comptes["isbn"] = sum(1 for t in numeros if str(t) in _isbn_connus(infos))
+    comptes["couvertures"] = sum(1 for t in numeros if couvertures_tomes.remplacement(MANGA_DIR / name, t))
+    ecrits = 0
+    for t in numeros:
+        rel = _fichier_du_tome(name, t)
+        if not rel or not rel.lower().endswith((".cbz", ".zip")):
+            continue
+        chemin = MANGA_DIR / rel
+        try:
+            st = chemin.stat()
+        except OSError:
+            continue
+        cle = (str(chemin), st.st_mtime_ns, st.st_size)
+        if cle not in _CACHE_ECRIT:
+            if len(_CACHE_ECRIT) > 5000:
+                _CACHE_ECRIT.clear()
+            _CACHE_ECRIT[cle] = bool((signets.lire_infos(chemin) or {}).get("notes"))
+        ecrits += 1 if _CACHE_ECRIT[cle] else 0
+    comptes["reecriture"] = ecrits
+    return jsonify({"total": len(numeros), "comptes": comptes})
+
+
 _ISBN_SERIE = {}                                         # série → avancement de « lire les ISBN de toute la série »
 
 

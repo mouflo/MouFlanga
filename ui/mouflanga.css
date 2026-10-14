@@ -384,4 +384,8 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .travail-pastille.complet { border-color:#2e7d32; background:#2e7d32; color:#fff; }
 .travail-ligne { display:flex; align-items:center; gap:10px; font-size:1rem; padding:6px 0; }
 .travail-ligne input { width:22px; height:22px; flex:none; }
+.travail-cpt { margin-left:auto; font-weight:600; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.travail-cpt.complet { color:var(--accent); }
+.travail-cpt.partiel { color:var(--warn); }
+.travail-cpt.vide { color:var(--muted); }
 .card .travail-ok { position:absolute; bottom:46px; right:8px; font-size:.8rem; background:#2e7d32; border-radius:10px; padding:1px 6px; }

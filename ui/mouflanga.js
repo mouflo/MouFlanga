@@ -333,6 +333,7 @@
     var o = document.createElement('div'); o.className = 'choix-fond';
     o.innerHTML = '<div class="choix-boite"><h3>📋 Où j\'en suis : « ' + esc(s.title) + ' »</h3>' + liste.map(function (x) {
       return '<label class="travail-ligne"><input type="checkbox" data-cle="' + x.cle + '"' + (tr.fait.indexOf(x.cle) >= 0 ? ' checked' : '') + '> ' + esc(x.nom) +
+        ' <span class="travail-cpt" data-cpt="' + x.cle + '"></span>' +
         (sug.indexOf(x.cle) >= 0 ? ' <small>(l\'appli l\'a fait : à cocher ?)</small>' : '') + '</label>'; }).join('') +
       '<div class="dem-sous" id="travailEtat"></div><button type="button" class="mou-btn ghost" data-fermer="1">Fermer</button></div>';
     function etat(t) {
@@ -340,6 +341,17 @@
     }
     document.body.appendChild(o);
     etat(tr);
+    // combien de tomes sont déjà faits, étape par étape (calculé par le serveur, sans ouvrir les tomes)
+    o.querySelectorAll('[data-cpt]').forEach(function (c) { c.textContent = '…'; });
+    api('/api/series/travail/comptes?series=' + encodeURIComponent(s.id)).then(function (r) {
+      if (!r || r.error || !document.body.contains(o)) return;
+      o.querySelectorAll('[data-cpt]').forEach(function (c) {
+        var n = r.comptes[c.dataset.cpt];
+        if (n === undefined || !r.total) { c.textContent = ''; return; }
+        c.textContent = n + ' / ' + r.total + (n >= r.total ? ' ✅' : '');
+        c.className = 'travail-cpt' + (n >= r.total ? ' complet' : (n ? ' partiel' : ' vide'));
+      });
+    }).catch(function () { o.querySelectorAll('[data-cpt]').forEach(function (c) { c.textContent = ''; }); });
     o.addEventListener('change', async function (e) {
       var c = e.target.closest('[data-cle]'); if (!c) return;
       var r = await post('/api/series/travail', {series: s.id, cle: c.dataset.cle, fait: c.checked});

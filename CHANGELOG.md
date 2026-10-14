@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 📋 « Où j'en suis » : combien de tomes sont faits, étape par étape (14 octobre 2026)
+- Chaque ligne de la fenêtre 📋 affiche maintenant **fait / total** (ex. « ISBN des tomes 14 / 21 », ✅ quand tout est fait) : résumés, titres des chapitres, liens des chapitres, ISBN, couvertures des tomes et réécriture des fichiers. Plus besoin d'ouvrir les tomes un par un.
+- Calculé par le serveur à l'ouverture de la fenêtre (une demi-seconde pour une série de 20 à 40 tomes ; l'état des fichiers est gardé en mémoire tant qu'ils ne changent pas). « Allègement » n'a pas de compte : c'est une opération sur la série entière.
+
 ## 🔍 Lire les ISBN de toute la série + case « ISBN » du pense-bête (14 octobre 2026)
 - Menu de la série → **« 🔍 Lire les ISBN de toute la série (OCR) »** : lit, tome après tome et en arrière-plan, l'ISBN imprimé (les 6 dernières pages d'abord : achevé d'imprimer, 4e de couverture, puis les 5 premières). Seul un ISBN à somme de contrôle valide est gardé. Aucun fichier n'est modifié ; les tomes qui ont déjà leur ISBN sont sautés ; les ISBN introuvables sont listés (à noter avec « 📚 Noter les ISBN de la série »).
 - **📋 Où j'en suis** : nouvelle case « ISBN des tomes ». Elle est suggérée quand tous les tomes de la série ont leur ISBN. Le compteur passe de 6 à 7 étapes.
