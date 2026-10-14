@@ -2945,7 +2945,8 @@ def _elements_torrents(avec_ok=False):
                 fichiers = torrents.fichiers_du_torrent(d)
             except OSError:
                 continue
-            if not any(f.suffix.lower() in (".cbz", ".cbr", ".zip", ".rar", ".7z", ".pdf") for f in fichiers):
+            # archives, PDF, mais aussi des dossiers d'images (« Arago Tome 01/001.jpg ») : importés comme un vrai torrent
+            if not any(f.suffix.lower() in (".cbz", ".cbr", ".zip", ".rar", ".7z", ".pdf", ".jpg", ".jpeg", ".png", ".webp") for f in fichiers):
                 continue
             serie = _nom_depuis_archive(d.name + ".zip", existantes)
             out.append({"nom": d.name, "base": base, "serie": serie, "existe": serie in existantes, "fichiers": len(fichiers),
