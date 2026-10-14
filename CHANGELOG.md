@@ -1,5 +1,10 @@
 # Historique des versions
 
+## ✏️ Provenance : saisie à la main corrigée et valable pour toute la série (14 octobre 2026)
+- **Nouveau bouton « ✏️ Provenance de toute la série »** dans le menu de la série : on colle le nom du torrent (« Video Girl - Ai (01-15) (Katsura) (2008) [Digital-1482] (PapriKa+) [CBZ] ») ou seulement l'équipe ; l'équipe en est tirée (« PapriKa+ »), le nom complet est gardé comme origine, pour **tous les tomes** d'un coup.
+- **Un nom de torrent collé dans « Équipe »** d'un tome n'est plus coupé à 60 caractères et rangé comme équipe : il est reconnu et réparti (équipe + origine). L'origine peut faire 200 caractères (avant 120).
+- **Correction** : une provenance déjà saisie à la main ne pouvait plus être corrigée à la main (« une note à la main ne se remplace pas » valait aussi pour une nouvelle saisie). Une nouvelle saisie à la main remplace maintenant la précédente ; seules les déductions automatiques ne l'écrasent pas.
+
 ## 📋 « Où j'en suis » : combien de tomes sont faits, étape par étape (14 octobre 2026)
 - Chaque ligne de la fenêtre 📋 affiche maintenant **fait / total** (ex. « ISBN des tomes 14 / 21 », ✅ quand tout est fait) : résumés, titres des chapitres, liens des chapitres, ISBN, couvertures des tomes et réécriture des fichiers. Plus besoin d'ouvrir les tomes un par un.
 - **Titres** et **liens** des chapitres ne comptent que les tomes dont le sommaire est **validé** (bouton ✅ ou saisi à la main), pas ceux seulement lus automatiquement. **Couvertures** : le nombre de couvertures *remplacées* (sans remplacement, la couverture est la première page du fichier).

@@ -1134,7 +1134,7 @@ def api_tome_provenance():
         tome = int(float(body.get("tome", "")))
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "Tome inconnu"}), 400
-    equipe, origine = str(body.get("equipe", "")).strip()[:60], str(body.get("origine", "")).strip()[:120]
+    equipe, origine = provenance.analyser_saisie(str(body.get("equipe", "")), str(body.get("origine", "")))
     if any(c in equipe + origine for c in '"$`\\\n\r'):
         return jsonify({"ok": False, "error": "Caractères interdits (\" $ ` \\)."}), 400
     if not equipe and not origine:
@@ -1144,6 +1144,33 @@ def api_tome_provenance():
     provenance.noter(infos, tome, equipe, origine or "Saisie à la main", manuel=True, ecrase=True)
     edition.ecrire(dossier, infos)
     return jsonify({"ok": True, "message": f"Tome {tome} : provenance enregistrée."})
+
+
+@app.route("/api/serie/provenance", methods=["POST"])
+def api_serie_provenance():
+    """Provenance de TOUS les tomes de la série d'un coup : {series, texte} où texte est le nom du torrent (l'équipe qu'il
+    contient en est tirée) ou seulement l'équipe. Remplace aussi les provenances déduites ; écrase une saisie à la main."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    equipe, origine = provenance.analyser_saisie(str(body.get("texte", "")), str(body.get("origine", "")))
+    if any(c in equipe + origine for c in '"$`\\\n\r'):
+        return jsonify({"ok": False, "error": "Caractères interdits (\" $ ` \\)."}), 400
+    if not equipe and not origine:
+        return jsonify({"ok": False, "error": "Indique le nom du torrent ou l'équipe."}), 400
+    numeros = sorted(_tomes_de(name))
+    if not numeros:
+        return jsonify({"ok": False, "error": "Aucun tome dans cette série."}), 400
+    dossier = MANGA_DIR / name
+    infos = edition.lire(dossier)
+    for t in numeros:
+        provenance.noter(infos, t, equipe, origine or "Saisie à la main", manuel=True, ecrase=True)
+    edition.ecrire(dossier, infos)
+    _CACHE_EDITION.pop(name, None)
+    return jsonify({"ok": True, "equipe": equipe, "origine": origine or "Saisie à la main", "tomes": len(numeros),
+                    "message": f"Provenance enregistrée pour {len(numeros)} tome(s) : équipe « {equipe or '—'} », origine « {origine or 'Saisie à la main'} »."})
 
 
 @app.route("/api/serie/isbn", methods=["POST"])

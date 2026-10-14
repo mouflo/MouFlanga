@@ -1548,7 +1548,7 @@
     $('infosVue').addEventListener('click', function (e) { if (e.target === $('infosVue')) $('infosVue').hidden = true; });
     $('infosCorps').addEventListener('click', async function (e) {         // provenance d'un tome : équipe et origine notées à la main
       var pv = e.target.closest('[data-prov]'); if (!pv) return;
-      var equipe = prompt('Équipe de scan de ce tome (ex. PapriKa) :', '');
+      var equipe = prompt('Équipe de scan de ce tome (ex. PapriKa+). Tu peux aussi coller le nom complet du torrent : l\'équipe en sera tirée.', '');
       if (equipe === null) return;
       var origine = prompt('Origine (torrent, Japscan, achat…) — facultatif :', '') || '';
       var r = await post('/api/tome/provenance', {series: current.id, tome: pv.dataset.prov, equipe: equipe.trim(), origine: origine.trim()});
@@ -1597,6 +1597,16 @@
       if (st && st.message) window.MouToast('🔍 ' + st.message, /Échec|Introuvables/.test(st.message) ? 'warn' : 'ok');
       if (current && current.id === serie) await openSeries(serie, false);
     }
+    // ✏️ Provenance de tous les tomes d'un coup : nom du torrent (l'équipe en est tirée) ou équipe seule
+    $('sProvenance').addEventListener('click', async function () {
+      fermerMenus();
+      var t = prompt('Nom du torrent (ex. « Video Girl - Ai (01-15) (Katsura) (2008) [Digital-1482] (PapriKa+) [CBZ] ») ou équipe seule (ex. PapriKa+).\n\n' +
+        'L\'équipe est tirée du nom ; le nom complet est gardé comme origine. S\'applique à TOUS les tomes de « ' + current.title + ' ».', '');
+      if (t === null || !t.trim()) return;
+      var r = await post('/api/serie/provenance', {series: current.id, texte: t.trim()});
+      if (r.ok) await openSeries(current.id, false);          // recharge d'abord : le message reste affiché
+      note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err');
+    });
     $('sIsbnLire').addEventListener('click', async function () {
       fermerMenus();
       var etat = await api('/api/serie/isbn/lire?series=' + encodeURIComponent(current.id));

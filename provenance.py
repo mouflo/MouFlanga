@@ -33,6 +33,16 @@ def equipe_torrent(titre: str) -> str:
     return g if g and not _MOTS_PAS_EQUIPE.search(g) else ""
 
 
+def analyser_saisie(texte: str, origine: str = ""):
+    """Ce qu'on a tapé à la main -> (équipe, origine). Un nom de torrent ou de fichier collé à la place de l'équipe
+    (« Video Girl - Ai (01-15) (Katsura) (2008) [Digital-1482] (PapriKa+) [CBZ] ») donne l'équipe qu'il contient
+    (« PapriKa+ ») et le nom complet comme origine, au lieu d'être coupé et rangé comme équipe."""
+    texte, origine = (texte or "").strip(), (origine or "").strip()
+    if len(texte) > 30 or re.search(r"[()\[\]]|\.cbz|\.cbr|\.zip", texte, re.I):
+        return equipe_torrent(texte)[:60], origine or ("Torrent : " + texte)[:200]
+    return texte[:60], origine[:200]
+
+
 def mots_equipe(equipe: str) -> set:
     """« PRiNTER-PapriKa+ » → {"printer", "paprika"} (sans casse, sans « + », mots génériques retirés)."""
     return {m for m in re.split(r"[^a-z0-9]+", (equipe or "").lower()) if len(m) >= 4 and m not in _GENERIQUES}
@@ -53,8 +63,8 @@ def noter(infos: dict, tome, equipe: str, origine: str, manuel: bool = False, ec
     cle = str(int(tome))
     d = lire(infos)
     deja = d.get(cle)
-    if deja and (deja.get("manuel") or not ecrase) and deja.get("origine"):
-        return False                      # déjà connue (une note à la main ne se remplace pas toute seule)
+    if deja and deja.get("origine") and not (manuel and ecrase) and (deja.get("manuel") or not ecrase):
+        return False                      # déjà connue (une note à la main ne se remplace pas toute seule, mais une nouvelle saisie à la main la remplace)
     if not equipe and not origine:
         return False
     d[cle] = {"equipe": equipe or (deja or {}).get("equipe", ""), "origine": origine, "date": time.strftime("%Y-%m-%d"),
