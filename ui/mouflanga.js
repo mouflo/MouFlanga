@@ -1440,7 +1440,7 @@
         (true ? '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEditer">✏️ ' + (chap.length ? 'Corriger les chapitres' : 'Saisir les chapitres à la main') + '</button>' +
           '</div>' +
           '<div id="chapEdition" hidden><textarea id="chapTexte" class="mou-field" rows="' + Math.max(5, Math.min(14, chap.length + 2)) + '" spellcheck="false" style="width:100%"' + (chap.length ? '' : ' placeholder="1. Titre du chapitre\n2. Titre du chapitre @64"') + '></textarea>' +
-          '<div class="dem-sous">Une ligne par chapitre, avec son numéro : « 2. La valeur de la vie ». Après <b>@</b> : la page du lecteur où le chapitre commence (« 2. La valeur de la vie @64 »). Sans @, la page déjà connue est gardée.</div>' +
+          '<div class="dem-sous">Une ligne par chapitre, avec son numéro : « 2. La valeur de la vie ». Après <b>@</b> : la page du lecteur où le chapitre commence (« 2. La valeur de la vie @64 »). Un @ resté vide ou absent : la page déjà connue est gardée.</div>' +
           '<div class="ident-actions"><label>Décaler toutes les pages de <input type="number" id="chapDecalage" value="0" style="width:4.5em"></label>' +
           '<button type="button" class="mou-btn ghost" id="chapDecaler">↔ Appliquer</button></div>' +
           '<div class="ident-actions"><button type="button" class="mou-btn" id="chapEnregistrer" data-tome="' + n + '">💾 Enregistrer</button>' +
@@ -1452,7 +1452,7 @@
         (d.ecriture_possible ? '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEcrire" data-tome="' + n + '" title="Résumé, chapitres, provenance… suivent le fichier quand tu le partages">📝 Écrire les infos dans le fichier</button></div>' : '') +
         '<div id="chapEcrireMsg" class="dem-sous"></div>' ;
       var zone = $('chapTexte');
-      if (zone) zone.value = chap.map(function (c, i) { return c + (d.fichier && pagesCh[i] != null ? ' @' + (pagesCh[i] + 1) : ''); }).join('\n');
+      if (zone) zone.value = chap.map(function (c, i) { return c + (d.fichier && pagesCh[i] != null ? ' @' + (pagesCh[i] + 1) : ' @'); }).join('\n');
       var im = $('infosCorps').querySelector('.tome-couv');
       if (im) im.addEventListener('error', function () { im.style.display = 'none'; });
       if (som.en_cours) suiviSommaire = setTimeout(function () { afficherTome(n, false); }, 4000);

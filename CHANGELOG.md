@@ -1,5 +1,8 @@
 # Historique des versions
 
+## ✏️ Correction des chapitres : un « @ » sur chaque ligne (14 octobre 2026)
+- Quand tu ouvres « Corriger les chapitres », chaque ligne porte déjà son « @page » (la page du lecteur où le chapitre commence) ; pour un chapitre dont la page n'est pas connue, le « @ » est mis vide, prêt à être rempli. Un « @ » laissé vide est ignoré à l'enregistrement.
+
 ## 🔒 Chapitres saisis à la main : plus jamais écrasés (14 octobre 2026)
 - Une liste de chapitres écrite à la main pouvait être remplacée par une relecture automatique du sommaire (titres illisibles à la place des tiens, Assassination Classroom tome 2). Les listes saisies sont maintenant intouchables : ni relecture automatique, ni écrasement par une lecture déjà en cours quand tu enregistres. Seul le bouton « 🔍 Lire le sommaire » (avec confirmation) les remplace.
 

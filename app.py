@@ -4187,6 +4187,7 @@ def api_tome_chapitres():
         ligne = ligne.strip()
         if not ligne:
             continue
+        ligne = re.sub(r"\s*@\s*$", "", ligne)                            # « @ » laissé vide : page non précisée
         page_lecteur = re.search(r"\s*@\s*(\d{1,5})\s*$", ligne)          # « @64 » : page affichée par le lecteur où commence le chapitre
         if page_lecteur:
             ligne = ligne[:page_lecteur.start()].strip()
