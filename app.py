@@ -2713,6 +2713,16 @@ def _lancer_import(nouveau, attendre=False, lots_forces=None):
                     d.rmdir()                            # dossiers vidés (ex. « Gamaran.T01.FRENCH… »)
                 except OSError:
                     pass
+        try:                                         # .cbr reçus : convertis en .cbz tout de suite (pages identiques, vérifiées)
+            _scan_invalider()
+            etat["message"] = "Conversion des .cbr…"
+            a_convertir = _cbr_de(nouveau)
+            if any(c[1] for c in a_convertir):
+                n_conv, err_conv = _convertir_cbr_serie(nouveau, a_convertir)
+                logger.info("Import de « %s » : %d .cbr converti(s) en .cbz", nouveau, n_conv)
+                erreurs += [f"conversion {e}" for e in err_conv]
+        except Exception as e:
+            logger.warning("Conversion automatique des .cbr de « %s » : %s", nouveau, e)
         etat["message"] = "Recherche des tomes…"
         try:
             info = tomes.chercher(nouveau, forcer=True)
@@ -4499,6 +4509,27 @@ def _convertir_un_cbr(chemin):
     return cible
 
 
+def _convertir_cbr_serie(name, cibles, etat=None):
+    """Convertit les .cbr « cibles » [(chemin, ok, raison)] de la série. Renvoie (nombre converti, erreurs)."""
+    erreurs, deplaces = [], {}
+    for chemin, ok, _ in cibles:
+        if not ok:
+            continue
+        try:
+            ancien = _rel(chemin)
+            deplaces[ancien] = _rel(_convertir_un_cbr(chemin))
+            if etat is not None:
+                etat["fait"] = etat.get("fait", 0) + 1
+        except Exception as ex:
+            logger.warning("Conversion de %s : %s", chemin, ex)
+            erreurs.append(f"{chemin.name} : {ex}")
+    if deplaces:
+        _suivre_renommage(name, name, deplaces)           # la progression de lecture suit les nouveaux chemins
+        tomes_cbz._CACHE.clear()
+        _scan_invalider()
+    return len(deplaces), erreurs
+
+
 @app.route("/api/serie/convertir", methods=["GET", "POST"])
 def api_serie_convertir():
     """Convertit les .cbr de la série en .cbz (pages identiques, vérifiées) pour pouvoir y écrire les infos.
@@ -4519,24 +4550,12 @@ def api_serie_convertir():
     _CONVERSION[name] = {"en_cours": True, "fait": 0, "message": f"Conversion de {len(ok_cibles)} fichier(s)…"}
 
     def travail():
-        erreurs, deplaces = [], {}
         try:
-            for chemin, _, _ in ok_cibles:
-                try:
-                    ancien = _rel(chemin)
-                    deplaces[ancien] = _rel(_convertir_un_cbr(chemin))
-                    _CONVERSION[name]["fait"] += 1
-                except Exception as ex:
-                    logger.warning("Conversion de %s : %s", chemin, ex)
-                    erreurs.append(f"{chemin.name} : {ex}")
-            if deplaces:
-                _suivre_renommage(name, name, deplaces)           # la progression de lecture suit les nouveaux chemins
-                tomes_cbz._CACHE.clear()
-                _scan_invalider()
-            msg = f"{len(deplaces)} fichier(s) converti(s) en .cbz sur {len(ok_cibles)}." + (" Erreurs : " + " ; ".join(erreurs) if erreurs else "")
+            fait, erreurs = _convertir_cbr_serie(name, ok_cibles, _CONVERSION[name])
+            msg = f"{fait} fichier(s) converti(s) en .cbz sur {len(ok_cibles)}." + (" Erreurs : " + " ; ".join(erreurs) if erreurs else "")
         except Exception as ex:
-            msg = f"Échec : {ex}"
-        _CONVERSION[name] = {"en_cours": False, "fait": len(deplaces), "message": msg, "ok": not erreurs}
+            fait, erreurs, msg = 0, [str(ex)], f"Échec : {ex}"
+        _CONVERSION[name] = {"en_cours": False, "fait": fait, "message": msg, "ok": not erreurs}
     threading.Thread(target=travail, daemon=True).start()
     return jsonify({"ok": True, "message": "Conversion lancée…"})
 

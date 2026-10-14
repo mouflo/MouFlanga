@@ -46,6 +46,23 @@ class ConvertirSerieTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in cible.parent.iterdir()), ["Serie - Tome 02.cbz"])
         self.assertTrue((Path(self.tmp.name) / "torrent" / "t02.cbr").exists())      # le torrent n'est pas touché
 
+    def test_serie_entiere_et_progression(self):
+        import json
+        prog = Path(self.tmp.name) / "progress.json"
+        prog.write_text(json.dumps({"Serie": {"read": ["Serie/Tome 01/Serie - Tome 01.cbr"], "current": "Serie/Tome 02/Serie - Tome 02.cbr"}}))
+        self.A.PROGRESS_FILE = prog
+        self.A._scan_invalider()
+        cibles = self.A._cbr_de("Serie")
+        self.assertEqual(len(cibles), 2)
+        self.assertTrue(all(c[1] for c in cibles))
+        fait, erreurs = self.A._convertir_cbr_serie("Serie", cibles)
+        self.assertEqual((fait, erreurs), (2, []))
+        d = json.loads(prog.read_text())["Serie"]
+        self.assertEqual(d["read"], ["Serie/Tome 01/Serie - Tome 01.cbz"])
+        self.assertEqual(d["current"], "Serie/Tome 02/Serie - Tome 02.cbz")
+        self.A._scan_invalider()
+        self.assertEqual(self.A._cbr_de("Serie"), [])
+
 
 if __name__ == "__main__":
     unittest.main()
