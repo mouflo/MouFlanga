@@ -5075,34 +5075,78 @@ def _preparer_serie(nom, progression):
         logger.info("Détection de l'édition de %s : %s", nom, e.__class__.__name__)
 
 
+def _edition_dans_les_fichiers(nom):
+    """(édition, nombre de tomes) d'après les noms DANS les fichiers des tomes (« 20th Century Boys - Perfect Edition - T10
+    (URASAWA) [Scan SP-1920]/0001.jpg ») : l'archive d'origine ne le dit pas, mais le dossier d'images à l'intérieur, si.
+    Seuls comptent les tomes dont ce dossier porte le nom de la série (« 21st Century Boys » n'est pas le même manga)."""
+    import edition
+    editions, numeros, nb = {}, [], 0
+    simple = tomes._simple(nom)
+    for e in _entrees(_scan().get(nom) or []):
+        if e.get("tome") is None or e.get("key") != e.get("path") or not str(e["path"]).lower().endswith(".cbz"):
+            continue
+        try:
+            with zipfile.ZipFile(MANGA_DIR / e["path"]) as z:
+                noms = z.namelist()[:8]
+        except (OSError, zipfile.BadZipFile):
+            continue
+        haut = next((n.split("/", 1)[0] for n in noms if "/" in n), "")
+        if not haut or simple not in tomes._simple(haut):
+            continue
+        nb += 1
+        ed = edition.edition_du_titre(haut)
+        if ed:
+            editions[ed] = editions.get(ed, 0) + 1
+        m = re.search(r"(?:^|[\s\-_.(\[])T(?:ome)?\s*0*(\d{1,3})(?![\d])", haut, re.I)
+        if m:
+            numeros.append(int(m.group(1)))
+    if not editions or sum(editions.values()) * 2 < nb:          # la plupart des tomes doivent le dire
+        return None, None
+    return max(editions, key=editions.get), (max(numeros) if numeros else nb)
+
+
 def _detecter_edition(nom):
     """Édition qui regroupe les tomes autrement que Wikipédia (Perfect Édition en 11 tomes au lieu de 22…) alors que le nom
-    de l'archive ne le dit pas : repérée d'après les chapitres lus dans le sommaire de chaque tome. Le nombre de tomes de
-    l'édition devient celui des tomes reçus ; les chapitres affichés sont alors ceux du sommaire du tome, pas de Wikipédia.
-    Jamais si le nombre de tomes a été indiqué (à la main ou par le nom de l'archive)."""
+    de l'archive ne le dit pas. Deux preuves, dans l'ordre : (1) le nom du dossier d'images DANS chaque tome (« … Perfect
+    Edition - T10 … ») ; (2) des chapitres de plusieurs tomes standard consécutifs dans le sommaire d'un même tome.
+    Le nombre de tomes de l'édition devient celui des tomes de la série ; les chapitres affichés sont alors ceux du sommaire
+    du tome, pas ceux de Wikipédia. Jamais si le nombre de tomes a été indiqué (à la main ou par le nom de l'archive) ;
+    une détection d'avant est recalculée."""
     import edition
     infos = edition.lire(MANGA_DIR / nom)
-    if infos.get("volumes_attendus") or infos.get("volumes_manuel"):
+    if infos.get("volumes_manuel") or (infos.get("volumes_attendus") and not infos.get("edition_detectee")):
         return None
     present = _tomes_de(nom)
     if not present:
         return None
-    t = (tomes._charger(nom) or {}).get("titres_tomes") or {}
-    standard = {}
-    for k, d in (t.get("details") or {}).items():
-        nums = [float(m.group(1).replace(",", ".")) for c in d.get("chapitres", []) for m in [re.match(r"^(\d+(?:[.,]\d)?)\.", c)] if m]
-        if nums:
-            standard[k] = nums
-    r = edition.detecter_regroupement(infos.get("sommaires") or {}, standard)
-    if not r:
+    ed, n = _edition_dans_les_fichiers(nom)
+    preuve = {"source": "noms dans les fichiers", "exemple": f"les tomes s'appellent « … {ed} … »"} if ed else None
+    if not ed:
+        t = (tomes._charger(nom) or {}).get("titres_tomes") or {}
+        standard = {}
+        for k, d in (t.get("details") or {}).items():
+            nums = [float(m.group(1).replace(",", ".")) for c in d.get("chapitres", []) for m in [re.match(r"^(\d+(?:[.,]\d)?)\.", c)] if m]
+            if nums:
+                standard[k] = nums
+        r = edition.detecter_regroupement(infos.get("sommaires") or {}, standard)
+        if r:
+            ed, n = "Édition regroupée (repérée d'après les chapitres)", max(present)
+            preuve = {"source": "chapitres du sommaire", "tomes": r["tomes"],
+                      "exemple": f"le tome {r['exemple'][0]} contient des chapitres des tomes standard {', '.join(r['exemple'][1])}"}
+    if not ed:
+        if infos.pop("edition_detectee", None) is not None:           # détection d'avant qui ne tient plus : oubliée
+            infos.pop("volumes_attendus", None)
+            if infos.get("edition", "").startswith("Édition regroupée"):
+                infos.pop("edition", None)
+            edition.ecrire(MANGA_DIR / nom, infos)
         return None
-    infos["volumes_attendus"] = max(present)
-    infos["edition"] = infos.get("edition") or "Édition regroupée (repérée d'après les chapitres)"
-    infos["edition_detectee"] = {"date": time.strftime("%Y-%m-%d"), "tomes": r["tomes"],
-                                 "exemple": f"le tome {r['exemple'][0]} contient des chapitres des tomes standard {', '.join(r['exemple'][1])}"}
+    if infos.get("volumes_attendus") == n and infos.get("edition") == ed:
+        return n
+    infos["volumes_attendus"], infos["edition"] = n, ed
+    infos["edition_detectee"] = dict(preuve, date=time.strftime("%Y-%m-%d"))
     edition.ecrire(MANGA_DIR / nom, infos)
-    logger.info("Édition de « %s » : %d tomes (regroupement repéré, %s)", nom, max(present), infos["edition_detectee"]["exemple"])
-    return max(present)
+    logger.info("Édition de « %s » : %s en %d tomes (%s)", nom, ed, n, preuve["exemple"])
+    return n
 
 
 @app.route("/api/edition/volumes", methods=["POST"])

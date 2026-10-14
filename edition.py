@@ -176,8 +176,13 @@ def detecter_regroupement(sommaires: dict, standard: dict):
     desaccord, exemple = [], None
     for t, s in (sommaires or {}).items():
         nums = [float(c["num"]) for c in (s or {}).get("chapitres", []) if c.get("num") is not None]
-        couverts = sorted({de_chapitre[n] for n in nums if n in de_chapitre}, key=lambda x: int(x))
-        if len(nums) >= 3 and len(couverts) >= 2:
+        vus = {}
+        for n in nums:
+            if n in de_chapitre:
+                vus[de_chapitre[n]] = vus.get(de_chapitre[n], 0) + 1
+        couverts = sorted((k for k, c in vus.items() if c >= 2), key=lambda x: int(x))     # un seul chapitre : mauvaise lecture
+        suite = bool(couverts) and int(couverts[-1]) - int(couverts[0]) == len(couverts) - 1   # tomes standard à la suite
+        if len(nums) >= 3 and len(couverts) >= 2 and suite:
             desaccord.append(str(t))
             exemple = exemple or (str(t), couverts)
     return {"tomes": desaccord, "exemple": exemple} if desaccord else None
