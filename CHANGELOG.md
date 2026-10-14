@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 🔍 Lire les ISBN de toute la série + case « ISBN » du pense-bête (14 octobre 2026)
+- Menu de la série → **« 🔍 Lire les ISBN de toute la série (OCR) »** : lit, tome après tome et en arrière-plan, l'ISBN imprimé (les 6 dernières pages d'abord : achevé d'imprimer, 4e de couverture, puis les 5 premières). Seul un ISBN à somme de contrôle valide est gardé. Aucun fichier n'est modifié ; les tomes qui ont déjà leur ISBN sont sautés ; les ISBN introuvables sont listés (à noter avec « 📚 Noter les ISBN de la série »).
+- **📋 Où j'en suis** : nouvelle case « ISBN des tomes ». Elle est suggérée quand tous les tomes de la série ont leur ISBN. Le compteur passe de 6 à 7 étapes.
+- La lecture en cours est comptée dans `/api/occupe` : un redémarrage ne la coupe pas.
+
 ## 🗄️ Infos des séries : gardées bien plus longtemps, plus de réinterrogation inutile (14 octobre 2026)
 - **Série terminée ou abandonnée** (statut AniList FINISHED / CANCELLED) : statut, résumé, répartition en tomes, fiche et titres des tomes sont gardés **pour toujours**. Ils ne sont refaits que par « 🔄 Relancer l'identification » ou si les fichiers changent.
 - **Série en cours** : statut et répartition en tomes revus au plus une fois par **semaine** (avant : 3 et 7 jours), fiche et titres de tomes une fois par mois. Les résumés de tomes déjà trouvés sont gardés indéfiniment.

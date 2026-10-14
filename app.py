@@ -728,6 +728,7 @@ def _index_apres_ecriture(reponse):
 
 
 TRAVAIL = [("resumes", "Résumé des tomes"), ("titres", "Titres des chapitres"), ("liens", "Liens des chapitres"),
+           ("isbn", "ISBN des tomes"),
            ("allegement", "Allègement"), ("couvertures", "Couverture des tomes"), ("reecriture", "Réécriture des fichiers")]
 
 
@@ -737,8 +738,21 @@ def _travail_de(name):
         return {"fait": [], "total": len(TRAVAIL), "complet": False}
     infos = _edition_vue(name)
     fait = [k for k, _ in TRAVAIL if (infos.get("travail") or {}).get(k)]
-    return {"fait": fait, "total": len(TRAVAIL), "complet": len(fait) == len(TRAVAIL),
-            "suggere": [k for k in ("allegement",) if infos.get("allegement") and k not in fait]}
+    suggere = [k for k in ("allegement",) if infos.get("allegement") and k not in fait]
+    connus = _isbn_connus(infos)
+    numeros = _tomes_de(name) if connus else set()
+    if "isbn" not in fait and numeros and all(str(t) in connus for t in numeros):
+        suggere.append("isbn")                               # tous les tomes ont leur ISBN : la case peut être cochée
+    return {"fait": fait, "total": len(TRAVAIL), "complet": len(fait) == len(TRAVAIL), "suggere": suggere}
+
+
+def _isbn_connus(infos):
+    """{numéro de tome (texte): ISBN} déjà notés (collés à la main ou lus dans les pages) pour une série."""
+    out = {str(t): c for t, c in (infos.get("isbn") or {}).items() if c}
+    for t, v in (infos.get("sommaires") or {}).items():
+        if isinstance(v, dict) and v.get("isbn"):
+            out.setdefault(str(t), v["isbn"])
+    return out
 
 
 @app.route("/api/series/travail", methods=["POST"])
@@ -1157,6 +1171,66 @@ def api_serie_isbn():
     if mauvais:
         msg += " Refusés (somme de contrôle fausse) : tome " + ", ".join(sorted(mauvais, key=int)) + "."
     return jsonify({"ok": True, "message": msg})
+
+
+_ISBN_SERIE = {}                                         # série → avancement de « lire les ISBN de toute la série »
+
+
+@app.route("/api/serie/isbn/lire", methods=["GET", "POST"])
+def api_serie_isbn_lire():
+    """🔍 Lit par OCR l'ISBN de chaque tome complet de la série (dernières pages, puis premières), sans toucher au sommaire.
+    GET : tomes à lire et avancement. POST {series, tout} : lance en arrière-plan (tout : relire aussi les tomes qui ont déjà un ISBN)."""
+    import edition
+    import sommaire
+    donnees = request.get_json(silent=True) or {} if request.method == "POST" else request.args
+    name = str(donnees.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    connus = _isbn_connus(edition.lire(MANGA_DIR / name))
+    a_lire = []
+    for e in sorted((x for x in _entrees(_scan().get(name) or []) if x.get("tome") is not None and x.get("key") == x.get("path")
+                     and not x.get("a_importer")), key=lambda x: x["tome"]):
+        if str(e["tome"]) in connus and not donnees.get("tout"):
+            continue
+        a_lire.append((e["tome"], MANGA_DIR / e["path"]))
+    if request.method == "GET":
+        st = _ISBN_SERIE.get(name) or {}
+        return jsonify({"total": len(a_lire), "deja": len(connus), "en_cours": bool(st.get("en_cours")), "fait": st.get("fait", 0),
+                        "message": st.get("message", ""), "disponible": sommaire.disponible()})
+    if not sommaire.disponible():
+        return jsonify({"ok": False, "error": "Lecteur de texte (tesseract) absent du serveur"}), 400
+    if (_ISBN_SERIE.get(name) or {}).get("en_cours"):
+        return jsonify({"ok": False, "error": "Lecture des ISBN déjà en cours pour cette série."}), 409
+    if not a_lire:
+        return jsonify({"ok": False, "error": "Tous les tomes ont déjà leur ISBN."}), 400
+    _ISBN_SERIE[name] = {"en_cours": True, "fait": 0, "message": f"Lecture de {len(a_lire)} tome(s)…"}
+
+    def travail():
+        trouves, rates = 0, []
+        try:
+            for tome, chemin in a_lire:
+                try:
+                    pages = archives.pages(chemin)
+                    isbn = sommaire.lire_isbn(lambda i, c=chemin: archives.read_page(c, i)[0], len(pages))
+                except Exception as ex:
+                    logger.info("ISBN du tome %s de %s : %s", tome, name, ex.__class__.__name__)
+                    isbn = None
+                if isbn:
+                    infos = edition.lire(MANGA_DIR / name)           # relu à chaque tome : rien n'est écrasé
+                    infos.setdefault("isbn", {})[str(tome)] = isbn
+                    edition.ecrire(MANGA_DIR / name, infos)
+                    trouves += 1
+                else:
+                    rates.append(tome)
+                _ISBN_SERIE[name]["fait"] += 1
+            edition.invalider(MANGA_DIR / name)
+            msg = f"{trouves} ISBN lu(s) sur {len(a_lire)} tome(s)." + (
+                " Introuvables : tome " + ", ".join(str(t) for t in rates) + " (« 📚 Noter les ISBN de la série » pour les ajouter à la main)." if rates else "")
+        except Exception as ex:
+            msg = f"Échec : {ex}"
+        _ISBN_SERIE[name] = {"en_cours": False, "fait": _ISBN_SERIE[name].get("fait", 0), "message": msg}
+    threading.Thread(target=travail, daemon=True).start()
+    return jsonify({"ok": True, "message": "Lecture des ISBN lancée…"})
 
 
 @app.route("/api/tome/couverture")
@@ -3181,6 +3255,7 @@ def _travaux_en_cours():
     with optimiser._VERROU:
         raisons += [f"allègement de {n}" for n, e in optimiser._ETAT.items() if e.get("en_cours")]
     raisons += [f"conversion de {n}" for n, e in list(_CONVERSION.items()) if e.get("en_cours")]
+    raisons += [f"lecture des ISBN de {n}" for n, e in list(_ISBN_SERIE.items()) if e.get("en_cours")]
     return raisons
 
 

@@ -1577,6 +1577,27 @@
       if (st && st.message) window.MouToast('🔄 ' + st.message, /Erreurs|Échec/.test(st.message) ? 'err' : 'ok');
       if (current && current.id === serie) await openSeries(serie, false);
     }
+    // 🔍 Lire les ISBN de tous les tomes de la série (OCR sur les dernières puis les premières pages)
+    async function suivreIsbn(serie) {
+      var st = await api('/api/serie/isbn/lire?series=' + encodeURIComponent(serie));
+      if (st && st.en_cours) { setTimeout(function () { suivreIsbn(serie); }, 4000); return; }
+      if (st && st.message) window.MouToast('🔍 ' + st.message, /Échec|Introuvables/.test(st.message) ? 'warn' : 'ok');
+      if (current && current.id === serie) await openSeries(serie, false);
+    }
+    $('sIsbnLire').addEventListener('click', async function () {
+      fermerMenus();
+      var etat = await api('/api/serie/isbn/lire?series=' + encodeURIComponent(current.id));
+      if (etat && etat.disponible === false) { note('sMsg', 'Le lecteur de texte (tesseract) est absent du serveur.', 'err'); return; }
+      if (etat && etat.en_cours) { note('sMsg', 'Une lecture des ISBN est déjà en cours pour cette série.'); suivreIsbn(current.id); return; }
+      if (!etat || !etat.total) { note('sMsg', 'Tous les tomes de cette série ont déjà leur ISBN.', 'ok'); return; }
+      if (!confirm('Lire par OCR l\'ISBN de ' + etat.total + ' tome(s) de « ' + current.title + ' » ?\n\n' +
+          'Les dernières pages (achevé d\'imprimer, 4e de couverture) puis les premières sont lues, tome après tome. ' +
+          'Seul un ISBN à somme de contrôle valide est gardé. Aucun fichier n\'est modifié.\n\nLe travail continue même si tu fermes la page.')) return;
+      var r = await post('/api/serie/isbn/lire', {series: current.id});
+      if (!r.ok) { note('sMsg', r.error, 'err'); return; }
+      note('sMsg', '🔍 Lecture des ISBN de ' + etat.total + ' tome(s) en cours…', 'ok');
+      suivreIsbn(current.id);
+    });
     $('sConvertir').addEventListener('click', async function () {
       fermerMenus();
       var etat = await api('/api/serie/convertir?series=' + encodeURIComponent(current.id));

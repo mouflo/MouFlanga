@@ -99,6 +99,22 @@ def isbn_valide(c: str) -> bool:
     somme = sum(int(d) * (1 if i % 2 == 0 else 3) for i, d in enumerate(c[:12]))
     return (10 - somme % 10) % 10 == int(c[12])
 
+def lire_isbn(lire_page, nb_pages: int, fin: int = 6, debut: int = 5):
+    """ISBN d'un tome lu par OCR, sans toucher au sommaire : d'abord les dernières pages (achevé d'imprimer, 4e de couverture),
+    puis les premières (page de titre, copyright). Seul un ISBN à somme de contrôle valide est rendu ; None sinon."""
+    fin_pages = list(range(nb_pages - 1, max(nb_pages - 1 - fin, -1), -1))
+    debut_pages = [i for i in range(min(debut, nb_pages)) if i not in fin_pages]
+    for i in fin_pages + debut_pages:
+        try:
+            v = isbn_du_texte(ocr(lire_page(i)))
+        except Exception as e:
+            logger.info("ISBN, page %d : %s", i, e.__class__.__name__)
+            continue
+        if v:
+            return v
+    return None
+
+
 
 def nombre_fr(texte: str):
     """« Trente-troisième », « Trentième et unième », « Vingt et unième », « Quatre-vingt-dixième » → 33, 31, 21, 90 ;
