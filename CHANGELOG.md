@@ -6,6 +6,7 @@
 - **Skins brouillons** : « 🧪 Essayer un skin brouillon » enregistre un CSS visible par son auteur seulement (`data/skins_perso/`, jamais sur GitHub), pour tester en direct avant de proposer.
 - **Secours** : `/?skin=off` affiche la page sans skin, `/apparence/reset` remet le style d'origine du compte.
 - Guide pour créer un skin et le proposer par Pull Request (sans accès au dépôt) : `docs/SKINS.md`.
+- Captures d'écran du README refaites (bibliothèque, série, lecteur, Réglages, Journal, téléphone) et deux nouvelles pour 🎨 Apparence.
 - `/api/occupe` compte maintenant une conversion .cbr → .cbz en cours : un redémarrage ne la coupe plus.
 
 ## 🔄 Les « .cbz » qui sont en réalité des RAR sont convertis aussi (14 octobre 2026)
