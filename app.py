@@ -3594,7 +3594,7 @@ def _etape(serie, index, etat, detail=""):
         e["etat"], e["detail"] = etat, detail
 
 
-def _relancer_identification(serie):
+def _relancer_identification(serie, relire_fichiers=True):
     """En arrière-plan : refait la recherche de la série, cache effacé avant. Chaque étape est notée
     (en cours, réussie ou en échec, avec son résultat) pour être affichée à l'écran (/api/identifier/etat)."""
     etapes = [
@@ -3608,6 +3608,15 @@ def _relancer_identification(serie):
         _IDENTIFICATIONS[serie] = {"etapes": etapes, "fini": False, "debut": time.time()}
 
     def travail():
+        if relire_fichiers:                          # le ComicInfo.xml des tomes est relu aussi (édition, fiche, ISBN, chapitres)
+            try:
+                import edition
+                infos = edition.lire(MANGA_DIR / serie)
+                infos.pop("fichiers_relus", None)
+                _relire_fichiers_serie(serie, infos)
+            except Exception as e:
+                logger.info("Relecture des fichiers de « %s » : %s", serie, e.__class__.__name__)
+
         def lancer(i, fonction):
             _etape(serie, i, "en_cours")
             try:
@@ -3720,43 +3729,62 @@ def api_rattacher():
 
 
 def _relire_fichiers_serie(serie, infos):
-    """Une seule fois par série : la fiche (AniList, résumé écrit à la main) notée par MouFlanga DANS les fichiers des tomes
-    est reprise si elle manque ici (réinstallation à zéro, série reçue). Ne remplace jamais ce qui est déjà noté."""
+    """Relit le ComicInfo.xml des tomes de la série et reprend ce qui manque ici (réinstallation à zéro, série reçue,
+    ré-identification) : fiche AniList et résumé de série écrit à la main, édition (Perfect, colossale…), nombre de tomes,
+    ISBN, chapitres avec leurs pages (« liens ») et leur verrou « saisi à la main », titre de série de l'équipe.
+    Ne remplace jamais ce qui est déjà noté ici."""
     import edition
     import signets
     dossier = MANGA_DIR / serie
     if not dossier.is_dir():
         return infos
-    lus = 0
     try:
-        fichiers = sorted(dossier.rglob("*.cbz"))[:4]
+        fichiers = sorted(dossier.rglob("*.cbz"))[:300]
     except OSError:
         return infos
+    vus, titres = 0, []
     for f in fichiers:
         du_fichier = signets.lire_infos(f)
-        lus += 1
-        if not infos.get("edition"):              # « Perfect », « Édition de luxe » : notée par MouFlanga, sinon lue chez l'équipe
-            ed = (du_fichier.get("notes") or {}).get("edition") or edition.edition_du_titre(
+        if not du_fichier:
+            continue
+        vus += 1
+        notes = du_fichier.get("notes") or {}
+        if not infos.get("edition"):              # « Perfect », « Édition colossale » : notée par MouFlanga, sinon lue chez l'équipe
+            ed = notes.get("edition") or edition.edition_du_titre(
                 " ".join((du_fichier.get("format", ""), du_fichier.get("serie", ""), du_fichier.get("titre", ""))))
             if ed:
                 infos["edition"] = ed
-        nb = (du_fichier.get("notes") or {}).get("volumes_attendus")
-        if nb and not infos.get("volumes_attendus"):
-            infos["volumes_attendus"] = int(nb)
-        fiche = (du_fichier.get("notes") or {}).get("serie")
-        if not isinstance(fiche, dict) or not fiche.get("anilist"):
+        if notes.get("volumes_attendus") and not infos.get("volumes_attendus"):
+            infos["volumes_attendus"] = int(notes["volumes_attendus"])
+        nom_equipe = du_fichier.get("serie", "")
+        if nom_equipe and nom_equipe != serie and nom_equipe not in titres:
+            titres.append(nom_equipe)             # nom de la série chez l'équipe : une variante de plus pour la recherche
+        fiche = notes.get("serie")
+        if isinstance(fiche, dict) and fiche.get("anilist") and not (infos.get("anilist_choisi") or infos.get("anilist_indice")):
+            try:
+                infos["anilist_choisi" if fiche.get("choisi") else "anilist_indice"] = int(fiche["anilist"])
+            except (TypeError, ValueError):
+                pass
+            if fiche.get("resume") and serie not in _read_json(RESUMES, {}):
+                perso = _read_json(RESUMES, {})
+                perso[serie] = str(fiche["resume"])[:4000]
+                _write_json(RESUMES, perso)
+        tome = du_fichier.get("tome")
+        if tome is None:
             continue
-        try:
-            ident = int(fiche["anilist"])
-        except (TypeError, ValueError):
-            continue
-        infos["anilist_choisi" if fiche.get("choisi") else "anilist_indice"] = ident
-        if fiche.get("resume") and serie not in _read_json(RESUMES, {}):
-            perso = _read_json(RESUMES, {})
-            perso[serie] = str(fiche["resume"])[:4000]
-            _write_json(RESUMES, perso)
-        break
-    if lus:
+        t = str(int(tome))
+        if du_fichier.get("isbn") and not (infos.get("isbn") or {}).get(t):
+            infos.setdefault("isbn", {})[t] = du_fichier["isbn"]
+        if not ((infos.get("sommaires") or {}).get(t) or {}).get("chapitres"):
+            chapitres = signets.lire(f)           # les « liens » : chaque chapitre avec la page de lecture où il commence
+            if chapitres:
+                rec = {"chapitres": chapitres, "fichier": True}
+                if notes.get("sommaire") == "manuel":          # saisi à la main : reste verrouillé, jamais relu automatiquement
+                    rec.update(manuel=True, valide_le=notes.get("valide_le", ""))
+                infos.setdefault("sommaires", {})[t] = rec
+    if titres:
+        infos["titres_fichiers"] = titres[:5]
+    if vus:
         infos["fichiers_relus"] = True
         try:
             edition.ecrire(dossier, infos)
@@ -3779,6 +3807,7 @@ def _anilist_choisi(serie):
 
 tomes.ID_CHOISI = _anilist_choisi
 tomes.ID_INDICE = lambda serie: _anilist_infos(serie).get("anilist_indice")
+tomes.TITRES_FICHIERS = lambda serie: _anilist_infos(serie).get("titres_fichiers") or []
 
 
 def _infos_comicinfo(serie):
@@ -3826,8 +3855,10 @@ def api_identifier_choisir():
             return jsonify({"ok": False, "error": "Fiche inconnue"}), 400
     else:
         infos.pop("anilist_choisi", None)
+    infos.pop("anilist_indice", None)
+    infos["fichiers_relus"] = True                    # ton choix l'emporte : les Notes des fichiers ne le remettent pas en cause
     edition.ecrire(MANGA_DIR / name, infos)
-    _relancer_identification(name)
+    _relancer_identification(name, relire_fichiers=False)
     return jsonify({"ok": True, "message": "Fiche retenue : identification relancée." if ident else "Retour à la recherche automatique : identification relancée."})
 
 

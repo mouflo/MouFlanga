@@ -37,11 +37,10 @@ SERIES_EXISTANTES = lambda: ()               # noms des séries de la bibliothè
 
 
 # Mentions d'édition : « Gantz : Perfect », « Gantz - Perfect Édition », « Cat's Eye Édition de luxe » (pas une suite)
-EDITION = re.compile(r"\s*[-–:,(]?\s*\b(?:(?:perfect|ultimate|deluxe|collector|kanzenban|colossale|originale|double)(?:\s+[ée]dition)?"
-                     r"|[ée]dition\s+(?:de\s+)?luxe|de\s+luxe|[ée]dition\s+(?:perfect|ultimate|collector|colossale|originale|double))\b\s*\)?\s*$", re.I)
+import noms_editions
 
-
-_MENTION = re.compile(r"\b(?:(?:perfect|ultimate|deluxe|collector|kanzenban|colossale)(?:\s+[ée]dition)?|[ée]dition\s+(?:de\s+)?luxe)\b", re.I)
+EDITION = noms_editions.FIN
+_MENTION = noms_editions.MENTION
 
 
 def mention_edition(texte: str) -> str:
@@ -498,6 +497,7 @@ def _wikipedia_fr(m, serie=""):
 
 
 ID_CHOISI = lambda serie: None          # remplacé par l'appli : identifiant AniList choisi à la main pour la série
+TITRES_FICHIERS = lambda serie: []      # remplacé par l'appli : nom de la série écrit dans le ComicInfo.xml des tomes (équipe)
 ID_INDICE = lambda serie: None          # remplacé par l'appli : identifiant AniList noté dans les fichiers des tomes (série reçue)
 
 
@@ -541,7 +541,8 @@ def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
             logger.info("AniList injoignable (%s)", e.__class__.__name__)
             return None
         return _garder_statut(serie, m)
-    for v in _variantes(serie):
+    essais = _variantes(serie) + [t for t in (TITRES_FICHIERS(serie) or []) if t not in _variantes(serie)]
+    for v in essais:
         try:
             r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": v}}, timeout=15)
             if r.status_code == 429:

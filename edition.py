@@ -144,7 +144,8 @@ def volumes_du_titre(titre: str):
 
 def edition_du_titre(titre: str):
     """« Cat's Eye - Édition de luxe [...] » → « Édition de luxe » ; None si aucune mention d'édition."""
-    m = re.search(r"[ée]dition\s+(?:de\s+)?luxe|deluxe|collector|kanzenban|perfect\s+[ée]dition|ultimate\s+[ée]dition", titre or "", re.I)
+    import noms_editions
+    m = noms_editions.MENTION.search(titre or "")
     return m.group(0).strip().capitalize() if m else None
 
 

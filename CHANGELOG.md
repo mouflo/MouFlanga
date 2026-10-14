@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 🔎 Éditions spéciales plus complètes, ré-identification qui relit les fichiers (14 octobre 2026)
+- **Éditions reconnues** (liste unique `noms_editions.py`) : Perfect, Ultimate, Deluxe / de luxe, Collector, Kanzenban, Aizōban, Shinsōban, Bunko, Wideban, Colossale, Cultissime, « 2 en 1 / 3 en 1 », et avec le mot « édition » : Prestige, Originale, Double, Triple, Limitée, Spéciale, Anniversaire, Intégrale, Remasterisée, Couleur, Maximum, Big, Grand format, Numérotée… « Master Keaton » ou « Big Order » ne sont pas pris pour des éditions.
+- **« 🔄 Relancer l'identification »** relit aussi le ComicInfo.xml des tomes : édition, nombre de tomes, fiche, ISBN, chapitres avec leurs pages et verrou « saisi à la main », nom de la série chez l'équipe (essayé en plus pour trouver la fiche AniList). « 🔎 Choisir la fiche » garde la priorité sur les Notes des fichiers.
+- Les chapitres lus dans un fichier reprennent leur verrou « saisi à la main » (jamais relus automatiquement après une réinstallation).
+
 ## 📦 Fichier de tome complet : lu en priorité, écrit sans rien écraser (14 octobre 2026)
 - **Lecture** : le ComicInfo.xml du tome est lu en premier. Titre, résumé, auteur, dessin, éditeur, année, genres, lien, nombre de tomes, langue, équipe et **ISBN** (balise `GTIN`, sinon un numéro dans `Notes` ou `Web`) sont repris quand l'appli n'a rien de mieux.
 - **Écriture** : les balises remplies par l'équipe ne sont jamais écrasées ; seules celles posées par MouFlanga (liste `ecrits` de ses Notes) sont mises à jour. Un résumé écrit à la main reste prioritaire. L'ISBN du tome est écrit en `GTIN`.
