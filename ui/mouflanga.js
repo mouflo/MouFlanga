@@ -1573,6 +1573,14 @@
       note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err');
       if (r.ok) await openSeries(current.id, false);
     });
+    $('sVolumes').addEventListener('click', async function () {
+      fermerMenus();
+      var v = prompt('Combien de tomes compte TON édition de « ' + current.title + ' » (ex. 11 pour une Perfect Édition) ?\n\nLes chapitres affichés suivront alors le sommaire de chaque tome, pas la liste de Wikipédia.\nLaisse vide pour que l\'appli le détecte toute seule.');
+      if (v === null) return;
+      var r = await post('/api/edition/volumes', {series: current.id, volumes: v});
+      note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err');
+      if (r.ok) await openSeries(current.id, false);
+    });
     $('sEcouter').addEventListener('click', function () {
       if (lecteurGenerique) { arreterGenerique(); return; }
       jouerGenerique();

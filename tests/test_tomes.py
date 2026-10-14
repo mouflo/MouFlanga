@@ -971,6 +971,16 @@ class EditionTest(unittest.TestCase):
             fichiers = [f for f in sorted(src.rglob("*")) if f.is_file()]
             self.assertIsNone(A._zip_images_du_torrent(src, fichiers, t / "autre" / ".torrent"))
 
+    def test_regroupement_d_edition_repere_par_les_chapitres(self):
+        import edition
+        standard = {"1": [1, 2, 3, 4], "2": [5, 6, 7, 8], "3": [9, 10, 11, 12]}
+        perfect = {"1": {"chapitres": [{"num": n} for n in range(1, 9)]}}
+        r = edition.detecter_regroupement(perfect, standard)
+        self.assertEqual(r["tomes"], ["1"]); self.assertEqual(r["exemple"], ("1", ["1", "2"]))
+        normale = {"1": {"chapitres": [{"num": n} for n in range(1, 5)]}, "2": {"chapitres": [{"num": n} for n in range(5, 9)]}}
+        self.assertIsNone(edition.detecter_regroupement(normale, standard))
+        self.assertIsNone(edition.detecter_regroupement({}, standard))
+
 
 class NomsArchivesTest(unittest.TestCase):
     def test_noms_nettoyes(self):

@@ -3983,9 +3983,12 @@ def api_tome():
         d["resume"], d["resume_source"], d["resume_manuel"] = du_fichier["resume"], "écrit dans le fichier", True
     if not d.get("resume") and not differente:           # Wikipédia n'a pas de résumé de ce tome : notice Google Books en français
         try:
-            d["resume"] = tomes.resume_tome_google(name, tome)
+            d["resume"] = tomes.resume_tome_google(name, tome, reseau=False)      # jamais d'attente sur Internet ici
         except Exception as e:
             logger.info("Résumé du tome %s de %s : %s", tome, name, e.__class__.__name__)
+        if d["resume"] is None:                          # pas encore cherché : la préparation s'en charge, devant les autres
+            d["resume"], d["en_preparation"] = "", True
+            prechauffage.demander([name], devant=True)
         if d.get("resume"):
             d["resume_source"] = "Google Books"
     if not d.get("resume") and du_fichier.get("resume"):          # rien sur Internet : celui écrit dans le fichier du tome
@@ -5027,6 +5030,120 @@ demandes._ETAT["accepte"] = _accepter_demande
 demandes._ETAT["autres"] = lambda: [f"• {n} : {p['titre'][:80]}" for n, p in suivi.en_attente()]
 
 
+# ---------------- ⚡ Préparation de la bibliothèque en arrière-plan (prechauffage.py) ----------------
+import prechauffage
+
+
+def _signature_serie(nom):
+    return prechauffage.signature_fichiers([(str(p.relative_to(MANGA_DIR)) if MANGA_DIR in p.parents else str(p),
+                                             *(_stat_index(p) or (0, 0))) for p in (_scan().get(nom) or [])])
+
+
+def _preparer_serie(nom, progression):
+    """Tout ce que la fiche d'un tome irait chercher, fait d'avance : titres des tomes, résumés, analyse de l'édition,
+    sommaire imprimé des tomes (un par un, après les vrais travaux)."""
+    import sommaire
+    fichiers = _scan().get(nom) or []
+    if not fichiers:
+        return
+    progression(f"{nom} : titres des tomes")
+    try:
+        tomes.titres_tomes(nom)
+    except Exception as e:
+        logger.info("Préparation de %s, titres des tomes : %s", nom, e.__class__.__name__)
+    _infos_edition(nom, fichiers)                          # lance l'analyse des pages (en fond) si elle n'est pas faite
+    numeros = sorted(_tomes_de(nom))
+    differente = _edition_differente(nom)
+    with app.test_request_context():                       # _sommaire_du_tome lit le rôle de la session
+        for i, t in enumerate(numeros, 1):
+            progression(f"{nom} : tome {t} ({i}/{len(numeros)})")
+            try:
+                d = tomes.details_tome(nom, t)
+                if not d.get("resume") and not differente:
+                    tomes.resume_tome_google(nom, t)       # Internet, une seule fois (gardé 30 jours)
+                    d = tomes.details_tome(nom, t)
+                _sommaire_du_tome(nom, t, d)               # lance la lecture du sommaire si elle est utile
+                attente = 0
+                while sommaire.etat(nom, t).get("en_cours") and attente < 900:
+                    time.sleep(2)
+                    attente += 2
+            except Exception as e:
+                logger.info("Préparation de %s tome %s : %s", nom, t, e.__class__.__name__)
+    try:
+        _detecter_edition(nom)
+    except Exception as e:
+        logger.info("Détection de l'édition de %s : %s", nom, e.__class__.__name__)
+
+
+def _detecter_edition(nom):
+    """Édition qui regroupe les tomes autrement que Wikipédia (Perfect Édition en 11 tomes au lieu de 22…) alors que le nom
+    de l'archive ne le dit pas : repérée d'après les chapitres lus dans le sommaire de chaque tome. Le nombre de tomes de
+    l'édition devient celui des tomes reçus ; les chapitres affichés sont alors ceux du sommaire du tome, pas de Wikipédia.
+    Jamais si le nombre de tomes a été indiqué (à la main ou par le nom de l'archive)."""
+    import edition
+    infos = edition.lire(MANGA_DIR / nom)
+    if infos.get("volumes_attendus") or infos.get("volumes_manuel"):
+        return None
+    present = _tomes_de(nom)
+    if not present:
+        return None
+    t = (tomes._charger(nom) or {}).get("titres_tomes") or {}
+    standard = {}
+    for k, d in (t.get("details") or {}).items():
+        nums = [float(m.group(1).replace(",", ".")) for c in d.get("chapitres", []) for m in [re.match(r"^(\d+(?:[.,]\d)?)\.", c)] if m]
+        if nums:
+            standard[k] = nums
+    r = edition.detecter_regroupement(infos.get("sommaires") or {}, standard)
+    if not r:
+        return None
+    infos["volumes_attendus"] = max(present)
+    infos["edition"] = infos.get("edition") or "Édition regroupée (repérée d'après les chapitres)"
+    infos["edition_detectee"] = {"date": time.strftime("%Y-%m-%d"), "tomes": r["tomes"],
+                                 "exemple": f"le tome {r['exemple'][0]} contient des chapitres des tomes standard {', '.join(r['exemple'][1])}"}
+    edition.ecrire(MANGA_DIR / nom, infos)
+    logger.info("Édition de « %s » : %d tomes (regroupement repéré, %s)", nom, max(present), infos["edition_detectee"]["exemple"])
+    return max(present)
+
+
+@app.route("/api/edition/volumes", methods=["POST"])
+def api_edition_volumes():
+    """Indiquer à la main le nombre de tomes de SON édition (Perfect, deluxe…) ; vide = laisser l'appli le détecter."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    d = edition.lire(MANGA_DIR / name)
+    brut = str(body.get("volumes", "")).strip()
+    if brut:
+        if not brut.isdigit() or not 1 <= int(brut) <= 999:
+            return jsonify({"ok": False, "error": "Indique un nombre de tomes (ex. 11)."}), 400
+        d["volumes_attendus"], d["volumes_manuel"] = int(brut), True
+        d["edition"] = d.get("edition") or f"Édition en {int(brut)} tomes (indiquée à la main)"
+        msg = f"Ton édition compte {int(brut)} tomes."
+    else:                                                 # retour à la détection : ce qui venait de là ou de la main est oublié
+        for k in ("volumes_manuel", "edition_detectee", "volumes_attendus"):
+            d.pop(k, None)
+        if d.get("edition", "").startswith(("Édition en ", "Édition regroupée")):
+            d.pop("edition", None)
+        msg = "Nombre de tomes : détection automatique."
+    edition.ecrire(MANGA_DIR / name, d)
+    _CACHE_EDITION.pop(name, None)
+    return jsonify({"ok": True, "message": msg})
+
+
+prechauffage.configurer(DATA_DIR / "prechauffage.json", lambda: _scan(), _signature_serie, _preparer_serie, lambda: _travaux_en_cours())
+
+
+@app.route("/api/prechauffage", methods=["GET", "POST"])
+def api_prechauffage():
+    """GET : avancement de la préparation. POST : « 🚀 Préparer toute la bibliothèque » (lancé en arrière-plan)."""
+    if request.method == "POST":
+        n = prechauffage.tout(forcer=True)
+        return jsonify({"ok": True, "message": f"Préparation lancée pour {n} série(s)." if n else "Une préparation est déjà en cours."})
+    return jsonify(prechauffage.etat())
+
+
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok", "version": APP_VERSION})
@@ -5044,6 +5161,7 @@ if __name__ == "__main__":
     threading.Thread(target=torrents.surveiller, args=(_importer_torrent, lambda t: notifier.envoyer(t), MANGA_DIR), daemon=True).start()
     threading.Thread(target=demandes._boucle_rappels, args=(lambda t: notifier.envoyer(t), lambda: os.getenv("APP_URL", "").strip()),
                      daemon=True).start()
+    prechauffage.surveiller()                      # séries nouvelles ou modifiées : préparées toutes seules
     import notes
     threading.Thread(target=notes.boucle, args=(lambda: [s for s in _scan() if s != "(Sans série)"], _identifiants_note),
                      daemon=True).start()          # notes des séries : une mise à jour par jour, en arrière-plan

@@ -56,6 +56,14 @@
     </div>
 
     <div class="panel" data-onglet="Général">
+        <h2>⚡ Préparer la bibliothèque</h2>
+        <div class="sub">Pour que les fiches s'ouvrent tout de suite, l'appli prépare à l'avance, en arrière-plan, les titres des tomes, les résumés, l'édition et le sommaire de chaque tome. Elle le fait toute seule pour chaque nouveau manga (une ou deux minutes après son arrivée). Ce bouton relance une préparation complète de toute la bibliothèque ; tu peux quitter la page, ça continue.</div>
+        <div class="row"><button class="btn" id="prepTout" type="button">🚀 Préparer toute la bibliothèque</button></div>
+        <div id="prepEtat" class="state" style="margin-top:8px"></div>
+        <div id="prepMsg"></div>
+    </div>
+
+    <div class="panel" data-onglet="Général">
         <h2>🔁 Choix retenus pour les tomes en double</h2>
         <div class="sub">Quand tu coches « Toujours faire ce choix » dans Télécharger, l'appli l'applique toute seule à la série la fois suivante (torrent ou rangement). Supprime une règle pour qu'elle te redemande.</div>
         <div id="reglesImport"></div>
@@ -164,6 +172,22 @@
     </div>
 </div>
 <script>
+// ---------- ⚡ Préparation de la bibliothèque ----------
+async function prepEtat() {
+    const e = await api('/api/prechauffage');
+    if (e.error) return;
+    let t = e.pretes + ' / ' + e.series + ' séries prêtes' + (e.derniere ? ' · dernière préparation : ' + e.derniere : '');
+    if (e.en_cours) t = '⏳ En cours : ' + (e.serie || '…') + ' (' + e.fait + ' faite(s), ' + e.attente + ' en attente)' + (e.detail ? ' · ' + e.detail : '') + '\n' + t;
+    else if (e.message && e.fin) t = '✅ ' + e.message + '\n' + t;
+    $('prepEtat').textContent = t; $('prepEtat').style.whiteSpace = 'pre-line';
+    $('prepTout').disabled = !!e.en_cours;
+}
+$('prepTout').addEventListener('click', async () => {
+    const r = await post('/api/prechauffage', {});
+    say('prepMsg', r.message || r.error, r.ok); prepEtat();
+});
+prepEtat(); setInterval(prepEtat, 5000);
+
 // ---------- Utilisateurs (comptes lecteur) ----------
 async function loadUsr() {
     const r = await api('/api/utilisateurs'), l = r.utilisateurs || [];

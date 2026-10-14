@@ -161,6 +161,28 @@ def noter_volumes(dossier: Path, titre: str):
         ecrire(dossier, d)
 
 
+def detecter_regroupement(sommaires: dict, standard: dict):
+    """Édition qui regroupe les tomes autrement que l'édition standard (Perfect, deluxe, intégrale… sans que le nom du
+    fichier le dise) : d'après les chapitres lus dans le sommaire imprimé de CHAQUE tome (sommaires = {tome: {"chapitres":
+    [{"num"}]}}) comparés à la répartition connue de l'édition standard (standard = {tome: [numéros de chapitres]}).
+    Renvoie {"tomes": [tomes locaux en désaccord], "exemple": (tome local, tomes standard)} ou None. Il faut au moins un tome
+    local qui contient des chapitres de deux tomes standard ou plus."""
+    de_chapitre = {}
+    for t, nums in (standard or {}).items():
+        for n in nums:
+            de_chapitre.setdefault(float(n), str(t))
+    if len(set(de_chapitre.values())) < 2:
+        return None
+    desaccord, exemple = [], None
+    for t, s in (sommaires or {}).items():
+        nums = [float(c["num"]) for c in (s or {}).get("chapitres", []) if c.get("num") is not None]
+        couverts = sorted({de_chapitre[n] for n in nums if n in de_chapitre}, key=lambda x: int(x))
+        if len(nums) >= 3 and len(couverts) >= 2:
+            desaccord.append(str(t))
+            exemple = exemple or (str(t), couverts)
+    return {"tomes": desaccord, "exemple": exemple} if desaccord else None
+
+
 def oublier_source(dossier: Path):
     """Tous les tomes d'une série viennent d'être remplacés : les archives et NFO de l'ancienne source ne la décrivent plus."""
     d = lire(dossier)

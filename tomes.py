@@ -746,14 +746,17 @@ def resume_tome_memoire(serie: str, tome) -> str:
     return _resume_de_serie(garde.get("texte", ""), brut, int(tome)) if garde else ""
 
 
-def resume_tome_google(serie: str, tome) -> str:
+def resume_tome_google(serie: str, tome, reseau: bool = True):
     """Résumé en français d'un tome d'après Google Books (clé requise) : la notice de « <série> tome N » en français.
-    Gardé 30 jours dans data/tomes/<série>.json (« resumes_tomes »), y compris « rien trouvé »."""
+    Gardé 30 jours dans data/tomes/<série>.json (« resumes_tomes »), y compris « rien trouvé ».
+    reseau=False : jamais d'appel Internet, la valeur gardée (même ancienne) ou None si rien n'a été cherché."""
     n = int(tome)
     brut = _charger(serie) or {}
     garde = (brut.get("resumes_tomes") or {}).get(str(n))
-    if garde and time.time() - garde.get("date", 0) < RESUME_TOME_DUREE and garde.get("v", 1) >= RESUME_VERSION:
+    if garde and (not reseau or time.time() - garde.get("date", 0) < RESUME_TOME_DUREE and garde.get("v", 1) >= RESUME_VERSION):
         return _resume_de_serie(garde.get("texte", ""), brut, n)
+    if not reseau:
+        return None                                    # pas encore cherché : l'appelant le fait faire en arrière-plan
     cle = cle_google_books()
     if not cle:
         return ""

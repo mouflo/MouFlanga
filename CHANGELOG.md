@@ -1,5 +1,11 @@
 # Historique des versions
 
+## ⚡ Bibliothèque préparée en arrière-plan + édition repérée d'après les chapitres (14 octobre 2026)
+- **Plus d'attente à l'ouverture d'un tome** : titres des tomes, résumés (Google Books), analyse de l'édition et lecture du sommaire de chaque tome sont faits d'avance, en arrière-plan, un tome à la fois et après les vrais travaux (import, téléchargement). La fiche d'un tome n'appelle plus Internet : elle affiche ce qui est prêt (« en préparation » sinon, et la série passe devant dans la file).
+- **Toute seule** : un manga nouveau ou modifié est préparé une à deux minutes après son arrivée ; au démarrage, les séries jamais préparées le sont aussi. L'état est gardé dans `data/prechauffage.json` (une série n'est refaite que si ses fichiers changent).
+- **⚙️ Réglages → Général → ⚡ Préparer la bibliothèque** : bouton « Préparer toute la bibliothèque » avec l'avancement (y compris en quittant la page).
+- **Éditions Perfect / deluxe sans mention dans le nom** (20th Century Boys en 11 tomes) : si le sommaire d'un tome contient des chapitres de plusieurs tomes de l'édition standard, l'édition est repérée, le nombre de tomes devient celui des tomes reçus et les chapitres affichés suivent le sommaire du tome. Menu de la série → « 📚 Nombre de tomes de mon édition » pour l'indiquer à la main (vide = détection automatique).
+
 ## 🖼️ Torrents de dossiers d'images : vraiment importés (14 octobre 2026)
 - Un torrent fait seulement de dossiers d'images (Arago : « Arago Tome 01/001.jpg ») était listé par le rescan mais aucune image n'était placée (« 0 fichier placé ») : la série restait vide. Les images sont maintenant rangées, avec leurs dossiers, dans un zip caché de la série puis importées comme une archive.
 
