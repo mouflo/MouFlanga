@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🔒 Chapitres saisis à la main : plus jamais écrasés (14 octobre 2026)
+- Une liste de chapitres écrite à la main pouvait être remplacée par une relecture automatique du sommaire (titres illisibles à la place des tiens, Assassination Classroom tome 2). Les listes saisies sont maintenant intouchables : ni relecture automatique, ni écrasement par une lecture déjà en cours quand tu enregistres. Seul le bouton « 🔍 Lire le sommaire » (avec confirmation) les remplace.
+
 ## 📋 Pense-bête « où j'en suis » par série (14 octobre 2026)
 - Dans l'en-tête de chaque série, une petite pastille « 📋 2/6 » ouvre une fenêtre de cases à cocher : résumé des tomes, titres des chapitres, liens des chapitres, allègement, couverture des tomes, réécriture des fichiers. Chaque case est enregistrée tout de suite (dans les infos de la série).
 - Quand tout est coché : la pastille devient verte « ✅ Tout est fait » et la couverture de la série dans la bibliothèque porte un ✅ vert.

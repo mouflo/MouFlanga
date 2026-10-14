@@ -386,6 +386,22 @@ class OrganiserTest(BibliothequeTest):
         double = self.client.post("/api/tome/chapitres", json={"series": "Serie", "tome": 1, "texte": "1. A\n1. B"})
         self.assertEqual(double.status_code, 400)
 
+    def test_chapitres_saisis_a_la_main_jamais_remplaces_par_la_lecture(self):
+        import edition
+        import sommaire
+        self.client.post("/api/tome/chapitres", json={"series": "Serie", "tome": 1, "texte": "1. Mon titre\n2. Autre titre"})
+        pris = {}
+        vrai, vraies_pages = sommaire.lancer, self.A.archives.pages
+        self.A.archives.pages = lambda c: []
+        sommaire.lancer = lambda n, t, c, lire, nb, enreg, **k: pris.setdefault("enreg", enreg)
+        try:
+            self.A._lire_sommaire("Serie", 1, {"path": "Serie/x.cbz"})
+            pris["enreg"]({"chapitres": [{"num": 1.0, "titre": "OCR n'importe quoi"}, {"num": 2.0, "titre": "gl AourrEs"}], "version": 99})
+        finally:
+            sommaire.lancer, self.A.archives.pages = vrai, vraies_pages
+        som = edition.lire(self.root / "Serie")["sommaires"]["1"]
+        self.assertEqual([c["titre"] for c in som["chapitres"]], ["Mon titre", "Autre titre"])
+
     def test_valider_les_chapitres_lus_automatiquement(self):
         import edition
         infos = edition.lire(self.root / "Serie")

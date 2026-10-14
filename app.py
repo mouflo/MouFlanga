@@ -4097,7 +4097,7 @@ def _sommaire_du_tome(name, tome, d):
             d["chapitres"], d["chapitres_pages"], d["fichier"] = titres, pages, e["key"]
     copie = bool(lu and (lu.get("manuel") or lu.get("valide_le")) and wiki_avant and sum(
         (c.get("titre") or "").strip().lower() in wiki_avant for c in lu.get("chapitres", [])) * 2 >= len(lu.get("chapitres", [])))
-    ancien = bool(lu and not lu.get("fichier") and lu.get("version", 1) < sommaire.VERSION
+    ancien = bool(lu and not lu.get("fichier") and not lu.get("saisie") and lu.get("version", 1) < sommaire.VERSION
                   and (copie or not (lu.get("manuel") or lu.get("valide_le"))))   # validé avec les titres de Wikipédia, ou pas validé
     if e and sommaire.disponible() and (not lu or ancien) and (besoin or ancien) and auth.role() != "lecteur":
         _lire_sommaire(name, tome, e)
@@ -4108,7 +4108,8 @@ def _sommaire_du_tome(name, tome, d):
                      "manquants": _numeros_manquants([c.get("num") for c in (lu or {}).get("chapitres", [])])}
 
 
-def _lire_sommaire(name, tome, e):
+def _lire_sommaire(name, tome, e, forcer=False):
+    """forcer : relecture demandée par la personne (bouton) ; sinon une liste saisie à la main n'est jamais remplacée."""
     import sommaire
     import edition
     chemin = MANGA_DIR / e["path"]
@@ -4125,6 +4126,8 @@ def _lire_sommaire(name, tome, e):
         if r.get("isbn") and not (infos.get("isbn") or {}).get(str(tome)):        # ISBN imprimé dans le tome : gardé comme info
             infos.setdefault("isbn", {})[str(tome)] = r["isbn"]
         avant = (infos.get("sommaires") or {}).get(str(tome)) or {}
+        if avant.get("saisie") and avant.get("chapitres") and not forcer:
+            return                                       # chapitres écrits à la main : intouchables sans demande explicite
         if avant.get("manuel") or avant.get("valide_le"):
             # fiche déjà validée avec des titres d'avant (souvent ceux de Wikipédia) : relue une fois avec le lecteur
             # amélioré ; les titres du sommaire imprimé la remplacent si ce sont les mêmes chapitres, sinon on la garde
@@ -4159,7 +4162,7 @@ def api_tome_sommaire():
     deja = (edition.lire(MANGA_DIR / name).get("sommaires") or {}).get(str(tome)) or {}
     if deja.get("manuel") and not body.get("force"):
         return jsonify({"ok": False, "error": "Les chapitres de ce tome ont été corrigés à la main : confirme pour les remplacer."}), 409
-    _lire_sommaire(name, tome, e)
+    _lire_sommaire(name, tome, e, forcer=True)
     return jsonify({"ok": True, "message": "Lecture du sommaire en cours (environ une minute)…"})
 
 
@@ -4205,7 +4208,7 @@ def api_tome_chapitres():
         return jsonify({"ok": False, "error": "Aucun chapitre : ajoute au moins une ligne."}), 400
     chapitres.sort(key=lambda c: c["num"])
     nouveau = dict(ancien)
-    nouveau.update(chapitres=chapitres, manuel=True, valide_le=time.strftime("%Y-%m-%d"))
+    nouveau.update(chapitres=chapitres, manuel=True, saisie=True, valide_le=time.strftime("%Y-%m-%d"))
     infos.setdefault("sommaires", {})[str(tome)] = nouveau
     edition.ecrire(MANGA_DIR / name, infos)
     try:
