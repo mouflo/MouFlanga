@@ -360,13 +360,17 @@ def _infos_tome(name, tome):
              "sommaire": "manuel" if lu.get("manuel") else ("lu" if lu.get("chapitres") else ""), "valide_le": lu.get("valide_le", ""),
              "sortie": det.get("sortie", "")}
     isbn = (ed.get("isbn") or {}).get(str(tome)) or lu.get("isbn", "")
+    if ed.get("edition"):
+        notes["edition"] = ed["edition"]
+    if ed.get("volumes_attendus"):
+        notes["volumes_attendus"] = ed["volumes_attendus"]
     st = (tomes._charger(name) or {}).get("statut_officiel") or {}
     if st.get("anilist"):                            # fiche de la série : retrouvée telle quelle depuis n'importe quel tome
         notes["serie"] = {k: v for k, v in {"anilist": st["anilist"], "choisi": bool(ed.get("anilist_choisi")),
                                             "titre": st.get("titre", ""), "titre_en": st.get("titre_en", ""),
                                             "resume": (_read_json(RESUMES, {}).get(name) or "")}.items() if v not in ("", None, False)}
     notes = {k: v for k, v in notes.items() if v not in ("", False)}
-    infos = {"Title": det.get("titre", ""), "Summary": resume, "Number": str(tome), "Volume": str(tome), "GTIN": isbn,
+    infos = {"Title": det.get("titre", ""), "Summary": resume, "Number": str(tome), "Volume": str(tome), "GTIN": isbn, "Format": ed.get("edition", ""),
              "Notes": signets.MARQUE + " " + json.dumps(notes, ensure_ascii=False, separators=(",", ":"))}
     for balise, v in zip(("Year", "Month", "Day"), _date_sortie(det.get("sortie", ""))):
         infos[balise] = v
@@ -3729,8 +3733,17 @@ def _relire_fichiers_serie(serie, infos):
     except OSError:
         return infos
     for f in fichiers:
-        fiche = (signets.lire_infos(f).get("notes") or {}).get("serie")
+        du_fichier = signets.lire_infos(f)
         lus += 1
+        if not infos.get("edition"):              # « Perfect », « Édition de luxe » : notée par MouFlanga, sinon lue chez l'équipe
+            ed = (du_fichier.get("notes") or {}).get("edition") or edition.edition_du_titre(
+                " ".join((du_fichier.get("format", ""), du_fichier.get("serie", ""), du_fichier.get("titre", ""))))
+            if ed:
+                infos["edition"] = ed
+        nb = (du_fichier.get("notes") or {}).get("volumes_attendus")
+        if nb and not infos.get("volumes_attendus"):
+            infos["volumes_attendus"] = int(nb)
+        fiche = (du_fichier.get("notes") or {}).get("serie")
         if not isinstance(fiche, dict) or not fiche.get("anilist"):
             continue
         try:

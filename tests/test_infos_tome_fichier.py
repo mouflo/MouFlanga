@@ -73,6 +73,20 @@ class InfosTomeFichierTest(unittest.TestCase):
             src = self._cbz(t, xml)
             self.assertEqual(signets.lire_infos(src)["isbn"], attendu, xml)
 
+    def test_format_lu(self):
+        t = Path(tempfile.mkdtemp())
+        src = self._cbz(t, "<ComicInfo><Series>Gantz</Series><Format>Perfect Édition</Format></ComicInfo>")
+        self.assertEqual(signets.lire_infos(src)["format"], "Perfect Édition")
+
+    def test_isbn_ocr_dernieres_pages(self):
+        from unittest import mock
+        import sommaire
+        textes = {5: "Dépôt légal. ISBN : 978-2-7234-8852-5"}
+        with mock.patch.object(sommaire, "ocr", side_effect=lambda o, clair=False: textes.get(o, "")), \
+                mock.patch.object(sommaire, "PAGES_MAX", 2):
+            r = sommaire.lire("x.cbz", lambda i: i, 6)
+        self.assertEqual(r.get("isbn"), "9782723488525")
+
 
 if __name__ == "__main__":
     unittest.main()

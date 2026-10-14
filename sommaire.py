@@ -933,6 +933,15 @@ def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
         elif trouve and i > page_sommaire + 2:
             break
     isbn = next((v for v in (isbn_du_texte(t) for t in textes.values()) if v), None)
+    if not isbn and nb_pages > PAGES_MAX:                    # achevé d'imprimer / 4e de couverture : les dernières pages
+        for i in range(nb_pages - 1, max(PAGES_MAX - 1, nb_pages - 6), -1):
+            try:
+                isbn = isbn_du_texte(ocr(lire_page(i)))
+            except Exception as e:
+                logger.info("ISBN de %s, page %d : %s", chemin, i, e.__class__.__name__)
+                continue
+            if isbn:
+                break
     if not trouve:                                           # pastilles empilées sans titre (« Trick:24 ..... 5 »)
         for i in sorted(textes):
             try:

@@ -160,7 +160,7 @@ def lire_infos(chemin: Path) -> dict:
     return {"titre": "" if re.match(r"^(Tome \d+|Hors tome)$", titre) else titre, "resume": resume, "notes": notes,
             "serie": texte("Series"), "auteur": texte("Writer"), "dessin": texte("Penciller"), "editeur": texte("Publisher"),
             "annee": texte("Year"), "mois": texte("Month"), "genres": texte("Genre"), "lien": texte("Web"), "isbn": isbn,
-            "langue": texte("LanguageISO"), "tome": nombre("Number") if nombre("Number") is not None else nombre("Volume"),
+            "langue": texte("LanguageISO"), "format": texte("Format"), "tome": nombre("Number") if nombre("Number") is not None else nombre("Volume"),
             "nb_tomes": nombre("Count"), "equipe": texte("Teams") or texte("ScanInformation"), "autres_notes": autres}
 
 
