@@ -715,6 +715,39 @@ def _index_apres_ecriture(reponse):
     return reponse
 
 
+TRAVAIL = [("resumes", "Résumé des tomes"), ("titres", "Titres des chapitres"), ("liens", "Liens des chapitres"),
+           ("allegement", "Allègement"), ("couvertures", "Couverture des tomes"), ("reecriture", "Réécriture des fichiers")]
+
+
+def _travail_de(name):
+    """Pense-bête de ce qui est déjà fait à la main sur une série (cases cochées, gardées dans ses infos)."""
+    if name == "(Sans série)":
+        return {"fait": [], "total": len(TRAVAIL), "complet": False}
+    infos = _edition_vue(name)
+    fait = [k for k, _ in TRAVAIL if (infos.get("travail") or {}).get(k)]
+    return {"fait": fait, "total": len(TRAVAIL), "complet": len(fait) == len(TRAVAIL),
+            "suggere": [k for k in ("allegement",) if infos.get("allegement") and k not in fait]}
+
+
+@app.route("/api/series/travail", methods=["POST"])
+def api_series_travail():
+    """Coche ou décoche une étape du pense-bête d'une série : {series, cle, fait}."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name, cle = str(body.get("series", "")), str(body.get("cle", ""))
+    if name not in _scan() or name == "(Sans série)" or cle not in dict(TRAVAIL):
+        return jsonify({"ok": False, "error": "Série ou étape inconnue"}), 404
+    d = edition.lire(MANGA_DIR / name)
+    t = d.setdefault("travail", {})
+    if body.get("fait"):
+        t[cle] = time.strftime("%Y-%m-%d")
+    else:
+        t.pop(cle, None)
+    edition.ecrire(MANGA_DIR / name, d)
+    _CACHE_EDITION.pop(name, None)
+    return jsonify({"ok": True, **_travail_de(name)})
+
+
 @app.route("/api/library")
 def api_library():
     if not MANGA_DIR.is_dir():
@@ -746,6 +779,7 @@ def api_library():
             "last_read": p.get("last", ""), "added": newest, "favori": bool(p.get("favori")),
             "cover": f"/api/cover?id={_q(name)}&v={int(max(newest, _couverture_mtime(name)))}",
             **_auteur_editeur(name), **_univers_de(name), **_note_de(name),
+            "travail_complet": _travail_de(name)["complet"],
         })
     presentes = {x["id"] for x in out}
     for nom, x in suivi.lire()["series"].items():          # ➕ séries ajoutées mais encore vides : grisées
@@ -1007,6 +1041,7 @@ def api_series():
                     "moufloster": os.getenv("MOUFLOSTER_URL", "").strip(),
                     "moufloster_externe": os.getenv("MOUFLOSTER_URL_EXTERNE", "").strip(),
                     **_infos_anime(name), "edition": _infos_edition(name, files), "_t": _titres_tomes_en_fond(name, chapters),
+                    "travail": _travail_de(name), "travail_liste": [{"cle": k, "nom": n} for k, n in TRAVAIL],
                     "suivi": suivi.lire()["series"].get(name),
                     **({"recherchee": True, "cover_externe": vide.get("couverture") or "",
                         "compte": " · ".join(str(x) for x in ("📥 Pas encore de tomes", vide.get("annee"), vide.get("auteur"),

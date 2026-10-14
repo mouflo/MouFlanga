@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 📋 Pense-bête « où j'en suis » par série (14 octobre 2026)
+- Dans l'en-tête de chaque série, une petite pastille « 📋 2/6 » ouvre une fenêtre de cases à cocher : résumé des tomes, titres des chapitres, liens des chapitres, allègement, couverture des tomes, réécriture des fichiers. Chaque case est enregistrée tout de suite (dans les infos de la série).
+- Quand tout est coché : la pastille devient verte « ✅ Tout est fait » et la couverture de la série dans la bibliothèque porte un ✅ vert.
+- L'allègement est signalé « l'appli l'a fait : à cocher ? » quand il a été appliqué.
+
 ## ⚡ Bibliothèque préparée en arrière-plan + édition repérée d'après les chapitres (14 octobre 2026)
 - **Plus d'attente à l'ouverture d'un tome** : titres des tomes, résumés (Google Books), analyse de l'édition et lecture du sommaire de chaque tome sont faits d'avance, en arrière-plan, un tome à la fois et après les vrais travaux (import, téléchargement). La fiche d'un tome n'appelle plus Internet : elle affiche ce qui est prêt (« en préparation » sinon, et la série passe devant dans la file).
 - **Toute seule** : un manga nouveau ou modifié est préparé une à deux minutes après son arrivée ; au démarrage, les séries jamais préparées le sont aussi. L'état est gardé dans `data/prechauffage.json` (une série n'est refaite que si ses fichiers changent).

@@ -378,3 +378,10 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .dbl-point { display:inline-block; width:10px; height:10px; margin-right:8px; border-radius:50%; background:#52b54b; box-shadow:0 0 0 2px rgba(82,181,75,.35); vertical-align:middle; }
 
 .card .st .note-serie { color:#f0c040; font-weight:700; white-space:nowrap; }
+
+/* pense-bête « où j'en suis » d'une série */
+.travail-pastille { font:inherit; font-size:.85rem; font-weight:600; padding:2px 10px; border-radius:999px; border:1px solid var(--line, #444); background:transparent; color:inherit; cursor:pointer; }
+.travail-pastille.complet { border-color:#2e7d32; background:#2e7d32; color:#fff; }
+.travail-ligne { display:flex; align-items:center; gap:10px; font-size:1rem; padding:6px 0; }
+.travail-ligne input { width:22px; height:22px; flex:none; }
+.card .travail-ok { position:absolute; bottom:46px; right:8px; font-size:.8rem; background:#2e7d32; border-radius:10px; padding:1px 6px; }

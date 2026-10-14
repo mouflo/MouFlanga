@@ -149,6 +149,7 @@
         '<button type="button" class="fav' + (s.favori ? ' on' : '') + '" data-favori="' + esc(s.id) + '" aria-pressed="' + (s.favori ? 'true' : 'false') +
         '" title="' + (s.favori ? 'Retirer des favorites' : 'Mettre en favorite') + '" aria-label="Favorite">' + (s.favori ? '★' : '☆') + '</button>' +
         (ETATS[s.etat] ? '<span class="etat ' + s.etat + '" title="' + ETATS[s.etat][1] + '">' + ETATS[s.etat][0] + '</span>' : '') +
+        (s.travail_complet ? '<span class="travail-ok" title="Tout est fait sur cette série (résumés, chapitres, allègement, couvertures, réécriture)">✅</span>' : '') +
         (lue(s) ? (enParution(s) ? '<span class="lue attente" title="À jour : en attente du prochain tome">⏳</span>'
                                  : '<span class="lue" title="Déjà lue">✔</span>') : '') +
         '<div class="nm">' + esc(s.title) + '</div>' +
@@ -363,8 +364,15 @@
     var cat = categorieSource(ed.source, ed.devine);
     var src = (ed.source || ed.resolution) ? '<span class="src-pastille" style="--c:' + cat.couleur + '">' + esc(cat.nom) + '</span>' +
       '<button type="button" class="src-aide" data-legende="1" aria-label="Légende des sources">?</button>' : '';
-    var bouts = [ed.edition ? '🏷 ' + esc(ed.edition) : '', ed.resolution ? '📐 ' + esc(ed.resolution) : '', src].filter(Boolean);
+    var tr = s.travail || {fait: [], total: 0};
+    var pense = (s.recherchee || !tr.total || document.body.classList.contains('lecteur')) ? '' : '<button type="button" class="travail-pastille' + (tr.complet ? ' complet' : '') + '" data-travail="1" ' +
+      'title="Ce que tu as déjà fait à la main sur cette série">' + (tr.complet ? '✅ Tout est fait' : '📋 ' + tr.fait.length + '/' + tr.total) + '</button>';
+    var bouts = [ed.edition ? '🏷 ' + esc(ed.edition) : '', ed.resolution ? '📐 ' + esc(ed.resolution) : '', src, pense].filter(Boolean);
     $('sEdition').hidden = !bouts.length; $('sEdition').innerHTML = bouts.join(' · ');
+    $('sEdition').onclick = function (e) {
+      var b = e.target.closest('[data-travail]');
+      if (b) ouvrirTravail(s);
+    };
     $('sEdition').title = ed.pourquoi ? 'Indice : ' + ed.pourquoi : '';
     $('sNfo').hidden = !(ed.nfo || (ed.archives || []).length);
     $('sNfoArchives').textContent = (ed.archives || []).length ? 'Archive' + (ed.archives.length > 1 ? 's' : '') + ' d\'origine : ' + ed.archives.join(', ') : '';
@@ -1573,6 +1581,28 @@
       note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err');
       if (r.ok) await openSeries(current.id, false);
     });
+    function ouvrirTravail(s) {
+      var liste = s.travail_liste || [], tr = s.travail || {fait: []}, sug = tr.suggere || [];
+      var o = document.createElement('div'); o.className = 'choix-fond';
+      o.innerHTML = '<div class="choix-boite"><h3>📋 Où j\'en suis : « ' + esc(s.title) + ' »</h3>' + liste.map(function (x) {
+        return '<label class="travail-ligne"><input type="checkbox" data-cle="' + x.cle + '"' + (tr.fait.indexOf(x.cle) >= 0 ? ' checked' : '') + '> ' + esc(x.nom) +
+          (sug.indexOf(x.cle) >= 0 ? ' <small>(l\'appli l\'a fait : à cocher ?)</small>' : '') + '</label>'; }).join('') +
+        '<div class="dem-sous" id="travailEtat"></div><button type="button" class="mou-btn ghost" data-fermer="1">Fermer</button></div>';
+      function etat(t) {
+        $('travailEtat').textContent = t.complet ? '✅ Tout est fait pour cette série.' : t.fait.length + ' étape(s) sur ' + t.total + ' faites.';
+      }
+      document.body.appendChild(o);
+      etat(tr);
+      o.addEventListener('change', async function (e) {
+        var c = e.target.closest('[data-cle]'); if (!c) return;
+        var r = await post('/api/series/travail', {series: s.id, cle: c.dataset.cle, fait: c.checked});
+        if (!r.ok) { c.checked = !c.checked; return; }
+        s.travail = r; etat(r);
+      });
+      o.addEventListener('click', function (e) {
+        if (e.target === o || e.target.closest('[data-fermer]')) { o.remove(); openSeries(s.id, false); }
+      });
+    }
     $('sVolumes').addEventListener('click', async function () {
       fermerMenus();
       var v = prompt('Combien de tomes compte TON édition de « ' + current.title + ' » (ex. 11 pour une Perfect Édition) ?\n\nLes chapitres affichés suivront alors le sommaire de chaque tome, pas la liste de Wikipédia.\nLaisse vide pour que l\'appli le détecte toute seule.');
