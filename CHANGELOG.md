@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 🔄 Conversion des .cbr en .cbz (14 octobre 2026)
+- Menu de la série → « 🔄 Convertir les .cbr en .cbz » : les pages sont recopiées telles quelles (sans recompression, sans retouche), la copie est relue et comparée page par page (somme de contrôle) avant tout remplacement. Un .cbz peut recevoir les infos du tome (ComicInfo.xml), pas un RAR.
+- La progression de lecture suit le nouveau nom de fichier ; l'ancien .cbr part à la corbeille (30 jours). Un fichier partagé par qBittorrent est copié à part puis les dossiers sont échangés : le torrent n'est pas touché. Un fichier partagé posé hors d'un dossier de tome, ou dont le .cbz existe déjà, est laissé tel quel.
+- Ensuite, « 📝 Réécrire les infos de TOUS les tomes » peut les écrire comme pour les autres.
+
 ## 🔎 Éditions spéciales plus complètes, ré-identification qui relit les fichiers (14 octobre 2026)
 - **Éditions reconnues** (liste unique `noms_editions.py`) : Perfect, Ultimate, Deluxe / de luxe, Collector, Kanzenban, Aizōban, Shinsōban, Bunko, Wideban, Colossale, Cultissime, « 2 en 1 / 3 en 1 », et avec le mot « édition » : Prestige, Originale, Double, Triple, Limitée, Spéciale, Anniversaire, Intégrale, Remasterisée, Couleur, Maximum, Big, Grand format, Numérotée… « Master Keaton » ou « Big Order » ne sont pas pris pour des éditions.
 - **« 🔄 Relancer l'identification »** relit aussi le ComicInfo.xml des tomes : édition, nombre de tomes, fiche, ISBN, chapitres avec leurs pages et verrou « saisi à la main », nom de la série chez l'équipe (essayé en plus pour trouver la fiche AniList). « 🔎 Choisir la fiche » garde la priorité sur les Notes des fichiers.

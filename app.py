@@ -4455,6 +4455,92 @@ def api_tomes_infos_ecrire():
     return jsonify({"ok": True, "message": "Réécriture lancée…"})
 
 
+_CONVERSION = {}                                       # série → avancement de « convertir les .cbr en .cbz »
+
+
+def _cbr_de(name):
+    """.cbr de la série : (chemin, convertible, raison_si_non)."""
+    import optimiser
+    out = []
+    for e in _entrees(_scan().get(name) or []):
+        p = e.get("path") or ""
+        if not p.lower().endswith(".cbr") or e.get("key") != p or e.get("a_importer"):
+            continue
+        chemin = MANGA_DIR / p
+        try:
+            partage = chemin.stat().st_nlink > 1
+        except OSError:
+            continue
+        if chemin.with_suffix(".cbz").exists():
+            out.append((chemin, False, "un .cbz du même nom existe déjà"))
+        elif partage and not optimiser._dossier_a_lui(chemin, name):
+            out.append((chemin, False, "partagé par qBittorrent, hors d'un dossier de tome : jamais modifié"))
+        else:
+            out.append((chemin, True, ""))
+    return out
+
+
+def _convertir_un_cbr(chemin):
+    """Remplace un .cbr par son .cbz (mêmes pages, vérifiées). Renvoie le nouveau chemin."""
+    import convertir
+    import optimiser
+    cible = chemin.with_suffix(".cbz")
+    if chemin.stat().st_nlink > 1:                       # partagé par qBittorrent : copie à part, dossiers échangés
+        optimiser.echanger_dossier(chemin, lambda dest: bool(convertir.vers_cbz(chemin, dest.with_suffix(".cbz"))), _vers_corbeille)
+    else:
+        tmp = chemin.with_name("." + cible.name + ".conv")
+        convertir.vers_cbz(chemin, tmp)
+        try:
+            _vers_corbeille(chemin)                      # l'ancien d'abord : s'il ne part pas, rien n'est changé
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
+        tmp.rename(cible)
+    return cible
+
+
+@app.route("/api/serie/convertir", methods=["GET", "POST"])
+def api_serie_convertir():
+    """Convertit les .cbr de la série en .cbz (pages identiques, vérifiées) pour pouvoir y écrire les infos.
+    GET : combien, et l'avancement. POST : lance en arrière-plan. La progression de lecture suit."""
+    name = str((request.get_json(silent=True) or {}).get("series", "") if request.method == "POST" else request.args.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    cibles = _cbr_de(name)
+    ok_cibles = [c for c in cibles if c[1]]
+    if request.method == "GET":
+        st = _CONVERSION.get(name) or {}
+        return jsonify({"total": len(ok_cibles), "exclus": [{"fichier": c[0].name, "raison": c[2]} for c in cibles if not c[1]],
+                        "en_cours": bool(st.get("en_cours")), "fait": st.get("fait", 0), "message": st.get("message", "")})
+    if (_CONVERSION.get(name) or {}).get("en_cours"):
+        return jsonify({"ok": False, "error": "Conversion déjà en cours pour cette série."}), 409
+    if not ok_cibles:
+        return jsonify({"ok": False, "error": "Aucun .cbr à convertir dans cette série."}), 400
+    _CONVERSION[name] = {"en_cours": True, "fait": 0, "message": f"Conversion de {len(ok_cibles)} fichier(s)…"}
+
+    def travail():
+        erreurs, deplaces = [], {}
+        try:
+            for chemin, _, _ in ok_cibles:
+                try:
+                    ancien = _rel(chemin)
+                    deplaces[ancien] = _rel(_convertir_un_cbr(chemin))
+                    _CONVERSION[name]["fait"] += 1
+                except Exception as ex:
+                    logger.warning("Conversion de %s : %s", chemin, ex)
+                    erreurs.append(f"{chemin.name} : {ex}")
+            if deplaces:
+                _suivre_renommage(name, name, deplaces)           # la progression de lecture suit les nouveaux chemins
+                tomes_cbz._CACHE.clear()
+                _scan_invalider()
+            msg = f"{len(deplaces)} fichier(s) converti(s) en .cbz sur {len(ok_cibles)}." + (" Erreurs : " + " ; ".join(erreurs) if erreurs else "")
+        except Exception as ex:
+            msg = f"Échec : {ex}"
+        _CONVERSION[name] = {"en_cours": False, "fait": len(deplaces), "message": msg, "ok": not erreurs}
+    threading.Thread(target=travail, daemon=True).start()
+    return jsonify({"ok": True, "message": "Conversion lancée…"})
+
+
 @app.route("/api/tome/chapitres/ecrire", methods=["GET", "POST"])
 def api_tome_chapitres_ecrire():
     """📝 Écrit les chapitres (et leurs pages) et les infos du tome (résumé, provenance…) DANS son fichier .cbz (ComicInfo.xml), pour le partage.

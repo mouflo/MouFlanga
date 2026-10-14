@@ -1568,6 +1568,32 @@
       if (st && st.en_cours) { setTimeout(function () { suivreInfosTous(serie); }, 3000); return; }
       if (st && st.message) window.MouToast('📝 ' + st.message, /Erreurs|Échec/.test(st.message) ? 'err' : 'ok');
     }
+    // 🔄 Convertir les .cbr en .cbz (mêmes pages, vérifiées) pour pouvoir y écrire les infos
+    async function suivreConversion(serie) {
+      var st = await api('/api/serie/convertir?series=' + encodeURIComponent(serie));
+      if (st && st.en_cours) { setTimeout(function () { suivreConversion(serie); }, 3000); return; }
+      if (st && st.message) window.MouToast('🔄 ' + st.message, /Erreurs|Échec/.test(st.message) ? 'err' : 'ok');
+      if (current && current.id === serie) await openSeries(serie, false);
+    }
+    $('sConvertir').addEventListener('click', async function () {
+      fermerMenus();
+      var etat = await api('/api/serie/convertir?series=' + encodeURIComponent(current.id));
+      if (!etat || !etat.total) {
+        note('sMsg', 'Aucun .cbr à convertir pour cette série.' + ((etat && etat.exclus && etat.exclus.length) ? ' Non convertibles : ' + etat.exclus.map(function (x) { return x.fichier + ' (' + x.raison + ')'; }).join(', ') + '.' : ''), 'err');
+        return;
+      }
+      if (etat.en_cours) { note('sMsg', 'Une conversion est déjà en cours pour cette série.'); suivreConversion(current.id); return; }
+      var exclus = (etat.exclus || []).map(function (x) { return x.fichier + ' (' + x.raison + ')'; });
+      var question = 'Convertir ' + etat.total + ' fichier(s) .cbr de « ' + current.title + ' » en .cbz ?\n\n' +
+        'Les pages sont recopiées telles quelles, puis comparées une à une avant tout remplacement. Ta progression de lecture est gardée.\n' +
+        'L\'ancien fichier part à la corbeille (30 jours). Un fichier partagé par qBittorrent est copié à part : le torrent n\'est pas touché.' +
+        (exclus.length ? '\n\nNon convertis : ' + exclus.join(', ') + '.' : '') + '\n\nLe travail continue même si tu fermes la page.';
+      if (!confirm(question)) return;
+      var r = await post('/api/serie/convertir', {series: current.id});
+      if (!r.ok) { note('sMsg', r.error, 'err'); return; }
+      note('sMsg', '🔄 Conversion de ' + etat.total + ' fichier(s) en cours…', 'ok');
+      suivreConversion(current.id);
+    });
     $('sInfosTous').addEventListener('click', async function () {
       fermerMenus();
       var etat = await api('/api/tomes/infos-ecrire?series=' + encodeURIComponent(current.id));
