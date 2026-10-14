@@ -1362,6 +1362,7 @@ def api_optimiser():
 
     def fini():
         if appliquer:
+            tomes_cbz._CACHE.clear()
             import edition
             infos = edition.lire(MANGA_DIR / name)
             infos["allegement"] = {"date": datetime.now().strftime("%Y-%m-%d"), "largeur": largeur, "eclairci": bool(eclairer), "amelioration": eclairer}
@@ -1382,7 +1383,23 @@ def api_optimiser():
         fichiers = [f for f in fichiers if f.name in noms]
         if not fichiers:
             return jsonify({"ok": False, "error": "Aucun tome coché."}), 400
-    if not optimiser.lancer(name, fichiers, appliquer, _vers_corbeille, eclairer, fini, largeur, manuelle):
+    infos_de = None
+    if appliquer and body.get("infos"):                       # 📝 les infos du tome écrites dans la même passe que l'allègement
+        import edition
+        import signets
+        par_chemin = {Path(c[1]): c[0] for c in _tomes_a_ecrire(name) if c[2]}     # mêmes tomes et mêmes règles que « Réécrire les infos »
+        edition_infos = edition.lire(MANGA_DIR / name)
+
+        def infos_de(f):
+            tome = par_chemin.get(Path(f))
+            if tome is None:
+                return None
+            chapitres = ((edition_infos.get("sommaires") or {}).get(str(tome)) or {}).get("chapitres") or []
+            if not signets.nb_signets(chapitres):
+                chapitres = None
+            infos = _infos_tome(name, tome)
+            return lambda ancien: signets._xml(ancien, chapitres, infos)
+    if not optimiser.lancer(name, fichiers, appliquer, _vers_corbeille, eclairer, fini, largeur, manuelle, infos_de):
         return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
     return jsonify({"ok": True, "message": "Allègement lancé…" if appliquer else "Analyse lancée…"})
 

@@ -866,6 +866,7 @@
         '<div class="ident-actions"><button type="button" class="mou-btn" id="dblVoir">🔍 Voir les doubles pages</button></div>' +
         '<div id="dblPlanche"></div></div>' +
         '<div class="dbl"><div class="dem-titre">Tomes à traiter</div><div id="allTomes" class="dem-sous">…</div></div>' +
+        '<div class="ident-actions"><label><input type="checkbox" id="allInfos" checked> 📝 Écrire aussi les infos du tome (résumé, chapitres, provenance, ISBN…) dans la même passe : pas besoin de « Réécrire les infos » ensuite</label></div>' +
         '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser les tomes cochés (rien n\'est modifié)</button></div><div id="allRes"></div>';
       $('infosVue').hidden = false;
       api('/api/optimiser/fichiers?series=' + encodeURIComponent(current.id)).then(function (r) {
@@ -898,6 +899,7 @@
     function optionsAllegement() {
       var coches = [].slice.call(document.querySelectorAll('.all-coche'));
       var o = {largeur: $('allLargeur').value, amelio: amelioration(), qualite: $('allQualMode').value === 'm' ? $('allQual').value : ''};
+      o.infos = !!($('allInfos') && $('allInfos').checked);
       if (coches.length) o.fichiers = coches.filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
       return o;
     }

@@ -153,6 +153,72 @@ class OptimiserTest(unittest.TestCase):
         self.assertTrue(optimiser.est_couleur(couleur))
         self.assertFalse(optimiser.est_couleur(Image.new("RGB", (100, 150), (120, 120, 120))))
 
+    # ---- 📝 infos du tome écrites dans la même passe que l'allègement ----
+    def _attendre(self, serie="Serie"):
+        for _ in range(600):
+            if not optimiser.etat(serie).get("en_cours"):
+                break
+            time.sleep(0.05)
+        return optimiser.etat(serie)
+
+    def test_infos_ecrites_dans_la_meme_passe(self):
+        import signets
+        a = optimiser.analyser(self.f, largeur_max=1200)
+        avant = zipfile.ZipFile(self.f).read("chapitres.json")
+        fait = lambda ancien: signets._xml(ancien, None, {"Summary": "Un résumé de test", "Year": "2014"})
+        gagne = optimiser.reecrire(self.f, a["qualite"], largeur_max=1200, comicinfo=fait)
+        self.assertGreater(gagne, 0)
+        with zipfile.ZipFile(self.f) as z:
+            self.assertIsNone(z.testzip())
+            self.assertEqual(z.namelist().count("ComicInfo.xml"), 1)
+            self.assertIn("Un résumé de test", z.read("ComicInfo.xml").decode())
+            self.assertEqual(z.read("chapitres.json"), avant)           # le reste est recopié tel quel
+        self.assertEqual(signets.lire_infos(self.f)["resume"], "Un résumé de test")
+
+    def test_infos_ajoutees_quand_il_n_y_a_pas_de_comicinfo(self):
+        import signets
+        with zipfile.ZipFile(self.f) as o, zipfile.ZipFile(self.f.with_name("sans.cbz"), "w") as d:
+            for n in o.namelist():
+                if n != "ComicInfo.xml":
+                    d.writestr(n, o.read(n))
+        sans = self.f.with_name("sans.cbz")
+        optimiser.reecrire(sans, 85, largeur_max=1200, comicinfo=lambda anc: signets._xml(anc, None, {"Summary": "Neuf"}))
+        with zipfile.ZipFile(sans) as z:
+            self.assertEqual(z.namelist()[-1], "ComicInfo.xml")
+            self.assertIn("Neuf", z.read("ComicInfo.xml").decode())
+
+    def test_infos_ecrites_meme_sans_gain_et_images_intactes(self):
+        import signets
+        avant = {n: zipfile.ZipFile(self.f).read(n) for n in zipfile.ZipFile(self.f).namelist() if n.endswith(".jpg")}
+        optimiser.reecrire(self.f, None, comicinfo=lambda anc: signets._xml(anc, None, {"Summary": "Seulement les infos"}))
+        with zipfile.ZipFile(self.f) as z:
+            for n, d in avant.items():
+                self.assertEqual(z.read(n), d)                          # aucune image recompressée
+            self.assertIn("Seulement les infos", z.read("ComicInfo.xml").decode())
+
+    def test_lancer_avec_infos_sur_tome_partage(self):
+        import signets
+        racine = Path(self.tmp.name) / "Serie"
+        dossier = racine / "Tome 01"
+        dossier.mkdir(parents=True)
+        tome = dossier / "Serie - Tome 01.cbz"
+        os.replace(self.f, tome)
+        torrent = Path(self.tmp.name) / "torrent.cbz"
+        os.link(tome, torrent)
+        avant_taille = torrent.stat().st_size
+        corbeille = []
+        optimiser.lancer("Serie", [tome], True, corbeille.append, largeur_max=1200,
+                         infos_de=lambda f: (lambda anc: signets._xml(anc, None, {"Summary": "Groupé"})))
+        ligne = self._attendre()["rapport"][0]
+        self.assertTrue(ligne.get("infos"), ligne)
+        self.assertEqual(torrent.stat().st_size, avant_taille)           # le torrent n'est pas touché
+        self.assertIn("Groupé", zipfile.ZipFile(tome).read("ComicInfo.xml").decode())
+
+    def test_sans_infos_rien_ne_change(self):
+        avant = zipfile.ZipFile(self.f).read("ComicInfo.xml")
+        optimiser.reecrire(self.f, 85, largeur_max=1200)
+        self.assertEqual(zipfile.ZipFile(self.f).read("ComicInfo.xml"), avant)
+
 
 class DoublesTest(unittest.TestCase):
     """📖 Doubles pages : découpe en deux, numéros et ComicInfo recalés, moitié droite d'abord (manga)."""

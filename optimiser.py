@@ -14,6 +14,7 @@ partagé par qBittorrent (lien physique) n'est jamais touché.
 import io
 import logging
 import threading
+import time
 import zipfile
 from pathlib import Path
 
@@ -21,6 +22,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps
 
+COMICINFO = "ComicInfo.xml"
 logger = logging.getLogger("mouflanga")
 
 QUALITES = (80, 85, 88, 92)
@@ -208,17 +210,21 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite
     return meilleur
 
 
-def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, destination: Path | None = None) -> int:
+def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, destination: Path | None = None, comicinfo=None) -> int:
     """Écrit la version allégée (ou éclaircie) à côté, la relit, puis remplace. Renvoie le nombre d'octets gagnés.
     L'ancien fichier est renvoyé à l'appelant via un nom « .avant » (à mettre à la corbeille).
     Avec « destination » (fichier partagé par qBittorrent : le NAS refuse de le renommer), la version allégée est seulement
-    écrite là, relue, et l'original n'est pas touché : l'appelant échange les dossiers."""
+    écrite là, relue, et l'original n'est pas touché : l'appelant échange les dossiers.
+    « comicinfo » : fonction (ancien ComicInfo.xml ou None) -> nouveau ComicInfo.xml, pour écrire les infos du tome dans la
+    même passe ; le fichier est alors remplacé même sans gain. « qualite » vide : les images sont recopiées telles quelles."""
     eclairer = reglages_amelioration(eclairer)
     tmp = destination if destination is not None else chemin.with_name("." + chemin.name + ".allege")
+    vu_comicinfo = False
     with zipfile.ZipFile(chemin) as src, zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as dst:
         for info in src.infolist():
             data = src.read(info.filename)
-            if Path(info.filename).suffix.lower() in _IMAGES:
+            compression = zipfile.ZIP_STORED
+            if qualite and Path(info.filename).suffix.lower() in _IMAGES:
                 im = Image.open(io.BytesIO(data))
                 im.load()
                 traitee = ameliorer(im, eclairer) if eclairer else im
@@ -226,20 +232,27 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
                 nouveau = _jpeg(im2, qualite)
                 if im2 is not im or len(nouveau) < len(data):
                     data = nouveau
+            elif comicinfo is not None and info.filename == COMICINFO:
+                data, vu_comicinfo, compression = comicinfo(data), True, zipfile.ZIP_DEFLATED
             info2 = zipfile.ZipInfo(info.filename, date_time=info.date_time)
-            info2.compress_type = zipfile.ZIP_STORED
+            info2.compress_type = compression
             dst.writestr(info2, data)
-    with zipfile.ZipFile(tmp) as z:                       # relecture : même liste d'entrées, archive saine
+        if comicinfo is not None and not vu_comicinfo:
+            c = zipfile.ZipInfo(COMICINFO, date_time=time.localtime()[:6])
+            c.compress_type = zipfile.ZIP_DEFLATED
+            dst.writestr(c, comicinfo(None))
+    with zipfile.ZipFile(tmp) as z:                       # relecture : mêmes pages (et le ComicInfo), archive saine
         if z.testzip() is not None:
             tmp.unlink()
             raise RuntimeError("archive allégée illisible")
         with zipfile.ZipFile(chemin) as o:
-            if z.namelist() != o.namelist():
+            attendu = o.namelist() + ([COMICINFO] if comicinfo is not None and not vu_comicinfo else [])
+            if z.namelist() != attendu:
                 tmp.unlink()
                 raise RuntimeError("pages différentes après allègement")
     avant = chemin.stat().st_size
     gagne = avant - tmp.stat().st_size
-    if gagne <= 0 and not eclairer:
+    if gagne <= 0 and not eclairer and comicinfo is None:
         tmp.unlink()
         return 0
     if destination is not None:
@@ -283,14 +296,14 @@ def echanger_dossier(chemin: Path, ecrire, vers_corbeille) -> bool:
     return True
 
 
-def reecrire_partage(chemin: Path, qualite: int, vers_corbeille, eclairer=False, largeur_max=None) -> int:
+def reecrire_partage(chemin: Path, qualite: int, vers_corbeille, eclairer=False, largeur_max=None, comicinfo=None) -> int:
     """Tome partagé : version allégée écrite à part puis dossiers échangés (voir echanger_dossier). Renvoie les octets gagnés."""
     gagne = [0]
     eclairer = reglages_amelioration(eclairer)
 
     def ecrire(dest):
-        gagne[0] = reecrire(chemin, qualite, eclairer, largeur_max, destination=dest)
-        return gagne[0] > 0 or eclairer
+        gagne[0] = reecrire(chemin, qualite, eclairer, largeur_max, destination=dest, comicinfo=comicinfo)
+        return gagne[0] > 0 or bool(eclairer) or comicinfo is not None
     return gagne[0] if echanger_dossier(chemin, ecrire, vers_corbeille) else 0
 
 
@@ -310,8 +323,9 @@ def etat(serie):
         return dict(_ETAT.get(serie) or {})
 
 
-def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None, largeur_max=None, qualite_forcee=None):
-    """En arrière-plan : analyse (appliquer=False) ou allègement de chaque fichier de la liste."""
+def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None, largeur_max=None, qualite_forcee=None, infos_de=None):
+    """En arrière-plan : analyse (appliquer=False) ou allègement de chaque fichier de la liste.
+    « infos_de(fichier) » : fonction de ComicInfo (voir reecrire) ou None ; les infos du tome sont alors écrites dans la même passe."""
     eclairer = reglages_amelioration(eclairer)
     with _VERROU:
         if (_ETAT.get(serie) or {}).get("en_cours"):
@@ -336,21 +350,24 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
                     avant_total += a["taille"]
                     ligne = {"fichier": f.name, "taille_mo": round(a["taille"] / 1048576, 1), "qualite": a["qualite"],
                              "gain": a["gain_estime"], "psnr": a["psnr_min"]}
-                    if appliquer and a["qualite"]:
+                    comicinfo = infos_de(f) if (appliquer and infos_de) else None
+                    if appliquer and (a["qualite"] or comicinfo):
                         if partage:
-                            g = reecrire_partage(f, a["qualite"], vers_corbeille, eclairer, largeur_max)
+                            g = reecrire_partage(f, a["qualite"], vers_corbeille, eclairer, largeur_max, comicinfo)
                             ligne["note"] = "partagé par qBittorrent : version allégée à part, le torrent n'est pas touché"
                         else:
-                            g = reecrire(f, a["qualite"], eclairer, largeur_max)
+                            g = reecrire(f, a["qualite"], eclairer, largeur_max, comicinfo=comicinfo)
                             ancien = f.with_name(f.name + ".avant")
                             if ancien.exists():
                                 vers_corbeille(ancien)
                         ligne["gagne_mo"] = round(g / 1048576, 1)
+                        if comicinfo:
+                            ligne["infos"] = True
                         gagne += g
                     elif a["qualite"]:
                         gagne += int(a["taille"] * a["gain_estime"])
                     if not a["qualite"]:
-                        ligne["note"] = "déjà léger ou fragile : laissé tel quel"
+                        ligne["note"] = "déjà léger ou fragile : images laissées telles quelles" + (", infos écrites" if ligne.get("infos") else "")
                     rapport.append(ligne)
                 except Exception as e:
                     logger.warning("Allègement de %s : %s", f, e)

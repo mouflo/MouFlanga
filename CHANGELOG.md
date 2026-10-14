@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 🪶📝 Alléger et écrire les infos en une seule passe (14 octobre 2026)
+- Dans la fenêtre « 🪶 Alléger ou ✨ améliorer », une case **« 📝 Écrire aussi les infos du tome »** (cochée par défaut) : les images sont allégées ET le ComicInfo.xml (résumé, chapitres avec leurs pages, provenance, ISBN, fiche) est écrit dans le même passage. Plus besoin de « Réécrire les infos » ensuite : un seul fichier réécrit sur le NAS par tome au lieu de deux.
+- Mêmes règles que « 📝 Réécrire les infos de TOUS les tomes » : balises de l'équipe jamais écrasées, saisies à la main gardées, tomes assemblés par MouFlanga et fichiers partagés hors d'un dossier de tome laissés tels quels. Un tome déjà léger est quand même réécrit pour recevoir ses infos (images intactes). Même sécurité : écriture à côté, relecture, ancien à la corbeille ; fichier partagé par qBittorrent par échange de dossiers.
+- Case décochée : comportement inchangé (les infos existantes sont recopiées telles quelles).
+
 ## 🎨 Apparence : skins et couleurs au choix, par compte (14 octobre 2026)
 - Nouveau bouton **🎨 Apparence** dans l'en-tête : choisir le « Style d'origine » ou un skin de la liste, puis régler 4 couleurs (fond, cartes, texte, accent) avec un sélecteur de couleur. Le choix est enregistré **par compte** (`data/apparence/<compte>.json`). Aucun changement du style commun des quatre applis : le skin est un fichier chargé en dernier (`/skin.css`), propre à MouFlanga.
 - **Skins = un dossier `ui/skins/<nom>/`** (`skin.css` + `skin.json`), CSS seul : pas de JavaScript, `@import`, adresses extérieures ni balises (refusés par le serveur, 150 Ko maximum). Un skin d'exemple « Papier » (thème clair) est fourni.
