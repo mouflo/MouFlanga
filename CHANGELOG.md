@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 📖 Titres de chapitres français de Wikipédia : format « 1er Quart-temps : … » (14 octobre 2026)
+- Les listes qui écrivent « {{1er}} Quart-temps : titre » (Kuroko's Basket) n'étaient pas reconnues : aucun titre français, l'appli retombait sur l'anglais. Le numéro en modèle (« {{2e}} ») et le mot « Quart-temps » sont maintenant compris.
+- Les séries déjà en mémoire sont relues une fois automatiquement (nouvelle version de la lecture), à l'ouverture de leur fiche.
+
 ## 🔄 Remplacement d'une série : l'ancienne source disparaît (14 octobre 2026)
 - Quand un remplacement (meilleure version, intégrale, fusion en « remplacer ») change tous les tomes d'une série, les archives d'origine et les NFO de l'ancienne source sont oubliés : « Infos de l'édition » ne montre plus que la nouvelle.
 

@@ -908,7 +908,8 @@ def _titres_tomes_en_fond(name, chapters):
     """Titres des tomes (« Romance Dawn ») cherchés une fois, en arrière-plan ; ils s'affichent au rechargement."""
     if "unittest" in sys.modules or name in _TITRES_EN_COURS or not any(c.get("tome") is not None or c.get("groupe") for c in chapters):
         return
-    if "details" in ((tomes._charger(name) or {}).get("titres_tomes") or {}):
+    garde = (tomes._charger(name) or {}).get("titres_tomes") or {}
+    if "details" in garde and garde.get("v") == tomes.VERSION_TITRES:
         return
     _TITRES_EN_COURS.add(name)
 

@@ -25,6 +25,7 @@ _SESSION = requests.Session()
 # Wikipédia demande un nom d'outil et un moyen de le retrouver (règles d'usage de son API)
 _SESSION.headers["User-Agent"] = "MouFlanga/1.0 (https://github.com/mouflo/MouFlanga; bibliotheque de mangas personnelle)"
 WIKI = "https://en.wikipedia.org/w/api.php"
+VERSION_TITRES = 2          # monte quand la lecture des pages Wikipédia change : les séries déjà gardées sont relues
 
 
 def _simple(texte: str) -> str:
@@ -970,7 +971,7 @@ def titres_tomes(serie: str, forcer=False) -> dict:
     sinon Wikipédia anglais (Graphic novel list : LicensedTitle, sinon TranslitTitle). Gardé 30 jours."""
     garde = _charger(serie) or {}
     t = garde.get("titres_tomes")
-    if t and "details" in t and not forcer and time.time() - t.get("date", 0) < FICHE_DUREE:
+    if t and "details" in t and t.get("v") == VERSION_TITRES and not forcer and time.time() - t.get("date", 0) < FICHE_DUREE:
         return t.get("titres", {})
     st = garde.get("statut_officiel") or {}
     if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans titre anglais) : refaite une fois
@@ -1025,7 +1026,9 @@ def titres_tomes(serie: str, forcer=False) -> dict:
                 m_c = re.search(r"Personnages en couverture\s*:?\s*'*\s*(?:<br\s*/?>)?(.+?)(?:<br|$)", extra, re.S | re.I)
                 # « * Ch.1 : … », « * [gras]Plat 1 :[/gras] … », « * Chapitre 12 : … » (le mot avant le numéro varie)
                 brut = champs.get("chapitre", "").replace("'" * 3, "")
-                chap = [(float(n), _wiki_propre(t)) for n, t in re.findall(r"^\*\s*[^\d:\n]{0,15}?(\d+(?:\.\d+)?)\s*:\s*(.+)$", brut, re.M)]
+                brut = re.sub(r"\{\{\s*(\d+)\s*(?:er|re|e|ème|è|nd|nde)\s*\}\}", r"\1", brut)     # « {{1er}} Quart-temps : … » (Kuroko's Basket)
+                chap = [(float(n), _wiki_propre(t)) for n, t in re.findall(
+                    r"^\*\s*[^\d:\n]{0,15}?(\d+(?:\.\d+)?)\s*(?:[^\W\d_][\w'’-]*(?:\s[\w'’-]+)?)?\s*:\s*(.+)$", brut, re.M)]
                 if not chap:                              # « Kapitel.1 {{japonais|La fuite|…}}<br />Kapitel.2 … »
                     for morceau in re.split(r"<br\s*/?>|\n", brut):
                         mc = re.match(r"^\W*[^\W\d_]{2,15}[.\s·:]*(\d+(?:\.\d+)?)\s*[:.\-–]?\s*(.+)$", morceau.strip())
@@ -1048,7 +1051,7 @@ def titres_tomes(serie: str, forcer=False) -> dict:
     except (OSError, ValueError):
         brut = {}
     brut["titres_tomes"] = {"date": time.time() if titres else time.time() - FICHE_DUREE + 86400,   # rien : retenté demain
-                            "titres": titres, "details": details}
+                            "titres": titres, "details": details, "v": VERSION_TITRES}
     DOSSIER.mkdir(parents=True, exist_ok=True)
     tmp = _fichier(serie).with_suffix(".tmp")
     tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
