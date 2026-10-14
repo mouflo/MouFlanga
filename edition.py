@@ -161,6 +161,13 @@ def noter_volumes(dossier: Path, titre: str):
         ecrire(dossier, d)
 
 
+def oublier_source(dossier: Path):
+    """Tous les tomes d'une série viennent d'être remplacés : les archives et NFO de l'ancienne source ne la décrivent plus."""
+    d = lire(dossier)
+    if [d.pop(k, None) for k in ("archives", "nfo", "analyse")] != [None, None, None]:
+        ecrire(dossier, d)
+
+
 def invalider(dossier: Path):
     """Après un remplacement de tomes : la résolution et la source sont à refaire avec les nouveaux fichiers."""
     d = lire(dossier)

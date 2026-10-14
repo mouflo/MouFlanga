@@ -946,6 +946,18 @@ class EditionTest(unittest.TestCase):
             self.assertEqual(edition.analyser([t / "double.cbz"], "")["source"], "Scan")
             self.assertEqual(edition.analyser([t / "double.cbz"], "Serie CBZ-Digital")["devine"], False)
 
+    def test_remplacement_complet_oublie_l_ancienne_source(self):
+        import edition
+        with tempfile.TemporaryDirectory() as t:
+            t = Path(t); (t / "tmp").mkdir(); (t / "serie").mkdir()
+            (t / "tmp" / "a.nfo").write_bytes(b"ancienne source")
+            edition.noter_import(t / "serie", "Ancienne.T01-T28.zip", t / "tmp")
+            edition.oublier_source(t / "serie")
+            d = edition.lire(t / "serie")
+            self.assertNotIn("archives", d); self.assertNotIn("nfo", d)
+            edition.noter_import(t / "serie", "Nouvelle.Integrale.zip", t / "tmp")
+            self.assertEqual(edition.lire(t / "serie")["archives"], ["Nouvelle.Integrale.zip"])
+
 
 class NomsArchivesTest(unittest.TestCase):
     def test_noms_nettoyes(self):

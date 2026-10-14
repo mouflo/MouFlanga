@@ -3186,7 +3186,11 @@ def _importer_torrent(nom, source, remplacer=False):
         hors = _tomes_hors_integrale(nom, Path(source).name, set(a_tomes))
         if hors:
             logger.info("Intégrale « %s » : tomes absents de cette édition mis à la corbeille : %s", nom, sorted(hors))
+        avant = _tomes_de(nom)
         logger.info("Meilleure version de « %s » : %d tome(s) remplacé(s)", nom, _remplacer_tomes(nom, set(a_tomes) | hors))
+        if avant and avant <= (set(a_tomes) | hors):        # plus aucun ancien tome : l'ancienne source ne reste pas à côté de la nouvelle
+            import edition
+            edition.oublier_source(dossier)
     lots, places = [], 0
     for f in fichiers:
         ext = f.suffix.lower()
@@ -3757,7 +3761,11 @@ def api_renommer():
     remplaces = 0
     try:
         if fusion and mode == "remplacer":            # les tomes de l'autre série prennent la place des siens (anciens : corbeille)
+            avant = _tomes_de(nouveau)
             remplaces = _remplacer_tomes(nouveau, _tomes_de(name))
+            if avant and avant <= _tomes_de(name):         # tous les tomes remplacés : l'ancienne source ne reste pas
+                import edition
+                edition.oublier_source(MANGA_DIR / nouveau)
         nouveau = _organiser(name, nouveau)
         for f in ((MANGA_DIR / nouveau).rglob("*.cbz") if not partage else []):        # « Ancien nom - Tome 03.cbz » → « Nouveau nom - Tome 03.cbz »
             if f.name.startswith(name + " - ") and not f.with_name(nouveau + f.name[len(name):]).exists():

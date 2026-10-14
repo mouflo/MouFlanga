@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🔄 Remplacement d'une série : l'ancienne source disparaît (14 octobre 2026)
+- Quand un remplacement (meilleure version, intégrale, fusion en « remplacer ») change tous les tomes d'une série, les archives d'origine et les NFO de l'ancienne source sont oubliés : « Infos de l'édition » ne montre plus que la nouvelle.
+
 ## ✏️ Saisir les chapitres à la main quand aucun n'est trouvé (14 octobre 2026)
 - Dans la fiche d'un tome sans aucun chapitre trouvé, le bouton « ✏️ Saisir les chapitres à la main » ouvre la même zone que « Corriger les chapitres » (une ligne par chapitre, `@` pour la page de départ).
 
