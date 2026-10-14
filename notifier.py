@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from pathlib import Path
 
@@ -202,7 +203,15 @@ def _propre(texte: str, token: str) -> str:
     return str(texte).replace(token, "***") if token else str(texte)
 
 
+def _en_test() -> bool:
+    """Lancé par unittest / pytest : aucun message ne doit partir pour de vrai (les tests utilisent de vrais réglages)."""
+    a0 = (sys.argv[0] if sys.argv else "") or ""
+    return "unittest" in a0 or "pytest" in a0
+
+
 def _appel(token: str, methode: str, donnees: dict | None = None, timeout: int = 15) -> tuple[bool, dict | str]:
+    if _en_test():
+        return False, "Tests en cours : aucun message envoyé."
     try:
         r = requests.post(f"{API}/bot{token}/{methode}", json=donnees or {}, timeout=timeout)
         try:
@@ -221,7 +230,7 @@ def envoyer(texte: str, token: str | None = None, chat_id: str | None = None,
     """Envoie un message. Renvoie (réussi, message lisible).
     thread_id : None = celui des réglages ; "" = aucun sujet ; sinon le numéro du sujet.
     Chaque alerte part aussi sur les téléphones abonnés (RELAIS : notifications web), Telegram gardant l'historique."""
-    for relais in RELAIS:
+    for relais in ([] if _en_test() else RELAIS):
         try:
             relais(texte)
         except Exception as e:

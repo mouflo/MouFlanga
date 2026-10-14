@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🔇 Les tests n'envoient plus de vrais messages (14 octobre 2026)
+- Lancer la suite de tests (`python -m unittest`) envoyait de vrais messages Telegram (« 🪶 MouFlanga : allègement terminé pour « Serie » … ») et pouvait notifier les téléphones : les tests tournent avec les vrais réglages du serveur. `notifier` n'envoie plus rien quand il est lancé par unittest ou pytest ; les tests qui simulent l'envoi continuent de marcher.
+
 ## ✏️ Provenance : saisie à la main corrigée et valable pour toute la série (14 octobre 2026)
 - **Nouveau bouton « ✏️ Provenance de toute la série »** dans le menu de la série : on colle le nom du torrent (« Video Girl - Ai (01-15) (Katsura) (2008) [Digital-1482] (PapriKa+) [CBZ] ») ou seulement l'équipe ; l'équipe en est tirée (« PapriKa+ »), le nom complet est gardé comme origine, pour **tous les tomes** d'un coup.
 - **Un nom de torrent collé dans « Équipe »** d'un tome n'est plus coupé à 60 caractères et rangé comme équipe : il est reconnu et réparti (équipe + origine). L'origine peut faire 200 caractères (avant 120).
