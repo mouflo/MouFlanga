@@ -5,6 +5,7 @@
 
 ## ✏️ Provenance : saisie à la main corrigée et valable pour toute la série (14 octobre 2026)
 - **Nouveau bouton « ✏️ Provenance de toute la série »** dans le menu de la série : on colle le nom du torrent (« Video Girl - Ai (01-15) (Katsura) (2008) [Digital-1482] (PapriKa+) [CBZ] ») ou seulement l'équipe ; l'équipe en est tirée (« PapriKa+ »), le nom complet est gardé comme origine, pour **tous les tomes** d'un coup.
+- **L'« Archive d'origine » des Infos de l'édition suit** : le nom saisi la remplace aussi (elle ne restait que l'ancien nom de l'archive importée).
 - **Un nom de torrent collé dans « Équipe »** d'un tome n'est plus coupé à 60 caractères et rangé comme équipe : il est reconnu et réparti (équipe + origine). L'origine peut faire 200 caractères (avant 120).
 - **Correction** : une provenance déjà saisie à la main ne pouvait plus être corrigée à la main (« une note à la main ne se remplace pas » valait aussi pour une nouvelle saisie). Une nouvelle saisie à la main remplace maintenant la précédente ; seules les déductions automatiques ne l'écrasent pas.
 

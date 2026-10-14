@@ -1167,10 +1167,13 @@ def api_serie_provenance():
     infos = edition.lire(dossier)
     for t in numeros:
         provenance.noter(infos, t, equipe, origine or "Saisie à la main", manuel=True, ecrase=True)
+    if origine.startswith("Torrent : "):            # « Archive d'origine » des infos de l'édition : le même nom, corrigé
+        infos["archives"] = [origine[len("Torrent : "):]]
     edition.ecrire(dossier, infos)
     _CACHE_EDITION.pop(name, None)
     return jsonify({"ok": True, "equipe": equipe, "origine": origine or "Saisie à la main", "tomes": len(numeros),
-                    "message": f"Provenance enregistrée pour {len(numeros)} tome(s) : équipe « {equipe or '—'} », origine « {origine or 'Saisie à la main'} »."})
+                    "message": f"Provenance enregistrée pour {len(numeros)} tome(s) : équipe « {equipe or '—'} », origine « {origine or 'Saisie à la main'} »"
+                               + (" ; archive d'origine de l'édition mise à jour." if origine.startswith("Torrent : ") else ".")})
 
 
 @app.route("/api/serie/isbn", methods=["POST"])

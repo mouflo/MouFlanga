@@ -18,6 +18,9 @@ class SaisieTest(unittest.TestCase):
         self.assertEqual(eq, "PapriKa+")
         self.assertEqual(orig, "Torrent : " + NOM)
 
+    def test_point_final_retire(self):
+        self.assertEqual(provenance.analyser_saisie(NOM + ".")[1], "Torrent : " + NOM)
+
     def test_equipe_seule(self):
         self.assertEqual(provenance.analyser_saisie("PapriKa+"), ("PapriKa+", ""))
         self.assertEqual(provenance.analyser_saisie("PapriKa+", "Achat"), ("PapriKa+", "Achat"))
@@ -61,6 +64,7 @@ class SerieTest(unittest.TestCase):
             self.assertEqual(p[t]["equipe"], "PapriKa+")
             self.assertEqual(p[t]["origine"], "Torrent : " + NOM)
             self.assertTrue(p[t]["manuel"])
+        self.assertEqual(edition.lire(self.root / "Serie")["archives"], [NOM])    # l'archive d'origine suit
 
     def test_tome_seul_avec_nom_colle(self):
         import edition

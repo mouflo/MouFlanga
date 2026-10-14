@@ -37,7 +37,7 @@ def analyser_saisie(texte: str, origine: str = ""):
     """Ce qu'on a tapé à la main -> (équipe, origine). Un nom de torrent ou de fichier collé à la place de l'équipe
     (« Video Girl - Ai (01-15) (Katsura) (2008) [Digital-1482] (PapriKa+) [CBZ] ») donne l'équipe qu'il contient
     (« PapriKa+ ») et le nom complet comme origine, au lieu d'être coupé et rangé comme équipe."""
-    texte, origine = (texte or "").strip(), (origine or "").strip()
+    texte, origine = (texte or "").strip().rstrip(". "), (origine or "").strip()
     if len(texte) > 30 or re.search(r"[()\[\]]|\.cbz|\.cbr|\.zip", texte, re.I):
         return equipe_torrent(texte)[:60], origine or ("Torrent : " + texte)[:200]
     return texte[:60], origine[:200]
