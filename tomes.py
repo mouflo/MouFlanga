@@ -20,7 +20,30 @@ import requests
 
 logger = logging.getLogger(__name__)
 DOSSIER = Path(__file__).resolve().parent / "data" / "tomes"
-DUREE = 3 * 86400
+DUREE = 7 * 86400                      # série en cours : répartition en tomes revue au plus une fois par semaine
+TERMINES = ("FINISHED", "CANCELLED")   # statuts qui ne bougent plus : ce qui est trouvé est gardé pour toujours
+ESSAIS_JOURS = (1, 3, 7, 30)           # réessais d'une recherche sans résultat : de plus en plus espacés
+
+
+def serie_terminee(garde) -> bool:
+    st = (garde or {}).get("statut_officiel") or {}
+    return st.get("statut") in TERMINES
+
+
+def attente_essai(essais) -> int:
+    """Secondes à attendre avant de réessayer une recherche restée sans résultat (« essais » échecs déjà faits)."""
+    return ESSAIS_JOURS[min(max(int(essais or 0), 0), len(ESSAIS_JOURS) - 1)] * 86400
+
+
+def garde_a_jour(entree, garde, duree_en_cours, trouve=True) -> bool:
+    """Une information gardée est-elle encore bonne ? Trouvée : pour toujours si la série est terminée, sinon « duree_en_cours ».
+    Sans résultat : réessai espacé selon le nombre d'échecs déjà faits (champ « essais »)."""
+    if not entree:
+        return False
+    age = time.time() - (entree.get("date") or 0)
+    if not trouve:
+        return age < attente_essai(entree.get("essais"))
+    return serie_terminee(garde) or age < duree_en_cours
 _SESSION = requests.Session()
 # Wikipédia demande un nom d'outil et un moyen de le retrouver (règles d'usage de son API)
 _SESSION.headers["User-Agent"] = "MouFlanga/1.0 (https://github.com/mouflo/MouFlanga; bibliotheque de mangas personnelle)"
@@ -257,15 +280,16 @@ def _enregistrer(serie: str, info: dict):
     donnees = {"date": time.time(), "source": info.get("source"),
                "tomes": {str(k): v for k, v in info.get("tomes", {}).items()},
                "titres": {str(k): v for k, v in info.get("titres", {}).items()}}
-    try:                                                   # garder le statut officiel déjà connu
+    try:                                                   # tout le reste est gardé tel quel : statut, fiche, titres et résumés des tomes…
         ancien = json.loads(_fichier(serie).read_text(encoding="utf-8"))
-        if ancien.get("statut_officiel"):
-            donnees["statut_officiel"] = ancien["statut_officiel"]
-        for k in ("resumes_tomes", "intros"):              # résumés de tomes et débuts parasites appris : jamais perdus
-            if ancien.get(k):
-                donnees[k] = ancien[k]
+        for k, v in ancien.items():
+            if k not in donnees and v:
+                donnees[k] = v
+        if not donnees["tomes"]:
+            donnees["essais"] = int(ancien.get("essais") or 0) + 1       # rien trouvé : prochain essai plus tard
     except (OSError, ValueError):
-        pass
+        if not donnees["tomes"]:
+            donnees["essais"] = 1
     tmp = _fichier(serie).with_suffix(".tmp")
     tmp.write_text(json.dumps(donnees, ensure_ascii=False), encoding="utf-8")
     tmp.replace(_fichier(serie))
@@ -308,7 +332,7 @@ def chercher(serie: str, forcer: bool = False) -> dict | None:
     """Répartition des tomes de la série : {"source", "tomes": {n° chapitre: tome ou None}, "titres": {n°: titre}}.
     None si aucune source ne la connaît (les chapitres restent alors un fichier chacun)."""
     garde = _charger(serie)
-    if garde and not forcer and time.time() - garde.get("date", 0) < DUREE:
+    if garde and not forcer and garde_a_jour(garde, garde, DUREE, trouve=bool(garde.get("tomes"))):
         return garde if garde.get("tomes") else None
     st = (_charger(serie) or {}).get("statut_officiel") or {}
     noms = list(dict.fromkeys([x for x in (st.get("titre"), st.get("titre_en")) if x] + _variantes(serie)))   # titre AniList d'abord
@@ -354,17 +378,21 @@ def tome_de(num: float, info: dict | None):
 
 RESUME_VERSION = 2                    # 2 : résumés non tronqués (le dernier mot n'est plus coupé)
 STATUT_DUREE = 7 * 86400
-STATUT_VIDE_DUREE = 86400            # série pas trouvée ou sans résumé : on réessaie chaque jour (les sources s'enrichissent)
 
 
 def statut_a_jour(st) -> bool:
-    """Le statut gardé est-il encore bon ? 7 jours s'il est complet, un jour seulement s'il manque la série ou le résumé."""
+    """Le statut gardé est-il encore bon ? Série terminée ou abandonnée : pour toujours. En cours : 7 jours.
+    Série introuvable ou sans résumé : réessais espacés (1, 3, 7 puis 30 jours)."""
     if not st or "resume" not in st:
         return False
     if st.get("resume_v", 1) < RESUME_VERSION and st.get("resume"):    # gardé par l'ancien code (dernier mot coupé) : refait
         return False
-    duree = STATUT_DUREE if st.get("statut") and len(st.get("resume") or "") >= 40 else STATUT_VIDE_DUREE   # un mot seul : refait
-    return time.time() - st.get("date", 0) < duree
+    complet = bool(st.get("statut")) and len(st.get("resume") or "") >= 40       # un mot seul : refait
+    if complet and st.get("statut") in TERMINES:
+        return True
+    if complet:
+        return time.time() - st.get("date", 0) < STATUT_DUREE
+    return time.time() - st.get("date", 0) < attente_essai(st.get("essais"))
 
 
 def _choisir(medias, serie, tome_max):
@@ -583,6 +611,8 @@ def _garder_statut(serie, m):
         brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         brut = {}
+    if not (st["statut"] and len(st["resume"] or "") >= 40):          # incomplet : on compte les échecs pour espacer les essais
+        st["essais"] = int((brut.get("statut_officiel") or {}).get("essais") or 0) + 1
     brut["statut_officiel"] = st
     tmp = _fichier(serie).with_suffix(".tmp")
     tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
@@ -887,7 +917,7 @@ def fiche(serie: str, forcer=False) -> dict:
     """Dates de parution, auteurs, genres, éditeurs (AniList + Wikipédia FR) ; gardé 30 jours dans data/tomes/<série>.json."""
     garde = _charger(serie) or {}
     f = garde.get("fiche")
-    if f and not forcer and time.time() - f.get("date", 0) < FICHE_DUREE:
+    if f and not forcer and garde_a_jour(f, garde, FICHE_DUREE):
         return f
     st = garde.get("statut_officiel") or {}
     if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans identifiant) : on la refait une fois
@@ -1029,7 +1059,8 @@ def titres_tomes(serie: str, forcer=False) -> dict:
     sinon Wikipédia anglais (Graphic novel list : LicensedTitle, sinon TranslitTitle). Gardé 30 jours."""
     garde = _charger(serie) or {}
     t = garde.get("titres_tomes")
-    if t and "details" in t and t.get("v") == VERSION_TITRES and not forcer and time.time() - t.get("date", 0) < FICHE_DUREE:
+    if t and "details" in t and t.get("v") == VERSION_TITRES and not forcer \
+            and garde_a_jour(t, garde, FICHE_DUREE, trouve=bool(t.get("titres"))):
         return t.get("titres", {})
     st = garde.get("statut_officiel") or {}
     if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans titre anglais) : refaite une fois
@@ -1108,8 +1139,10 @@ def titres_tomes(serie: str, forcer=False) -> dict:
         brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         brut = {}
-    brut["titres_tomes"] = {"date": time.time() if titres else time.time() - FICHE_DUREE + 86400,   # rien : retenté demain
-                            "titres": titres, "details": details, "v": VERSION_TITRES}
+    precedent = int((brut.get("titres_tomes") or {}).get("essais") or 0)
+    brut["titres_tomes"] = {"date": time.time(), "titres": titres, "details": details, "v": VERSION_TITRES}
+    if not titres:                                        # rien trouvé : réessais espacés (1, 3, 7, 30 jours)
+        brut["titres_tomes"]["essais"] = precedent + 1
     DOSSIER.mkdir(parents=True, exist_ok=True)
     tmp = _fichier(serie).with_suffix(".tmp")
     tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")

@@ -1,5 +1,12 @@
 # Historique des versions
 
+## 🗄️ Infos des séries : gardées bien plus longtemps, plus de réinterrogation inutile (14 octobre 2026)
+- **Série terminée ou abandonnée** (statut AniList FINISHED / CANCELLED) : statut, résumé, répartition en tomes, fiche et titres des tomes sont gardés **pour toujours**. Ils ne sont refaits que par « 🔄 Relancer l'identification » ou si les fichiers changent.
+- **Série en cours** : statut et répartition en tomes revus au plus une fois par **semaine** (avant : 3 et 7 jours), fiche et titres de tomes une fois par mois. Les résumés de tomes déjà trouvés sont gardés indéfiniment.
+- **Rien trouvé** : réessais de plus en plus espacés (1, 3, 7 puis 30 jours) au lieu de chaque jour, pour le statut, la répartition et les titres.
+- **Correction d'une perte de données** : quand la répartition des tomes était refaite, le fichier de la série était réécrit en ne gardant que le statut, les résumés et les débuts appris ; la **fiche** et les **titres des tomes** étaient effacés puis redemandés. Tout est maintenant conservé.
+- Les infos déjà gardées sont reprises telles quelles, rien à corriger à la main.
+
 ## 📚 Résumés Google Books : notices en double et quota dépassé (14 octobre 2026)
 - **Même notice sur plusieurs tomes** : Google renvoie parfois la présentation de la série pour un autre tome (Assassination Classroom : tomes 16 et 19 recevaient le résumé du tome 1, à une apostrophe ou un espace près). Une notice identique à celle d'un autre tome est reconnue (lettres et chiffres seulement) : elle n'est gardée que pour le tome 1, les autres n'affichent rien plutôt qu'un résumé faux. Les espaces perdus après la ponctuation (« abattre !Découvrez ») sont rétablis.
 - **Quota Google Books dépassé (erreur 429)** : les tomes sans résumé (18 et 20) restaient vides et l'appli redemandait à Google pour chaque tome. Elle se met maintenant en pause 3 h après un refus de quota, le note dans le journal, et réessaie ensuite toute seule.
