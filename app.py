@@ -3171,6 +3171,29 @@ def _tomes_hors_integrale(nom, titre, nouveaux):
     return {t for t in presents if t not in nouveaux and t > 0}
 
 
+def _zip_images_du_torrent(source, fichiers, dest):
+    """Torrent fait seulement de dossiers d'images (« Arago Tome 01/001.jpg ») : les images sont rangées, avec leurs dossiers,
+    dans un zip caché de « <série>/.torrent/ », que l'import traite comme n'importe quelle archive. None si le torrent
+    contient aussi des archives ou des PDF (les images éventuelles ne sont alors que des couvertures)."""
+    images = [f for f in fichiers if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")]
+    if not images or len(images) != sum(1 for f in fichiers if f.suffix.lower() not in (".nfo", ".txt")) or not source.is_dir():
+        return None
+    cible = dest / (source.name + ".zip")
+    if cible.exists():
+        return cible
+    dest.mkdir(parents=True, exist_ok=True)
+    tmp = cible.with_name("." + cible.name + ".copie")
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as z:
+            for f in images:
+                z.write(f, f.relative_to(source).as_posix())
+        os.replace(tmp, cible)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+    return cible
+
+
 def _importer_torrent(nom, source, remplacer=False):
     """Contenu d'un torrent → bibliothèque, sans jamais renommer ni effacer ses fichiers (le NAS le refuse tant que
     qBittorrent partage) : un tome complet est placé directement sous « Tome NN/<série> - Tome NN.cbz », un chapitre
@@ -3214,6 +3237,10 @@ def _importer_torrent(nom, source, remplacer=False):
         edition.noter_import(dossier, Path(source).name, dossier / ".torrent")
     except Exception as e:
         logger.warning("Infos de l'édition du torrent (%s) : %s", nom, e)
+    zip_images = _zip_images_du_torrent(Path(source), fichiers, dossier / ".torrent")
+    if zip_images:                                   # torrent fait de dossiers d'images : un zip, importé comme une archive
+        lots.append(zip_images)
+        places += 1
     logger.info("Torrent → « %s » : %d fichier(s) placé(s), %d archive(s) à extraire", nom, places, len(lots))
     fin = _lancer_import(nom, attendre=True, lots_forces=lots)
     _prevenir_lecteurs(nom)

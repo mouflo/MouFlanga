@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🖼️ Torrents de dossiers d'images : vraiment importés (14 octobre 2026)
+- Un torrent fait seulement de dossiers d'images (Arago : « Arago Tome 01/001.jpg ») était listé par le rescan mais aucune image n'était placée (« 0 fichier placé ») : la série restait vide. Les images sont maintenant rangées, avec leurs dossiers, dans un zip caché de la série puis importées comme une archive.
+
 ## 📖 Titres de chapitres français de Wikipédia : format « 1er Quart-temps : … » (14 octobre 2026)
 - Les listes qui écrivent « {{1er}} Quart-temps : titre » (Kuroko's Basket) n'étaient pas reconnues : aucun titre français, l'appli retombait sur l'anglais. Le numéro en modèle (« {{2e}} ») et le mot « Quart-temps » sont maintenant compris.
 - Les séries déjà en mémoire sont relues une fois automatiquement (nouvelle version de la lecture), à l'ouverture de leur fiche.

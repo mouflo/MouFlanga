@@ -958,6 +958,19 @@ class EditionTest(unittest.TestCase):
             edition.noter_import(t / "serie", "Nouvelle.Integrale.zip", t / "tmp")
             self.assertEqual(edition.lire(t / "serie")["archives"], ["Nouvelle.Integrale.zip"])
 
+    def test_torrent_de_dossiers_d_images_devient_un_zip(self):
+        import app as A
+        with tempfile.TemporaryDirectory() as t:
+            t = Path(t); src = t / "Arago.T01"; (src / "Arago Tome 01").mkdir(parents=True)
+            for k in range(3):
+                (src / "Arago Tome 01" / f"{k:03d}.jpg").write_bytes(b"x")
+            fichiers = [f for f in sorted(src.rglob("*")) if f.is_file()]
+            z = A._zip_images_du_torrent(src, fichiers, t / "serie" / ".torrent")
+            self.assertEqual(sorted(zipfile.ZipFile(z).namelist()), [f"Arago Tome 01/{k:03d}.jpg" for k in range(3)])
+            (src / "Arago-T01.cbz").write_bytes(b"x")                     # avec une archive : pas de zip d'images
+            fichiers = [f for f in sorted(src.rglob("*")) if f.is_file()]
+            self.assertIsNone(A._zip_images_du_torrent(src, fichiers, t / "autre" / ".torrent"))
+
 
 class NomsArchivesTest(unittest.TestCase):
     def test_noms_nettoyes(self):
