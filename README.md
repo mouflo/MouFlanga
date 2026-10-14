@@ -99,6 +99,9 @@ Puis ouvre `http://IP-DU-SERVEUR:5002`, va dans ⚙️ Réglages et choisis ton 
 
 La clé ne donne accès qu'à la liste des séries et à leur couverture (`/api/externe/…`) ; MouFlanga n'en garde que l'empreinte. Une nouvelle clé remplace l'ancienne.
 
+## 🖌️ Skins et couleurs
+Chaque personne choisit son apparence dans **🎨 Apparence** : style d'origine, skins de la communauté, ou ses propres couleurs. Un skin est un simple dossier CSS dans `ui/skins/` ; le guide pour en créer un et le proposer par Pull Request est dans [`docs/SKINS.md`](docs/SKINS.md).
+
 ## 🔐 Sécurité
 
 - L'identifiant et le mot de passe (haché) sont dans `data/secrets.env`, qui n'est **jamais** envoyé sur GitHub

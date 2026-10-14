@@ -23,6 +23,7 @@
         .msg.err { background: #2a1416; color: #ffb4b4; border: 1px solid #6b2f35; }
         select, input[type=number] { font-size: 16px; padding: 8px; border-radius: 8px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; }
     </style>
+<link rel="stylesheet" href="/skin.css{{ '?off=1' if request.args.get('skin') == 'off' else '' }}">
 </head>
 <body>
 <div class="container">

@@ -73,6 +73,8 @@ app.json.ensure_ascii = False
 
 import auth
 auth.init_app(app, APP_VERSION)
+import apparence
+apparence.init_app(app)
 
 PROGRESS_FILE = DATA_DIR / "progress.json"
 
@@ -3161,6 +3163,7 @@ def _travaux_en_cours():
     import optimiser
     with optimiser._VERROU:
         raisons += [f"allègement de {n}" for n, e in optimiser._ETAT.items() if e.get("en_cours")]
+    raisons += [f"conversion de {n}" for n, e in list(_CONVERSION.items()) if e.get("en_cours")]
     return raisons
 
 

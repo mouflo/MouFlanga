@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="/ui/lecteur.css?v={{ version|urlencode }}">
 <script src="/ui/hors-ligne.js?v={{ version|urlencode }}" defer></script>
 <script src="/ui/lecteur.js?v={{ version|urlencode }}" defer></script>
+<link rel="stylesheet" href="/skin.css{{ '?off=1' if request.args.get('skin') == 'off' else '' }}">
 </head>
 <body class="reader-body{% if role == 'lecteur' %} lecteur{% endif %}">
 <div id="bar" class="bar">

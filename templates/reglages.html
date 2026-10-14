@@ -20,6 +20,9 @@
 .usr-act .danger { color:#e06c6c; }
 </style>
 <script src="/ui/mou-settings.js?v={{ version|urlencode }}"></script>
+<link rel="stylesheet" href="/ui/apparence.css?v={{ version|urlencode }}">
+<script src="/ui/apparence.js?v={{ version|urlencode }}" defer></script>
+<link rel="stylesheet" href="/skin.css{{ '?off=1' if request.args.get('skin') == 'off' else '' }}">
 </head>
 <body>
 <div class="container">

@@ -32,6 +32,8 @@ LECTEUR_OK = {("GET", "/"), ("GET", "/lire"), ("GET", "/api/library"), ("GET", "
               ("GET", "/api/generique"), ("POST", "/api/clientlog"), ("GET", "/api/fiche"), ("GET", "/api/tome"), ("GET", "/api/tome/couverture"),
               ("GET", "/api/demandes"), ("GET", "/api/demandes/chercher"), ("POST", "/api/demandes"),
               ("GET", "/sw.js"), ("GET", "/api/push"), ("POST", "/api/push"),          # 📱 appli installée, notifications
+              ("GET", "/api/apparence"), ("POST", "/api/apparence"), ("POST", "/api/apparence/brouillon"),   # 🎨 son propre style
+              ("GET", "/apparence/reset"),
               ("POST", "/logout")}   # 📮 (admin vérifié dedans) ; se déconnecter reste permis
 
 REMEMBER_DAYS = 30
@@ -275,7 +277,7 @@ def init_app(app, version=""):
     @app.before_request
     def require_login():
         # /api/externe/ : accès des autres applis, protégé par la clé API (api_externe.py)
-        if request.path in ("/login", "/healthz", "/favicon.ico") or request.path.startswith(("/icons/", "/ui/", "/api/externe/")):
+        if request.path in ("/login", "/healthz", "/favicon.ico", "/skin.css") or request.path.startswith(("/icons/", "/ui/", "/api/externe/")):
             return None
         if request.path == "/api/occupe" and (request.remote_addr or "") in ("127.0.0.1", "::1"):
             return None

@@ -1,5 +1,13 @@
 # Historique des versions
 
+## 🎨 Apparence : skins et couleurs au choix, par compte (14 octobre 2026)
+- Nouveau bouton **🎨 Apparence** dans l'en-tête : choisir le « Style d'origine » ou un skin de la liste, puis régler 4 couleurs (fond, cartes, texte, accent) avec un sélecteur de couleur. Le choix est enregistré **par compte** (`data/apparence/<compte>.json`). Aucun changement du style commun des quatre applis : le skin est un fichier chargé en dernier (`/skin.css`), propre à MouFlanga.
+- **Skins = un dossier `ui/skins/<nom>/`** (`skin.css` + `skin.json`), CSS seul : pas de JavaScript, `@import`, adresses extérieures ni balises (refusés par le serveur, 150 Ko maximum). Un skin d'exemple « Papier » (thème clair) est fourni.
+- **Skins brouillons** : « 🧪 Essayer un skin brouillon » enregistre un CSS visible par son auteur seulement (`data/skins_perso/`, jamais sur GitHub), pour tester en direct avant de proposer.
+- **Secours** : `/?skin=off` affiche la page sans skin, `/apparence/reset` remet le style d'origine du compte.
+- Guide pour créer un skin et le proposer par Pull Request (sans accès au dépôt) : `docs/SKINS.md`.
+- `/api/occupe` compte maintenant une conversion .cbr → .cbz en cours : un redémarrage ne la coupe plus.
+
 ## 🔄 Les « .cbz » qui sont en réalité des RAR sont convertis aussi (14 octobre 2026)
 - Un fichier nommé .cbz mais dont le contenu est un vrai RAR se lisait bien, mais « 🪶 Alléger » répondait « Aucun tome à comparer » (seuls les vrais ZIP sont traités). La conversion en .cbz (pages identiques, vérifiées) les reconnaît maintenant au contenu, et le message de l'allègement indique de convertir d'abord.
 

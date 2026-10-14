@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="/ui/verification.css?v={{ version|urlencode }}">
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
 <script src="/ui/mou-settings.js?v={{ version|urlencode }}"></script>
+<link rel="stylesheet" href="/skin.css{{ '?off=1' if request.args.get('skin') == 'off' else '' }}">
 </head>
 <body>
 <div class="container">

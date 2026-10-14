@@ -29,6 +29,7 @@
         .msg.ok { background: #14291a; color: #9be3a6; border: 1px solid #2f6b3a; }
         .msg.err { background: #2a1416; color: #ffb4b4; border: 1px solid #6b2f35; }
     </style>
+<link rel="stylesheet" href="/skin.css{{ '?off=1' if request.args.get('skin') == 'off' else '' }}">
 </head>
 <body>
     <div class="container">
