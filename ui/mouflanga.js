@@ -1425,7 +1425,9 @@
       var som = d.sommaire || {};
       var cov = '/api/tome/couverture?id=' + encodeURIComponent(current.id) + '&tome=' + n;
       var prov = d.provenance || {};
-      var provTexte = (prov.equipe ? 'Équipe : ' + prov.equipe + ' · ' : '') + (prov.origine || '') + (prov.manuel ? ' (saisi à la main)' : '');
+      var provOrigine = String(prov.origine || '').replace(/[.\s]+$/, '');
+      var equipeDejaLa = prov.equipe && provOrigine.toLowerCase().indexOf(String(prov.equipe).toLowerCase()) >= 0;   // le nom du torrent contient déjà l'équipe : pas de doublon
+      var provTexte = (prov.equipe && !equipeDejaLa ? 'Équipe : ' + prov.equipe + ' · ' : '') + provOrigine + (prov.manuel ? ' (saisi à la main)' : '');
       var champs = [['Titre', d.titre], ['Sortie en France', d.sortie], ['ISBN', d.isbn], ['Provenance', provTexte.trim() ? provTexte : '']].filter(function (x) { return x[1]; });
       var chap = d.chapitres || [], pagesCh = d.chapitres_pages || [];
       var lien = function (c, i) {                    // chapitre lu dans le sommaire d'un tome complet : ouvert à sa page
