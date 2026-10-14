@@ -1,5 +1,8 @@
 # Historique des versions
 
+## ✏️ Saisir les chapitres à la main quand aucun n'est trouvé (14 octobre 2026)
+- Dans la fiche d'un tome sans aucun chapitre trouvé, le bouton « ✏️ Saisir les chapitres à la main » ouvre la même zone que « Corriger les chapitres » (une ligne par chapitre, `@` pour la page de départ).
+
 ## 📝 Assassination Classroom : feuille de copie penchée (14 octobre 2026)
 - Le sommaire écrit à la main sur une feuille posée de travers (« Leçon 1 : Assassinat = 005 ») est redressé (angle cherché), ses cadres sont effacés, puis il est lu à plusieurs angles et les lectures sont fusionnées. Les leçons continuent la numérotation du tome précédent ; la ligne « Interclasse » est notée à part.
 - Les torrents faits de dossiers d'images (Arago) apparaissent dans le rescan (case « Inclure aussi les torrents déjà importés »).

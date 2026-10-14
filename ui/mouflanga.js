@@ -1405,10 +1405,10 @@
            '⚠️ Lu automatiquement : titres fiables, pages approximatives. À vérifier, puis valider.' +
            '<div class="ident-actions admin-seul"><button type="button" class="mou-btn" data-valider="' + n + '">✅ C\'est bon, valider</button></div>') + '</div>' : '') +
         (chap.length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') +
-          (d.chapitres_source ? ' <small>(' + esc(d.chapitres_source) + ')</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c, i) { return '<li>' + lien(c, i) + '</li>'; }).join('') + '</ol>' +
-          '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEditer">✏️ Corriger les chapitres</button>' +
+          (d.chapitres_source ? ' <small>(' + esc(d.chapitres_source) + ')</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c, i) { return '<li>' + lien(c, i) + '</li>'; }).join('') + '</ol>' : '') +
+        (true ? '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEditer">✏️ ' + (chap.length ? 'Corriger les chapitres' : 'Saisir les chapitres à la main') + '</button>' +
           '</div>' +
-          '<div id="chapEdition" hidden><textarea id="chapTexte" class="mou-field" rows="' + Math.min(14, chap.length + 2) + '" spellcheck="false" style="width:100%"></textarea>' +
+          '<div id="chapEdition" hidden><textarea id="chapTexte" class="mou-field" rows="' + Math.max(5, Math.min(14, chap.length + 2)) + '" spellcheck="false" style="width:100%"' + (chap.length ? '' : ' placeholder="1. Titre du chapitre\n2. Titre du chapitre @64"') + '></textarea>' +
           '<div class="dem-sous">Une ligne par chapitre, avec son numéro : « 2. La valeur de la vie ». Après <b>@</b> : la page du lecteur où le chapitre commence (« 2. La valeur de la vie @64 »). Sans @, la page déjà connue est gardée.</div>' +
           '<div class="ident-actions"><label>Décaler toutes les pages de <input type="number" id="chapDecalage" value="0" style="width:4.5em"></label>' +
           '<button type="button" class="mou-btn ghost" id="chapDecaler">↔ Appliquer</button></div>' +
