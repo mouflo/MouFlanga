@@ -3134,9 +3134,7 @@ def _travaux_en_cours():
     import decoupage
     with decoupage._VERROU:
         raisons += ["découpage en tomes" for e in decoupage._ETAT.values() if e.get("en_cours")][:1]
-    import sommaire
-    with sommaire._VERROU:
-        raisons += ["lecture d'un sommaire" for e in sommaire._ETAT.values() if e.get("en_cours")][:1]
+    # la lecture d'un sommaire n'est pas comptée : rien n'est écrit avant la fin, elle est refaite toute seule après un redémarrage
     raisons += ["écriture des chapitres dans un tome" for e in list(_SIGNETS.values()) if e.get("en_cours")][:1]
     import optimiser
     with optimiser._VERROU:
