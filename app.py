@@ -1273,6 +1273,28 @@ def _fichiers_a_alleger(name):
     return [f for f in (_scan().get(name) or []) if f.suffix.lower() in (".cbz", ".zip") and not _a_importer(f)]
 
 
+@app.route("/api/optimiser/fichiers")
+def api_optimiser_fichiers():
+    """Fichiers de la série qu'on peut alléger (un par tome), pour choisir lesquels traiter. Les hors-série (autre qualité)
+    ne sont pas cochés d'avance."""
+    name = request.args.get("series", "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"fichiers": []})
+    out = []
+    for f in _fichiers_a_alleger(name):
+        try:
+            taille = round(f.stat().st_size / 1048576, 1)
+        except OSError:
+            taille = 0
+        m = re.match(r"Tome (\d+)$", f.parent.name)
+        hors = bool(re.search(r"hors[\s_.-]*(?:s[ée]rie|tome)|\bHS\b|\bomake\b|\bartbook\b|\bbonus\b", f.parent.name + " " + f.name, re.I)) \
+            or (f.parent.name != name and not m)
+        out.append({"nom": f.name, "tome": int(m.group(1)) if m else None, "hors": hors, "taille_mo": taille,
+                    "libelle": f"Tome {int(m.group(1)):02d}" if m else (f.parent.name if f.parent.name != name else f.stem)})
+    out.sort(key=lambda x: (x["tome"] is None, x["tome"] or 0, x["nom"]))
+    return jsonify({"fichiers": out})
+
+
 @app.route("/api/optimiser", methods=["GET", "POST"])
 def api_optimiser():
     """GET : où en est l'analyse ou l'allègement. POST {series, appliquer, amelio (« 2,2,1,1,1 »), largeur} : lance l'un ou l'autre."""
@@ -1305,7 +1327,14 @@ def api_optimiser():
                 logger.info("Telegram (fin d'allègement) : %s", msg)
         except Exception as e:
             logger.info("Notification de fin d'allègement : %s", e)
-    if not optimiser.lancer(name, _fichiers_a_alleger(name), appliquer, _vers_corbeille, eclairer, fini, largeur, manuelle):
+    fichiers = _fichiers_a_alleger(name)
+    choisis = body.get("fichiers")
+    if isinstance(choisis, list):                            # seulement les tomes cochés
+        noms = {str(x) for x in choisis}
+        fichiers = [f for f in fichiers if f.name in noms]
+        if not fichiers:
+            return jsonify({"ok": False, "error": "Aucun tome coché."}), 400
+    if not optimiser.lancer(name, fichiers, appliquer, _vers_corbeille, eclairer, fini, largeur, manuelle):
         return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
     return jsonify({"ok": True, "message": "Allègement lancé…" if appliquer else "Analyse lancée…"})
 

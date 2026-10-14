@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 🪶 Alléger : choisir les tomes (14 octobre 2026)
+- Dans « Alléger ou améliorer », la liste des tomes avec une case à cocher (taille de chaque fichier), « Tout cocher » et « Tout décocher ». L'analyse et l'application ne portent que sur les tomes cochés.
+- Les hors-série, artbooks et bonus (qualité différente : « Kenshin le Vagabond HS - Artbook ») ne sont pas cochés d'avance.
+
 ## 🧠 L'appli apprend les chiffres d'une série d'après tes corrections (14 octobre 2026)
 - Quand tu corriges ou valides les chapitres d'un tome, l'appli apprend la **police des numéros de page** de son sommaire (`data/gabarits-chiffres.json`, jamais sur GitHub) et s'en sert pour lire les tomes suivants de la série. Elle n'apprend que les nombres où la page imprimée et la position que tu as confirmée s'accordent.
 - Sommaires « #1 Keiji Kiriya ..... 3 » (All You Need Is Kill) : titres complets (« Hache de guerre »), pointillés ignorés, rang dont le « #9 » est mal lu rattrapé, titre caché par un cadre blanc laissé vide.

@@ -834,8 +834,20 @@
         '<div class="ident-actions"><label>Sens : <select id="dblSens"><option value="manga">manga (droite → gauche)</option><option value="occidental">occidental (gauche → droite)</option></select></label></div>' +
         '<div class="ident-actions"><button type="button" class="mou-btn" id="dblVoir">🔍 Voir les doubles pages</button></div>' +
         '<div id="dblPlanche"></div></div>' +
-        '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser tous les tomes (rien n\'est modifié)</button></div><div id="allRes"></div>';
+        '<div class="dbl"><div class="dem-titre">Tomes à traiter</div><div id="allTomes" class="dem-sous">…</div></div>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser les tomes cochés (rien n\'est modifié)</button></div><div id="allRes"></div>';
       $('infosVue').hidden = false;
+      api('/api/optimiser/fichiers?series=' + encodeURIComponent(current.id)).then(function (r) {
+        var z = $('allTomes'); if (!z) return;
+        var f = r.fichiers || [];
+        z.innerHTML = f.length ? '<div class="ident-actions"><button type="button" class="mou-btn ghost" id="allTout">Tout cocher</button> ' +
+          '<button type="button" class="mou-btn ghost" id="allRien">Tout décocher</button></div>' +
+          f.map(function (x) {
+            return '<label class="all-tome" style="display:flex;gap:10px;align-items:center;margin:6px 0"><input type="checkbox" class="all-coche" value="' + esc(x.nom) + '"' +
+              (x.hors ? '' : ' checked') + ' style="width:22px;height:22px;flex:none"><span>' + esc(x.libelle) + ' <small>(' + String(x.taille_mo).replace('.', ',') + ' Mo' +
+              (x.hors ? ' · hors série, décoché d\'avance' : '') + ')</small></span></label>';
+          }).join('') : 'Aucun tome à alléger.';
+      });
       suivreAllegement();
     });
     // ✨ Profils d'amélioration (ordre d'optimiser.AMELIORATIONS ; 0 = non … 3 = fort)
@@ -853,7 +865,10 @@
       return REGLAGES_AMEL.map(function (r) { var e = $('am_' + r[0]); return e ? e.value : '0'; }).join(',');
     }
     function optionsAllegement() {
-      return {largeur: $('allLargeur').value, amelio: amelioration(), qualite: $('allQualMode').value === 'm' ? $('allQual').value : ''};
+      var coches = [].slice.call(document.querySelectorAll('.all-coche'));
+      var o = {largeur: $('allLargeur').value, amelio: amelioration(), qualite: $('allQualMode').value === 'm' ? $('allQual').value : ''};
+      if (coches.length) o.fichiers = coches.filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+      return o;
     }
     async function suivreAllegement() {
       clearTimeout(suiviAllege);
@@ -866,7 +881,7 @@
       $('allRes').innerHTML = (r.en_cours ? '<div class="dem-sous">' + esc(r.message || '') + ' ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' tomes · ça continue en arrière-plan, tu peux fermer cette fenêtre : une notification arrive à la fin.</div>' +
           '<progress max="' + (r.total || 1) + '" value="' + (r.fait || 0) + '" style="width:100%"></progress>' : (r.message ? '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' : '')) +
         (lignes ? '<ol class="tchap">' + lignes + '</ol>' : '') +
-        (!r.en_cours && r.message && !r.appliquer && (r.gain > 0 || r.eclairer) ? '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="1">🪶 Appliquer à toute la série</button></div>' : '');
+        (!r.en_cours && r.message && !r.appliquer && (r.gain > 0 || r.eclairer) ? '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="1">🪶 Appliquer aux tomes cochés</button></div>' : '');
       if (r.en_cours) suiviAllege = setTimeout(suivreAllegement, 3000);
     }
     // Bulle « terminé » même si la fenêtre est fermée (le travail, lui, tourne sur le serveur)
@@ -1119,11 +1134,18 @@
         voirDoubles();                                               // la liste des tomes se met à jour (nombre de doubles restantes)
       }
     }
+    $('infosCorps').addEventListener('click', function (e) {          // cocher / décocher tous les tomes à alléger
+      var t = e.target.closest('#allTout, #allRien'); if (!t) return;
+      [].forEach.call(document.querySelectorAll('.all-coche'), function (c) { c.checked = t.id === 'allTout'; });
+    });
     $('infosCorps').addEventListener('click', async function (e) {
       var b = e.target.closest('[data-alleger]'); if (!b) return;
       var appliquer = b.dataset.alleger === '1';
-      if (appliquer && !confirm('Alléger tous les tomes de « ' + current.title + ' » avec ces réglages ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
-      var r = await post('/api/optimiser', Object.assign({series: current.id, appliquer: appliquer}, optionsAllegement()));
+      var opt = optionsAllegement();
+      if (opt.fichiers && !opt.fichiers.length) { alert('Coche au moins un tome.'); return; }
+      var nb = opt.fichiers ? opt.fichiers.length : null;
+      if (appliquer && !confirm('Alléger ' + (nb ? nb + ' tome' + (nb > 1 ? 's' : '') : 'tous les tomes') + ' de « ' + current.title + ' » avec ces réglages ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
+      var r = await post('/api/optimiser', Object.assign({series: current.id, appliquer: appliquer}, opt));
       if (!r.ok) { alert(r.error || 'Impossible'); return; }
       if (appliquer) { cmp = null; if ($('allCmp')) $('allCmp').innerHTML = ''; }
       setTimeout(suivreAllegement, 800);
