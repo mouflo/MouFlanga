@@ -498,6 +498,7 @@ def _wikipedia_fr(m, serie=""):
 
 
 ID_CHOISI = lambda serie: None          # remplacé par l'appli : identifiant AniList choisi à la main pour la série
+ID_INDICE = lambda serie: None          # remplacé par l'appli : identifiant AniList noté dans les fichiers des tomes (série reçue)
 
 
 def chercher_anilist(texte: str) -> list[dict]:
@@ -527,8 +528,8 @@ def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
     q = ("query($s:String){Page(perPage:6){media(search:$s,type:MANGA,format_not:NOVEL)"
          "{id title{romaji english} synonyms status volumes chapters format description(asHtml:false)}}}")
     medias = []
-    choisi = ID_CHOISI(serie)
-    if choisi:                                         # fiche choisie à la main (🔎 Choisir la fiche) : jamais de recherche
+    choisi = ID_CHOISI(serie) or ID_INDICE(serie)
+    if choisi:                                         # fiche choisie à la main (🔎 Choisir la fiche) ou notée dans les fichiers : jamais de recherche
         try:
             r = _SESSION.post("https://graphql.anilist.co", json={"query": "query($i:Int){Media(id:$i,type:MANGA)"
                               "{id title{romaji english} synonyms status volumes chapters format description(asHtml:false)}}",

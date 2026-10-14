@@ -359,8 +359,14 @@ def _infos_tome(name, tome):
              "equipe": prov.get("equipe", ""), "origine": prov.get("origine", ""), "provenance_manuelle": bool(prov.get("manuel")),
              "sommaire": "manuel" if lu.get("manuel") else ("lu" if lu.get("chapitres") else ""), "valide_le": lu.get("valide_le", ""),
              "sortie": det.get("sortie", "")}
+    isbn = (ed.get("isbn") or {}).get(str(tome)) or lu.get("isbn", "")
+    st = (tomes._charger(name) or {}).get("statut_officiel") or {}
+    if st.get("anilist"):                            # fiche de la série : retrouvée telle quelle depuis n'importe quel tome
+        notes["serie"] = {k: v for k, v in {"anilist": st["anilist"], "choisi": bool(ed.get("anilist_choisi")),
+                                            "titre": st.get("titre", ""), "titre_en": st.get("titre_en", ""),
+                                            "resume": (_read_json(RESUMES, {}).get(name) or "")}.items() if v not in ("", None, False)}
     notes = {k: v for k, v in notes.items() if v not in ("", False)}
-    infos = {"Title": det.get("titre", ""), "Summary": resume, "Number": str(tome), "Volume": str(tome),
+    infos = {"Title": det.get("titre", ""), "Summary": resume, "Number": str(tome), "Volume": str(tome), "GTIN": isbn,
              "Notes": signets.MARQUE + " " + json.dumps(notes, ensure_ascii=False, separators=(",", ":"))}
     for balise, v in zip(("Year", "Month", "Day"), _date_sortie(det.get("sortie", ""))):
         infos[balise] = v
@@ -3709,12 +3715,57 @@ def api_rattacher():
     return jsonify({"ok": True, "id": cible, "message": f"« {name} » est maintenant un hors-série de « {cible} »."})
 
 
-def _anilist_choisi(serie):
+def _relire_fichiers_serie(serie, infos):
+    """Une seule fois par série : la fiche (AniList, résumé écrit à la main) notée par MouFlanga DANS les fichiers des tomes
+    est reprise si elle manque ici (réinstallation à zéro, série reçue). Ne remplace jamais ce qui est déjà noté."""
     import edition
-    return edition.lire(MANGA_DIR / serie).get("anilist_choisi")
+    import signets
+    dossier = MANGA_DIR / serie
+    if not dossier.is_dir():
+        return infos
+    lus = 0
+    try:
+        fichiers = sorted(dossier.rglob("*.cbz"))[:4]
+    except OSError:
+        return infos
+    for f in fichiers:
+        fiche = (signets.lire_infos(f).get("notes") or {}).get("serie")
+        lus += 1
+        if not isinstance(fiche, dict) or not fiche.get("anilist"):
+            continue
+        try:
+            ident = int(fiche["anilist"])
+        except (TypeError, ValueError):
+            continue
+        infos["anilist_choisi" if fiche.get("choisi") else "anilist_indice"] = ident
+        if fiche.get("resume") and serie not in _read_json(RESUMES, {}):
+            perso = _read_json(RESUMES, {})
+            perso[serie] = str(fiche["resume"])[:4000]
+            _write_json(RESUMES, perso)
+        break
+    if lus:
+        infos["fichiers_relus"] = True
+        try:
+            edition.ecrire(dossier, infos)
+        except OSError:
+            pass
+    return infos
+
+
+def _anilist_infos(serie):
+    import edition
+    infos = edition.lire(MANGA_DIR / serie)
+    if not infos.get("fichiers_relus") and not infos.get("anilist_choisi"):
+        infos = _relire_fichiers_serie(serie, infos)
+    return infos
+
+
+def _anilist_choisi(serie):
+    return _anilist_infos(serie).get("anilist_choisi")
 
 
 tomes.ID_CHOISI = _anilist_choisi
+tomes.ID_INDICE = lambda serie: _anilist_infos(serie).get("anilist_indice")
 
 
 def _infos_comicinfo(serie):
@@ -4007,7 +4058,8 @@ def api_tome():
         prov = {"equipe": nf.get("equipe", ""), "origine": nf.get("origine", ""), "manuel": bool(nf.get("provenance_manuelle"))}
     d["provenance"] = prov
     isbn_infos = edition.lire(MANGA_DIR / name)
-    d["isbn"] = (isbn_infos.get("isbn") or {}).get(str(int(tome))) or ((isbn_infos.get("sommaires") or {}).get(str(int(tome))) or {}).get("isbn", "")
+    d["isbn"] = ((isbn_infos.get("isbn") or {}).get(str(int(tome))) or ((isbn_infos.get("sommaires") or {}).get(str(int(tome))) or {}).get("isbn", "")
+                 or du_fichier.get("isbn", ""))          # rien de connu : celui écrit dans le fichier (équipe ou MouFlanga)
     d["ecriture_possible"] = bool(_tome_complet(name, int(tome))) and not fic.lower().endswith(".cbr") and tomes_cbz.lire_info(MANGA_DIR / fic) is None
     perso = (edition.lire(MANGA_DIR / name).get("resumes_tomes") or {}).get(str(int(tome)))
     if perso:                                            # résumé écrit à la main : prioritaire sur Internet

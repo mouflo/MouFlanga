@@ -1,5 +1,11 @@
 # Historique des versions
 
+## 📦 Fichier de tome complet : lu en priorité, écrit sans rien écraser (14 octobre 2026)
+- **Lecture** : le ComicInfo.xml du tome est lu en premier. Titre, résumé, auteur, dessin, éditeur, année, genres, lien, nombre de tomes, langue, équipe et **ISBN** (balise `GTIN`, sinon un numéro dans `Notes` ou `Web`) sont repris quand l'appli n'a rien de mieux.
+- **Écriture** : les balises remplies par l'équipe ne sont jamais écrasées ; seules celles posées par MouFlanga (liste `ecrits` de ses Notes) sont mises à jour. Un résumé écrit à la main reste prioritaire. L'ISBN du tome est écrit en `GTIN`.
+- **Fiche de la série dans chaque tome** (Notes) : identifiant AniList, « choisie à la main » ou non, titres, résumé écrit à la main. Réinstallation à zéro ou série reçue : la fiche est retrouvée toute seule en relisant les fichiers, sans recherche ni action manuelle.
+- Limite : les liens des chapitres ne sont pas gardés par l'appli (aucun lien par chapitre n'est enregistré), donc rien à écrire de ce côté.
+
 ## ✏️ Correction des chapitres : un « @ » sur chaque ligne (14 octobre 2026)
 - Quand tu ouvres « Corriger les chapitres », chaque ligne porte déjà son « @page » (la page du lecteur où le chapitre commence) ; pour un chapitre dont la page n'est pas connue, le « @ » est mis vide, prêt à être rempli. Un « @ » laissé vide est ignoré à l'enregistrement.
 

@@ -25,6 +25,22 @@ class FicheChoisieTest(unittest.TestCase):
         self.assertEqual(appels, [{"i": 46708}])
         self.assertEqual((st["anilist"], st["volumes"], st["choisi"]), (46708, 28, True))
 
+    def test_indice_des_fichiers_sans_recherche(self):
+        """Identifiant noté dans les fichiers des tomes : pas de recherche, et la fiche n'est pas « choisie à la main »."""
+        media = {"id": 7, "title": {"romaji": "Crows", "english": None}, "synonyms": [], "status": "FINISHED",
+                 "volumes": 28, "chapters": None, "format": "MANGA", "description": ""}
+        appels = []
+        def post(url, json=None, timeout=None):
+            appels.append(json["variables"])
+            return mock.Mock(status_code=200, json=mock.Mock(return_value={"data": {"Media": media}}))
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(tomes, "DOSSIER", Path(d)), \
+                mock.patch.object(tomes, "ID_INDICE", lambda s: 7), \
+                mock.patch.object(tomes._SESSION, "post", side_effect=post), \
+                mock.patch.object(tomes, "_resume", return_value=("Résumé", "fr")):
+            st = tomes.statut_officiel("Crows", forcer=True)
+        self.assertEqual(appels, [{"i": 7}])
+        self.assertEqual((st["anilist"], st["choisi"]), (7, False))
+
     def test_recherche_resultats(self):
         rep = mock.Mock(status_code=200, json=mock.Mock(return_value={"data": {"Page": {"media": [
             {"id": 1, "title": {"romaji": "Crows", "english": None, "native": "クローズ"}, "status": "FINISHED", "volumes": 28,

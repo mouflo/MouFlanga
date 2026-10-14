@@ -16,6 +16,50 @@ MARQUE = "MouFlanga:"
 _LIGNE = re.compile(r"^(\d{1,4}(?:[.,]\d)?)\s*[.)\-:–]*\s*(.*)$")
 
 
+def _a_nous(balise: str, texte: str) -> bool:
+    """Valeur posée autrefois par MouFlanga elle-même (avant la liste « ecrits » des Notes) : titre « Tome 5 », liste « Chapitres … »."""
+    texte = (texte or "").strip()
+    if balise == "Title":
+        return bool(re.match(r"^(Tome \d+|Hors tome)$", texte))
+    if balise == "Summary":
+        return texte.startswith("Chapitres ")
+    return False
+
+
+def _notes_mf(racine) -> dict:
+    import json
+    for ligne in (racine.findtext("Notes") or "").splitlines():
+        if ligne.startswith(MARQUE):
+            try:
+                return json.loads(ligne[len(MARQUE):].strip())
+            except ValueError:
+                return {}
+    return {}
+
+
+def _balises_ecrites(racine) -> set:
+    """Balises posées par MouFlanga (liste « ecrits » de sa ligne dans les Notes) : elles seules peuvent être remplacées."""
+    return set(_notes_mf(racine).get("ecrits") or [])
+
+
+def _noter_ecrits(racine, ecrits: set):
+    import json
+    n = racine.find("Notes")
+    if n is None or not n.text or not ecrits:
+        return
+    lignes = []
+    for l in n.text.splitlines():
+        if l.startswith(MARQUE):
+            try:
+                d = json.loads(l[len(MARQUE):].strip())
+                d["ecrits"] = sorted(ecrits)
+                l = MARQUE + " " + json.dumps(d, ensure_ascii=False, separators=(",", ":"))
+            except ValueError:
+                pass
+        lignes.append(l)
+    n.text = "\n".join(lignes)
+
+
 def _xml(donnees: bytes | None, chapitres: list[dict] | None, infos: dict | None = None) -> bytes:
     """ComicInfo.xml avec la liste des signets (le reste du fichier existant est gardé). « chapitres » None : signets
     existants gardés. « infos » : {balise: texte} (Title, Summary, Notes, Year…) ; la ligne « MouFlanga: … » des Notes
@@ -33,15 +77,29 @@ def _xml(donnees: bytes | None, chapitres: list[dict] | None, infos: dict | None
                 continue
             titre = f"{c['num']:g}. {c.get('titre') or ''}".strip()
             ET.SubElement(pages, "Page", {"Image": str(int(c["image"])), "Bookmark": titre})
+    anciens = _balises_ecrites(racine)
+    ecrits = set()
+    try:
+        import json
+        nouvelles = json.loads(((infos or {}).get("Notes") or "").partition(MARQUE)[2].strip() or "{}")
+    except ValueError:
+        nouvelles = {}
+    forces = {"Summary"} if nouvelles.get("resume") == "manuel" else set()     # résumé écrit à la main : prioritaire sur celui de l'équipe
     for balise, texte in (infos or {}).items():
         if not texte:
             continue
         ancien = racine.find(balise)
-        if balise == "Notes" and ancien is not None and ancien.text:
-            texte = "\n".join([l for l in ancien.text.splitlines() if not l.startswith(MARQUE)] + [texte])
+        if balise == "Notes":
+            if ancien is not None and ancien.text:
+                texte = "\n".join([l for l in ancien.text.splitlines() if not l.startswith(MARQUE)] + [texte])
+        elif ancien is not None and (ancien.text or "").strip() and balise not in anciens and balise not in forces and not _a_nous(balise, ancien.text):
+            continue                         # écrit par l'équipe : jamais écrasé (seulement les balises que MouFlanga a posées)
+        else:
+            ecrits.add(balise)
         for x in racine.findall(balise):
             racine.remove(x)
         ET.SubElement(racine, balise).text = str(texte)
+    _noter_ecrits(racine, anciens | ecrits)
     sortie = io.BytesIO()
     ET.ElementTree(racine).write(sortie, encoding="utf-8", xml_declaration=True)
     return sortie.getvalue()
@@ -89,15 +147,21 @@ def lire_infos(chemin: Path) -> dict:
     texte = lambda b: ((racine.findtext(b) or "").strip())
     resume = texte("Summary")
     resume = resume.split("\n\nChapitres ")[0] if not resume.startswith("Chapitres ") else ""   # liste de chapitres d'un tome assemblé
-    notes = {}
-    for ligne in (racine.findtext("Notes") or "").splitlines():
-        if ligne.startswith(MARQUE):
-            try:
-                notes = json.loads(ligne[len(MARQUE):].strip())
-            except ValueError:
-                notes = {}
+    notes = _notes_mf(racine)
     titre = texte("Title")
-    return {"titre": "" if re.match(r"^(Tome \d+|Hors tome)$", titre) else titre, "resume": resume, "notes": notes}
+    autres = "\n".join(l for l in (racine.findtext("Notes") or "").splitlines() if not l.startswith(MARQUE))
+    isbn = ""
+    for source in (texte("GTIN"), autres, texte("Web")):
+        m = re.search(r"(?<![\d-])(97[89][\d -]{9,14}\d|\d{9}[\dXx])(?![\d])", source.replace("‑", "-"))
+        if m and len(re.sub(r"\D", "", m.group(1))) in (10, 13):
+            isbn = re.sub(r"[^\dXx]", "", m.group(1))
+            break
+    nombre = lambda b: int(float(texte(b))) if re.match(r"^\d+(\.0+)?$", texte(b)) else None
+    return {"titre": "" if re.match(r"^(Tome \d+|Hors tome)$", titre) else titre, "resume": resume, "notes": notes,
+            "serie": texte("Series"), "auteur": texte("Writer"), "dessin": texte("Penciller"), "editeur": texte("Publisher"),
+            "annee": texte("Year"), "mois": texte("Month"), "genres": texte("Genre"), "lien": texte("Web"), "isbn": isbn,
+            "langue": texte("LanguageISO"), "tome": nombre("Number") if nombre("Number") is not None else nombre("Volume"),
+            "nb_tomes": nombre("Count"), "equipe": texte("Teams") or texte("ScanInformation"), "autres_notes": autres}
 
 
 def lire(chemin: Path) -> list[dict]:
