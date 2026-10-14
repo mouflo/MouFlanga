@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 📝 Assassination Classroom : feuille de copie penchée (14 octobre 2026)
+- Le sommaire écrit à la main sur une feuille posée de travers (« Leçon 1 : Assassinat = 005 ») est redressé (angle cherché), ses cadres sont effacés, puis il est lu à plusieurs angles et les lectures sont fusionnées. Les leçons continuent la numérotation du tome précédent ; la ligne « Interclasse » est notée à part.
+- Les torrents faits de dossiers d'images (Arago) apparaissent dans le rescan (case « Inclure aussi les torrents déjà importés »).
+- Limite connue : l'écriture manuscrite reste difficile à lire, des titres sortent abîmés (à corriger à la main) et certaines lignes manquent.
+
 ## 🪶 Alléger : choisir les tomes (14 octobre 2026)
 - Dans « Alléger ou améliorer », la liste des tomes avec une case à cocher (taille de chaque fichier), « Tout cocher » et « Tout décocher ». L'analyse et l'application ne portent que sur les tomes cochés.
 - Les hors-série, artbooks et bonus (qualité différente : « Kenshin le Vagabond HS - Artbook ») ne sont pas cochés d'avance.

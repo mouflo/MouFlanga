@@ -905,6 +905,13 @@ def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
                     lignes = rt
             except Exception as e:
                 logger.info("Sommaire de %s, page %d (rangées titrées) : %s", chemin, i, e.__class__.__name__)
+        if not _vraisemblable(lignes) and re.search(r"(?i)sommaire", textes[i]) and re.search(r"(?i)r[ée]ponses|le[cç]on", textes[i]):
+            try:                                             # feuille de copie posée de travers (Assassination Classroom)
+                fe = analyser_feuille(octets)
+                if _vraisemblable(fe):
+                    lignes = fe
+            except Exception as e:
+                logger.info("Sommaire de %s, page %d (feuille) : %s", chemin, i, e.__class__.__name__)
         if not _vraisemblable(lignes) and re.search(r"(?i)tri[ck]k?[:.\s]|sommaire", textes[i]):
             try:                                             # une rangée par chapitre, sans titre (« Trick:6 ..... 5 »)
                 rang = analyser_rangees(octets)
@@ -1488,6 +1495,205 @@ def apprendre_chiffres(serie: str, image, boites_valeurs) -> int:
         tmp.write_text(json.dumps(g, ensure_ascii=False), encoding="utf-8")
         tmp.replace(GABARITS)
     return appris
+
+
+# ---------------------------------------------------------------- Feuille penchée « Leçon 1 : Assassinat = 005 » (Assassination Classroom)
+
+def _nettoyer_feuille(crop):
+    """Image d'une feuille manuscrite : texte seul (traits longs des cadres et des étiquettes retirés), agrandi."""
+    import numpy as np
+    import cv2
+    from PIL import Image
+    b = (np.asarray(crop) < 140).astype(np.uint8)
+    hor = cv2.morphologyEx(b, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (70, 1)))
+    ver = cv2.morphologyEx(b, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (1, 70)))
+    t = b - np.minimum(b, cv2.dilate(hor | ver, np.ones((3, 3), np.uint8)))
+    out = Image.fromarray((255 - t * 255).astype("uint8"))
+    return out.resize((out.width * 2, out.height * 2), Image.LANCZOS)
+
+
+_CHIFFRES_FEUILLE = str.maketrans({"O": "0", "o": "0", "D": "0", "Q": "0", "|": "1", "l": "1", "I": "1", "!": "1", "j": "1", "J": "1",
+                                   "i": "1", "Z": "2", "z": "2", "A": "2", "S": "5", "$": "5", "s": "5", "G": "6", "b": "6", "B": "8"})
+
+
+def _ligne_feuille(texte: str):
+    """« ASSASSINAT = 005 | » → ("Assassinat", {5}) ; None si ce n'est pas une ligne de sommaire."""
+    jetons = [j for j in re.split(r"\s+", texte.strip()) if j]
+    while jetons and re.fullmatch(r"[|\\/_.,;:'’`´{}()\[\]¦!-]{1,2}", jetons[-1]):
+        jetons = jetons[:-1]                                  # restes des cadres lus « | | »
+    if len(jetons) < 2:
+        return None
+    dernier = re.sub(r"\W", "", jetons[-1]).translate(_CHIFFRES_FEUILLE)
+    pages, corps = set(), jetons
+    if re.fullmatch(r"[0-2]\d{2}", dernier) and int(dernier) > 0:
+        pages.add(int(dernier))
+        corps = jetons[:-1]
+    while corps and (re.fullmatch(r"[=:<>×*«|x.\-]+", corps[-1]) or (re.fullmatch(r"[a-z]{2,5}", corps[-1]) and pages)):
+        corps = corps[:-1]                                    # séparateur ou mot-réponse (« = », « is », « when »)
+    titre = re.sub(r"[|{}()\[\]]", " ", " ".join(corps))
+    titre = re.sub(r"^\W*(?:[0-9]\s+)?", "", re.sub(r"\s+", " ", titre)).strip(" .:=")
+    titre = re.sub(r"\s*[=:<>×]\s*\S{0,4}$", "", titre).strip(" .:=")     # « BASES = ol » : le numéro mal lu n'est pas du titre
+    if len(re.sub(r"[^A-Za-zÀ-ÿ]", "", titre)) < 3 or len(titre) > 70:
+        return None
+    if not pages and not re.search(r"[=<×:]", texte):         # ni numéro ni séparateur : pas une ligne de sommaire
+        return None
+    return titre, pages
+
+
+def _feuille_barres(image_octets: bytes) -> list[dict]:
+    """Sommaire écrit sur une feuille de copie posée de travers (« Leçon 1 / Assassinat = 005 ») : l'angle est cherché,
+    la feuille redressée, chaque barre (entre deux traits horizontaux) est lue seule à trois angles voisins, puis les
+    lectures de chaque barre sont fusionnées (titre le plus fréquent, numéros de page votés).
+    [{"num" (1, 2, 3… relatif au tome), "titre", "page", "relatif": True}] ou []."""
+    import numpy as np
+    import cv2
+    from PIL import Image, ImageOps
+    im = Image.open(io.BytesIO(image_octets)).convert("L")
+    w, h = im.size
+    crop = im.crop((int(.04 * w), int(.12 * h), int(.92 * w), int(.9 * h)))
+    petit = crop.copy()
+    petit.thumbnail((500, 700))
+    scores = []
+    for a in range(-14, 15):
+        r = petit.rotate(a, expand=True, fillcolor=255, resample=Image.BILINEAR)
+        scores.append((float((np.asarray(r) < 110).sum(axis=1).astype(float).var()), a))
+    a0 = max(scores)[1]
+    barres = {}                                               # rang de la barre → lectures [(titre, pages)]
+    inter = False
+    for a in (a0 - 1, a0, a0 + 1):
+        r = crop.rotate(a, expand=True, fillcolor=255, resample=Image.BICUBIC)
+        g = np.asarray(r)
+        noir = (g < 140).astype(np.uint8)
+        largeur = g.shape[1]
+        hor = cv2.morphologyEx(noir, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (max(40, largeur // 4), 1)))
+        profil = hor.sum(axis=1)
+        lignes = np.where(profil > largeur * .25)[0]
+        if not len(lignes):
+            continue
+        traits, debut = [], lignes[0]
+        for u, v in zip(lignes, lignes[1:]):
+            if v - u > 2:
+                traits.append((debut + u) // 2)
+                debut = v
+        traits.append((debut + lignes[-1]) // 2)
+        # barres = intervalles entre traits successifs assez hauts (les espaces entre barres sont plus bas)
+        ecarts = [(t1, t2) for t1, t2 in zip(traits, traits[1:]) if 18 <= t2 - t1 <= 90]
+        if len(ecarts) < 3:
+            continue
+        hauteurs = sorted(t2 - t1 for t1, t2 in ecarts)
+        typique = hauteurs[len(hauteurs) // 2]
+        ecarts = [(t1, t2) for t1, t2 in ecarts if abs((t2 - t1) - typique) <= typique * .35]
+        propre = (noir - np.minimum(noir, cv2.dilate(hor, np.ones((3, 3), np.uint8))))
+        ver = cv2.morphologyEx(propre, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (1, 40)))
+        propre = propre - np.minimum(propre, cv2.dilate(ver, np.ones((3, 3), np.uint8)))
+        for rang, (t1, t2) in enumerate(ecarts):
+            bande = propre[max(0, t1 + 2):t2 - 1, int(largeur * .12):]
+            if bande.size == 0 or bande.sum() < 30:
+                continue
+            img = Image.fromarray((255 - bande * 255).astype("uint8"))
+            img = ImageOps.expand(img.resize((img.width * 3, img.height * 3), Image.LANCZOS), border=25, fill=255)
+            buf = io.BytesIO()
+            img.save(buf, "PNG")
+            for psm in (7, 13):
+                try:
+                    t = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", str(psm)],
+                                       input=buf.getvalue(), capture_output=True, timeout=60,
+                                       env=dict(os.environ, OMP_THREAD_LIMIT="1")).stdout.decode("utf-8", "replace")
+                except Exception:
+                    continue
+                if re.search(r"(?i)inter-?\s*classe", t):
+                    inter = True
+                lu = _ligne_feuille(t)
+                if lu:
+                    barres.setdefault(rang, []).append(lu)
+    if len(barres) < 3:
+        return []
+    sortie = []
+    for i, rang in enumerate(sorted(barres)):
+        lectures = barres[rang]
+        titres = Counter(t for t, _ in lectures)
+        # titre le plus fréquent ; à égalité, le plus long (une lecture coupée est plus courte)
+        titre = max(titres, key=lambda t: (titres[t], len(t)))
+        pages = Counter(p for _, ps in lectures for p in ps)
+        titre = titre.title() if titre.isupper() else titre
+        sortie.append({"num": float(i + 1), "titre": titre, "page": None, "_cands": dict(pages), "_xy": (0, i)})
+    sortie = _pages_sures(sortie)
+    if not sortie or not _vraisemblable(sortie):
+        return []
+    res = [{"num": x["num"], "titre": x["titre"], "page": x["page"], "relatif": True} for x in sortie]
+    if inter and len(res) >= 3:                               # dernière barre « Interclasse » : hors numérotation des leçons
+        res[-1].update(num=round(res[-2]["num"] + 0.1, 1), titre="Interclasse : " + res[-1]["titre"])
+    return res
+
+
+def _feuille_lignes(image_octets: bytes) -> list[dict]:
+    """Même feuille lue ligne par ligne (cadres effacés), à plusieurs angles, lectures fusionnées sur la plus complète."""
+    import numpy as np
+    from PIL import Image
+    im = Image.open(io.BytesIO(image_octets)).convert("L")
+    w, h = im.size
+    crop = im.crop((int(.04 * w), int(.15 * h), int(.9 * w), int(.88 * h)))
+    petit = crop.copy()
+    petit.thumbnail((500, 700))
+    scores = []
+    for a in range(-14, 15):
+        r = petit.rotate(a, expand=True, fillcolor=255, resample=Image.BILINEAR)
+        scores.append((float((np.asarray(r) < 110).sum(axis=1).astype(float).var()), a))
+    a0 = max(scores)[1]
+    lectures, inter = [], False
+    for a in (a0 - 1, a0, a0 + 1, a0 + 2):
+        propre = _nettoyer_feuille(crop.rotate(a, expand=True, fillcolor=255, resample=Image.BICUBIC))
+        buf = io.BytesIO()
+        propre.save(buf, "PNG")
+        for psm in (6, 4):
+            texte = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", str(psm)],
+                                   input=buf.getvalue(), capture_output=True, timeout=90,
+                                   env=dict(os.environ, OMP_THREAD_LIMIT="1")).stdout.decode("utf-8", "replace")
+            if re.search(r"(?i)inter-?\s*classe", texte):
+                inter = True
+            lues = [x for x in (_ligne_feuille(l) for l in texte.splitlines()) if x]
+            if len(lues) >= 3:
+                lectures.append(lues)
+    if not lectures:
+        return []
+    base = max(lectures, key=len)
+    sq = [{"titres": Counter([t]), "pages": Counter(p)} for t, p in base]
+    for lecture in lectures:
+        if lecture is base:
+            continue
+        for t, p in lecture:
+            i = max(range(len(sq)), key=lambda k: difflib.SequenceMatcher(None, t.lower(), sq[k]["titres"].most_common(1)[0][0].lower()).ratio())
+            if difflib.SequenceMatcher(None, t.lower(), sq[i]["titres"].most_common(1)[0][0].lower()).ratio() >= .6:
+                sq[i]["titres"][t] += 1
+                sq[i]["pages"].update(p)
+    sortie = []
+    for i, g in enumerate(sq):
+        titre = max(g["titres"], key=lambda t: (g["titres"][t], len(t)))
+        sortie.append({"num": float(i + 1), "titre": titre.title() if titre.isupper() else titre, "page": None,
+                       "_cands": dict(g["pages"]), "_xy": (0, i)})
+    sortie = _pages_sures(sortie)
+    if not sortie or not _vraisemblable(sortie):
+        return []
+    res = [{"num": x["num"], "titre": x["titre"], "page": x["page"], "relatif": True} for x in sortie]
+    if inter and len(res) >= 3:
+        res[-1].update(num=round(res[-2]["num"] + 0.1, 1), titre="Interclasse : " + res[-1]["titre"])
+    return res
+
+
+def analyser_feuille(image_octets: bytes) -> list[dict]:
+    """La feuille est lue par barres et par lignes ; on garde la lecture la plus complète et la plus propre."""
+    def qualite(r):
+        if not r:
+            return -1
+        propres = sum(1 for x in r if re.fullmatch(r"[A-Za-zÀ-ÿ'’ .:&-]{3,}", x["titre"]) and len(x["titre"]) <= 40)
+        return propres * 2 + len(r) - sum(1 for x in r if re.search(r"\d|=", x["titre"])) * 3
+    candidats = []
+    for f in (_feuille_lignes, _feuille_barres):
+        try:
+            candidats.append(f(image_octets))
+        except Exception as e:
+            logger.info("Feuille (%s) : %s", f.__name__, e.__class__.__name__)
+    return max(candidats, key=qualite) if candidats else []
 
 
 # ---------------------------------------------------------------- Symboles de cartes (Alice in Borderland)

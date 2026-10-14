@@ -4043,6 +4043,13 @@ def _lire_sommaire(name, tome, e):
 
     def enregistrer(r):
         infos = edition.lire(MANGA_DIR / name)
+        if any(c.get("relatif") for c in r.get("chapitres", [])):             # leçons comptées depuis 1 dans chaque tome
+            prec = ((infos.get("sommaires") or {}).get(str(int(tome) - 1)) or {}).get("chapitres") or []
+            reguliers = [c["num"] for c in prec if c.get("num") is not None and float(c["num"]) == int(c["num"])]
+            decal = int(max(reguliers)) if reguliers and int(tome) > 1 else 0
+            for c in r["chapitres"]:
+                c["num"] = round(c["num"] + decal, 1)
+                c.pop("relatif", None)
         if r.get("isbn") and not (infos.get("isbn") or {}).get(str(tome)):        # ISBN imprimé dans le tome : gardé comme info
             infos.setdefault("isbn", {})[str(tome)] = r["isbn"]
         avant = (infos.get("sommaires") or {}).get(str(tome)) or {}
