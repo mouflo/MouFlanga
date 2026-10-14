@@ -689,6 +689,8 @@ def _google_books(titre: str) -> dict | None:
 
 
 RESUME_TOME_DUREE = 30 * 86400
+_GOOGLE_PAUSE = {"jusqua": 0.0}          # quota Google Books atteint : plus aucun appel avant cette heure
+GOOGLE_PAUSE_DUREE = 3 * 3600
 
 
 def _tome_du_titre(titre: str):
@@ -729,14 +731,30 @@ def _fin_de_phrase(texte: str, commun: str) -> int:
     return meilleur
 
 
+def _espacer(texte: str) -> str:
+    """« abattre !Découvrez » -> « abattre ! Découvrez » : certaines notices perdent l'espace après la ponctuation."""
+    return re.sub(r"([.!?…])(?=[A-ZÀ-ÝŒ«])", r"\1 ", texte or "")
+
+
+def _cle_doublon(texte: str) -> str:
+    """Le texte réduit à ses lettres et chiffres : « d’un » (apostrophe typographique) et « d'un » comptent pour le même."""
+    return re.sub(r"[^a-z0-9]+", "", _simple((texte or "").replace("’", "").replace("'", "")))
+
+
 def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
     """Résumé propre du tome : la notice Google Books commence souvent par la présentation de la série entière
     (« Avec son subtil mélange d'action… Fullmetal Alchemist est le titre incontournable… »), la même sur tous les tomes.
     On retire le début commun aux autres tomes gardés en mémoire (coupé à la fin d'une phrase) ; s'il ne reste rien
     de propre à ce tome, on ne met rien."""
-    texte = texte or ""
+    texte = _espacer(texte or "")
+    cle = _cle_doublon(texte)
+    if cle and any(k != str(n) and _cle_doublon(v.get("texte") or "") == cle
+                   for k, v in (brut.get("resumes_tomes") or {}).items()):
+        # Google a renvoyé la même notice pour plusieurs tomes : c'est la présentation de la série, pas ce tome-ci.
+        # Elle ne vaut que pour le tome 1 ; ailleurs mieux vaut rien qu'un résumé faux.
+        return texte if n == 1 and len(texte) >= 40 else ""
     for k, v in (brut.get("resumes_tomes") or {}).items():   # fin commune (liste de prix de la série, etc.) : coupée aussi
-        autre = v.get("texte") or ""
+        autre = _espacer(v.get("texte") or "")
         if k == str(n) or not autre or not texte:
             continue
         j = 0
@@ -749,7 +767,7 @@ def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
         if intro and texte.startswith(intro) and _debut_de_phrase(texte[len(intro):]):   # une coupe au milieu d'une phrase est ignorée
             texte = texte[len(intro):].lstrip()
     for k, v in (brut.get("resumes_tomes") or {}).items():
-        autre = v.get("texte") or ""
+        autre = _espacer(v.get("texte") or "")
         if k == str(n) or not autre or not texte:
             continue
         i = 0
@@ -791,6 +809,8 @@ def resume_tome_google(serie: str, tome, reseau: bool = True):
     cle = cle_google_books()
     if not cle:
         return ""
+    if time.time() < _GOOGLE_PAUSE["jusqua"]:
+        return ""                                      # quota atteint il y a peu : on ne frappe pas à la porte pour chaque tome
     st = brut.get("statut_officiel") or {}
     texte = ""
     for titre in list(dict.fromkeys(x for x in (serie, st.get("titre")) if x)):
@@ -800,8 +820,12 @@ def resume_tome_google(serie: str, tome, reseau: bool = True):
                 if r.status_code < 500:
                     break
                 time.sleep(1.5)
+            if r.status_code in (429, 403):
+                _GOOGLE_PAUSE["jusqua"] = time.time() + GOOGLE_PAUSE_DUREE
+                logger.info("Google Books : réponse %s (quota ou clé) : pause de %d h avant de réessayer", r.status_code, GOOGLE_PAUSE_DUREE // 3600)
+                return ""
             if r.status_code != 200:
-                return ""                                  # quota, clé refusée : on réessaiera, rien n'est gardé
+                return ""                                  # indisponible : on réessaiera, rien n'est gardé
             items = r.json().get("items") or []
         except Exception as e:
             logger.info("Résumé Google Books de %s tome %s : %s", serie, n, e.__class__.__name__)

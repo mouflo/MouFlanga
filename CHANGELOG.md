@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 📚 Résumés Google Books : notices en double et quota dépassé (14 octobre 2026)
+- **Même notice sur plusieurs tomes** : Google renvoie parfois la présentation de la série pour un autre tome (Assassination Classroom : tomes 16 et 19 recevaient le résumé du tome 1, à une apostrophe ou un espace près). Une notice identique à celle d'un autre tome est reconnue (lettres et chiffres seulement) : elle n'est gardée que pour le tome 1, les autres n'affichent rien plutôt qu'un résumé faux. Les espaces perdus après la ponctuation (« abattre !Découvrez ») sont rétablis.
+- **Quota Google Books dépassé (erreur 429)** : les tomes sans résumé (18 et 20) restaient vides et l'appli redemandait à Google pour chaque tome. Elle se met maintenant en pause 3 h après un refus de quota, le note dans le journal, et réessaie ensuite toute seule.
+
 ## 🩹 Résumés Google Books : plus de coupe au milieu d'une phrase (14 octobre 2026)
 - Le retrait de la présentation de la série (début commun à plusieurs tomes) prenait des points de suspension pour une fin de phrase : « Une salle de cours, un professeur, des élèves... et des coups de feu ! » devenait « et des coups de feu ! » (Assassination Classroom, tome 1). Une coupe n'est maintenant faite qu'à une vraie fin de phrase : jamais après « ... » ou « … », jamais après une abréviation (« M. Koro »), jamais devant une minuscule.
 - Les coupes fautives déjà mémorisées sont ignorées toutes seules : rien à corriger à la main, les résumés se corrigent à l'affichage.

@@ -43,3 +43,36 @@ class ResumeIntroTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DoublonsEtQuotaTest(unittest.TestCase):
+    def test_meme_notice_sur_plusieurs_tomes(self):
+        t1 = PITCH + "Découvrez le quotidien insolite d'un drôle de professeur et de ses élèves !!"
+        t19 = t1.replace("! ", "!")                           # mêmes mots, espaces perdus
+        b = {"resumes_tomes": {"1": {"texte": t1}, "16": {"texte": t1}, "19": {"texte": t19},
+                               "2": {"texte": "Une ravissante professeur d'anglais est affectée à la classe E, tueuse professionnelle."}}}
+        self.assertEqual(tomes._resume_de_serie(t19, b, 19), "")
+        self.assertEqual(tomes._resume_de_serie(t1, b, 16), "")
+        self.assertTrue(tomes._resume_de_serie(t1, b, 1).startswith("Une salle de cours"))   # le tome 1 la garde entière
+
+    def test_pause_apres_quota(self):
+        import time
+        import unittest.mock as m
+        tomes._GOOGLE_PAUSE["jusqua"] = 0.0
+        with m.patch.object(tomes, "cle_google_books", return_value="k"), \
+             m.patch.object(tomes, "_charger", return_value={}), \
+             m.patch.object(tomes._SESSION, "get") as g:
+            g.return_value.status_code = 429
+            self.assertEqual(tomes.resume_tome_google("Serie X", 3), "")
+            self.assertEqual(g.call_count, 1)
+            self.assertGreater(tomes._GOOGLE_PAUSE["jusqua"], time.time())
+            self.assertEqual(tomes.resume_tome_google("Serie X", 4), "")   # pas d'appel pendant la pause
+            self.assertEqual(g.call_count, 1)
+        tomes._GOOGLE_PAUSE["jusqua"] = 0.0
+
+
+class ApostropheTest(unittest.TestCase):
+    def test_apostrophe_typographique_meme_notice(self):
+        t1 = PITCH + "Découvrez le quotidien insolite d'un drôle de professeur et de ses élèves !!"
+        b = {"resumes_tomes": {"1": {"texte": t1}, "16": {"texte": t1.replace("d'un", "d’un")}}}
+        self.assertEqual(tomes._resume_de_serie(b["resumes_tomes"]["16"]["texte"], b, 16), "")
