@@ -328,6 +328,29 @@
     window._majBoutonAuto = maj;
   }
   boutonAuto();
+  function ouvrirTravail(s) {
+    var liste = s.travail_liste || [], tr = s.travail || {fait: []}, sug = tr.suggere || [];
+    var o = document.createElement('div'); o.className = 'choix-fond';
+    o.innerHTML = '<div class="choix-boite"><h3>📋 Où j\'en suis : « ' + esc(s.title) + ' »</h3>' + liste.map(function (x) {
+      return '<label class="travail-ligne"><input type="checkbox" data-cle="' + x.cle + '"' + (tr.fait.indexOf(x.cle) >= 0 ? ' checked' : '') + '> ' + esc(x.nom) +
+        (sug.indexOf(x.cle) >= 0 ? ' <small>(l\'appli l\'a fait : à cocher ?)</small>' : '') + '</label>'; }).join('') +
+      '<div class="dem-sous" id="travailEtat"></div><button type="button" class="mou-btn ghost" data-fermer="1">Fermer</button></div>';
+    function etat(t) {
+      $('travailEtat').textContent = t.complet ? '✅ Tout est fait pour cette série.' : t.fait.length + ' étape(s) sur ' + t.total + ' faites.';
+    }
+    document.body.appendChild(o);
+    etat(tr);
+    o.addEventListener('change', async function (e) {
+      var c = e.target.closest('[data-cle]'); if (!c) return;
+      var r = await post('/api/series/travail', {series: s.id, cle: c.dataset.cle, fait: c.checked});
+      if (!r.ok) { c.checked = !c.checked; return; }
+      s.travail = r; etat(r);
+    });
+    o.addEventListener('click', function (e) {
+      if (e.target === o || e.target.closest('[data-fermer]')) { o.remove(); openSeries(s.id, false); }
+    });
+  }
+
   function arreterGenerique() {
     if (lecteurGenerique) { lecteurGenerique.pause(); lecteurGenerique = null; }
     lecteurGenerique_cible = null;
@@ -1581,28 +1604,6 @@
       note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err');
       if (r.ok) await openSeries(current.id, false);
     });
-    function ouvrirTravail(s) {
-      var liste = s.travail_liste || [], tr = s.travail || {fait: []}, sug = tr.suggere || [];
-      var o = document.createElement('div'); o.className = 'choix-fond';
-      o.innerHTML = '<div class="choix-boite"><h3>📋 Où j\'en suis : « ' + esc(s.title) + ' »</h3>' + liste.map(function (x) {
-        return '<label class="travail-ligne"><input type="checkbox" data-cle="' + x.cle + '"' + (tr.fait.indexOf(x.cle) >= 0 ? ' checked' : '') + '> ' + esc(x.nom) +
-          (sug.indexOf(x.cle) >= 0 ? ' <small>(l\'appli l\'a fait : à cocher ?)</small>' : '') + '</label>'; }).join('') +
-        '<div class="dem-sous" id="travailEtat"></div><button type="button" class="mou-btn ghost" data-fermer="1">Fermer</button></div>';
-      function etat(t) {
-        $('travailEtat').textContent = t.complet ? '✅ Tout est fait pour cette série.' : t.fait.length + ' étape(s) sur ' + t.total + ' faites.';
-      }
-      document.body.appendChild(o);
-      etat(tr);
-      o.addEventListener('change', async function (e) {
-        var c = e.target.closest('[data-cle]'); if (!c) return;
-        var r = await post('/api/series/travail', {series: s.id, cle: c.dataset.cle, fait: c.checked});
-        if (!r.ok) { c.checked = !c.checked; return; }
-        s.travail = r; etat(r);
-      });
-      o.addEventListener('click', function (e) {
-        if (e.target === o || e.target.closest('[data-fermer]')) { o.remove(); openSeries(s.id, false); }
-      });
-    }
     $('sVolumes').addEventListener('click', async function () {
       fermerMenus();
       var v = prompt('Combien de tomes compte TON édition de « ' + current.title + ' » (ex. 11 pour une Perfect Édition) ?\n\nLes chapitres affichés suivront alors le sommaire de chaque tome, pas la liste de Wikipédia.\nLaisse vide pour que l\'appli le détecte toute seule.');
