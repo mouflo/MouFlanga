@@ -8,6 +8,7 @@ Le résultat est gardé dans <série>/.mouflanga-infos.json (« sommaires ») : 
 import difflib
 from collections import Counter
 import io
+import json
 import logging
 import os
 import re
@@ -16,6 +17,7 @@ import subprocess
 import threading
 import time
 import unicodedata
+from pathlib import Path
 
 logger = logging.getLogger("mouflanga")
 
@@ -433,7 +435,7 @@ def mots_fusionnes(image_octets: bytes) -> list[dict]:
     return sortie
 
 
-def _lire_chiffres(im, boite, clair=False):
+def _lire_chiffres(im, boite, clair=False, inverser=False):
     """Numéro lu seul : bande agrandie, chiffres uniquement (tesseract --psm 7), ou None."""
     from PIL import ImageChops, ImageOps
     x0, y0, x1, y1 = boite
@@ -445,6 +447,8 @@ def _lire_chiffres(im, boite, clair=False):
         c = ImageChops.darker(ImageChops.darker(r, g), b).point(lambda v: 255 if v > 180 else 0)
     else:
         c = ImageOps.grayscale(c)
+        if inverser:                                         # chiffres clairs sur fond sombre : noir sur blanc pour tesseract
+            c = ImageOps.autocontrast(ImageOps.invert(c))
     c = ImageOps.expand(c.resize((c.width * 3, c.height * 3)), border=30, fill=255)
     buf = io.BytesIO()
     c.save(buf, "PNG")
@@ -518,7 +522,7 @@ def _lignes_de(mots):
     return [sorted(l[1], key=lambda m: m["x"]) for l in lignes]
 
 
-_PETITS_MOTS = {"le", "la", "les", "de", "du", "des", "un", "une", "et", "à", "a", "en", "ou", "au", "aux", "sa", "se", "ce",
+_PETITS_MOTS = {"is", "in", "of", "to", "no", "on", "or", "and", "the", "you", "all", "le", "la", "les", "de", "du", "des", "un", "une", "et", "à", "a", "en", "ou", "au", "aux", "sa", "se", "ce",
                 "ne", "si", "l'", "d'", "ma", "mon", "ta", "ton", "ça", "où"}
 
 
@@ -896,7 +900,7 @@ def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
                 logger.info("Sommaire de %s, page %d (couleur) : %s", chemin, i, e.__class__.__name__)
         if not _vraisemblable(lignes) and re.search(r"(?i)sommaire|s\s?o\s?m\s?m", textes[i]) and re.search(r"#\s?\w", textes[i]):
             try:                                             # « #1 Keiji Kiriya ..... 3 » en police stylisée
-                rt = analyser_rangees_titrees(octets)
+                rt = analyser_rangees_titrees(octets, _lire_gabarits().get(Path(str(chemin)).parts[-3] if len(Path(str(chemin)).parts) >= 3 else ""))
                 if _vraisemblable(rt):
                     lignes = rt
             except Exception as e:
@@ -1305,7 +1309,7 @@ def analyser_pastilles(image_octets: bytes) -> list[dict]:
     return r
 
 
-def analyser_rangees_titrees(image_octets: bytes) -> list[dict]:
+def analyser_rangees_titrees(image_octets: bytes, gabarits: dict | None = None, boites: list | None = None) -> list[dict]:
     """Sommaire en rangées « #1 Keiji Kiriya ......... 3 » (police stylisée, texte clair sur fond sombre) : lu par mots
     (normal + clair), numéros déduits de la suite, pages choisies parmi leurs lectures possibles. [{"num","titre","page"}] ou []."""
     mots = mots_fusionnes(image_octets)
@@ -1323,16 +1327,31 @@ def analyser_rangees_titrees(image_octets: bytes) -> list[dict]:
     marques = [(cy, r) for cy, r in rangees if re.fullmatch(r"#\s?[0-9A-Za-z|]{1,3}[.:]?", sorted(r, key=lambda m: m["x"])[0]["t"])]
     if len(marques) < 3:
         return []
-    page_x = sorted(m["x"] for _, r in marques for m in r if re.search(r"\d", m["t"]) and m["x"] > 0)[-1] if marques else 0
-    xs_droite = [m["x"] for _, r in marques for m in r[1:] if re.fullmatch(r"\.*\d{1,4}\.*", m["t"])]
-    colonne = min(xs_droite) if xs_droite else page_x
+    xs_marque = sorted(sorted(r, key=lambda m: m["x"])[0]["x"] for _, r in marques)
+    x_marque = xs_marque[len(xs_marque) // 2]
+    y_min, y_max = min(cy for cy, _ in marques), max(cy for cy, _ in marques)
+    for cy, r in rangees:                                    # rang dont le « #9 » a été lu « HA » : même colonne, entre deux autres
+        premier = sorted(r, key=lambda m: m["x"])[0]
+        if (cy, r) not in marques and abs(premier["x"] - x_marque) <= 25 and len(premier["t"]) <= 4 and y_min - 5 <= cy <= y_max + 5 \
+                and not premier["t"].startswith("#") and len(r) >= 2:
+            marques.append((cy, r))
+    marques.sort(key=lambda x: x[0])
+    nombres = sorted(m["x"] for _, r in marques for m in r[1:] if re.fullmatch(r"\.*\d{2,4}\.*", m["t"]) and m["x"] > 0)
+    if not nombres:
+        return []
+    colonne = nombres[len(nombres) // 2] - 40                # début de la colonne des pages (les pointillés lus « 0 » n'en font pas partie)
+    try:
+        from PIL import Image
+        im_rgb = Image.open(io.BytesIO(image_octets)).convert("RGB")
+    except Exception:
+        im_rgb = None
     lignes = []
     for cy, r in marques:
         r = sorted(r, key=lambda m: m["x"])
         marque = r[0]["t"]
         chiffres = marque.lstrip("#").strip(" .:").translate(str.maketrans({"I": "1", "l": "1", "|": "1", "b": "6", "o": "0", "O": "0"}))
         num = int(chiffres) if re.fullmatch(r"\d{1,3}", chiffres) else None
-        titre_mots = [m for m in r[1:] if m["x"] + m["w"] <= colonne - 4 and re.search(r"[A-Za-zÀ-ÿ]{2}", m["t"])
+        titre_mots = [m for m in r[1:] if m["x"] < colonne - 6 and re.search(r"[A-Za-zÀ-ÿ]{2}", m["t"])
                       and not re.fullmatch(r"[.\W]+", m["t"]) and (m["c"] >= 40 or len(re.sub(r"[^A-Za-zÀ-ÿ]", "", m["t"])) >= 4)]
         cands = Counter()
         for m in normaux + mots:
@@ -1340,7 +1359,38 @@ def analyser_rangees_titrees(image_octets: bytes) -> list[dict]:
                 for d in re.findall(r"\d{1,4}", m["t"]):
                     if len(d) <= 3 and int(d) > 0:
                         cands[int(d)] += 2 if m["c"] >= 50 else 1
-        lignes.append({"num": num, "titre": " ".join(m["t"].strip(".,:;") for m in titre_mots), "cands": cands, "y": cy})
+        if im_rgb is not None:                               # la colonne des pages relue seule, chiffres clairs sur fond sombre
+            hauteur = max(m["h"] for m in r)
+            boite = (colonne, int(cy - hauteur * .8), im_rgb.width, int(cy + hauteur * .8))
+            if boites is not None:
+                boites.append(boite)
+            if gabarits:                                      # chiffres appris d'après tes corrections : le plus sûr
+                try:
+                    v = lire_nombre_appris(im_rgb, (colonne, int(cy - hauteur * .6), im_rgb.width, int(cy + hauteur * .6)), gabarits)
+                except Exception:
+                    v = None
+                if v:
+                    cands[v] += 6
+            for inverser in (True, False):
+                try:
+                    v = _lire_chiffres(im_rgb, boite, False, inverser)
+                except Exception:
+                    v = None
+                if v is not None and v > 0:
+                    cands[v] += 3
+        gardes = []
+        titre_mots = [m for m in titre_mots if m["c"] >= 25 or len(titre_mots) == 1]      # « loire » lu à 13 % : parcelle de dessin
+        for m in titre_mots:
+            t = re.sub(r"[.…]{2,}.*$", "", m["t"]).strip(".,:;")
+            lettres = re.sub(r"[^A-Za-zÀ-ÿ]", "", t)
+            if not lettres or (len(lettres) <= 3 and t.lower() not in _PETITS_MOTS and not t[:1].isupper()) \
+                    or (len(lettres) <= 2 and t.lower() not in _PETITS_MOTS) or re.search(r"[—–]", t):
+                continue                                     # pointillés lus « css », « ss », « BC »
+            gardes.append(t)
+        titre = " ".join(gardes).strip()
+        if len(re.sub(r"[^A-Za-zÀ-ÿ]", "", titre)) <= 2:     # cadre blanc sur le sommaire (titre caché) : pas de titre
+            titre = ""
+        lignes.append({"num": num, "titre": titre, "cands": cands, "y": cy})
     if len(lignes) < 3:
         return []
     bases = Counter(x["num"] - i for i, x in enumerate(lignes) if x["num"] is not None)
@@ -1351,6 +1401,93 @@ def analyser_rangees_titrees(image_octets: bytes) -> list[dict]:
               for i, x in enumerate(lignes)]
     sortie = _pages_sures(sortie)
     return [{"num": x["num"], "titre": x["titre"], "page": x["page"]} for x in sortie] if sortie and _vraisemblable(sortie) else []
+
+
+# ---------------------------------------------------------------- Chiffres appris (police stylisée d'une série)
+# Quand la police des numéros de page n'est pas lue par l'OCR (« #6 Mûrir ..... 173 »), l'appli apprend ses chiffres
+# d'après les chapitres que tu as corrigés ou validés à la main (data/gabarits-chiffres.json, jamais sur GitHub).
+
+GABARITS = Path(__file__).resolve().parent / "data" / "gabarits-chiffres.json"
+_TAILLE_GLYPHE = (12, 20)
+
+
+def _lire_gabarits() -> dict:
+    try:
+        return json.loads(GABARITS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _glyphes_nombre(image, boite):
+    """Chiffres d'un nombre écrit dans la boîte (x0, y0, x1, y1) : liste de vecteurs 12×20 (0..1), de gauche à droite.
+    Texte clair sur fond sombre ou l'inverse : le texte est la couleur la moins fréquente."""
+    import numpy as np
+    from PIL import Image, ImageOps
+    x0, y0, x1, y1 = (int(v) for v in boite)
+    c = ImageOps.autocontrast(ImageOps.grayscale(image.crop((max(0, x0), max(0, y0), min(image.width, x1), min(image.height, y1)))))
+    g = np.asarray(c).astype(float)
+    if g.size == 0 or g.max() - g.min() < 60:
+        return []
+    m = g > (g.min() + g.max()) / 2
+    if m.mean() > .5:                                         # majorité de clair : le texte est le sombre
+        m = ~m
+    colonnes = m.sum(axis=0) > 0
+    out, debut = [], None
+    for i, v in enumerate(list(colonnes) + [False]):
+        if v and debut is None:
+            debut = i
+        elif not v and debut is not None:
+            if i - debut >= 2:
+                sous = m[:, debut:i]
+                lignes = np.where(sous.sum(axis=1) > 0)[0]
+                if len(lignes) >= 8:
+                    pav = sous[lignes[0]:lignes[-1] + 1]
+                    v = np.asarray(Image.fromarray((pav * 255).astype("uint8")).resize(_TAILLE_GLYPHE, Image.BILINEAR)) / 255.0
+                    out.append(v.reshape(-1))
+            debut = None
+    return out
+
+
+def lire_nombre_appris(image, boite, gabarits: dict):
+    """Nombre lu avec les chiffres appris, ou None : chaque chiffre est celui du gabarit le plus proche (écart assez petit)."""
+    import numpy as np
+    if not gabarits:
+        return None
+    echantillons = [(int(d), np.asarray(v)) for d, vs in gabarits.items() for v in vs]
+    if len(echantillons) < 10:
+        return None
+    lu = ""
+    for g in _glyphes_nombre(image, boite):
+        d, e = min(((d, float(np.mean((g - v) ** 2))) for d, v in echantillons), key=lambda x: x[1])
+        if e > 0.09:
+            return None
+        lu += str(d)
+    return int(lu) if lu and len(lu) <= 3 else None
+
+
+def apprendre_chiffres(serie: str, image, boites_valeurs) -> int:
+    """Apprend les chiffres de la série : boites_valeurs = [((x0, y0, x1, y1), valeur), …] (la valeur est ce que tu as
+    validé). Un nombre n'est appris que si son nombre de signes est bien celui de ses chiffres. Renvoie le nombre de
+    chiffres appris."""
+    g = _lire_gabarits()
+    s = g.setdefault(serie, {})
+    appris = 0
+    for boite, valeur in boites_valeurs:
+        txt = str(int(valeur))
+        glyphes = _glyphes_nombre(image, boite)
+        if len(glyphes) != len(txt):
+            continue
+        for ch, v in zip(txt, glyphes):
+            lot = s.setdefault(ch, [])
+            lot.append([round(float(x), 2) for x in v])
+            del lot[:-6]                                      # six exemplaires par chiffre au plus (les plus récents)
+            appris += 1
+    if appris:
+        GABARITS.parent.mkdir(parents=True, exist_ok=True)
+        tmp = GABARITS.with_suffix(".tmp")
+        tmp.write_text(json.dumps(g, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(GABARITS)
+    return appris
 
 
 # ---------------------------------------------------------------- Symboles de cartes (Alice in Borderland)

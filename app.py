@@ -4099,7 +4099,41 @@ def api_tome_chapitres():
     nouveau.update(chapitres=chapitres, manuel=True, valide_le=time.strftime("%Y-%m-%d"))
     infos.setdefault("sommaires", {})[str(tome)] = nouveau
     edition.ecrire(MANGA_DIR / name, infos)
+    try:
+        _apprendre_chiffres(name, tome)
+    except Exception as e:
+        logger.info("Chiffres du sommaire de %s : %s", name, e.__class__.__name__)
     return jsonify({"ok": True, "message": f"Tome {tome} : {len(chapitres)} chapitres enregistrés."})
+
+
+def _apprendre_chiffres(name, tome):
+    """Après une correction ou une validation à la main : les chiffres de la police des numéros de page du sommaire
+    sont appris (positions des chapitres que tu as confirmées), pour que les prochains tomes soient lus justes."""
+    import edition
+    import sommaire
+    from PIL import Image
+    infos = edition.lire(MANGA_DIR / name)
+    rec = (infos.get("sommaires") or {}).get(str(tome)) or {}
+    e = _tome_complet(name, int(tome))
+    ch = rec.get("chapitres") or []
+    if not e or rec.get("page_sommaire") is None or len(ch) < 3:
+        return 0
+    chemin = MANGA_DIR / e["path"]
+    octets = archives.read_page(chemin, int(rec["page_sommaire"]))[0]
+    boites = []
+    lues = sommaire.analyser_rangees_titrees(octets, None, boites)
+    if not lues or len(boites) != len(lues):
+        return 0
+    par_num = {float(c["num"]): c for c in ch if c.get("num") is not None}
+    # on n'apprend que les nombres sur lesquels la page imprimée et la position confirmée par toi s'accordent
+    valeurs = []
+    for x, boite in zip(lues, boites):
+        c = par_num.get(float(x["num"]))
+        if c and c.get("page") is not None and c.get("image") is not None and int(c["page"]) == int(c["image"]):
+            valeurs.append((boite, int(c["page"])))
+    if not valeurs:
+        return 0
+    return sommaire.apprendre_chiffres(name, Image.open(io.BytesIO(octets)).convert("RGB"), valeurs)
 
 
 @app.route("/api/tome/valider", methods=["POST"])
@@ -4121,6 +4155,10 @@ def api_tome_valider():
         return jsonify({"ok": False, "error": "Pas de chapitres lus pour ce tome : lis le sommaire d'abord."}), 400
     lu.update(manuel=True, valide_le=time.strftime("%Y-%m-%d"))
     edition.ecrire(MANGA_DIR / name, infos)
+    try:
+        _apprendre_chiffres(name, tome)
+    except Exception as e:
+        logger.info("Chiffres du sommaire de %s : %s", name, e.__class__.__name__)
     return jsonify({"ok": True, "message": f"Tome {tome} : chapitres validés."})
 
 
