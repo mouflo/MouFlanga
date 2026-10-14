@@ -16,7 +16,7 @@ from pathlib import Path
 
 logger = logging.getLogger("mouflanga")
 
-VERSION = 2                      # monte quand la préparation fait plus de choses : les séries sont refaites une fois
+VERSION = 3                      # monte quand la préparation fait plus de choses : les séries sont refaites une fois
 _VERROU = threading.Lock()
 _FILE = []                       # séries en attente (dans l'ordre)
 _ETAT = {"en_cours": False, "serie": "", "fait": 0, "total": 0, "message": "", "debut": 0.0, "fin": 0.0,

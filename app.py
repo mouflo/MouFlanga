@@ -5091,18 +5091,16 @@ def _edition_dans_les_fichiers(nom):
         except (OSError, zipfile.BadZipFile):
             continue
         haut = next((n.split("/", 1)[0] for n in noms if "/" in n), "")
-        if not haut or simple not in tomes._simple(haut):
-            continue
+        ed = edition.edition_du_titre(haut) if haut else None
+        if not haut or (simple not in tomes._simple(haut) and not ed):
+            continue                                      # autre manga, sans mention d'édition
         nb += 1
-        ed = edition.edition_du_titre(haut)
-        if ed:
+        if ed:                                            # « 21st Century Boys - Perfect Edition » rangé dans la série : un tome de plus
             editions[ed] = editions.get(ed, 0) + 1
-        m = re.search(r"(?:^|[\s\-_.(\[])T(?:ome)?\s*0*(\d{1,3})(?![\d])", haut, re.I)
-        if m:
-            numeros.append(int(m.group(1)))
+        numeros.append(int(e["tome"]))
     if not editions or sum(editions.values()) * 2 < nb:          # la plupart des tomes doivent le dire
         return None, None
-    return max(editions, key=editions.get), (max(numeros) if numeros else nb)
+    return max(editions, key=editions.get), max(numeros)
 
 
 def _detecter_edition(nom):
