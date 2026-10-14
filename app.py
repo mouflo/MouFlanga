@@ -1195,8 +1195,10 @@ def api_series_travail_comptes():
     comptes["resumes"] = sum(1 for t in numeros if manuels.get(str(t)) or (details.get(str(t)) or {}).get("resume")
                              or tomes.resume_tome_memoire(name, t))
     chap = lambda t: (sommaires.get(str(t)) or {}).get("chapitres") or []
-    comptes["titres"] = sum(1 for t in numeros if chap(t))
-    comptes["liens"] = sum(1 for t in numeros if signets.nb_signets(chap(t)))
+    # « fait » = sommaire VALIDÉ (bouton ✅ ou saisi à la main), pas seulement lu automatiquement
+    valide = lambda t: bool((sommaires.get(str(t)) or {}).get("valide_le") or (sommaires.get(str(t)) or {}).get("manuel"))
+    comptes["titres"] = sum(1 for t in numeros if chap(t) and valide(t))
+    comptes["liens"] = sum(1 for t in numeros if chap(t) and valide(t) and signets.nb_signets(chap(t)) == len(chap(t)))
     comptes["isbn"] = sum(1 for t in numeros if str(t) in _isbn_connus(infos))
     comptes["couvertures"] = sum(1 for t in numeros if couvertures_tomes.remplacement(MANGA_DIR / name, t))
     ecrits = 0

@@ -2,6 +2,7 @@
 
 ## 📋 « Où j'en suis » : combien de tomes sont faits, étape par étape (14 octobre 2026)
 - Chaque ligne de la fenêtre 📋 affiche maintenant **fait / total** (ex. « ISBN des tomes 14 / 21 », ✅ quand tout est fait) : résumés, titres des chapitres, liens des chapitres, ISBN, couvertures des tomes et réécriture des fichiers. Plus besoin d'ouvrir les tomes un par un.
+- **Titres** et **liens** des chapitres ne comptent que les tomes dont le sommaire est **validé** (bouton ✅ ou saisi à la main), pas ceux seulement lus automatiquement. **Couvertures** : le nombre de couvertures *remplacées* (sans remplacement, la couverture est la première page du fichier).
 - Calculé par le serveur à l'ouverture de la fenêtre (une demi-seconde pour une série de 20 à 40 tomes ; l'état des fichiers est gardé en mémoire tant qu'ils ne changent pas). « Allègement » n'a pas de compte : c'est une opération sur la série entière.
 
 ## 🔍 Lire les ISBN de toute la série + case « ISBN » du pense-bête (14 octobre 2026)

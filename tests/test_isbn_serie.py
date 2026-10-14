@@ -148,7 +148,9 @@ class ComptesTest(unittest.TestCase):
         d = edition.lire(self.root / "Serie")
         d["resumes_tomes"] = {"1": "Un résumé écrit à la main", "2": "Un autre"}
         d["isbn"] = {"1": "9782505013112", "3": "9782505013129", "4": "9782505013136"}
-        d["sommaires"] = {"1": {"chapitres": [{"num": 1, "titre": "A", "image": 3}]}, "2": {"chapitres": [{"num": 2, "titre": "B"}]}}
+        d["sommaires"] = {"1": {"chapitres": [{"num": 1, "titre": "A", "image": 3}], "valide_le": "2026-10-14"},
+                          "2": {"chapitres": [{"num": 2, "titre": "B"}], "manuel": True},
+                          "3": {"chapitres": [{"num": 3, "titre": "C", "image": 5}]}}      # lu mais pas validé : ne compte pas
         edition.ecrire(self.root / "Serie", d)
         self.A._CACHE_EDITION.clear()
         r = self.c.get("/api/series/travail/comptes", query_string={"series": "Serie"}).get_json()
@@ -156,8 +158,8 @@ class ComptesTest(unittest.TestCase):
         c = r["comptes"]
         self.assertEqual(c["resumes"], 2)
         self.assertEqual(c["isbn"], 3)
-        self.assertEqual(c["titres"], 2)          # deux tomes ont des chapitres
-        self.assertEqual(c["liens"], 1)           # un seul a une page de départ
+        self.assertEqual(c["titres"], 2)          # deux tomes validés (le 3 est seulement lu)
+        self.assertEqual(c["liens"], 1)           # un seul validé avec une page de départ pour tous ses chapitres
         self.assertEqual(c["couvertures"], 0)
         self.assertEqual(c["reecriture"], 0)
 

@@ -348,7 +348,8 @@
       o.querySelectorAll('[data-cpt]').forEach(function (c) {
         var n = r.comptes[c.dataset.cpt];
         if (n === undefined || !r.total) { c.textContent = ''; return; }
-        c.textContent = n + ' / ' + r.total + (n >= r.total ? ' ✅' : '');
+        c.textContent = c.dataset.cpt === 'couvertures' ? n + ' remplacée' + (n > 1 ? 's' : '')     // les couvertures sont les 1res pages tant qu'on n'en remplace pas
+          : n + ' / ' + r.total + (n >= r.total ? ' ✅' : '');
         c.className = 'travail-cpt' + (n >= r.total ? ' complet' : (n ? ' partiel' : ' vide'));
       });
     }).catch(function () { o.querySelectorAll('[data-cpt]').forEach(function (c) { c.textContent = ''; }); });
