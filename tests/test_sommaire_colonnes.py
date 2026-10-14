@@ -78,7 +78,10 @@ class Resume(unittest.TestCase):
     def test_resume_dun_mot_est_refait(self):
         import time
         self.assertFalse(tomes.statut_a_jour({"resume": "Wikipedia", "statut": "FINISHED", "date": time.time() - 2 * 86400}))
-        self.assertTrue(tomes.statut_a_jour({"resume": "x" * 120, "statut": "FINISHED", "date": time.time() - 2 * 86400}))
+        self.assertTrue(tomes.statut_a_jour({"resume": "x" * 120, "statut": "FINISHED", "date": time.time() - 2 * 86400,
+                                                    "resume_v": tomes.RESUME_VERSION}))
+        # résumé gardé par l'ancien code (dernier mot coupé) : refait même s'il est récent
+        self.assertFalse(tomes.statut_a_jour({"resume": "x" * 120, "statut": "FINISHED", "date": time.time() - 3600}))
 
     def test_nombre_ordinal_dans_un_titre(self):
         self.assertEqual(tomes._wiki_propre("Le {{7e|district}}"), "Le 7e district")

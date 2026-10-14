@@ -143,7 +143,7 @@ def fandom(serie: str, titre: str) -> dict | None:
         return {"titre": f"{serie} {champ('nom')}".strip() if champ("nom") and serie.lower() not in champ("nom").lower() else (champ("nom") or page),
                 "annee": int(annee.group(0)) if annee else None, "auteur": champ("auteur"), "editeur": champ("editf") or champ("éditeur"),
                 "source": "Fandom", "sortie": sortie, "pages": champ("pages"), "type": kind, "apres_tome": apres,
-                "descriptif": intro[:400].rsplit(" ", 1)[0] + ("…" if len(intro) > 400 else ""),
+                "descriptif": intro if len(intro) <= 400 else intro[:400].rsplit(" ", 1)[0] + "…",
                 "lien": api.replace("api.php", "wiki/") + page.replace(" ", "_")}
     return None
 

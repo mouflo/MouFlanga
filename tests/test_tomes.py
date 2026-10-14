@@ -879,7 +879,8 @@ class ResumesTest(unittest.TestCase):
     def test_statut_a_jour(self):
         import time as t
         self.assertFalse(tomes.statut_a_jour(None))
-        self.assertTrue(tomes.statut_a_jour({"date": t.time() - 3 * 86400, "statut": "FINISHED", "resume": "x" * 60}))
+        self.assertTrue(tomes.statut_a_jour({"date": t.time() - 3 * 86400, "statut": "FINISHED", "resume": "x" * 60,
+                                             "resume_v": tomes.RESUME_VERSION}))
         self.assertFalse(tomes.statut_a_jour({"date": t.time() - 2 * 86400, "statut": None, "resume": ""}))
         self.assertFalse(tomes.statut_a_jour({"date": t.time() - 2 * 86400, "statut": "FINISHED", "resume": ""}))
         self.assertTrue(tomes.statut_a_jour({"date": t.time() - 3600, "statut": None, "resume": ""}))

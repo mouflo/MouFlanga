@@ -352,6 +352,7 @@ def tome_de(num: float, info: dict | None):
 
 # ---------------------------------------------------------------- Statut officiel (fini / en cours)
 
+RESUME_VERSION = 2                    # 2 : résumés non tronqués (le dernier mot n'est plus coupé)
 STATUT_DUREE = 7 * 86400
 STATUT_VIDE_DUREE = 86400            # série pas trouvée ou sans résumé : on réessaie chaque jour (les sources s'enrichissent)
 
@@ -359,6 +360,8 @@ STATUT_VIDE_DUREE = 86400            # série pas trouvée ou sans résumé : on
 def statut_a_jour(st) -> bool:
     """Le statut gardé est-il encore bon ? 7 jours s'il est complet, un jour seulement s'il manque la série ou le résumé."""
     if not st or "resume" not in st:
+        return False
+    if st.get("resume_v", 1) < RESUME_VERSION and st.get("resume"):    # gardé par l'ancien code (dernier mot coupé) : refait
         return False
     duree = STATUT_DUREE if st.get("statut") and len(st.get("resume") or "") >= 40 else STATUT_VIDE_DUREE   # un mot seul : refait
     return time.time() - st.get("date", 0) < duree
@@ -483,7 +486,7 @@ def _wikipedia_fr(m, serie=""):
                 if m_syn:
                     corps = re.sub(r"\n===+[^=]+===+\n", "\n", m_syn.group(2)).strip()
                     if len(corps) > 80:
-                        return corps[:1500].rsplit(" ", 1)[0] + ("…" if len(corps) > 1500 else "")
+                        return corps if len(corps) <= 1500 else corps[:1500].rsplit(" ", 1)[0] + "…"
                 intro = texte.split("\n==", 1)[0].strip()
                 if len(intro) > 80:
                     return intro
@@ -570,6 +573,7 @@ def _garder_statut(serie, m):
           "titre_en": m["title"].get("english") if m else None, "anilist": m.get("id") if m else None,
           "choisi": bool(m and ID_CHOISI(serie))}
     st["resume"], st["resume_langue"] = _resume(m, serie) if m else _resume_sans_anilist(serie)
+    st["resume_v"] = RESUME_VERSION
     # enregistrement à côté de la répartition des tomes (même fichier)
     DOSSIER.mkdir(parents=True, exist_ok=True)
     try:
@@ -747,7 +751,7 @@ def resume_tome_google(serie: str, tome) -> str:
     n = int(tome)
     brut = _charger(serie) or {}
     garde = (brut.get("resumes_tomes") or {}).get(str(n))
-    if garde and time.time() - garde.get("date", 0) < RESUME_TOME_DUREE:
+    if garde and time.time() - garde.get("date", 0) < RESUME_TOME_DUREE and garde.get("v", 1) >= RESUME_VERSION:
         return _resume_de_serie(garde.get("texte", ""), brut, n)
     cle = cle_google_books()
     if not cle:
@@ -774,7 +778,7 @@ def resume_tome_google(serie: str, tome) -> str:
                 continue
             desc = _texte_propre(v.get("description") or "")
             if len(desc) > 60:
-                texte = desc[:1500].rsplit(" ", 1)[0] + ("…" if len(desc) > 1500 else "")
+                texte = desc if len(desc) <= 1500 else desc[:1500].rsplit(" ", 1)[0] + "…"
                 break
         if texte:
             break
@@ -782,7 +786,7 @@ def resume_tome_google(serie: str, tome) -> str:
         brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         brut = {}
-    brut.setdefault("resumes_tomes", {})[str(n)] = {"date": time.time(), "texte": texte}
+    brut.setdefault("resumes_tomes", {})[str(n)] = {"date": time.time(), "texte": texte, "v": RESUME_VERSION}
     texte = _resume_de_serie(texte, brut, n)             # sans la présentation de la série, répétée sur chaque tome
     DOSSIER.mkdir(parents=True, exist_ok=True)
     tmp = _fichier(serie).with_suffix(".tmp")

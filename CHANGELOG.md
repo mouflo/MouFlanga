@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🔧 Résumés tronqués (14 octobre 2026)
+- 📖 Le **dernier mot** des résumés (série et tomes) était coupé (« … revivre indéfiniment la même » au lieu de « … la même bataille… », « … la volonté de » sans « survivre »). Corrigé pour les résumés Wikipédia et Google Books ; les résumés gardés par l'ancien code sont refaits tout seuls à la prochaine ouverture.
+
 ## 📖 Sommaires : Alice in Borderland, Air Gear, ISBN, spin-offs (13 octobre 2026)
 - ♠️♣️♥️♦️ **Alice in Borderland** : les épisodes écrits en lettres (« Trente-troisième épisode », « Trentième et unième »), les « Épisode spécial N » (numérotés 33,1 ; 33,2…) et les figures de cartes des titres (« K♣ - Première partie », « 10♥ ») sont lus ; la couleur de chaque carte est reconnue d'après sa forme.
 - 🛹 **Air Gear** : les rangées « Trick:6 ..... 5 » (sans titre, en pastilles) sont lues ; les chapitres s'appellent « Trick 6 », leurs pages sont retrouvées par les numéros imprimés.
