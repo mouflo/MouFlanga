@@ -1398,6 +1398,8 @@ def api_optimiser_comparer():
         return jsonify({"error": "Série introuvable."}), 404
     tomes = [f for f in _fichiers_a_alleger(name) if zipfile.is_zipfile(f)]
     if not tomes:
+        if any(c[1] for c in _cbr_de(name)):
+            return jsonify({"error": "Ces tomes sont des RAR (ou .cbr) : convertis-les d'abord en .cbz avec le bouton de conversion de la série."}), 404
         return jsonify({"error": "Aucun tome .cbz à comparer."}), 404
     chemin = next((f for f in tomes if f.name == request.args.get("fichier", "")), tomes[0])
     try:
@@ -4469,19 +4471,27 @@ _CONVERSION = {}                                       # série → avancement d
 
 
 def _cbr_de(name):
-    """.cbr de la série : (chemin, convertible, raison_si_non)."""
+    """.cbr de la série (et .cbz qui sont en réalité des RAR) : (chemin, convertible, raison_si_non)."""
     import optimiser
     out = []
     for e in _entrees(_scan().get(name) or []):
         p = e.get("path") or ""
-        if not p.lower().endswith(".cbr") or e.get("key") != p or e.get("a_importer"):
+        if e.get("key") != p or e.get("a_importer"):
             continue
         chemin = MANGA_DIR / p
+        faux_cbz = False                                 # « .cbz » dont le contenu est un vrai RAR : lisible, mais pas modifiable
+        if p.lower().endswith((".cbz", ".zip")):
+            try:
+                faux_cbz = archives._kind(chemin) == "rar"
+            except Exception:
+                continue
+        if not faux_cbz and not p.lower().endswith(".cbr"):
+            continue
         try:
             partage = chemin.stat().st_nlink > 1
         except OSError:
             continue
-        if chemin.with_suffix(".cbz").exists():
+        if not faux_cbz and chemin.with_suffix(".cbz").exists():
             out.append((chemin, False, "un .cbz du même nom existe déjà"))
         elif partage and not optimiser._dossier_a_lui(chemin, name):
             out.append((chemin, False, "partagé par qBittorrent, hors d'un dossier de tome : jamais modifié"))

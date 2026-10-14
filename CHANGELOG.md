@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🔄 Les « .cbz » qui sont en réalité des RAR sont convertis aussi (14 octobre 2026)
+- Un fichier nommé .cbz mais dont le contenu est un vrai RAR se lisait bien, mais « 🪶 Alléger » répondait « Aucun tome à comparer » (seuls les vrais ZIP sont traités). La conversion en .cbz (pages identiques, vérifiées) les reconnaît maintenant au contenu, et le message de l'allègement indique de convertir d'abord.
+
 ## 🔄 Conversion des .cbr en .cbz (14 octobre 2026)
 - Menu de la série → « 🔄 Convertir les .cbr en .cbz » : les pages sont recopiées telles quelles (sans recompression, sans retouche), la copie est relue et comparée page par page (somme de contrôle) avant tout remplacement. Un .cbz peut recevoir les infos du tome (ComicInfo.xml), pas un RAR.
 - La progression de lecture suit le nouveau nom de fichier ; l'ancien .cbr part à la corbeille (30 jours). Un fichier partagé par qBittorrent est copié à part puis les dossiers sont échangés : le torrent n'est pas touché. Un fichier partagé posé hors d'un dossier de tome, ou dont le .cbz existe déjà, est laissé tel quel.

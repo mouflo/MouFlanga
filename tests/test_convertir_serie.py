@@ -66,3 +66,25 @@ class ConvertirSerieTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FauxCbzTest(unittest.TestCase):
+    """Un « .cbz » dont le contenu est un vrai RAR doit être proposé à la conversion (sinon impossible à alléger)."""
+
+    def test_rar_renomme_en_cbz_detecte(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t) / "mangas"
+            d = root / "Serie" / "Tome 01"
+            d.mkdir(parents=True)
+            (d / "Serie - Tome 01.cbz").write_bytes(b"Rar!\x1a\x07\x00" + b"\0" * 64)
+            d2 = root / "Serie" / "Tome 02"
+            d2.mkdir()
+            with zipfile.ZipFile(d2 / "Serie - Tome 02.cbz", "w") as z:
+                z.writestr("001.jpg", b"x")
+            os.environ["MANGA_DIR"] = str(root)
+            sys.modules.pop("app", None)
+            import app as A
+            A.MANGA_DIR = root
+            A._scan_invalider()
+            noms = [(c[0].name, c[1]) for c in A._cbr_de("Serie")]
+            self.assertEqual(noms, [("Serie - Tome 01.cbz", True)])
