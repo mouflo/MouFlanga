@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 🩹 Résumés Google Books : plus de coupe au milieu d'une phrase (14 octobre 2026)
+- Le retrait de la présentation de la série (début commun à plusieurs tomes) prenait des points de suspension pour une fin de phrase : « Une salle de cours, un professeur, des élèves... et des coups de feu ! » devenait « et des coups de feu ! » (Assassination Classroom, tome 1). Une coupe n'est maintenant faite qu'à une vraie fin de phrase : jamais après « ... » ou « … », jamais après une abréviation (« M. Koro »), jamais devant une minuscule.
+- Les coupes fautives déjà mémorisées sont ignorées toutes seules : rien à corriger à la main, les résumés se corrigent à l'affichage.
+
 ## 🪶📝 Alléger et écrire les infos en une seule passe (14 octobre 2026)
 - Dans la fenêtre « 🪶 Alléger ou ✨ améliorer », une case **« 📝 Écrire aussi les infos du tome »** (cochée par défaut) : les images sont allégées ET le ComicInfo.xml (résumé, chapitres avec leurs pages, provenance, ISBN, fiche) est écrit dans le même passage. Plus besoin de « Réécrire les infos » ensuite : un seul fichier réécrit sur le NAS par tome au lieu de deux.
 - Mêmes règles que « 📝 Réécrire les infos de TOUS les tomes » : balises de l'équipe jamais écrasées, saisies à la main gardées, tomes assemblés par MouFlanga et fichiers partagés hors d'un dossier de tome laissés tels quels. Un tome déjà léger est quand même réécrit pour recevoir ses infos (images intactes). Même sécurité : écriture à côté, relecture, ancien à la corbeille ; fichier partagé par qBittorrent par échange de dossiers.

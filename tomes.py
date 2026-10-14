@@ -700,6 +700,35 @@ def _cle_texte(t: str) -> str:
     return _simple(t or "")[:160]
 
 
+_ABREVIATIONS = {"m", "mm", "mme", "mlle", "mr", "dr", "pr", "st", "ste", "me", "mgr", "cie", "vol", "no", "n"}
+
+
+def _debut_de_phrase(reste: str) -> bool:
+    """Le texte restant commence comme une phrase (majuscule, chiffre, guillemet), pas par un « et des coups de feu ! »."""
+    reste = reste.lstrip()
+    return bool(reste) and not reste[0].islower()
+
+
+def _fin_de_phrase(texte: str, commun: str) -> int:
+    """Indice (dans texte) où commence la phrase qui suit la dernière VRAIE fin de phrase du début commun « commun »,
+    ou -1. Ne coupe ni après des points de suspension (« des élèves... et des coups de feu ! » est une seule phrase),
+    ni après une abréviation (« M. Koro »), ni avant une minuscule."""
+    meilleur = -1
+    for m in re.finditer(r"[.!?…]+\s", commun):
+        signe = m.group(0).rstrip()
+        if m.start() < 40:
+            continue
+        if signe.endswith("…") or (set(signe) == {"."} and len(signe) > 1) or signe.endswith("..."):
+            continue                                        # points de suspension
+        mot = re.search(r"([A-Za-zÀ-ÿ]+)$", commun[:m.start()])
+        if signe == "." and mot and mot.group(1).lower() in _ABREVIATIONS:
+            continue
+        if m.end() < len(texte) and not _debut_de_phrase(texte[m.end():m.end() + 1]):
+            continue
+        meilleur = m.end()
+    return meilleur
+
+
 def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
     """Résumé propre du tome : la notice Google Books commence souvent par la présentation de la série entière
     (« Avec son subtil mélange d'action… Fullmetal Alchemist est le titre incontournable… »), la même sur tous les tomes.
@@ -717,7 +746,7 @@ def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
             texte = texte[:len(texte) - j].rstrip(" -–—\n")
     intros = brut.setdefault("intros", [])
     for intro in intros:                               # début déjà reconnu comme parasite sur d'autres tomes
-        if intro and texte.startswith(intro):
+        if intro and texte.startswith(intro) and _debut_de_phrase(texte[len(intro):]):   # une coupe au milieu d'une phrase est ignorée
             texte = texte[len(intro):].lstrip()
     for k, v in (brut.get("resumes_tomes") or {}).items():
         autre = v.get("texte") or ""
@@ -727,14 +756,14 @@ def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
         while i < min(len(texte), len(autre)) and texte[i] == autre[i]:
             i += 1
         commun = texte[:i]
-        coupe = max(commun.rfind(c) for c in (". ", "! ", "? ", ".\n", "!\n", "?\n"))
         if i == len(texte) == len(autre):
             return ""                                  # exactement le même texte : présentation de la série
+        coupe = _fin_de_phrase(texte, commun)
         if coupe >= 40:
-            intro = texte[:coupe + 2]
+            intro = texte[:coupe]
             if intro not in intros:
                 intros.append(intro)
-            texte = texte[coupe + 2:].lstrip()
+            texte = texte[coupe:].lstrip()
     st = brut.get("statut") or brut.get("statut_officiel") or {}
     if texte and st.get("resume") and _simple(texte)[:160] == _simple(st["resume"])[:160]:
         return ""
