@@ -1879,6 +1879,23 @@ def _inserer_manquants(lignes: list[dict]) -> list[dict]:
 
 
 
+def _completer_bords(chapitres, numeros, nb_pages):
+    """Première ou dernière ligne du sommaire perdue (sur le dessin, en haut de page) : si la liste des chapitres du tome
+    annonce le chapitre juste avant le premier lu (ou juste après le dernier) et qu'il y a la place, il est ajouté avec
+    une page estimée d'après la longueur habituelle des chapitres (Reborn tome 26 : 238 avant 239, 247 après 246)."""
+    if not numeros or len(chapitres) < 3 or any(c["num"] != int(c["num"]) for c in (chapitres[0], chapitres[-1])):
+        return chapitres
+    pas = _ecart_median(chapitres)
+    connus = set(float(n) for n in numeros)
+    sortie = list(chapitres)
+    while sortie[0]["num"] - 1 in connus and sortie[0]["page"] - pas >= 1 and pas >= 5:
+        sortie.insert(0, {"num": sortie[0]["num"] - 1, "titre": "", "page": sortie[0]["page"] - pas, "estimee": True})
+    limite = nb_pages * (2.2 if nb_pages < 120 else 1.05) if nb_pages else 0
+    while sortie[-1]["num"] + 1 in connus and pas >= 5 and sortie[-1]["page"] + pas <= limite:
+        sortie.append({"num": sortie[-1]["num"] + 1, "titre": "", "page": sortie[-1]["page"] + pas, "estimee": True})
+    return sortie
+
+
 def chapitres_par_noms(noms, numeros=None) -> list[dict]:
     """Tome assemblé par une équipe de traduction : le nom de chaque image porte souvent son chapitre
     (« c0047.00-p001.jpg ») ou son rang dans le chapitre (« 061-00_40845362.jpg » : 00 = début d'un chapitre).
@@ -2110,6 +2127,7 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
                 logger.info("Sommaire par Claude impossible pour %s : %s", chemin, e)
         return {"chapitres": [], "page_sommaire": None, "decalage": None, **({"isbn": isbn} if isbn else {})}
     _completer_ordinaux(trouve)
+    trouve = _completer_bords(trouve, numeros, nb_pages)
     par_noms = chapitres_par_noms(noms, numeros)
     if par_noms:                                             # le nom des images fait foi pour leur place ; titres du sommaire
         titres = {float(c["num"]): c.get("titre") for c in trouve if c.get("num") is not None}

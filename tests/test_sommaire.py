@@ -342,3 +342,10 @@ class FormesApprisesTest(unittest.TestCase):
                                        "CENT QUATRE-VINGT-DIX-SÉPTIÈME PRÉCÉPTÉ : LES BONS À RIEN. 67\n"
                                        "DEUX CENTIÈME PRÉCÉPTÉ : JE ME FICHE. 128")
         self.assertEqual([x["num"] for x in l], [194, 195, 197, 200])
+
+    def test_bords_completes_par_la_liste_du_tome(self):         # Reborn tome 26 : 238 et 247 perdus en haut et en bas
+        c = [{"num": float(n), "titre": "", "page": p} for n, p in zip(range(239, 247), [25, 47, 69, 82, 96, 123, 142, 161])]
+        l = sommaire._completer_bords(c, [float(x) for x in range(238, 248)], 190)
+        self.assertEqual([x["num"] for x in l], list(range(238, 248)))
+        self.assertTrue(l[0].get("estimee") and l[-1].get("estimee"))
+        self.assertEqual(sommaire._completer_bords(c, [float(x) for x in range(239, 247)], 190), c)
