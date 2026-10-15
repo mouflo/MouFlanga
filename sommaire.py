@@ -796,6 +796,9 @@ def analyser_rouge(image_octets: bytes, numeros=None) -> list[dict]:
     larg = max((n[4] / max(1, len(str(n[0]).zfill(3))) for n in nombres), default=0)
     grand = max((n[3] for n in nombres), default=0)
     nombres = [n for n in nombres if n[4] / max(1, len(str(n[0]).zfill(3))) >= larg * 0.6 and n[3] >= grand * 0.4]
+    if nombres:                                              # tous sur la même rangée : les taches de sang ailleurs sont écartées
+        bas = sorted(n[2] for n in nombres)[len(nombres) // 2]
+        nombres = [n for n in nombres if abs(n[2] - bas) <= grand * 0.6]
     if len(nombres) < 3:
         return []
     nombres.sort(key=lambda n: n[0])
