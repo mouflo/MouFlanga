@@ -259,7 +259,9 @@ def _reparer_lignes(texte: str) -> list[dict]:
     [] si ce n'est pas une liste de lignes « Chapitre » (au moins 4, la plupart avec une page)."""
     mot = r"(?:ch[a-zâ]{0,2}p[a-zî]{1,4}|kapitel|sc[eè]ne|[ée]pisode|acte|round|le[cç]on|lesson|partie|nuit|trick|stage|level)"
     lignes_txt = [_sans_decor(l.strip()) for l in (texte or "").splitlines()]
-    appris = Counter(_simple(m.group(1)) for m in (re.match(r"^\W*([^\W\d_]{3,})[\s\-–=:]*[0-9OoIlU©]{1,3}\b.*\d\W*$", l) for l in lignes_txt) if m)
+    appris = Counter(_simple(m.group(1) or m.group(2)) for m in (re.match(
+        r"^\W*(?:([^\W\d_]{3,})[\s\-–=:]*[0-9OoIlU©]{1,3}\b|[0-9OoIl]{1,3}\s*(?:e|°|er|[èe]me)?\s+([^\W\d_]{3,}))", l)
+        for l in lignes_txt) if m)
     if appris and appris.most_common(1)[0][1] >= 4 and not re.fullmatch(mot, appris.most_common(1)[0][0], re.I):
         mot = r"(?:" + mot[3:-1] + "|" + re.escape(appris.most_common(1)[0][0]) + ")"      # « CIBLE 1 : … 5 » : mot appris
     brutes = []
@@ -278,15 +280,17 @@ def _reparer_lignes(texte: str) -> list[dict]:
         return []
     lus = []
     for l, m in brutes:
-        avant, apres = l[:m.start()], l[m.end():]
+        avant, apres = l[:m.start()], re.sub(r"^[\w\-]*", "", l[m.end():])        # « Quart-temps » : la fin du mot
         n = re.search(r"([0-9OoIlT|]{1,4})", avant) if re.search(r"\d", avant) else None
         if n is None:
             n = re.match(r"\W*([0-9OoIlT|]{1,4})(?![^\W\d_])", apres)
             reste = apres[n.end():] if n else apres
         else:
             reste = re.sub(r"^(?:e|er|[èe]me)\b", "", apres)
-        p = re.search(r"[\s.·…_,\-–—+]+(\d{1,3})\s*$", reste)
+        p = re.search(r"[\s.·…_,\-–—+]+(\d{1,3})\W{0,3}$", reste)
         titre = reste[:p.start()] if p else reste
+        titre = re.sub(r"^\s*(?:\S{1,2}\s+)?[:.\-–—*]?\s*", "", titre) if re.match(r"^\s*\S{1,2}\s", titre) else titre
+        titre = re.sub(r"\s*[A-Z\]\)]*[LEITPR]{8,}.*$", "", titre)                         # points de conduite lus « LELELE »
         titre = re.sub(r"[.·…_\-]{2,}.*$", "", titre)
         titre = re.sub(r"\s*[Pp]?[./]*\s*$", "", re.sub(r"\s+[Pp]\.?$", "", titre.strip()))   # « … P. 3 », « ?P/ » : le P de page
         titre = re.sub(r"^[^\w«\"“‘'(\[]+", "", titre).strip(" .:-–—=,'\"‘’|+")
@@ -643,7 +647,9 @@ def _estimer_pages(sortie: list[dict]) -> list[dict]:
         sures.append(k)
         k = meilleur[k][1]
     sures.reverse()
-    if len(sures) < max(2, len(pages) / 2):
+    taux = [(pages[k] - pages[j]) / ecart(j, k) for j, k in zip(sures, sures[1:])]
+    reguliers = len(sures) >= 3 and all(abs(t - sorted(taux)[len(taux) // 2]) <= 0.25 * sorted(taux)[len(taux) // 2] for t in taux)
+    if len(sures) < max(2, len(pages) / 2) and not reguliers:  # peu de pages lues, mais d'un pas régulier : on estime
         return []
     pas = (pages[sures[-1]] - pages[sures[0]]) / max(1, sures[-1] - sures[0])
     for k, x in enumerate(sortie):

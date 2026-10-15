@@ -323,3 +323,13 @@ class FormesApprisesTest(unittest.TestCase):
     def test_ordinaux_mal_lus(self):                             # Gintama tome 12 : « QUATRE-NINGT-QUINZIÈME »
         self.assertEqual(sommaire.nombre_fr("QUATRE-NINGT-QUINZIÈME"), 95)
         self.assertEqual(sommaire.nombre_fr("CENT UNIÈME"), 101)
+
+    def test_quart_temps_pages_illisibles(self):                 # Kuroko's Basket tome 12 : peu de pages lues, pas régulier
+        texte = ("100° Quart-temps : Comment ne pas S'enflammer 21 M\n101° Quart-temps : Quel que Soit le prix à PAYEF Mn 025\n"
+                 "102° Quart-temps : Voilà pourquoi je Suis revenu 045\n103° Quart-temps : Ce match, tu vas le perdre ess\n"
+                 "104° Quart-temps : C'est là qu'est le piège ee\n105° Quart-temps : CONMANCe\n"
+                 "106° Quart-Lemps : JE IE SENS M nn 12 |\n107° Quart-temps : RAS 1e DOI eee 44 |\n"
+                 "108° Quart-temps : Lents à en PIEUTEr eee eee n een 169")
+        l = sommaire._meilleure_lecture(texte)
+        self.assertEqual([x["num"] for x in l], list(range(100, 109)))
+        self.assertEqual([l[1]["page"], l[2]["page"], l[8]["page"]], [25, 45, 169])
