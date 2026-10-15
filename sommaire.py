@@ -121,22 +121,24 @@ def lire_isbn(lire_page, nb_pages: int, fin: int = 6, debut: int = 5):
 def nombre_fr(texte: str):
     """« Trente-troisième », « Trentième et unième », « Vingt et unième », « Quatre-vingt-dixième » → 33, 31, 21, 90 ;
     None si ce n'est pas un nombre en lettres."""
-    mots = [m for m in re.split(r"[\s\-]+", (texte or "").lower().strip()) if m and m != "et"]
+    mots = [_simple(m) for m in re.split(r"[\s\-]+", (texte or "").lower().strip())]   # accents mal lus : « DÉUXIÈME »
+    mots = [m for m in mots if m and m != "et"]
     if not mots:
         return None
+    ordinaux, unites, dizaines = ({_simple(k): v for k, v in d.items()} for d in (_ORDINAUX, _UNITES, _DIZAINES))
     total, courant = 0, 0
     for k, m in enumerate(mots):
-        if m in _ORDINAUX:
-            v = _ORDINAUX[m]
-        elif m in _UNITES:
-            v = _UNITES[m]
-        elif m in _DIZAINES:
-            v = _DIZAINES[m]
+        if m in ordinaux:
+            v = ordinaux[m]
+        elif m in unites:
+            v = unites[m]
+        elif m in dizaines:
+            v = dizaines[m]
         elif m in ("quatre", "vingts", "cents"):
             v = 0
         else:
             return None
-        if m in ("vingt", "vingts", "vingtième") and mots[k - 1:k] == ["quatre"]:
+        if m in ("vingt", "vingts", "vingtieme") and mots[k - 1:k] == ["quatre"]:
             courant = courant - 4 + 80 if courant >= 4 else 80
         elif m in ("cent", "cents") and courant in range(2, 10):
             courant *= 100
@@ -155,6 +157,7 @@ def _sans_decor(ligne: str) -> str:
     """Ligne de sommaire suivie d'un décor lu comme du texte (« … 113 L », « 143 E :: », « 3 A ») : coupée après la page.
     Une page lue « T3 » (7 pris pour un T) est rétablie."""
     ligne = re.sub(r"^\W*[A-Za-z(]?(?=" + _MOTS + r"\W*\d)", "", ligne, flags=re.I)   # « CTrick:43 » : la parenthèse lue C
+    ligne = re.sub(r"^\W*(?:(?:[^\w\s]{1,2}|[^\W\d_])\s+){1,2}(?=ch\w{0,3}p)", "", ligne, flags=re.I)  # « k Chapitre 9 »
     if not re.match(r"^\W*" + _MOTS, ligne, re.I):
         return ligne
     ligne = re.sub(r"(\d)[Oo](\d)", r"\g<1>0\2", ligne)                                # « 1O5 »
@@ -231,21 +234,50 @@ def analyser(texte: str) -> list[dict]:
     return _numeroter_speciaux(out)
 
 
+def _plat(t: str) -> str:
+    """Lettres sans accent, une pour une (même longueur : les positions trouvées valent pour le texte d'origine)."""
+    return "".join((unicodedata.normalize("NFD", c)[0] if len(unicodedata.normalize("NFD", c)) > 1 else c) for c in t)
+
+
 def _reparer_lignes(texte: str) -> list[dict]:
     """Sommaire « Chapitre 1 - Titre ..... 7 » dont quelques lignes sont mal lues (« ChapitreMSllaccostage PP 7 43 »,
     « Chapitre T0 EUKURE RE 177 ») : une ligne « Chapitre » = un chapitre, numérotés à la suite du premier lu ; la page est
     le nombre au bout de la ligne si elle suit la précédente, sinon estimée d'après l'écart habituel entre chapitres.
     [] si ce n'est pas une liste de lignes « Chapitre » (au moins 4, la plupart avec une page)."""
-    brutes = [_sans_decor(l.strip()) for l in (texte or "").splitlines() if re.match(r"^\W*ch\w{0,3}p\w{0,4}tre", l.strip(), re.I)]
+    mot = r"(?:ch[a-zâ]{0,2}p[a-zî]{1,4}|kapitel|sc[eè]ne|[ée]pisode|acte|round|le[cç]on|lesson|partie|nuit|trick|stage|level)"
+    lignes_txt = [_sans_decor(l.strip()) for l in (texte or "").splitlines()]
+    appris = Counter(_simple(m.group(1)) for m in (re.match(r"^\W*([^\W\d_]{3,})[\s\-–=:]*[0-9OoIlU©]{1,3}\b.*\d\W*$", l) for l in lignes_txt) if m)
+    if appris and appris.most_common(1)[0][1] >= 4 and not re.fullmatch(mot, appris.most_common(1)[0][0], re.I):
+        mot = r"(?:" + mot[3:-1] + "|" + re.escape(appris.most_common(1)[0][0]) + ")"      # « CIBLE 1 : … 5 » : mot appris
+    brutes = []
+    for k, l in enumerate(lignes_txt):                       # « Chapitre 3 … », « La 11e nuit … », « La11enuit … »
+        m = re.search(mot, _plat(l[:18]), re.I)
+        if m:
+            if not re.search(r"\d\W*$", l[m.end():]):         # titre sur deux lignes, page au bout de la seconde
+                for suite in lignes_txt[k + 1:k + 3]:
+                    if re.search(mot, _plat(suite[:18]), re.I):
+                        break
+                    if re.search(r"[^\W\d_]{3,}.*\s(\d{1,3})\W*$", suite):
+                        l = l + " " + suite
+                        break
+            brutes.append((l, re.search(mot, _plat(l[:18]), re.I)))
     if len(brutes) < 4:
         return []
     lus = []
-    for l in brutes:
-        m = re.match(r"^\W*ch\w{0,3}p\w{0,4}tre\s*([0-9OoIlT|]{1,4})?\W*(.*?)[\s.·…_,]*(\d{1,3})?\s*$", l, re.I)
-        if not m:
-            return []
-        titre = re.sub(r"[.·…_]{2,}.*$", "", m.group(2) or "").strip(" .:-–—=,'\"‘’|")
-        lus.append((_numero(m.group(1)) if m.group(1) else None, titre, int(m.group(3)) if m.group(3) else None))
+    for l, m in brutes:
+        avant, apres = l[:m.start()], l[m.end():]
+        n = re.search(r"([0-9OoIlT|]{1,4})", avant) if re.search(r"\d", avant) else None
+        if n is None:
+            n = re.match(r"\W*([0-9OoIlT|]{1,4})(?![^\W\d_])", apres)
+            reste = apres[n.end():] if n else apres
+        else:
+            reste = re.sub(r"^(?:e|er|[èe]me)\b", "", apres)
+        p = re.search(r"[\s.·…_,\-–—+]+(\d{1,3})\s*$", reste)
+        titre = reste[:p.start()] if p else reste
+        titre = re.sub(r"[.·…_\-]{2,}.*$", "", titre)
+        titre = re.sub(r"\s*[Pp]?[./]*\s*$", "", re.sub(r"\s+[Pp]\.?$", "", titre.strip()))   # « … P. 3 », « ?P/ » : le P de page
+        titre = re.sub(r"^[^\w«\"“‘'(\[]+", "", titre).strip(" .:-–—=,'\"‘’|+")
+        lus.append((_numero(n.group(1)) if n else None, titre, int(p.group(1)) if p else None))
     if sum(1 for x in lus if x[2] is not None) < 0.6 * len(lus):
         return []
     connus = [(k, n) for k, (n, _, _) in enumerate(lus) if n is not None]
@@ -285,7 +317,7 @@ def _combler(texte: str, lignes: list[dict]) -> list[dict]:
                 if not m or not (a["page"] < int(m.group(2)) < b["page"]):
                     ajout = []
                     break
-                titre = re.sub(r"^\W*(?:la|le|l['’])?\s*\S{0,6}?\s*" + _MOTS + r"\w*\W*", "", m.group(1), flags=re.I)
+                titre = re.sub(r"^\W*(?:la|le|l['’])?\s*\S{0,6}?\s*" + _MOTS + r"\w*\W*(?:[0-9OoIl]{1,4}\b\W*)?", "", m.group(1), flags=re.I)
                 ajout.append({"num": a["num"] + len(ajout) + 1, "titre": titre.strip(" .:-–—,'\"‘’|"), "page": int(m.group(2))})
             if len(ajout) == manque and all(y["page"] > x["page"] for x, y in zip(ajout, ajout[1:])):
                 sortie += ajout
@@ -337,7 +369,7 @@ def _ecarts_plausibles(lignes) -> bool:
     """Lecture sans titres (pastilles, rangées) : des chapitres d'au moins 3 pages, le premier dans les 40 premières pages.
     Une page de crédits lue « 1, 2, 7 » n'est pas un sommaire."""
     pages = [x["page"] for x in lignes]
-    return bool(pages) and pages[0] <= 40 and all(b - a >= 3 for a, b in zip(pages, pages[1:]))
+    return bool(pages) and pages[0] <= 40 and all(b - a >= 5 for a, b in zip(pages, pages[1:])) and _ecart_median(lignes) >= 10
 
 
 def _vraisemblable(lignes) -> bool:
@@ -590,7 +622,7 @@ def analyser_mot_appris(texte: str) -> list[dict]:
 
 
 
-_ENTETE_ORDINAL = re.compile(r"^\W*([^\W\d_]+(?:-[^\W\d_]+)?)\s+([^\W\d_]{4,})\s*:\s*(.*)$")
+_ENTETE_ORDINAL = re.compile(r"^\W*((?:[^\W\d_]+[\s\-]){0,3}?[^\W\d_]+)\s+([^\W\d_]{4,})\s*:\s*(.*)$")
 
 
 def analyser_ordinaux(texte: str) -> list[dict]:
@@ -701,25 +733,46 @@ def analyser_empile(texte: str) -> list[dict]:
         ligne = ligne.strip()
         if not ligne:
             continue
-        debut = re.match(r"^\W*" + _MOTS + r"\.?\s*(\S{1,4})?\W*$", ligne, re.I)
+        fin = re.search(r"(?:^|\s)(" + _MOTS + r"\.?\s*[0-9OoIlSZ|]{1,4}(?:\s+\S{1,2})?\W*)$", ligne, re.I)
+        if fin:                                              # dessin à gauche lu comme du texte : « \_ ; \ | Chapitre 11 »
+            ligne = fin.group(1)
+        else:
+            ligne = re.sub(r"^(?:\S{1,3}\s+){1,5}(?=[A-ZÀ-Ý][a-zà-ÿ'’]|L['’])", "", ligne)
+        debut = re.match(r"^\W*" + _MOTS + r"\.?\s*([0-9OoIlSZ|]{1,4})?(?:\s+\S{1,2})?\W*$", ligne, re.I)
         if debut:
+            if cur is not None and cur["titre"]:                # chapitre précédent sans page lue : estimée plus bas
+                sortie.append(cur)
             cur = {"num": _numero(debut.group(1)) if debut.group(1) else None, "titre": "", "page": None}
             continue
         seul = re.fullmatch(r"\W*(\d{1,3})\W*", ligne)
+        avec = re.match(r"^(.*?[^\W\d_].*?)[\s.·…_,!?|]+(\d{1,3})(?:\s+\S{1,2})?\W*$", ligne)
         if cur is not None and seul:
             cur["page"] = int(seul.group(1))
             sortie.append(cur)
             cur = None
-        elif cur is not None and not cur["titre"]:
-            cur["titre"] = re.sub(r"^[^\w«\"“‘'(\[]+", "", ligne).strip(" .:-–—,'\"‘’|")
+        elif cur is not None and avec:                       # « Le code d'honneur !! 57 » : titre et page sur la même ligne
+            titre = re.sub(r"^[^\w«\"“‘'(\[]+", "", ((cur["titre"] + " ") if cur["titre"] else "") + avec.group(1))
+            cur["titre"], cur["page"] = titre.strip(" .:-–—,'\"‘’|"), int(avec.group(2))
+            sortie.append(cur)
+            cur = None
+        elif cur is not None and len(cur["titre"]) < 80:      # titre (sur une ou deux lignes)
+            suite = re.sub(r"^[^\w«\"“‘'(\[]+", "", ligne).strip(" .:-–—,'\"‘’|")
+            cur["titre"] = (cur["titre"] + " " + suite).strip()
+    if cur is not None and cur["titre"]:
+        sortie.append(cur)
     if len(sortie) < 3:
         return []
-    for k, x in enumerate(sortie):
-        if x["num"] is None:
-            x["num"] = sortie[k - 1]["num"] + 1 if k and sortie[k - 1]["num"] is not None else None
-    if any(x["num"] is None for x in sortie):
+    connus = [(k, x["num"]) for k, x in enumerate(sortie) if x["num"] is not None]
+    if not connus:
         return []
-    return _numeros_suivis(sortie)
+    d, fois = Counter(n - k for k, n in connus).most_common(1)[0]
+    if fois >= 2 or len(connus) == 1:                       # « Épisode ] » pour 15 : d'après les numéros voisins
+        for k, x in enumerate(sortie):
+            if x["num"] is None or x["num"] != d + k:
+                x["num"] = float(d + k)
+    elif any(x["num"] is None for x in sortie):
+        return []
+    return _estimer_pages(_numeros_suivis(sortie))         # page absente ou aberrante (« 4 » pour 149) : estimée
 
 
 
@@ -749,6 +802,16 @@ def analyser_page_puis_titre(texte: str, numeros=None) -> list[dict]:
     if sum(1 for x in entrees if x["page"] is not None) < len(entrees) / 2:
         return []
     return _pages_sures(entrees)
+
+
+def _est_paysage(image_octets: bytes) -> bool:
+    """Image plus large que haute (double page d'un seul tenant) ; seule l'en-tête du fichier est lue."""
+    from PIL import Image
+    try:
+        w, h = Image.open(io.BytesIO(image_octets)).size
+    except Exception:
+        return False
+    return w > h * 1.15
 
 
 def _moities(image_octets: bytes) -> list[bytes]:
@@ -1543,9 +1606,11 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
     """{"chapitres": [{"num", "titre", "page" (imprimée), "image" (position dans le fichier ou None)}], "page_sommaire"}
     lire_page(i) → octets de l'image i. Sans sommaire trouvé : chapitres vide."""
     textes, trouve, page_sommaire = {}, [], None
+    paysages = []                                            # double page scannée d'un seul tenant (deux pages par image)
     for i in range(min(nb_pages, PAGES_MAX)):
         try:
             octets = lire_page(i)
+            paysages.append(_est_paysage(octets))
             textes[i] = ocr(octets)
         except Exception as e:                               # image illisible, tesseract en panne : page suivante
             logger.info("Sommaire de %s, page %d : %s", chemin, i, e.__class__.__name__)
@@ -1648,17 +1713,15 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
                     lignes = bl
             except Exception as e:
                 logger.info("Sommaire de %s, page %d (blocs) : %s", chemin, i, e.__class__.__name__)
-        if not _vraisemblable(lignes) and re.search(r"(?i)s\W?o\W?m\W?m\W?a\W?i\W?r\W?e|table des mati", textes[i]):
+        if not trouve and (not _vraisemblable(lignes) or len(lignes) < max(6, len(numeros or []))) and _est_paysage(octets):
             try:                                             # double page d'un seul tenant : chaque moitié relue agrandie
                 for moitie in _moities(octets):
                     tm = ocr(moitie)
-                    for essai in (_numeros_suivis(analyser(tm)), _reparer_lignes(tm), analyser_page_puis_titre(tm, numeros)):
-                        if _vraisemblable(essai):
+                    for essai in (_meilleure_lecture(tm), analyser_page_puis_titre(tm, numeros)):
+                        if _vraisemblable(essai) and (not _vraisemblable(lignes) or len(essai) > len(lignes)):
                             lignes = essai
+                            textes[i] = textes[i] + "\n" + tm
                             break
-                    if _vraisemblable(lignes):
-                        textes[i] = textes[i] + "\n" + tm
-                        break
                 if not _vraisemblable(lignes):
                     pt = analyser_page_puis_titre(textes[i], numeros)
                     if _vraisemblable(pt):
@@ -1712,7 +1775,24 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
                 logger.info("Sommaire par Claude impossible pour %s : %s", chemin, e)
         return {"chapitres": [], "page_sommaire": None, "decalage": None, **({"isbn": isbn} if isbn else {})}
     _completer_ordinaux(trouve)
-    images, decalage = _images(trouve, textes, page_sommaire, lire_page, nb_pages, noms)
+    for k in (10, 20, 30, 40, 50):                           # sommaire trouvé tôt : quelques images de plus pour juger
+        if len(paysages) >= 8 or k >= nb_pages:
+            break
+        try:
+            paysages.append(_est_paysage(lire_page(k)))
+        except Exception:
+            pass
+    if len(paysages) >= 6 and sum(paysages) >= 0.6 * len(paysages):
+        # deux pages imprimées par image : on cherche l'image d'après la moitié de la page imprimée
+        moities = [dict(c, page=(c["page"] + 1) // 2) for c in trouve]
+        images, decalage = _images(moities, textes, page_sommaire, lire_page, nb_pages, noms)
+        ecarts = sorted(im - c["page"] for im, c in zip(images, moities) if im is not None)
+        if ecarts:                                           # écart constant d'une image à l'autre : les isolés sont recalés
+            med = ecarts[len(ecarts) // 2]
+            images = [c["page"] + med if im is None or abs(im - c["page"] - med) > 2 else im for im, c in zip(images, moities)]
+            images = [max(im, page_sommaire + 1) for im in images]      # jamais avant le sommaire lui-même
+    else:
+        images, decalage = _images(trouve, textes, page_sommaire, lire_page, nb_pages, noms)
     for c, image in zip(trouve, images):
         c["image"] = image if image is not None and image < nb_pages else None
     return {"chapitres": trouve, "page_sommaire": page_sommaire, "decalage": decalage, **({"isbn": isbn} if isbn else {})}

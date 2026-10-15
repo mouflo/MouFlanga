@@ -230,3 +230,43 @@ class FormesApprisesTest(unittest.TestCase):
         self.assertEqual([x["num"] for x in l], [5, 6, 7, 8, 9])
         self.assertEqual([l[0]["page"], l[1]["page"], l[4]["page"]], [7, 58, 171])
         self.assertTrue(58 < l[2]["page"] < l[3]["page"] < 171)
+
+    def test_entete_puis_titre_et_page(self):                    # Ken Fist of the Blue Sky (moitié gauche d'une double page)
+        texte = ("Chapitre 1\n\nL'homme dont la tête est mise à prix :\n\nYan-Wang, le Roi des Enfers l\n\nChapitre 2 |\n\n"
+                 "Le code d'honneur !! 57\n\nChapitre 3\n\nLa menace du poing meurtrier !! 83\n\nChapitre 4 »\n\n"
+                 "L'empereur fantoche !! 105 F\n\nChapitre 5 L\n\nL'insupportable humiliation !! 123 1\n")
+        l = sommaire._meilleure_lecture(texte)
+        self.assertEqual([x["num"] for x in l], [1, 2, 3, 4, 5])
+        self.assertEqual([x["page"] for x in l][1:], [57, 83, 105, 123])
+        self.assertEqual(l[1]["titre"], "Le code d'honneur")
+        self.assertTrue(l[0].get("estimee"))
+
+    def test_nuits_mal_lues(self):                               # Magi tome 2 : « La 102 nuit » pour 10e, « La gœenuit »
+        texte = ("Table des matières\nLa nuit Le passé d'Aladin +. 3\nLa gœenuit  Letyran-- 21\nLa 102 nuit Le pays natal ---. 39\n"
+                 "La11enuit La nécropole ---. 59\nLa 12e nuit L'endroit où l'on risque sa vie -----+ 77\n"
+                 "La13nuit Le grand magicien qui crée le monde + 95\nLa 14 nuit Le propriétaire du labyrinthe ----- 113")
+        l = sommaire._meilleure_lecture(texte)
+        self.assertEqual([(x["num"], x["page"]) for x in l], [(8, 3), (9, 21), (10, 39), (11, 59), (12, 77), (13, 95), (14, 113)])
+
+    def test_mot_appris_et_titre_sur_deux_lignes(self):          # Reborn : « CIBLE 1 : … / VENU D'ITALIE 5 »
+        texte = ("CIBLE I : UN DROLE DE BONHOMME\nVENU D'ITALIE 5\n000000000000000\nCIBLE 2 : SANS COMPTER SUR\ne\n"
+                 "LA DERNIERE VOLONTE .…..ereS Q\nCIBLE 3 : HAYATO GOKUDERA 85\nCIBLE 4 : LA CRISE : VIRE DE L'ECOLE ! 107\n"
+                 "CIBLE 5 : TAKESHI YAMAMOTO 127\nCIBLE 6 : LA ROULETTE RUSSE 147")
+        l = sommaire._meilleure_lecture(texte)
+        self.assertEqual([x["num"] for x in l], [1, 2, 3, 4, 5, 6])
+        self.assertEqual([x["page"] for x in l if not x.get("estimee")], [5, 85, 107, 127, 147])
+
+    def test_nom_de_serie_comme_mot(self):                       # Rave : « RAVE : 5 TRAVEL — TROUBLE ?P/ p. 3 »
+        l = sommaire._meilleure_lecture("RAVE : 5 TRAVEL — TROUBLE ?P/ p. 3\nRAVE : © DEAD OR ALINE P. 23\n"
+                                        "RAVE : 7 VENGEANCE EN TRIO !/ p. 43\nRAVE : 8 LA MAGIE D'UN SOURIRE P. 63\n"
+                                        "RAVE : O LE FORGERON LÉGENDAIRE P. 83")
+        self.assertEqual([(x["num"], x["page"]) for x in l], [(5, 3), (6, 23), (7, 43), (8, 63), (9, 83)])
+        self.assertEqual(l[1]["titre"], "DEAD OR ALINE")
+
+    def test_decor_devant_chapitre(self):                        # Seven Deadly Sins tome 2 : « k Chapitre 9 », « Chapire 11 »
+        l = sommaire._meilleure_lecture("SOMMATRE\nChapitre 6 - Gilthunder, le chevalier sacré 3 ù\n"
+                                        "| Chapitre 7 - Le prisonnier des ténèbres\". 23 |\n| Chapitre 8 - Le rêve d'une jeune fille 43 |\n"
+                                        "k Chapitre 9 - N'y touche pas 68 ï\n| Chapitre 10 - Le mal invisible 89 À\n"
+                                        "| Chapire 11 - Même si tu venais à mourir 109 |\n| Chapitre 12 - Un banquet chaotique 129 |")
+        self.assertEqual([(x["num"], x["page"]) for x in l], [(6, 3), (7, 23), (8, 43), (9, 68), (10, 89), (11, 109), (12, 129)])
+        self.assertEqual(l[5]["titre"], "Même si tu venais à mourir")
