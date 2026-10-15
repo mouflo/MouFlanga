@@ -288,7 +288,7 @@ class FormesApprisesTest(unittest.TestCase):
     def test_numeros_lus_avec_un_trou(self):                     # Reborn tome 3 : « CIBLE 22 » illisible
         l = sommaire._meilleure_lecture("CIBLE 19 : PREMIER MEURTRE 51\nCIBLE 20 : GRIVELERIE 73\nCIBLE 21 : RECHERCHE BABY-SITTER\n"
                                         "CIBLE 23 : I-PIN 139\nCIBLE 24 : I-PIN CONTRE LAMBO lé!\nCIBLE 25 : KYOKO CONTRE HARU 81")
-        self.assertEqual([x["num"] for x in l], [19, 20, 21, 23, 24, 25])
+        self.assertEqual([x["num"] for x in l], [19, 20, 21, 22, 23, 24, 25])      # 22 ajouté, page estimée
 
     def test_numero_avec_un_chiffre_en_trop(self):               # Magi tome 4 : « La 308 nuit » pour la 30e
         l = sommaire._meilleure_lecture("Table des matières\nLa 28 nuit La tribu des combattants Fanalis +... 3\n"

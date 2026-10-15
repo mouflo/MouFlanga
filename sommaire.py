@@ -1683,7 +1683,23 @@ def _meilleure_lecture(texte: str) -> list[dict]:
             meilleure, score = l, sc
     if not meilleure:                                        # rien de vraisemblable : la lecture ligne à ligne telle quelle
         return _numeros_suivis(analyser(texte))
-    return meilleure
+    return _inserer_manquants(meilleure)
+
+
+def _inserer_manquants(lignes: list[dict]) -> list[dict]:
+    """Un sommaire liste des chapitres qui se suivent : entre la 89e et la 91e lues, la 90e (ligne illisible) est
+    ajoutée, sa page estimée entre ses voisines (« Trick:90 » sauté par la lecture d'Air Gear tome 11)."""
+    sortie = []
+    for a, b in zip(lignes, lignes[1:] + [None]):
+        sortie.append(a)
+        if b is None or a["num"] != int(a["num"]) or b["num"] != int(b["num"]):
+            continue
+        manque = int(b["num"] - a["num"]) - 1
+        if 1 <= manque <= 2 and b["page"] - a["page"] >= 6 * (manque + 1):
+            for k in range(1, manque + 1):
+                sortie.append({"num": a["num"] + k, "titre": "", "page": round(a["page"] + (b["page"] - a["page"]) * k / (manque + 1)),
+                               "estimee": True})
+    return sortie
 
 
 
