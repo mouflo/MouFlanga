@@ -415,6 +415,8 @@ def _vraisemblable(lignes) -> bool:
         return False
     if len(lignes) >= 3 and _ecart_median(lignes) < 5:      # chapitres de 1 ou 2 pages : du bruit lu comme un sommaire
         return False
+    if any(b["page"] - a["page"] < 2 for a, b in zip(lignes, lignes[1:])):   # un chapitre d'une seule page : bruit
+        return False
     return all(b > a for a, b in zip(nums, nums[1:])) and all(b > a for a, b in zip(pages, pages[1:]))
 
 
@@ -1568,15 +1570,25 @@ def _pages_sures(sortie):
         if x["page"] is not None and x["page"] not in c:
             c[x["page"]] = 3
         cands.append(c)
-    # programmation dynamique : meilleur[k][v] = (poids, précédent) pour la page v du chapitre k
+    # longueur habituelle d'un chapitre : l'écart le plus fréquent entre deux lectures voisines (20 pages pour Gamaran)
+    pas = Counter()
+    for a, b in zip(cands, cands[1:]):
+        for u, wu in a.items():
+            for v, wv in b.items():
+                if 8 <= v - u <= 60:
+                    pas[v - u] += min(wu, wv)
+    pas_type = pas.most_common(1)[0][0] if pas and pas.most_common(1)[0][1] >= 4 else None
+    # programmation dynamique : meilleur[k][v] = (poids, précédent) pour la page v du chapitre k ; un pas habituel
+    # entre deux chapitres compte en plus (« 15 » lu pour 25 perd contre 25 quand les chapitres font tous 20 pages)
     meilleur = [dict() for _ in sortie]
     for k, c in enumerate(cands):
         for v, w in c.items():
             best = (w, None)
             for j in range(k):
                 for u, (pw, _) in meilleur[j].items():
-                    if u < v and pw + w > best[0]:
-                        best = (pw + w, (j, u))
+                    bonus = 2 if pas_type and abs((v - u) - pas_type * (k - j)) <= 2 * (k - j) else 0
+                    if u < v and pw + w + bonus > best[0]:
+                        best = (pw + w + bonus, (j, u))
             meilleur[k][v] = best
     fin = max(((pw, k, v) for k, d in enumerate(meilleur) for v, (pw, _) in d.items()), default=None)
     chaine = {}
@@ -1869,17 +1881,19 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
             if _vraisemblable(past) and _ecarts_plausibles(past):
                 trouve, page_sommaire = past, i
                 break
-    if not trouve:                                           # mot « sommaire » illisible (fond tramé) : lecteurs d'image sur les premières pages
-        for i in range(1, min(nb_pages, 9)):
+    if not trouve or (numeros and len(trouve) < len(numeros) - 1):
+        # mot « sommaire » illisible (fond tramé) ou lecture incomplète : lecteurs d'image sur les premières pages
+        pages_essai = [page_sommaire] if trouve else range(1, min(nb_pages, 9))
+        for i in pages_essai:
             try:
                 octets = lire_page(i)
                 for essai in (analyser_pages_dessous(octets, numeros), analyser_blocs(octets, numeros)):
-                    if _vraisemblable(essai) and len(essai) >= 3:
+                    if _vraisemblable(essai) and len(essai) >= 3 and len(essai) > len(trouve):
                         trouve, page_sommaire = essai, i
                         break
             except Exception as e:
                 logger.info("Sommaire de %s, page %d (second passage) : %s", chemin, i, e.__class__.__name__)
-            if trouve:
+            if trouve and not (numeros and len(trouve) < len(numeros) - 1):
                 break
     if not trouve:                                           # pas de sommaire : le nom des images donne parfois les chapitres
         par_noms = chapitres_par_noms(noms, numeros)
