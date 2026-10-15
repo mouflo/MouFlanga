@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 📖 Sommaire : une liste de numéros seuls ne bloque plus la lecture (15 octobre 2026)
+- Air Gear : la liste de chapitres venue d'Internet (« 3. 3 », « 4. 0 »… sans titres) empêchait de lire le sommaire imprimé du tome, qui donne « Trick 33 … 7 ». La lecture se lance maintenant quand la liste n'a presque pas de titres. Tome 5 : 9 chapitres lus (33 à 41), au lieu d'une liste fausse.
+
 ## 📝 Compteur des résumés : ceux écrits dans le fichier comptent (15 octobre 2026)
 - Le compteur de la série (« 2/37 résumés » pour Air Gear) ignorait les résumés écrits dans le fichier de chaque tome, alors que la fiche du tome les affiche. Ils sont maintenant comptés (37/37 pour Air Gear).
 

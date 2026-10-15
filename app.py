@@ -4362,7 +4362,9 @@ def _sommaire_du_tome(name, tome, d):
     differente = _edition_differente(name)               # autre édition que celle de Wikipédia : ses chapitres par tome ne valent pas
     if differente and not lu:
         d["chapitres"], d["chapitres_langue"] = [], ""
-    besoin = not d.get("chapitres") or d.get("chapitres_langue") == "en" or differente
+    sans_titres = bool(d.get("chapitres")) and sum(                 # liste de numéros seuls (« 3. 3 », « 4. 0 ») : pas de titre à garder
+        1 for c in d["chapitres"] if re.search(r"[^\W\d_]{3,}", re.sub(r"^\d+(?:[.,]\d)?\.?\s*", "", c))) < len(d["chapitres"]) / 2
+    besoin = not d.get("chapitres") or d.get("chapitres_langue") == "en" or differente or sans_titres
     if lu and lu.get("chapitres") and (besoin or lu.get("manuel")):
         d["chapitres"] = [f"{c['num']:g}. {c['titre']}" if c.get("titre") else f"{c['num']:g}." for c in lu["chapitres"]]
         d["chapitres_langue"], d["chapitres_source"] = "", "corrigés à la main" if lu.get("manuel") else "écrits dans le fichier" if lu.get("fichier") else "sommaire du tome, lu automatiquement"
