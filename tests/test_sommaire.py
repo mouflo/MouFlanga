@@ -343,6 +343,16 @@ class FormesApprisesTest(unittest.TestCase):
                                        "DEUX CENTIÈME PRÉCÉPTÉ : JE ME FICHE. 128")
         self.assertEqual([x["num"] for x in l], [194, 195, 197, 200])
 
+    def test_ordinaux_mot_mal_lu_et_chapitre_special(self):      # Gintama tome 38
+        l = sommaire.analyser_ordinaux("TROIS CENT VINGT-NEUVIÈMÉ PRÉCÉPTEÉ :\nDUR, DUR ! 7\n"
+                                       "TROIS CENT TRENTIÈME PRÉCEPTÉ :\nLES VIEUX DARONS. 27\n"
+                                       "TROIS CENT TRENTÉ ET UNIÈME PRÉCÉPTE : l\nMÊME POUR LES ADULTES. 47\n"
+                                       "TROIS CENT TRENTE-DEUXIÈMÉ PRÉCEPTÉ :\nUNE VISITE. 69\n"
+                                       "CHAPITRE SPÉCIAL :\nL'HISTOIRE COURTE 129")
+        self.assertEqual([(x["num"], x["page"]) for x in l], [(329, 7), (330, 27), (331, 47), (332, 69)])
+        self.assertEqual(l[2]["titre"], "MÊME POUR LES ADULTES")
+        self.assertTrue(sommaire._ENTETE_ORDINAL.match("QUATRE CENT CINQUANTE -SIXIÈME PRÉCEPTE :"))  # tome 52
+
     def test_bords_completes_par_la_liste_du_tome(self):         # Reborn tome 26 : 238 et 247 perdus en haut et en bas
         c = [{"num": float(n), "titre": "", "page": p} for n, p in zip(range(239, 247), [25, 47, 69, 82, 96, 123, 142, 161])]
         l = sommaire._completer_bords(c, [float(x) for x in range(238, 248)], 190)

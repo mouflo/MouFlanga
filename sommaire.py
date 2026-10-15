@@ -817,7 +817,7 @@ def analyser_mot_appris(texte: str) -> list[dict]:
 
 
 
-_ENTETE_ORDINAL = re.compile(r"^\W*((?:[^\W\d_]+[\s\-]){0,6}?[^\W\d_]+)\s+([^\W\d_]{4,})\s*:\s*(.*)$")
+_ENTETE_ORDINAL = re.compile(r"^\W*((?:[^\W\d_]+[\s\-]+){0,6}?[^\W\d_]+)\s+([^\W\d_]{4,})\s*:\s*(.*)$")
 
 
 def analyser_ordinaux(texte: str) -> list[dict]:
@@ -830,7 +830,10 @@ def analyser_ordinaux(texte: str) -> list[dict]:
             continue
         m = _ENTETE_ORDINAL.match(ligne)
         if m and (nombre_fr(m.group(1)) is not None or re.fullmatch(r"(?i)[\w\-]+i[eè]me", m.group(1))):
-            blocs.append({"ord": m.group(1), "mot": m.group(2).lower(), "lignes": [m.group(3)]})
+            blocs.append({"ord": m.group(1), "mot": m.group(2).lower(),
+                          "lignes": [m.group(3)] if len(m.group(3).strip()) > 2 else []})
+        elif blocs and re.fullmatch(r"\W*[^\W\d_]+(?:\s[^\W\d_]+){0,2}\s*:\s*", ligne):
+            blocs.append({"ord": "", "mot": "", "lignes": []})   # « CHAPITRE SPÉCIAL : » : autre bloc, ignoré
         elif blocs:
             blocs[-1]["lignes"].append(ligne)
     if len(blocs) < 3:
@@ -839,8 +842,8 @@ def analyser_ordinaux(texte: str) -> list[dict]:
     if mot[1] < 3:
         return []
     sortie = []
-    for b in blocs:
-        if _simple(b["mot"]) != mot[0]:
+    for b in blocs:                                         # « PRÉCÉPTEÉ » mal lu : même mot à une lettre près
+        if not b["mot"] or difflib.SequenceMatcher(None, _simple(b["mot"]), mot[0]).ratio() < .85:
             continue
         texte_bloc = " ".join(b["lignes"])
         p = re.search(r"\s(\d{1,3})\W*$", texte_bloc)
