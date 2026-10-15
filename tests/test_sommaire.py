@@ -295,3 +295,9 @@ class FormesApprisesTest(unittest.TestCase):
                                         "La 29enuit Les esclaves ----- 21\nLa 308 nuit Le miracle -----+ 39\n"
                                         "La 31 nuit La fête des adieux ----- 57\nLa 32e nuit Le chemin vers Balbad -----. 79")
         self.assertEqual([x["num"] for x in l], [28, 29, 30, 31, 32])
+
+    def test_page_o7(self):                                      # Crows tome 7 : « …… O7 » (zéro lu O)
+        l = sommaire._meilleure_lecture("CHAPITRE 23 : LE COEUR À SES RAISONS....cvvvrrvmrovorrrnrers O7\n"
+                                        "CHAPITRE 24 : PARCE QUE LA LUNE EST SI BLEUE.........,,,,87\n"
+                                        "CHAPITRE 25 : LES GRENOUILLES VIENNENT DE L'OCÉAN..139")
+        self.assertEqual([(x["num"], x["page"]) for x in l], [(23, 7), (24, 87), (25, 139)])

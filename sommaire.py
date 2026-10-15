@@ -164,6 +164,7 @@ def _sans_decor(ligne: str) -> str:
     if not re.match(r"^\W*" + _MOTS, ligne, re.I):
         return ligne
     ligne = re.sub(r"(\d)[Oo](\d)", r"\g<1>0\2", ligne)                                # « 1O5 »
+    ligne = re.sub(r"(?<=[\s.·…_,])[Oo](\d{1,2})\W*$", r"0\1", ligne)                     # « ……… O7 »
     ligne = re.sub(r"(\d{2,3})\s+[^\w\s]+\s+\d\W*$", r"\1", ligne)                 # « 114 | 4 »
     ligne = re.sub(r"(\d{2,3})\s+[a-zà-ÿ]{3}\W*$", r"\1", ligne)                       # « 001 ain »
     ligne = re.sub(r"([\dT]{1,3})(?:\s*(?:[^\w\s]+[^\W\d_]{0,2}|\s[^\W\d_]{1,2}\W*)){1,3}\s*$", r"\1", ligne)
