@@ -4392,7 +4392,8 @@ def _sommaire_du_tome(name, tome, d):
         (c.get("titre") or "").strip().lower() in wiki_avant for c in lu.get("chapitres", [])) * 2 >= len(lu.get("chapitres", [])))
     ancien = bool(lu and not lu.get("fichier") and not lu.get("saisie") and lu.get("version", 1) < sommaire.VERSION
                   and (copie or not (lu.get("manuel") or lu.get("valide_le"))))   # validé avec les titres de Wikipédia, ou pas validé
-    if e and sommaire.disponible() and (not lu or ancien) and (besoin or ancien) and auth.role() != "lecteur":
+    # liste venue d'Internet avec des titres mais sans pages : le sommaire imprimé sert à relever les numéros de page
+    if e and sommaire.disponible() and (not lu or ancien) and (besoin or ancien or d.get("chapitres")) and auth.role() != "lecteur":
         _lire_sommaire(name, tome, e)
     et = sommaire.etat(name, tome)
     d["sommaire"] = {"possible": bool(e) and sommaire.disponible(), "en_cours": bool(et.get("en_cours")),
