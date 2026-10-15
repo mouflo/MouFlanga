@@ -1782,10 +1782,14 @@ def texte_par_bandes(image_octets: bytes) -> str:
             debut = None
     lignes = []
     env = dict(os.environ, OMP_THREAD_LIMIT="1")
-    for (a0, a1), (b0, b1) in zip(traits, traits[1:]):
-        if not (h * 0.012 <= b0 - a1 <= h * 0.06):
-            continue
+    bandes = [(a1, b0, False) for (a0, a1), (b0, b1) in zip(traits, traits[1:]) if h * 0.012 <= b0 - a1 <= h * 0.06]
+    # rangées sombres elles-mêmes (texte blanc sur pilule noire, Air Gear tome 19) : lues en négatif
+    bandes += [(a0, a1, True) for a0, a1 in traits if h * 0.015 <= a1 - a0 <= h * 0.06]
+    for a1, b0, negatif in sorted(bandes):
         bande = im.crop((0, a1, w, b0))
+        if negatif:
+            from PIL import ImageOps
+            bande = ImageOps.invert(bande)
         bande = bande.resize((bande.width * 2, bande.height * 2))
         buf = io.BytesIO()
         bande.save(buf, "PNG")
@@ -2048,7 +2052,7 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
             try:
                 octets = lire_page(i)
                 for essai in (analyser_pages_dessous(octets, numeros), analyser_blocs(octets, numeros),
-                              analyser_cases(octets, numeros)):
+                              analyser_cases(octets, numeros), _meilleure_lecture(texte_par_bandes(octets))):
                     if _vraisemblable(essai) and len(essai) >= 3 and len(essai) > len(trouve):
                         trouve, page_sommaire = essai, i
                         break
