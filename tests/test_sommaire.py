@@ -289,3 +289,9 @@ class FormesApprisesTest(unittest.TestCase):
         l = sommaire._meilleure_lecture("CIBLE 19 : PREMIER MEURTRE 51\nCIBLE 20 : GRIVELERIE 73\nCIBLE 21 : RECHERCHE BABY-SITTER\n"
                                         "CIBLE 23 : I-PIN 139\nCIBLE 24 : I-PIN CONTRE LAMBO lé!\nCIBLE 25 : KYOKO CONTRE HARU 81")
         self.assertEqual([x["num"] for x in l], [19, 20, 21, 23, 24, 25])
+
+    def test_numero_avec_un_chiffre_en_trop(self):               # Magi tome 4 : « La 308 nuit » pour la 30e
+        l = sommaire._meilleure_lecture("Table des matières\nLa 28 nuit La tribu des combattants Fanalis +... 3\n"
+                                        "La 29enuit Les esclaves ----- 21\nLa 308 nuit Le miracle -----+ 39\n"
+                                        "La 31 nuit La fête des adieux ----- 57\nLa 32e nuit Le chemin vers Balbad -----. 79")
+        self.assertEqual([x["num"] for x in l], [28, 29, 30, 31, 32])

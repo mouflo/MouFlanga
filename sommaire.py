@@ -377,6 +377,12 @@ def _numeroter_speciaux(lignes):
 def _numeros_suivis(lignes):
     """« 24 » lu « 21 » après « 23 » : un numéro qui ne suit pas le précédent devient précédent + 1
     (les pages imprimées, elles, doivent déjà croître : sinon la ligne n'est pas un chapitre)."""
+    lignes = [dict(x) for x in lignes]
+    for k in range(1, len(lignes) - 1):                     # « La 308 nuit » entre la 29e et la 31e : chiffre en trop
+        a, x, b = lignes[k - 1]["num"], lignes[k]["num"], lignes[k + 1]["num"]
+        if None not in (a, x, b) and a < b <= a + 3 and not (a < x < b) and a == int(a):
+            x_ = a + 1 if a + 1 < b else (a + b) / 2
+            lignes[k]["num"] = float(x_)
     sortie = []
     for x in lignes:
         if sortie and x["num"] <= sortie[-1]["num"]:
