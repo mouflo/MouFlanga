@@ -405,6 +405,8 @@ def _vraisemblable(lignes) -> bool:
         return False
     nums = [x["num"] for x in lignes]
     pages = [x["page"] for x in lignes]
+    if any(x["page"] is None or x["page"] < 1 for x in lignes):
+        return False
     if len(lignes) >= 3 and _ecart_median(lignes) < 5:      # chapitres de 1 ou 2 pages : du bruit lu comme un sommaire
         return False
     return all(b > a for a, b in zip(nums, nums[1:])) and all(b > a for a, b in zip(pages, pages[1:]))
@@ -766,16 +768,17 @@ def analyser_empile(texte: str) -> list[dict]:
     """Chaque chapitre sur trois lignes : « Épisode 1 », puis le titre, puis la page seule (« 005 ») (Dandadan).
     Numéro illisible (« Épisode F. ») : suite du précédent."""
     sortie, cur = [], None
+    fort = r"(?:chapitre|chap|kapitel|sc[eè]ne|[ée]pisode|acte|round|le[cç]on|lesson|partie|nuit|trick|stage|level)"
     for ligne in (texte or "").splitlines():
         ligne = ligne.strip()
         if not ligne:
             continue
-        fin = re.search(r"(?:^|\s)(" + _MOTS + r"\.?\s*[0-9OoIlSZ|]{1,4}(?:\s+\S{1,2})?\W*)$", ligne, re.I)
+        fin = re.search(r"(?:^|\s)(" + fort + r"\.?\s*[0-9OoIlSZ|]{1,4}(?:\s+\S{1,2})?\W*)$", ligne, re.I)
         if fin:                                              # dessin à gauche lu comme du texte : « \_ ; \ | Chapitre 11 »
             ligne = fin.group(1)
         else:
             ligne = re.sub(r"^(?:\S{1,3}\s+){1,5}(?=[A-ZÀ-Ý][a-zà-ÿ'’]|L['’])", "", ligne)
-        debut = re.match(r"^\W*" + _MOTS + r"\.?\s*([0-9OoIlSZ|]{1,4})?(?:\s+\S{1,2})?\W*$", ligne, re.I)
+        debut = re.match(r"^\W*" + fort + r"\.?\s*([0-9OoIlSZ|]{1,4})?(?:\s+\S{1,2})?\W*$", ligne, re.I)
         if debut:
             if cur is not None and cur["titre"]:                # chapitre précédent sans page lue : estimée plus bas
                 sortie.append(cur)
@@ -1840,6 +1843,18 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
                 continue
             if _vraisemblable(past) and _ecarts_plausibles(past):
                 trouve, page_sommaire = past, i
+                break
+    if not trouve:                                           # mot « sommaire » illisible (fond tramé) : lecteurs d'image sur les premières pages
+        for i in range(1, min(nb_pages, 9)):
+            try:
+                octets = lire_page(i)
+                for essai in (analyser_pages_dessous(octets, numeros), analyser_blocs(octets, numeros)):
+                    if _vraisemblable(essai) and len(essai) >= 3:
+                        trouve, page_sommaire = essai, i
+                        break
+            except Exception as e:
+                logger.info("Sommaire de %s, page %d (second passage) : %s", chemin, i, e.__class__.__name__)
+            if trouve:
                 break
     if not trouve:                                           # pas de sommaire : le nom des images donne parfois les chapitres
         par_noms = chapitres_par_noms(noms, numeros)
