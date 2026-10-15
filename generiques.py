@@ -75,8 +75,69 @@ def opening_1(anime_id: int):
     return None
 
 
+def themes_de_l_anime(anime_id: int) -> list[dict]:
+    """Tous les génériques connus de l'anime chez AnimeThemes (openings puis endings, dans l'ordre), pour les écouter
+    et en choisir un : [{"slug": "OP5", "type": "OP", "titre": "Truth", "episodes": "124-142", "lien": …}]."""
+    r = _session.get("https://api.animethemes.moe/anime", params={
+        "filter[has]": "resources", "filter[site]": "AniList", "filter[external_id]": int(anime_id),
+        "include": "animethemes.song,animethemes.animethemeentries.videos.audio"}, timeout=30)
+    sortie = []
+    for a in r.json().get("anime", []):
+        for t in a.get("animethemes", []):
+            if t.get("type") not in ("OP", "ED"):
+                continue
+            for e in t.get("animethemeentries", []):
+                lien = next(((v.get("audio") or {}).get("link") for v in e.get("videos", []) if (v.get("audio") or {}).get("link")), None)
+                if lien:
+                    sortie.append({"slug": t.get("slug") or t["type"], "type": t["type"], "sequence": t.get("sequence") or 1,
+                                   "titre": (t.get("song") or {}).get("title") or "", "episodes": e.get("episodes") or "",
+                                   "lien": lien})
+                    break
+    sortie.sort(key=lambda x: (x["type"] != "OP", x["sequence"], x["slug"]))
+    return sortie
+
+
+def _audio_mouflopening():
+    """Module de conversion de MouFlopening (même serveur) et son niveau cible, pour que les génériques des mangas
+    aient exactement le même volume que ceux d'Emby ; (None, None) si MouFlopening n'est pas installé ici."""
+    base = Path(os.getenv("MOUFLOPENING_DIR", "/opt/mouflopening"))
+    f = base / "src" / "audio.py"
+    if not f.is_file():
+        return None, None
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("mouflopening_audio", f)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        try:
+            cible = float(((json.loads((base / "config.json").read_text(encoding="utf-8")).get("audio") or {})
+                           .get("target_db")) or mod.REFERENCE_DB)
+        except (OSError, ValueError, TypeError):
+            cible = mod.REFERENCE_DB
+        return mod, cible
+    except Exception as e:
+        logger.warning("Conversion de MouFlopening inutilisable : %s", e)
+        return None, None
+
+
+def _convertir(src: Path, mp3: Path):
+    """MP3 au volume harmonisé : réglage de MouFlopening s'il est là, sinon loudnorm."""
+    mod, cible = _audio_mouflopening()
+    if mod and mod.convert_to_mp3(src, mp3, cible):
+        return
+    subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", str(src), "-vn", "-af", "loudnorm=I=-16:TP=-1.5",
+                    "-ar", "44100", "-b:a", "192k", str(mp3)], check=True, timeout=300)
+
+
+def _poser(mp3: Path, cible: Path):
+    tmp = cible.with_name(cible.name + ".tmp")
+    with open(mp3, "rb") as a, open(tmp, "wb") as b:
+        b.write(a.read())
+    os.replace(tmp, cible)
+
+
 def telecharger(lien: str, cible: Path):
-    """Télécharge le son et le convertit en MP3 au volume harmonisé (ffmpeg, loudnorm)."""
+    """Télécharge le son et le convertit en MP3 au volume harmonisé."""
     with tempfile.TemporaryDirectory() as t:
         src = Path(t) / "op.ogg"
         with _session.get(lien, stream=True, timeout=60) as r:
@@ -85,16 +146,66 @@ def telecharger(lien: str, cible: Path):
                 for bloc in r.iter_content(1 << 16):
                     f.write(bloc)
         mp3 = Path(t) / "op.mp3"
-        subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", str(src), "-vn", "-af", "loudnorm=I=-16:TP=-1.5",
-                        "-ar", "44100", "-b:a", "192k", str(mp3)], check=True, timeout=300)
-        tmp = cible.with_name(cible.name + ".tmp")
-        with open(mp3, "rb") as a, open(tmp, "wb") as b:
-            b.write(a.read())
-        os.replace(tmp, cible)
+        _convertir(src, mp3)
+        _poser(mp3, cible)
+
+
+def choisir(serie: str, dossier: Path, theme: dict | None, anime: str = "", anime_id=None):
+    """Générique choisi à la main (theme = un élément de themes_de_l_anime) ou aucun (None) : la recherche
+    automatique n'y touche plus."""
+    cible = dossier / FICHIER_SON
+    if theme is None:
+        cible.unlink(missing_ok=True)
+        _noter(serie, statut="muet", manuel=True, anime=anime, anime_id=anime_id)
+        logger.info("Générique de « %s » : aucun (choisi à la main)", serie)
+        return
+    telecharger(theme["lien"], cible)
+    _noter(serie, statut="ok", manuel=True, anime=anime, anime_id=anime_id, source=theme["lien"], choix=theme.get("slug"))
+    logger.info("Générique de « %s » : %s choisi à la main", serie, theme.get("slug"))
+
+
+_NORMAL = {"en_cours": False, "fait": 0, "total": 0, "message": ""}
+
+
+def renormaliser(fichiers):
+    """Ramène les génériques déjà posés au niveau de MouFlopening (une fois, en arrière-plan). Ceux qui y sont déjà
+    (à 0,5 dB près) ne sont pas réencodés."""
+    if _NORMAL["en_cours"]:
+        return False
+    fichiers = [Path(f) for f in fichiers]
+    _NORMAL.update(en_cours=True, fait=0, total=len(fichiers), message=f"{len(fichiers)} générique(s) à vérifier…")
+
+    def travail():
+        changes = 0
+        try:
+            mod, cible = _audio_mouflopening()
+            if not mod:
+                _NORMAL["message"] = "MouFlopening n'est pas installé sur ce serveur : rien à harmoniser."
+                return
+            for f in fichiers:
+                try:
+                    m = mod.measure_gain(f)
+                    if m is not None and abs((mod.REFERENCE_DB - m[0]) - cible) >= 0.5:
+                        with tempfile.TemporaryDirectory() as t:
+                            mp3 = Path(t) / "op.mp3"
+                            if mod.convert_to_mp3(f, mp3, cible):
+                                _poser(mp3, f)
+                                changes += 1
+                except Exception as e:
+                    logger.warning("Harmonisation de %s : %s", f, e)
+                _NORMAL["fait"] += 1
+            _NORMAL["message"] = f"✅ {changes} générique(s) ramené(s) à {cible:g} dB ; les autres y étaient déjà."
+            logger.info("Génériques des mangas : %s", _NORMAL["message"])
+        finally:
+            _NORMAL["en_cours"] = False
+    threading.Thread(target=travail, daemon=True).start()
+    return True
 
 
 def pour_serie(serie: str, dossier: Path, manga_id, forcer=False) -> str:
     """Cherche et pose le générique d'une série. Renvoie « ok », « deja », « aucun_anime », « aucun_theme » ou « inconnu »."""
+    if (lire().get(serie) or {}).get("manuel"):
+        return "deja"
     if (dossier / FICHIER_SON).exists() and not forcer:
         return "deja"
     if not manga_id:
@@ -107,10 +218,10 @@ def pour_serie(serie: str, dossier: Path, manga_id, forcer=False) -> str:
         return "aucun_anime"
     lien = opening_1(a[0])
     if not lien:
-        _noter(serie, statut="aucun_theme", anime=a[1])
+        _noter(serie, statut="aucun_theme", anime=a[1], anime_id=a[0])
         return "aucun_theme"
     telecharger(lien, dossier / FICHIER_SON)
-    _noter(serie, statut="ok", anime=a[1], source=lien)
+    _noter(serie, statut="ok", anime=a[1], anime_id=a[0], source=lien)
     logger.info("Générique de « %s » : OP1 de « %s »", serie, a[1])
     return "ok"
 
@@ -123,6 +234,8 @@ def tout(series, manga_dir: Path, manga_id_de, deja_dans_emby, envoyer, forcer=F
     vus = lire()
     for n in series:
         v = vus.get(n) or {}
+        if v.get("manuel"):                        # générique (ou silence) choisi à la main : jamais remplacé
+            continue
         if deja_dans_emby(n) or ((Path(manga_dir) / n / FICHIER_SON).exists() and not forcer):
             continue
         if not forcer and v.get("statut") in ("aucun_anime", "aucun_theme", "inconnu") and time.time() - v.get("date", 0) < REVOIR:

@@ -63,6 +63,8 @@ Pour installer l'appli sur le serveur et la remettre en route après une panne, 
 - **🏷 Édition** : résolution et source (Digital, Scan, Web) de chaque série, NFO gardé à l'import.
 - **🪶 Alléger / ✨ améliorer les tomes** (menu ⋯ d'une série) : recompression sans perte visible, et pour les vieux scans, sur ta demande seulement : grain enlevé, trames adoucies, papier blanchi, noirs plus francs, poussières effacées, traits lissés. Aperçu avant / après en rideau avant d'appliquer.
 - **📖 Doubles pages en simples pages** : une planche de vignettes ; tout est coupé en deux sauf les vraies doubles que tu touches pour les garder entières. La position de lecture et les signets suivent.
+- **🧹 Pages parasites** (scans d'équipe) : les pages qui reviennent dans plusieurs chapitres (crédits, « on recrute », pubs) sont regroupées en vignettes ; tu coches celles à jeter, elles sont retirées de tous les tomes et les prochains tomes de la série en sont nettoyés tout seuls. Bouton 🗑 dans le lecteur pour une page isolée.
+- **🎵 Choisir le générique** d'un manga dont l'anime n'est pas dans Emby : tous les openings et endings, à écouter avant de choisir, au même volume que ceux de MouFlopening.
 
 ## 📁 Comment ranger les fichiers
 

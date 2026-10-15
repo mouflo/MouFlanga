@@ -306,6 +306,12 @@ body.lecteur .admin-seul { display:none !important; }
 .fiche-choix img { width:56px; border-radius:4px; }
 .fiche-choix small { display:block; color:var(--muted, #aaa); font-size:.8rem; }
 .fiche-choix .mou-btn { margin-top:6px; }
+.gen-choix { display:grid; grid-template-columns:48px 1fr auto; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid var(--line, #2c2c2c); }
+.gen-choix.actuelle { background:rgba(82,181,75,.12); }
+.gen-choix small { display:block; color:var(--muted, #aaa); font-size:.8rem; }
+.gen-choix [data-ecoute] { min-width:44px; padding:8px 0; }
+.gen-choix [data-ecoute].joue { border-color:#52b54b; }
+.gen-actuel { color:#52b54b; font-weight:600; white-space:nowrap; }
 body.lecteur #sChoisirFiche { display:none !important; }
 .fiche-q { flex:1; min-width:0; font-size:16px; padding:10px; border-radius:8px; border:1px solid var(--line, #333); background:var(--surface, #1a1a1a); color:inherit; }
 .src-pastille { display:inline-flex; align-items:center; gap:5px; font-weight:600; }
@@ -389,3 +395,11 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .travail-cpt.partiel { color:var(--warn); }
 .travail-cpt.vide { color:var(--muted); }
 .card .travail-ok { position:absolute; bottom:46px; right:8px; font-size:.8rem; background:#2e7d32; border-radius:10px; padding:1px 6px; }
+/* 🧹 Pages parasites : un groupe = trois exemples, touché pour être coché */
+.par-groupe { display:block; width:100%; margin:8px 0; padding:6px; border:3px solid #333; border-radius:8px; background:#151515 !important; color:#ddd; text-align:left; cursor:pointer; }
+.par-groupe.coche { border-color:#c0392b; background:#2a1414 !important; }
+.par-vignettes { display:grid; grid-template-columns:repeat(3, 1fr); gap:4px; }
+.par-vignettes img { width:100%; height:auto; border-radius:4px; display:block; }
+.par-texte { margin-top:6px; font-size:14px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.par-etat { margin-left:auto; padding:2px 8px; border-radius:6px; background:#333; font-weight:600; }
+.par-groupe.coche .par-etat { background:#c0392b; color:#fff; }

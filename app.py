@@ -1703,6 +1703,170 @@ def api_doubles_couper():
     return jsonify({"ok": True, "message": "Découpe lancée…"})
 
 
+# ---------------- 🧹 Pages parasites des scans d'équipe (crédits, recrutement, pubs) ----------------
+import parasites
+
+
+def _serie_occupee(name):
+    return bool(_en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours") or optimiser.etat(name).get("en_cours")
+                or optimiser.coupes_etat(name).get("en_cours") or parasites.etat(name).get("en_cours"))
+
+
+def _apres_nettoyage(name, chemin, carte):
+    """Position de lecture recalée et tome noté comme vérifié (il ne sera pas réexaminé tant qu'il ne change pas)."""
+    import edition
+    _recaler_progression(name, _rel(chemin), carte)
+    infos = edition.lire(MANGA_DIR / name)
+    infos.setdefault("parasites_verifies", {})[chemin.name] = chemin.stat().st_size
+    tome = _numero_tome(chemin.name)
+    if tome is None:
+        tome = _numero_tome(chemin.parent.name)
+    lu = (infos.get("sommaires") or {}).get(str(int(tome))) if tome is not None else None
+    if lu:                                   # chapitres lus : leur première page suit (crédits retirés → page d'après)
+        def suivre(i):
+            if not isinstance(i, int):
+                return i
+            k = min((x for x in carte if x >= i), default=None)
+            return carte[k] if k is not None else i
+        for c in lu.get("chapitres") or []:
+            c["image"] = suivre(c.get("image"))
+        lu["page_sommaire"] = suivre(lu.get("page_sommaire"))
+    edition.ecrire(MANGA_DIR / name, infos)
+    edition.invalider(MANGA_DIR / name)
+
+
+@app.route("/api/parasites")
+def api_parasites():
+    """Avancement et résultat de la recherche : groupes de pages qui se répètent, avec quelques exemples à montrer."""
+    import edition
+    name = request.args.get("series", "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"error": "Série introuvable."}), 404
+    e = parasites.etat(name)
+    groupes = []
+    for g in e.pop("groupes", None) or []:
+        p = g["pages"]
+        ex = [p[0], p[len(p) // 2], p[-1]] if len(p) >= 3 else p
+        groupes.append({"empreinte": g["empreinte"], "nb": len(p), "tomes": g["tomes"], "unie": g["unie"],
+                        "refusee": g["refusee"], "exemples": [{"fichier": f, "index": i} for f, i in ex]})
+    refusees = edition.lire(MANGA_DIR / name).get("pages_parasites") or []
+    return jsonify({**e, "groupes": groupes, "refusees": len(refusees),
+                    "cbr": sum(1 for f in (_scan().get(name) or []) if f.suffix.lower() == ".cbr")})
+
+
+@app.route("/api/parasites/analyser", methods=["POST"])
+def api_parasites_analyser():
+    import edition
+    name = str((request.get_json(silent=True) or {}).get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    fichiers = [f for f in _fichiers_a_alleger(name) if zipfile.is_zipfile(f)]
+    if not fichiers:
+        return jsonify({"ok": False, "error": "Aucun tome en .cbz à examiner (convertis d'abord les .cbr)."}), 400
+    if _serie_occupee(name):
+        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    parasites.analyser(name, fichiers, edition.lire(MANGA_DIR / name).get("pages_parasites") or [])
+    return jsonify({"ok": True, "message": "Comparaison des pages lancée…"})
+
+
+@app.route("/api/parasites/retirer", methods=["POST"])
+def api_parasites_retirer():
+    """POST {series, empreintes: [groupes cochés]} : retire ces pages de tous les tomes ; les empreintes sont retenues
+    pour nettoyer tout seuls les prochains tomes de la série."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    choisies = {str(x) for x in body.get("empreintes") or []}
+    groupes = [g for g in (parasites.etat(name).get("groupes") or []) if g["empreinte"] in choisies]
+    if not groupes:
+        return jsonify({"ok": False, "error": "Aucun groupe coché (ou la recherche est à refaire)."}), 400
+    if _serie_occupee(name):
+        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    fichiers = {f.name: f for f in _fichiers_a_alleger(name) if zipfile.is_zipfile(f)}
+    plan = {}
+    for g in groupes:
+        for f, i in g["pages"]:
+            if f in fichiers:
+                plan.setdefault(f, set()).add(i)
+    infos = edition.lire(MANGA_DIR / name)
+    infos["pages_parasites"] = sorted(set(infos.get("pages_parasites") or []) | {g["empreinte"] for g in groupes})
+    edition.ecrire(MANGA_DIR / name, infos)
+    edition.invalider(MANGA_DIR / name)
+    parasites.lancer_nettoyage(name, [(fichiers[f], ind) for f, ind in sorted(plan.items())], _vers_corbeille,
+                               lambda chemin, carte: _apres_nettoyage(name, chemin, carte))
+    logger.info("Pages parasites de « %s » : %d groupe(s) refusé(s), %d tome(s) à nettoyer", name, len(groupes), len(plan))
+    return jsonify({"ok": True, "message": "Nettoyage lancé…"})
+
+
+@app.route("/api/parasites/page", methods=["POST"])
+def api_parasites_page():
+    """🗑 du lecteur : retire UNE page d'un tome (parasite isolée). POST {series, fichier: chemin relatif, index}."""
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    f = next((x for x in _fichiers_a_alleger(name) if _rel(x) == str(body.get("fichier", ""))), None)
+    try:
+        index = int(body.get("index"))
+    except (TypeError, ValueError):
+        index = -1
+    if f is None or not zipfile.is_zipfile(f) or index < 0:
+        return jsonify({"ok": False, "error": "Seules les pages d'un tome en .cbz peuvent être retirées."}), 400
+    if _serie_occupee(name):
+        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    try:
+        res = parasites.nettoyer_tome(f, {index}, name, _vers_corbeille)
+    except Exception as e:
+        logger.warning("Page %d retirée de %s : %s", index, f, e)
+        return jsonify({"ok": False, "error": f"Échec : {e}"}), 500
+    if "carte" not in res:
+        return jsonify({"ok": False, "error": res.get("note", "Fichier non modifié.")}), 409
+    _apres_nettoyage(name, f, res["carte"])
+    logger.info("Page %d retirée à la main de %s", index + 1, f)
+    return jsonify({"ok": True, "pages": res["pages"], "message": "Page retirée (l'ancien fichier est dans la corbeille 30 jours)."})
+
+
+def _nettoyer_nouveaux_tomes():
+    """Tomes arrivés depuis le dernier passage, dans les séries où des pages parasites ont été refusées : nettoyés seuls."""
+    import edition
+    for name in list(_scan()):
+        if name == "(Sans série)":
+            continue
+        infos = edition.lire(MANGA_DIR / name)
+        refusees, vus = infos.get("pages_parasites") or [], infos.get("parasites_verifies") or {}
+        if not refusees or _serie_occupee(name):
+            continue
+        for f in _fichiers_a_alleger(name):
+            try:
+                if vus.get(f.name) == f.stat().st_size or not zipfile.is_zipfile(f):
+                    continue
+                indices = parasites.a_retirer(f, refusees)
+                if indices:
+                    res = parasites.nettoyer_tome(f, set(indices), name, _vers_corbeille)
+                    if "carte" in res:
+                        _apres_nettoyage(name, f, res["carte"])
+                        logger.info("Pages parasites : %d retirée(s) toutes seules de %s", len(indices), f)
+                        continue
+                infos = edition.lire(MANGA_DIR / name)
+                infos.setdefault("parasites_verifies", {})[f.name] = f.stat().st_size
+                edition.ecrire(MANGA_DIR / name, infos)
+            except Exception as e:
+                logger.warning("Pages parasites de %s : %s", f, e)
+
+
+def _boucle_parasites():
+    """20 minutes après le démarrage, puis toutes les 6 heures."""
+    time.sleep(1200)
+    while True:
+        try:
+            _nettoyer_nouveaux_tomes()
+        except Exception as e:
+            logger.warning("Nettoyage automatique des pages parasites : %s", e)
+        time.sleep(6 * 3600)
+
+
 # ---------------- 📱 Notifications sur le téléphone (Web Push) ----------------
 import notifier
 import push
@@ -4851,6 +5015,72 @@ def _boucle_generiques():
         time.sleep(6 * 3600)
 
 
+def _anime_pour_generique(name):
+    """(identifiant AniList, titre) de l'anime de la série, gardé dans generiques.json une fois trouvé."""
+    v = generiques.lire().get(name) or {}
+    if v.get("anime_id"):
+        return v["anime_id"], v.get("anime", "")
+    mid = _manga_id(name)
+    return generiques.anime_du_manga(mid) if mid else None
+
+
+@app.route("/api/generique/liste")
+def api_generique_liste():
+    """Tous les génériques de l'anime (AnimeThemes), à écouter avant d'en choisir un pour la série."""
+    name = request.args.get("id", "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"error": "Série introuvable"}), 404
+    try:
+        a = _anime_pour_generique(name)
+        if not a:
+            return jsonify({"error": "Aucun anime connu pour ce manga (fiche AniList sans adaptation)."})
+        themes = generiques.themes_de_l_anime(a[0])
+    except Exception as e:
+        logger.warning("Liste des génériques de %s : %s", name, e)
+        return jsonify({"error": "AnimeThemes ou AniList ne répond pas, réessaie dans un moment."})
+    v = generiques.lire().get(name) or {}
+    actuel = "aucun" if v.get("statut") == "muet" else next((t["slug"] for t in themes if t["lien"] == v.get("source")), v.get("choix"))
+    return jsonify({"anime": a[1], "themes": themes, "actuel": actuel, "manuel": bool(v.get("manuel"))})
+
+
+@app.route("/api/generique/choisir", methods=["POST"])
+def api_generique_choisir():
+    """Générique choisi dans la liste (slug), « aucun » pour le silence, ou vide pour revenir au choix automatique."""
+    body = request.get_json(silent=True) or {}
+    name, slug = str(body.get("series", "")), str(body.get("slug") or "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    try:
+        a = _anime_pour_generique(name)
+        if not a:
+            return jsonify({"ok": False, "error": "Aucun anime connu pour ce manga."})
+        if slug == "aucun":
+            generiques.choisir(name, MANGA_DIR / name, None, a[1], a[0])
+            return jsonify({"ok": True, "message": "Plus de générique pour cette série."})
+        if not slug:                                     # retour à l'automatique : OP1 reposé
+            generiques._noter(name, statut="a_revoir")
+            generiques.pour_serie(name, MANGA_DIR / name, _manga_id(name), forcer=True)
+            return jsonify({"ok": True, "message": "Générique automatique (premier opening) rétabli."})
+        theme = next((t for t in generiques.themes_de_l_anime(a[0]) if t["slug"] == slug), None)
+        if not theme:
+            return jsonify({"ok": False, "error": "Générique introuvable dans la liste."})
+        generiques.choisir(name, MANGA_DIR / name, theme, a[1], a[0])
+    except Exception as e:
+        logger.warning("Choix du générique de %s : %s", name, e)
+        return jsonify({"ok": False, "error": f"Échec : {e}"})
+    return jsonify({"ok": True, "message": f"Générique {slug} enregistré, au même volume que ceux de MouFlopening."})
+
+
+@app.route("/api/generiques/harmoniser", methods=["GET", "POST"])
+def api_generiques_harmoniser():
+    """Ramène une fois tous les génériques des mangas au niveau sonore réglé dans MouFlopening."""
+    if request.method == "POST":
+        fichiers = [MANGA_DIR / n / generiques.FICHIER_SON for n in _scan() if (MANGA_DIR / n / generiques.FICHIER_SON).is_file()]
+        ok = generiques.renormaliser(fichiers)
+        return jsonify({"ok": True, "message": "Harmonisation lancée en arrière-plan." if ok else "Une harmonisation est déjà en cours."})
+    return jsonify(dict(generiques._NORMAL))
+
+
 @app.route("/api/generique")
 def api_generique():
     """Écouter le générique de l'anime de la série (fichier rangé par MouFlopening dans la médiathèque Emby)."""
@@ -5636,6 +5866,7 @@ if __name__ == "__main__":
     import notifier
     redemarrage.verifier(BASE_DIR, "MouFlanga", DATA_DIR / "mouflanga.log", lambda t: notifier.envoyer(t))
     threading.Thread(target=_boucle_generiques, daemon=True).start()
+    threading.Thread(target=_boucle_parasites, daemon=True).start()
     threading.Thread(target=suivi.boucle, args=(torrents.chercher, _infos_suivi, lambda t: notifier.envoyer(t),
                                                 lambda: os.getenv("APP_URL", "").strip(), torrents.configure,
                                                 lambda lien, titre, nom: torrents.lancer(lien, titre, nom, True)), daemon=True).start()

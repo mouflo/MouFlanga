@@ -91,11 +91,13 @@
 
     <div class="panel" data-onglet="Connexions">
         <h2>🎵 MouFlopening (génériques)</h2>
-        <div class="sub">Quand un manga a aussi une version animée dans Emby, son générique peut s'écouter sur la page de la série (bouton 🎵), et le menu « ⋯ » propose « 🎵 Choisir le générique » (ouvre MouFlopening). Indique l'adresse de MouFlopening (et l'adresse perso si tu y accèdes de l'extérieur).</div>
+        <div class="sub">Quand un manga a aussi une version animée dans Emby, son générique peut s'écouter sur la page de la série (bouton 🎵), et le menu « ⋯ » propose « 🎵 Choisir le générique » (ouvre MouFlopening). Sinon, « 🎵 Changer le générique » montre tous les openings et endings de l'anime à écouter avant d'en choisir un. Les génériques sont mis au volume réglé dans MouFlopening (même serveur). Indique l'adresse de MouFlopening (et l'adresse perso si tu y accèdes de l'extérieur).</div>
         <div class="field"><label for="mfoUrl">Adresse de MouFlopening sur le réseau local</label><input type="text" id="mfoUrl" placeholder="http://192.168.1.141:8001" autocapitalize="off" spellcheck="false"></div>
         <div class="field"><label for="mfoUrlExt">Adresse perso de MouFlopening (depuis l'extérieur, facultatif)</label><input type="text" id="mfoUrlExt" placeholder="https://mouflopening.mondomaine.fr" autocapitalize="off" spellcheck="false"></div>
         <div class="row"><button class="btn" id="mfoUrlSave">Enregistrer les adresses</button></div>
         <div id="mfoUrlMsg"></div>
+        <div class="row"><button class="btn ghost" id="genHarmo">🔊 Mettre les génériques des mangas au volume de MouFlopening</button></div>
+        <div id="genHarmoMsg"></div>
     </div>
 
     <div class="panel" data-onglet="Connexions">
@@ -334,6 +336,17 @@ async function loadCle() {
     $('cleSupprimer').hidden = !c.configured;
 }
 simpleSave('mfsUrlSave', 'mfsUrlMsg', '/api/settings/moufloster', () => ({url: $('mfsUrl').value, url_externe: $('mfsUrlExt').value}));
+async function suivreHarmo() {
+    const r = await api('/api/generiques/harmoniser');
+    if (r.en_cours) { say('genHarmoMsg', 'Harmonisation : ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' générique(s)…', true); setTimeout(suivreHarmo, 3000); return; }
+    if (r.message) say('genHarmoMsg', r.message, !/^MouFlopening n'est pas/.test(r.message));
+}
+$('genHarmo').addEventListener('click', async () => {
+    const r = await post('/api/generiques/harmoniser', {});
+    say('genHarmoMsg', r.message || r.error, r.ok);
+    if (r.ok) setTimeout(suivreHarmo, 1500);
+});
+suivreHarmo();
 simpleSave('mfoUrlSave', 'mfoUrlMsg', '/api/settings/mouflopening', () => ({url: $('mfoUrl').value, url_externe: $('mfoUrlExt').value}));
 $('cleGenerer').addEventListener('click', async () => {
     if ($('cleSupprimer').hidden === false && !confirm('Générer une nouvelle clé ? L\'ancienne ne marchera plus : il faudra coller la nouvelle dans MouFloster.')) return;

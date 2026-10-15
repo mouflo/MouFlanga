@@ -436,6 +436,7 @@
     $('sGenerique').hidden = !(s.anime && mfo);
     if (s.anime && mfo) $('sGenerique').href = mfo.replace(/\/$/, '') + '/?dossier=' + encodeURIComponent(s.anime.dossier) +
       '&de=MouFlanga&retour=' + encodeURIComponent(location.origin + location.pathname + '#' + encodeURIComponent(s.id));
+    $('sGeneriqueListe').hidden = !!(s.anime && s.anime.dossier) || s.id === '(Sans série)';   // anime absent d'Emby : liste AnimeThemes
     $('sEcouter').hidden = !(s.anime && s.anime.generique);
     if (lecteurGenerique && lecteurGenerique.serie !== s.id) arreterGenerique();   // une autre série : on coupe
     if (s.anime && s.anime.generique && !lecteurGenerique && pref('mfAutoGenerique', '1') === '1' && dernierAuto !== s.id) {
@@ -1305,6 +1306,144 @@
       if (!r.ok) { alert(r.error || 'Impossible'); return; }
       suivreIdentification(current.id);
     });
+
+    // 🧹 Pages parasites : pages qui se répètent d'un chapitre à l'autre (crédits, recrutement), cochées puis retirées
+    var parCoches = {}, parSerie = null;
+    $('sParasites').addEventListener('click', function () {
+      fermerMenus();
+      parSerie = current.id; parCoches = {};
+      $('infosTitre').textContent = '🧹 Pages parasites';
+      $('infosCorps').innerHTML = '<div class="dem-sous">Les pages qui reviennent à l\'identique dans plusieurs chapitres (crédits de l\'équipe, « on recrute », pubs) ' +
+        'sont regroupées. Coche les groupes à jeter : ils sont retirés de tous les tomes, l\'ancien fichier part à la corbeille (30 jours), ' +
+        'et les prochains tomes de la série seront nettoyés tout seuls.</div><div id="parZone"><div class="dem-sous">…</div></div>';
+      $('infosVue').hidden = false;
+      suivreParasites(true);
+    });
+    async function suivreParasites(lancer) {
+      var serie = parSerie;
+      var r = await api('/api/parasites?series=' + encodeURIComponent(serie));
+      if (!$('parZone') || serie !== parSerie) return;
+      if (r.error) { $('parZone').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
+      if (r.en_cours) {
+        $('parZone').innerHTML = '<div class="dem-sous">⏳ ' + esc(r.message || '') + ' ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' tome(s)…</div>';
+        setTimeout(function () { suivreParasites(false); }, 2000); return;
+      }
+      if (r.rapport && !r.groupes.length) {                    // fin d'un nettoyage
+        $('parZone').innerHTML = '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' + r.rapport.map(function (x) {
+          return '<div class="dem-sous">' + esc(x.fichier) + (x.pages ? ' : ' + x.pages_avant + ' → ' + x.pages + ' pages' : '') + (x.note ? ' (' + esc(x.note) + ')' : '') + '</div>';
+        }).join('') + '<div class="ident-actions"><button type="button" class="mou-btn ghost" id="parChercher">🔎 Chercher à nouveau</button></div>';
+        window.MouToast && window.MouToast('🧹 ' + r.message, 'ok');
+        rafraichirSerie(serie);
+        return;
+      }
+      if (!r.groupes.length && lancer) {
+        var l = await post('/api/parasites/analyser', {series: serie});
+        if (!l.ok) { $('parZone').innerHTML = '<div class="dem-sous">' + esc(l.error || 'Impossible') + '</div>'; return; }
+        setTimeout(function () { suivreParasites(false); }, 1000); return;
+      }
+      var tete = (r.refusees ? '<div class="dem-sous">🧹 ' + r.refusees + ' sorte(s) de page parasite déjà refusée(s) pour cette série : les nouveaux tomes en sont nettoyés tout seuls.</div>' : '') +
+        (r.cbr ? '<div class="dem-sous">⚠️ ' + r.cbr + ' tome(s) en .cbr ne sont pas examinés : convertis-les d\'abord en .cbz (menu ⋯).</div>' : '');
+      if (!r.groupes.length) {
+        $('parZone').innerHTML = tete + '<div class="dem-sous">✅ Aucune page ne se répète au moins 3 fois' + (r.pages ? ' (' + r.pages + ' pages comparées)' : '') + '.</div>' +
+          '<div class="ident-actions"><button type="button" class="mou-btn ghost" id="parChercher">🔎 Chercher à nouveau</button></div>';
+        return;
+      }
+      r.groupes.forEach(function (g) { if (!(g.empreinte in parCoches)) parCoches[g.empreinte] = g.refusee || ((g.tomes > 1 || g.nb >= 5) && !g.unie); });
+      $('parZone').innerHTML = tete + '<div class="dem-sous">' + esc(r.message || '') + ' Touche un groupe pour le cocher ou le décocher.</div>' +
+        r.groupes.map(function (g) {
+          return '<button type="button" class="par-groupe' + (parCoches[g.empreinte] ? ' coche' : '') + '" data-par="' + g.empreinte + '">' +
+            '<div class="par-vignettes">' + g.exemples.map(function (x) {
+              return '<img loading="lazy" alt="" src="/api/doubles/image?series=' + encodeURIComponent(serie) + '&fichier=' + encodeURIComponent(x.fichier) + '&n=' + x.index + '&w=200">';
+            }).join('') + '</div><div class="par-texte"><b>' + g.nb + ' pages</b> dans ' + g.tomes + ' tome(s)' +
+            (g.unie ? ' · page unie (blanche ou noire)' : '') + (g.refusee ? ' · déjà refusée' : '') +
+            '<span class="par-etat">' + (parCoches[g.empreinte] ? '🗑 à retirer' : 'gardée') + '</span></div></button>';
+        }).join('') + '<div class="ident-actions" id="parBilan"></div>';
+      bilanParasites(r.groupes);
+    }
+    var parGroupes = [];
+    function bilanParasites(groupes) {
+      if (groupes) parGroupes = groupes;
+      var n = 0; parGroupes.forEach(function (g) { if (parCoches[g.empreinte]) n += g.nb; });
+      $('parBilan').innerHTML = '<div class="dem-sous">' + n + ' page(s) seront retirées.</div>' +
+        '<button type="button" class="mou-btn" id="parRetirer"' + (n ? '' : ' disabled') + '>🧹 Retirer les pages cochées</button>' +
+        '<button type="button" class="mou-btn ghost" id="parChercher">🔎 Chercher à nouveau</button>';
+    }
+    $('infosCorps').addEventListener('click', async function (e) {
+      var g = e.target.closest('[data-par]');
+      if (g) {
+        var k = g.dataset.par; parCoches[k] = !parCoches[k];
+        g.classList.toggle('coche', parCoches[k]);
+        g.querySelector('.par-etat').textContent = parCoches[k] ? '🗑 à retirer' : 'gardée';
+        bilanParasites(); return;
+      }
+      if (e.target.closest('#parChercher')) {
+        parCoches = {};
+        var l = await post('/api/parasites/analyser', {series: parSerie});
+        if (!l.ok) { alert(l.error || 'Impossible'); return; }
+        setTimeout(function () { suivreParasites(false); }, 800); return;
+      }
+      if (e.target.closest('#parRetirer')) {
+        var choisies = Object.keys(parCoches).filter(function (k) { return parCoches[k]; });
+        var n = 0; parGroupes.forEach(function (x) { if (parCoches[x.empreinte]) n += x.nb; });
+        if (!choisies.length || !confirm('Retirer ' + n + ' page(s) parasite(s) des tomes ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
+        var r = await post('/api/parasites/retirer', {series: parSerie, empreintes: choisies});
+        if (!r.ok) { alert(r.error || 'Impossible'); return; }
+        setTimeout(function () { suivreParasites(false); }, 1000);
+      }
+    });
+
+    // 🎵 Changer le générique (anime absent d'Emby) : tous les openings et endings, écoutés avant d'en choisir un
+    var ecouteGen = new Audio();
+    function arreterEcouteGen() { ecouteGen.pause(); document.querySelectorAll('[data-ecoute].joue').forEach(function (b) { b.classList.remove('joue'); b.textContent = '▶️'; }); }
+    $('sGeneriqueListe').addEventListener('click', async function () {
+      fermerMenus();
+      if (lecteurGenerique) arreterGenerique();
+      var serie = current.id;
+      $('infosTitre').textContent = '🎵 Générique de « ' + current.title + ' »';
+      $('infosCorps').innerHTML = '<div class="dem-sous">Recherche des génériques de l\'anime…</div>';
+      $('infosVue').hidden = false;
+      var r = await api('/api/generique/liste?id=' + encodeURIComponent(serie));
+      if (!current || current.id !== serie) return;
+      if (r.error) { $('infosCorps').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
+      var ligne = function (t) {
+        var actuel = r.actuel === t.slug;
+        return '<div class="gen-choix' + (actuel ? ' actuelle' : '') + '"><button type="button" class="mou-btn ghost" data-ecoute="' + esc(t.lien) + '" aria-label="Écouter">▶️</button>' +
+          '<div><b>' + esc(t.slug) + (t.titre ? ' · ' + esc(t.titre) : '') + '</b>' + (t.episodes ? '<small>épisodes ' + esc(t.episodes) + '</small>' : '') + '</div>' +
+          (actuel ? '<span class="gen-actuel">✓ actuel</span>' : '<button type="button" class="mou-btn" data-gen="' + esc(t.slug) + '">Choisir</button>') + '</div>';
+      };
+      $('infosCorps').innerHTML = '<div class="dem-sous">Anime : <b>' + esc(r.anime || '?') + '</b> · ' + r.themes.length + ' générique(s). ▶️ pour écouter, puis « Choisir ». ' +
+        'Le son est mis au même volume que les génériques de MouFlopening.</div>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-gen="aucun"' + (r.actuel === 'aucun' ? ' disabled' : '') + '>🔇 Aucun générique</button>' +
+        (r.manuel ? '<button type="button" class="mou-btn ghost" data-gen="">↺ Revenir à l\'automatique</button>' : '') + '</div>' +
+        '<div id="genMsg"></div>' + (r.themes.map(ligne).join('') || '<div class="dem-sous">Aucun générique connu pour cet anime.</div>');
+    });
+    $('infosCorps').addEventListener('click', async function (e) {
+      var ec = e.target.closest('[data-ecoute]');
+      if (ec) {
+        var jouait = ec.classList.contains('joue');
+        arreterEcouteGen();
+        if (jouait) return;
+        ecouteGen.src = ec.dataset.ecoute; ecouteGen.volume = 0.7;
+        ec.classList.add('joue'); ec.textContent = '⏸';
+        var p = ecouteGen.play(); if (p && p.catch) p.catch(function () { arreterEcouteGen(); });
+        return;
+      }
+      var b = e.target.closest('[data-gen]'); if (!b) return;
+      arreterEcouteGen();
+      var serie = current.id;
+      document.querySelectorAll('[data-gen]').forEach(function (x) { x.disabled = true; });
+      $('genMsg').innerHTML = '<div class="dem-sous">⏳ Téléchargement et réglage du volume…</div>';
+      var r = await post('/api/generique/choisir', {series: serie, slug: b.dataset.gen});
+      if (!r.ok) {
+        $('genMsg').innerHTML = '<div class="dem-sous">⚠️ ' + esc(r.error || 'Impossible') + '</div>';
+        document.querySelectorAll('[data-gen]').forEach(function (x) { x.disabled = false; });
+        return;
+      }
+      $('infosVue').hidden = true;
+      dernierAuto = null;
+      if (current && current.id === serie) await openSeries(serie, false);   // le nouveau générique part à l'ouverture
+    });
+    new MutationObserver(function () { if ($('infosVue').hidden) arreterEcouteGen(); }).observe($('infosVue'), {attributes: true, attributeFilter: ['hidden']});
 
     // 🔄 Fenêtre d'avancement : chaque étape de la ré-identification, mise à jour toutes les 1,5 s
     var ICONE_ETAPE = {attente: '⏳', en_cours: '🔄', ok: '✅', echec: '⚠️'};

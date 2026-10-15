@@ -21,7 +21,8 @@
     return data;
   }
   function post(url, body) { return api(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})}); }
-  function pageUrl(n) { return '/api/page?path=' + encodeURIComponent(path) + '&n=' + (debut + n); }
+  // « v » change quand une page a été retirée du fichier : les images gardées en cache ne sont plus les bonnes
+  function pageUrl(n) { var v = pref('mfV:' + path, ''); return '/api/page?path=' + encodeURIComponent(path) + '&n=' + (debut + n) + (v ? '&v=' + v : ''); }
   function showMsg(t) { var m = $('msg'); m.textContent = t || ''; m.classList.toggle('show', !!t); }
 
   function applyOptions() {
@@ -59,6 +60,18 @@
     fetch('/api/progress', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: body, keepalive: true})
       .catch(function () { if (hl) hl.noterProgression(body); });
   }
+
+  // 🗑 (administrateur) : la page affichée est retirée du tome, puis le chapitre est rouvert à la même place
+  if ($('optRetirer')) $('optRetirer').addEventListener('click', async function () {
+    if (!count || !path) return;
+    if (!confirm('Retirer la page ' + (page + 1) + ' de ce tome ? (crédits, pub d\'équipe…) L\'ancien fichier va à la corbeille (30 jours).')) return;
+    var r = await post('/api/parasites/page', {series: seriesId, fichier: path, index: debut + page});
+    if (!r.ok) { alert(r.error || 'Impossible'); return; }
+    setPref('mfV:' + path, String(Date.now()));
+    save(true);
+    var u = new URL(location.href); u.searchParams.set('p', String(Math.min(page, Math.max(0, count - 2))));
+    location.replace(u.toString());
+  });
 
   function go(n, scrollTo) {
     if (!count) return;

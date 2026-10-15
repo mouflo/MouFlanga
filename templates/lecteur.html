@@ -41,6 +41,7 @@
             <li><b>↕ / ↔</b> : la page entière dans l'écran, ou la largeur de l'écran (on fait défiler la page vers le bas).</li>
             <li><b>◫</b> : doubles pages découpées en deux moitiés (pratique sur téléphone), ou affichées entières. Tourne le téléphone en paysage pour voir la double page entière.</li>
             <li><b>⛶</b> : plein écran.</li>
+            {% if role == 'admin' %}<li><b>🗑</b> (en bas) : retirer la page affichée du tome (page parasite d'une équipe de scan). L'ancien fichier va à la corbeille (30 jours).</li>{% endif %}
             <li><b>13 / 172</b> : page actuelle du chapitre ; la barre du bas permet d'aller directement à une page.</li>
             <li><b>⏮ ⏭</b> (en bas) : chapitre précédent ou suivant.</li>
         </ul>
@@ -58,6 +59,7 @@
 <div id="foot" class="foot">
     <button class="rbtn" id="prevCh">⏮ Chapitre précédent</button>
     <input type="range" id="slider" min="1" max="1" value="1" aria-label="Page">
+    {% if role == 'admin' %}<button class="rbtn" id="optRetirer" title="Retirer cette page du tome (page parasite : crédits, pub…)" aria-label="Retirer cette page">🗑</button>{% endif %}
     <button class="rbtn" id="nextCh">Chapitre suivant ⏭</button>
 </div>
 </body>
