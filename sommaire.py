@@ -1789,11 +1789,12 @@ def _pages_sures(sortie):
 def texte_par_bandes(image_octets: bytes) -> str:
     """Lecture bande par bande (voir _bandes) sur la page entière, puis sur sa moitié droite et sa moitié gauche
     (colonne sombre d'un seul côté, Air Gear tome 23) : le texte qui donne le plus de lignes terminées par un nombre."""
-    from PIL import Image
+    from PIL import Image, ImageOps
     im = Image.open(io.BytesIO(image_octets)).convert("L")
     meilleur, score = "", -1
-    for x0, x1 in ((0, 1), (0.45, 1), (0, 0.55)):
-        t = _bandes(im.crop((int(im.width * x0), 0, int(im.width * x1), im.height)))
+    for x0, x1, negatif in ((0, 1, False), (0.45, 1, False), (0, 0.55, False), (0.45, 1, True), (0, 0.55, True)):
+        zone = im.crop((int(im.width * x0), 0, int(im.width * x1), im.height))
+        t = _bandes(ImageOps.invert(zone) if negatif else zone)     # colonne noire, texte blanc (Air Gear tome 24)
         sc = sum(1 for l in t.splitlines() if re.search(r"\d\W*$", l))
         if sc > score:
             meilleur, score = t, sc
