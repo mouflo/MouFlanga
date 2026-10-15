@@ -1879,6 +1879,12 @@ def _inserer_manquants(lignes: list[dict]) -> list[dict]:
 
 
 
+def _compatible(lignes, numeros) -> bool:
+    """Les numéros lus ne sont pas à des dizaines de chapitres de ceux que la liste du tome annonce (une page de crédits
+    lue « chapitres 1 à 4 » dans un tome qui contient le 257)."""
+    return not (numeros and lignes and all(min(abs(x["num"] - n) for n in numeros) > 20 for x in lignes))
+
+
 def _completer_bords(chapitres, numeros, nb_pages):
     """Première ou dernière ligne du sommaire perdue (sur le dessin, en haut de page) : si la liste des chapitres du tome
     annonce le chapitre juste avant le premier lu (ou juste après le dernier) et qu'il y a la place, il est ajouté avec
@@ -2074,7 +2080,9 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
             trouve += lignes                                 # sommaire sur deux pages
         elif not trouve and _vraisemblable(lignes) and _ecart_median(lignes) >= 5 and \
                 all(x["num"] >= 0 and (nb_pages < 20 or x["page"] <= nb_pages * 2.2 + 10) for x in lignes) and \
-                (len(lignes) > 2 or lignes[1]["page"] - lignes[0]["page"] <= 80):   # « -1, 0 » ou page 737 : du bruit
+                (len(lignes) > 2 or lignes[1]["page"] - lignes[0]["page"] <= 80) and \
+                _compatible(lignes, numeros):
+            # « -1, 0 » ou page 737 : du bruit ; chapitres 1 à 4 dans un tome qui contient le 257 : une page de crédits
             trouve, page_sommaire = lignes, i
         elif trouve and i > page_sommaire + 2:
             break
@@ -2096,7 +2104,7 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
             except Exception as e:
                 logger.info("Sommaire de %s, page %d (pastilles) : %s", chemin, i, e.__class__.__name__)
                 continue
-            if _vraisemblable(past) and _ecarts_plausibles(past):
+            if _vraisemblable(past) and _ecarts_plausibles(past) and _compatible(past, numeros):
                 trouve, page_sommaire = past, i
                 break
     if not trouve or (numeros and len(trouve) < len(numeros) - 1):
@@ -2107,7 +2115,7 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
                 octets = lire_page(i)
                 for essai in (analyser_pages_dessous(octets, numeros), analyser_blocs(octets, numeros),
                               analyser_cases(octets, numeros), _meilleure_lecture(texte_par_bandes(octets))):
-                    if _vraisemblable(essai) and len(essai) >= 3 and len(essai) > len(trouve):
+                    if _vraisemblable(essai) and len(essai) >= 3 and len(essai) > len(trouve) and _compatible(essai, numeros):
                         trouve, page_sommaire = essai, i
                         break
             except Exception as e:
