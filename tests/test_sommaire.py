@@ -319,3 +319,7 @@ class FormesApprisesTest(unittest.TestCase):
                                         "MANGA BONUS RAVE 0077 P. 1©7")
         self.assertEqual([x["num"] for x in l], [67, 68, 69, 70, 71, 72, 73])
         self.assertEqual([l[0]["page"], l[5]["page"]], [45, 147])
+
+    def test_ordinaux_mal_lus(self):                             # Gintama tome 12 : « QUATRE-NINGT-QUINZIÈME »
+        self.assertEqual(sommaire.nombre_fr("QUATRE-NINGT-QUINZIÈME"), 95)
+        self.assertEqual(sommaire.nombre_fr("CENT UNIÈME"), 101)

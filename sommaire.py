@@ -126,6 +126,12 @@ def nombre_fr(texte: str):
     if not mots:
         return None
     ordinaux, unites, dizaines = ({_simple(k): v for k, v in d.items()} for d in (_ORDINAUX, _UNITES, _DIZAINES))
+    connus = list(ordinaux) + list(unites) + list(dizaines) + ["quatre", "vingts", "cents"]
+    for k, m in enumerate(mots):                             # « QUATRE-NINGT » : le mot connu le plus proche (vingt)
+        if m not in connus and len(m) >= 4:
+            proche = difflib.get_close_matches(m, connus, n=1, cutoff=0.75)
+            if proche:
+                mots[k] = proche[0]
     total, courant = 0, 0
     for k, m in enumerate(mots):
         if m in ordinaux:
@@ -735,7 +741,7 @@ def analyser_ordinaux(texte: str) -> list[dict]:
         if not ligne:
             continue
         m = _ENTETE_ORDINAL.match(ligne)
-        if m and (nombre_fr(m.group(1)) is not None or re.fullmatch(r"(?i)\w+i[eè]me", m.group(1))):
+        if m and (nombre_fr(m.group(1)) is not None or re.fullmatch(r"(?i)[\w\-]+i[eè]me", m.group(1))):
             blocs.append({"ord": m.group(1), "mot": m.group(2).lower(), "lignes": [m.group(3)]})
         elif blocs:
             blocs[-1]["lignes"].append(ligne)
