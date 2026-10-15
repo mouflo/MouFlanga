@@ -4418,8 +4418,13 @@ def _lire_sommaire(name, tome, e, forcer=False):
                 r = dict(avant, version=r["version"])
         infos.setdefault("sommaires", {})[str(tome)] = r
         edition.ecrire(MANGA_DIR / name, infos)
+    try:                                                 # chapitres connus du tome (Wikipédia) : numéros du sommaire illisible
+        fiche = tomes._charger(name) or {}
+        numeros = sorted(n for n, t in (fiche.get("tomes") or {}).items() if t is not None and int(t) == int(tome))
+    except Exception:
+        numeros = []
     return sommaire.lancer(name, tome, chemin, lambda i: archives.read_page(chemin, i)[0], len(archives.pages(chemin)), enregistrer,
-                         noms=archives.pages(chemin))
+                         noms=archives.pages(chemin), numeros=numeros)
 
 
 @app.route("/api/tome/sommaire", methods=["POST"])

@@ -22,7 +22,7 @@ from pathlib import Path
 logger = logging.getLogger("mouflanga")
 
 PAGES_MAX = 14                  # images lues au début du tome
-VERSION = 5                     # version du lecteur : un tome « sans sommaire » lu par une version plus ancienne est relu
+VERSION = 6                     # version du lecteur : un tome « sans sommaire » lu par une version plus ancienne est relu
 _MOTS = r"(?:chapitre|kapitel|chap|ch|sc[eè]ne|[ée]pisode|ep|acte|round|le[cç]on|lesson|partie|nuit|jour|histoire|file|stage|level|#)"
 _CHIFFRES_OCR = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1", "S": "5", "A": "4", "B": "8", "Z": "2"})
 # « SCÈNE 1 La tueuse aux yeux d'argent .......5 », « Chapitre 12 : Le retour 45 », « 12. Le retour ...... 45 »
@@ -245,6 +245,85 @@ def _vraisemblable(lignes) -> bool:
     nums = [x["num"] for x in lignes]
     pages = [x["page"] for x in lignes]
     return all(b > a for a, b in zip(nums, nums[1:])) and all(b > a for a, b in zip(pages, pages[1:]))
+
+
+# ---------------------------------------------------------------- « CHAPITRE 8 : » puis « TITRE ........ P. 7 »
+_ENTETE_CHAPITRE = re.compile(r"^\W*[xX]?\W*ch\w{0,2}p\w{0,3}tre", re.I)
+
+
+def _lectures_chiffres(im, boite) -> Counter:
+    """Un numéro de page lu de plusieurs façons (échelles, modes tesseract, noir sur blanc ou l'inverse) : votes."""
+    from PIL import ImageOps
+    x0, y0, x1, y1 = boite
+    base = ImageOps.grayscale(im.crop((max(0, x0), max(0, y0), min(im.width, x1), min(im.height, y1))))
+    votes = Counter()
+    if base.width < 6 or base.height < 6:
+        return votes
+    env = dict(os.environ, OMP_THREAD_LIMIT="1")
+    for inverse in (False, True):
+        c = ImageOps.autocontrast(ImageOps.invert(base)) if inverse else base
+        for echelle in (2, 4):
+            g = ImageOps.expand(c.resize((c.width * echelle, c.height * echelle)), border=30, fill=255)
+            buf = io.BytesIO()
+            g.save(buf, "PNG")
+            for psm in ("7", "8", "13"):
+                r = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", psm, "-c",
+                                    "tessedit_char_whitelist=0123456789"], input=buf.getvalue(), capture_output=True,
+                                   timeout=60, env=env)
+                t = r.stdout.decode("utf-8", "replace").strip()
+                if re.fullmatch(r"\d{1,3}", t):
+                    votes[int(t)] += 1
+    return votes
+
+
+def analyser_pages_p(image_octets: bytes, numeros=None) -> list[dict]:
+    """Sommaire où chaque chapitre a un en-tête « CHAPITRE N : » (police décorative, numéro souvent mal lu) puis son titre
+    et « P. 31 » au bout. Les pages sont relues une à une (chiffres seuls, agrandis) ; les numéros viennent de la liste
+    des chapitres du tome (`numeros`, d'après Wikipédia) rangés dans l'ordre, jamais de l'en-tête illisible.
+    [] si le nombre de lignes « P. » ne correspond pas à la liste connue."""
+    from PIL import Image
+    mots = mots_ocr(image_octets)
+    im = Image.open(io.BytesIO(image_octets)).convert("RGB")
+    reperes = sorted((m for m in mots if re.fullmatch(r"[Pp]\.?", m["t"]) or re.fullmatch(r"[Pp]\.\w{0,3}", m["t"])),
+                     key=lambda m: m["y"])
+    sommaire_y = [m["y"] + m["h"] for m in mots if re.fullmatch(r"\W*sommaire\W*", m["t"], re.I)]
+    gros = max((m["h"] for m in mots if len(re.sub(r"\W", "", m["t"])) >= 4 and m["t"].lower() != "sommaire"
+                and m.get("c", 0) >= 60 and not re.search(r"(?i)ch\w{0,2}p", m["t"])), default=0)
+    sortie, haut = [], (sommaire_y[0] if sommaire_y else 0)
+    for r in reperes:
+        h = r["h"]
+        if sortie and abs(r["y"] - sortie[-1]["_y"]) < h:
+            continue
+        debut = r["x"] + r["w"] + 2 if len(r["t"]) <= 2 else r["x"] + int(h * 0.55)   # « P.31 » lu d'un seul mot
+        boite = (debut, r["y"] - h // 3, r["x"] + r["w"] + h * 5, r["y"] + h + h // 3)
+        votes = _lectures_chiffres(im, boite)
+        for m in mots:                                       # le mot lu par l'OCR de la page compte aussi
+            if abs(m["y"] - r["y"]) < h and m["x"] >= r["x"] and re.search(r"\d", m["t"]):
+                t = re.sub(r"^[Pp]\.?", "", m["t"]).translate(_LETTRES_CHIFFRES)
+                if re.fullmatch(r"\d{1,3}", t):
+                    votes[int(t)] += 1
+        page = votes.most_common(1)[0][0] if votes else None
+        mots_titre = [m for m in mots if haut <= m["y"] + m["h"] // 2 <= r["y"] + h // 2 and m["x"] + m["w"] <= r["x"] + 4
+                      and m["h"] >= gros * 0.7]
+        lignes = []
+        for m in sorted(mots_titre, key=lambda m: m["y"]):    # lignes regroupées par hauteur, titre sur deux lignes compris
+            if lignes and abs(m["y"] - lignes[-1][0]["y"]) < m["h"] * 0.6:
+                lignes[-1].append(m)
+            else:
+                lignes.append([m])
+        titre = [" ".join(m["t"] for m in sorted(l, key=lambda m: m["x"])) for l in lignes]
+        titre = re.sub(r"(?i)\bch\w{0,2}p\w{0,3}tre\s*[\w|\[\]]{0,3}\s*:?\s*", "", " ".join(titre))
+        titre = re.sub(r"^[^\w«\"“‘'(\[]+", "", titre).strip(" .:-–—,'\"‘’")
+        sortie.append({"_y": r["y"], "titre": titre, "page": page, "_cands": dict(votes)})
+        haut = r["y"] + h
+    n = len(numeros or [])
+    if n < 2 or len(sortie) != n:
+        return []
+    sortie = _pages_sures(sortie)                            # suite croissante la plus soutenue ; les trous sont estimés
+    if not sortie:
+        return []
+    return [{"num": float(num), "titre": x["titre"], "page": x["page"]} for num, x in zip(sorted(numeros), sortie)]
+
 
 
 # ---------------------------------------------------------------- Sommaire en colonnes (titres décoratifs)
@@ -873,7 +952,7 @@ def _pages_sures(sortie):
     return sortie
 
 
-def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
+def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
     """{"chapitres": [{"num", "titre", "page" (imprimée), "image" (position dans le fichier ou None)}], "page_sommaire"}
     lire_page(i) → octets de l'image i. Sans sommaire trouvé : chapitres vide."""
     textes, trouve, page_sommaire = {}, [], None
@@ -942,6 +1021,13 @@ def lire(chemin, lire_page, nb_pages, noms=None) -> dict:
                     textes[i], lignes = clair, cols
             except Exception as e:
                 logger.info("Sommaire de %s, page %d (colonnes claires) : %s", chemin, i, e.__class__.__name__)
+        if numeros and len(numeros) >= 2 and len(lignes) < len(numeros) and re.search(r"(?i)sommaire", textes[i]):
+            try:                                             # lecture incomplète : « CHAPITRE N : » + titre + « P. 31 »
+                pp = analyser_pages_p(octets, numeros)
+                if _vraisemblable(pp):
+                    lignes = pp
+            except Exception as e:
+                logger.info("Sommaire de %s, page %d (P.) : %s", chemin, i, e.__class__.__name__)
         if trouve and lignes and lignes[0]["num"] > trouve[-1]["num"] and _vraisemblable(trouve + lignes):
             trouve += lignes                                 # sommaire sur deux pages
         elif not trouve and _vraisemblable(lignes):
@@ -1166,7 +1252,7 @@ def etat(serie, tome):
         return dict(_ETAT.get((serie, int(tome))) or {})
 
 
-def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer, noms=None):
+def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer, noms=None, numeros=None):
     """Lit le sommaire en arrière-plan ; enregistrer(resultat) le garde. Renvoie False si déjà en cours."""
     cle = (serie, int(tome))
     with _VERROU:
@@ -1177,7 +1263,7 @@ def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer, noms=None):
     def travail():
         with _FILE:
             try:
-                r = lire(chemin, lire_page, nb_pages, noms)
+                r = lire(chemin, lire_page, nb_pages, noms, numeros)
                 r["date"] = time.strftime("%Y-%m-%d")
                 r["version"] = VERSION
                 enregistrer(r)

@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 📖 Sommaire : « CHAPITRE N : » puis titre et « P. 31 » (15 octobre 2026)
+- Les sommaires où chaque chapitre est écrit sur deux lignes (en-tête décoratif « CHAPITRE 8 : », puis le titre et « P. 7 » au bout, comme Eyeshield 21) n'étaient lus qu'à moitié (2 chapitres sur 9). Les numéros viennent maintenant de la liste des chapitres du tome (Wikipédia), rangés dans l'ordre, et chaque numéro de page est relu seul de plusieurs façons (la suite doit croître) ; le titre cherché dans les pages voisines corrige ensuite les chiffres douteux.
+- Les tomes déjà lus par l'ancienne version sont relus.
+
 ## 🎨 Apparence : les couleurs changées s'appliquent tout de suite (15 octobre 2026)
 - La feuille de style de l'apparence (`/skin.css`) porte maintenant une empreinte de son contenu dans son adresse : une ancienne copie gardée par un relais ou le navigateur n'est plus resservie, les couleurs choisies (ou remises d'origine) apparaissent immédiatement.
 - Réponse envoyée avec `private, no-store`.
