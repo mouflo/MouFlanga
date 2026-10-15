@@ -1035,6 +1035,20 @@ def _moities(image_octets: bytes) -> list[bytes]:
 
 
 
+def _bandeau_sombre(im, boite):
+    """Rectangle du bandeau sombre contenu dans la boîte (lignes et colonnes majoritairement sombres), ou None."""
+    import numpy as np
+    x0, y0, x1, y1 = [int(v) for v in boite]
+    a = np.asarray(im.convert("L").crop((max(0, x0), max(0, y0), min(im.width, x1), min(im.height, y1)))) < 90
+    if a.size == 0:
+        return None
+    lignes = np.where(a.mean(axis=1) > 0.5)[0]
+    cols = np.where(a.mean(axis=0) > 0.5)[0]
+    if len(lignes) < 8 or len(cols) < 8:
+        return None
+    return (max(0, x0) + cols[0], max(0, y0) + lignes[0], max(0, x0) + cols[-1] + 1, max(0, y0) + lignes[-1] + 1)
+
+
 def analyser_pages_dessous(image_octets: bytes, numeros=None) -> list[dict]:
     """« Chapitre 131 » puis, juste en dessous, le numéro de page seul (souvent en blanc dans un bandeau noir : Gamaran).
     Chaque numéro est relu dans la bande située sous l'en-tête (plusieurs lectures, noir sur blanc ou l'inverse)."""
@@ -1057,6 +1071,14 @@ def analyser_pages_dessous(image_octets: bytes, numeros=None) -> list[dict]:
         bas = entetes[k + 1]["y"] if k + 1 < len(entetes) else e["y"] + e["h"] * 3
         boite = (e["x0"] - e["h"], e["y"] + e["h"], e["x1"] + e["h"], min(bas, e["y"] + int(e["h"] * 2.6)))
         votes = _lectures_chiffres(im, boite)
+        bandeau = _bandeau_sombre(im, boite)                 # le bandeau noir seul, sans marge blanche autour
+        if bandeau:
+            votes.update(_lectures_chiffres(im, bandeau))
+        for m in mots:                                       # le mot lu par l'OCR de la page compte aussi (« 51 | »)
+            if boite[0] <= m["x"] and m["x"] + m["w"] <= boite[2] and boite[1] <= m["y"] + m["h"] / 2 <= boite[3]:
+                t = re.sub(r"\W", "", m["t"])
+                if re.fullmatch(r"\d{1,3}", t):
+                    votes[int(t)] += 2
         page = votes.most_common(1)[0][0] if votes else None
         sortie.append({"num": e["num"], "titre": "", "page": page, "_cands": dict(votes)})
     if numeros and len(numeros) == len(sortie):
@@ -1722,7 +1744,7 @@ def _pages_sures(sortie):
             for j in range(k):
                 for u, (pw, _) in meilleur[j].items():
                     bonus = 2 if pas_type and abs((v - u) - pas_type * (k - j)) <= 2 * (k - j) else 0
-                    if u < v and pw + w + bonus > best[0]:
+                    if v - u >= 3 * (k - j) and pw + w + bonus > best[0]:      # un chapitre fait au moins 3 pages
                         best = (pw + w + bonus, (j, u))
             meilleur[k][v] = best
     fin = max(((pw, k, v) for k, d in enumerate(meilleur) for v, (pw, _) in d.items()), default=None)
