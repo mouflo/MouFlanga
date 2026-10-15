@@ -620,11 +620,14 @@ def _estimer_pages(sortie: list[dict]) -> list[dict]:
     (ou d'après l'écart habituel) et marquées « estimee ». [] si moins de la moitié des pages sont sûres."""
     pages = [x["page"] for x in sortie]
     idx = [k for k, p in enumerate(pages) if p is not None]
+    def ecart(j, k):                                         # nombre de chapitres entre deux lignes (lignes sautées comprises)
+        a, b = sortie[j].get("num"), sortie[k].get("num")
+        return max(k - j, round(b - a)) if a is not None and b is not None and b > a else k - j
     meilleur = {}
     for k in idx:                                            # plus longue suite croissante (écart ≥ 3 pages par chapitre)
         meilleur[k] = (1, None)
         for j in idx:
-            if j < k and 3 * (k - j) <= pages[k] - pages[j] <= 80 * (k - j) and meilleur[j][0] + 1 > meilleur[k][0]:
+            if j < k and 3 * ecart(j, k) <= pages[k] - pages[j] <= 80 * ecart(j, k) and meilleur[j][0] + 1 > meilleur[k][0]:
                 meilleur[k] = (meilleur[j][0] + 1, j)
     if not meilleur:
         return []
