@@ -1,5 +1,14 @@
 # Historique des versions
 
+## 🧠 Sommaires : apprentissage sur toute la bibliothèque (15 octobre 2026, en cours)
+Balayage des tomes jamais lus, un par un ; chaque forme de sommaire mal lue est apprise par le lecteur :
+- « La 39e nuit Titre ---- 21 » (numéro avant le mot), « p077 02 Titre » (page d'abord), « 01 TITRE 001 » (ni mot ni points), « PREMIER PRÉCEPTE : … 5 » (ordinaux en lettres), « 2e Quart-temps : … 063 » (mot propre à la série, appris sur la page), « Épisode 1 / titre / 005 » sur trois lignes, « (Trick:43 24) ».
+- « Chapitre 131 » avec la page dans un bandeau noir dessous ; blocs « CHAPITRE 128 » + titre sur deux lignes + « …… 005 » ; « 16e punch » au-dessus du titre, texte blanc sur fond sombre ; grands numéros de page en couleur sur une illustration ; double page scannée d'un seul tenant (chaque moitié relue).
+- Décor lu après la page (« 113 L », « 001 ain »), « T3 » pour 73, « OS » pour 05 ; lignes sautées comblées entre deux chapitres reconnus ; pages aberrantes (« 419 » pour 119) estimées d'après les voisines.
+- Toutes les lectures d'une page sont comparées : la plus complète gagne (une lecture partielle ne passe plus devant).
+- Faux sommaires écartés : page de crédits lue « 1, 2, 7 », phrases d'une page de présentation (chapitres d'une ou deux pages).
+- Tomes assemblés par une équipe sans sommaire : les chapitres viennent du nom des images (« c0047.00-p001.jpg »).
+
 ## 📖 Sommaire : pages relevées même quand la liste d'Internet n'a que des titres (15 octobre 2026)
 - Une liste de chapitres venue d'Internet avec titres mais sans pages ne lançait pas la lecture du sommaire imprimé : pas de numéros de page. La lecture se lance maintenant aussi dans ce cas (en arrière-plan, un tome à la fois) : les titres restent, les pages viennent du sommaire.
 

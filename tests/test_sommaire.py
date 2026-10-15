@@ -125,3 +125,108 @@ class VisionTest(unittest.TestCase):
         r = sommaire.analyser(texte)
         self.assertEqual([(c["num"], c["page"]) for c in r], [(107.0, 141), (108.0, 213), (109.0, 329)])
         self.assertEqual([c["titre"] for c in r], ["Le dernier combat", "La fin du voyage", "Épilogue : L'autre fin du voyage"])
+
+
+class FormesApprisesTest(unittest.TestCase):
+    """Formes de sommaires rencontrées dans la bibliothèque (balayage d'octobre 2026), d'après le texte OCR réel."""
+
+    def test_numero_avant_le_mot(self):                          # Magi
+        l = sommaire.analyser("Table des matières\nLa 38 nuit Le bidonville ----- 3\nLa 39e nuit L'affaire -----. 21\n"
+                              "La 41enuit L'attaque ------ 57\nLa45enuit Il s'appelle Judal ---- 129")
+        self.assertEqual([(x["num"], x["titre"], x["page"]) for x in l],
+                         [(38, "Le bidonville", 3), (39, "L'affaire", 21), (41, "L'attaque", 57), (45, "Il s'appelle Judal", 129)])
+
+    def test_lignes_chapitre_mal_lues(self):                     # One Piece : 1re page absente, « uu », page qui recule
+        l = sommaire._reparer_lignes("= SOMMAIRE -\nCHAPITRE 389 : RÉPONSE D\nCHAPITRE 390: PRÊTS À EN DÉCOUDRE 25\n"
+                                     "CHAPITRE 391 : UNE FILLETTE ..........uu\nCHAPITRE 392: DÉRÉSHI........... 65\n"
+                                     "CHAPITRE 393: OLVIA A 85\nCHAPITRE 394 : LES DÉMONS D'OHARA 104\n"
+                                     "CHAPITRE 395: OHARA … 125\nCHAPITRE 396: SAURO Rs 105\nCHAPITRE 397 : POUR LES GÉNÉRATIONS 165")
+        self.assertEqual([x["num"] for x in l], [389.0 + k for k in range(9)])
+        self.assertEqual([x["page"] for x in l], [5, 25, 45, 65, 85, 104, 125, 145, 165])
+        self.assertTrue(l[0].get("estimee") and l[7].get("estimee"))
+
+    def test_lignes_chapitre_numero_illisible(self):             # 20th Century Boys tome 4
+        l = sommaire._reparer_lignes("Chapitre 1 - L'évasion.......... 7\nChapitre 2 - L'air frais ....... 25\n"
+                                     "ChapitreMSllaccostage PP 7 43\nChapitre 4 - L'exposition de rêve ....... 61\n"
+                                     "Chapitre 22 =Les Noix. 59")
+        self.assertEqual([(x["num"], x["page"]) for x in l], [(1, 7), (2, 25), (3, 43), (4, 61), (5, 79)])
+
+    def test_page_au_dessus_du_titre(self):                      # YuYu Hakusho : pas de numéro de chapitre imprimé
+        texte = ("SOMMAIRE\n6 Nu à\n. Le réveil du Yoko! |\n21 = $\nLe coup de Shishiwakamaru !!\n4] |\nDémasqué !!\n"
+                 "67 ;\nL'appel de la mort 1!\nAN) Le boss, Onjih 1! |\nAU 107\nDS L'homme aux mille visages L!")
+        l = sommaire.analyser_page_puis_titre(texte, [83.0, 84.0, 85.0, 86.0, 87.0, 88.0])
+        self.assertEqual([x["num"] for x in l], [83.0, 84.0, 85.0, 86.0, 87.0, 88.0])
+        self.assertEqual(l[5]["titre"], "L'homme aux mille visages")
+        self.assertEqual([l[0]["page"], l[3]["page"], l[5]["page"]], [6, 67, 107])
+        self.assertEqual(sommaire.analyser_page_puis_titre(texte, [1.0, 2.0]), [])      # pas le même nombre : rien
+
+    def test_credits_lus_comme_pastilles(self):                  # Area-D : « 1, 2, 7 » n'est pas un sommaire
+        self.assertFalse(sommaire._ecarts_plausibles([{"page": 1}, {"page": 2}, {"page": 7}]))
+        self.assertTrue(sommaire._ecarts_plausibles([{"page": 5}, {"page": 25}, {"page": 45}]))
+
+    def test_chapitre_sur_trois_lignes(self):                    # Dandadan
+        l = sommaire.analyser_empile("Épisode 1\nSerait-ce une romance qui commence ?\n005\nÉpisode F.\n"
+                                     "On dirait bien un extraterrestre !\n069\nÉpisode 3\nLe choc des vioques\n121\n"
+                                     "Épisode 4\nFilons aux toilettes !\n161")
+        self.assertEqual([(x["num"], x["page"]) for x in l], [(1, 5), (2, 69), (3, 121), (4, 161)])
+        self.assertEqual(l[1]["titre"], "On dirait bien un extraterrestre !")
+
+    def test_page_avant_le_numero(self):                         # Deadman Wonderland
+        l = sommaire.analyser("SOMMAIRE\np003 01 Qui a tué Cock Robin?\np077 02 La règle des règles\n"
+                              "p125 03 La course mortelle des Chiens heureux\np171 04 Tueur d'esclave\np212 Contenu bonus")
+        self.assertEqual([(x["num"], x["page"]) for x in l], [(1, 3), (2, 77), (3, 125), (4, 171)])
+        self.assertEqual(l[1]["titre"], "La règle des règles")
+
+    def test_phrases_ne_sont_pas_un_sommaire(self):
+        self.assertLess(sommaire._ecart_median([{"page": 1}, {"page": 2}, {"page": 6}, {"page": 12}]), 5)
+
+    def test_decor_apres_la_page(self):                          # Four Knights of the Apocalypse
+        l = sommaire.analyser("+ SOMMAIRE + dé)\nChapitre 1 - À l'aube du grand voyage 3 A\nChapitre 2 - Rencontre inopinée T3 Ÿ J\n"
+                              "Chapitre 3 - Sur les traces de son père 113 L\nChapitre 4 - Une force inconnue 143 E ::\n"
+                              "Chapitre 5 - Les Four Knights of the Apocalypse 163")
+        self.assertEqual([(x["num"], x["page"]) for x in l], [(1, 3), (2, 73), (3, 113), (4, 143), (5, 163)])
+        self.assertEqual(l[1]["titre"], "Rencontre inopinée")
+
+    def test_lignes_sautees_comblees(self):                      # Magi tome 1 : « La ænuit », « LaSenuit »
+        texte = ("Table des matières\nLa 1 nuit || sappelle Aladin + 3\nLa 2e nuit || sappelle Ali Baba -.. 57\n"
+                 "La 3e nuit  Aladin et Ali Baba --.... 91\nLa ænuit  Lelabyrinthe --. 115\nLaSenuit  Àl'aventure 133\n"
+                 "La6enuit À l'intérieur du labyrinthe -. 151\nLa 7enuit Les dangers du labyrinthe ----- 175")
+        l = sommaire._combler(texte, sommaire._numeros_suivis(sommaire.analyser(texte)))
+        self.assertEqual([(x["num"], x["page"]) for x in l], [(1, 3), (2, 57), (3, 91), (4, 115), (5, 133), (6, 151), (7, 175)])
+
+    def test_trick_entre_parentheses(self):                      # Air Gear tome 6 : « (Trick:43 24) » lu « CTrick:43 24 ) »
+        l = sommaire._numeros_suivis(sommaire.analyser("CTrick:43 24 )\nTrick:45 64 )\nTrick:46 86 )\nCTrick:47 1O5\n"
+                                                       "CTrick:48 127)\nTrick:49 145\nCTrick:50 166 )|e"))
+        self.assertEqual([(x["num"], x["page"]) for x in l], [(43, 24), (45, 64), (46, 86), (47, 105), (48, 127), (49, 145), (50, 166)])
+
+    def test_ordinaux_en_lettres(self):                          # Gintama : « PREMIER PRÉCEPTE : … 5 »
+        texte = ("PREMIER PRÉCEPTÉ : QUELQU'UN QUI À LES CHEVEUX NATURELLEMENT\nONDULÉS NE PEUT PAS ÊTRE MAUVAIS ! 5\n"
+                 "DEUXIÈME PRÉCÉPTÉ : LE MAÎTRE S'OCCUPÉRA JUSQU'AU BOUT\nDE SON ANIMAL DE COMPAGNIE. 2]\n"
+                 "TROISIÈME PRÉCÉPTÉ : LE MAGAZINE JUMP PARAÎT PARFOIS LE SAMEDI ;\nSOYONS DONC ATTENTIFS. 87\n"
+                 "QUATRIÈME PRÉCÉPTE : CÉLUI QUI FAIT BONNE IMPRESSION\nÀ LA PREMIÈRE RENCONTRE N'EST JAMAIS FIABLE. fl\n"
+                 "CINQUIÈME PRÉCEPTÉ : MÊME QUAND TU SÉRAS DÉVENU UN PAPY,\nVOUS APPELER PAR VOS SURNOMS. 131")
+        l = sommaire.analyser_ordinaux(texte)
+        self.assertEqual([x["num"] for x in l], [1, 2, 3, 4, 5])
+        self.assertEqual([l[0]["page"], l[2]["page"], l[4]["page"]], [5, 87, 131])
+        self.assertTrue(l[1].get("estimee") and l[3].get("estimee"))
+
+    def test_numero_titre_page_sans_mot(self):                   # Green Blood (page sombre, décor autour)
+        l = sommaire.analyser_nus("A 0) LEGRIMREAPER 00! ; 4\n| OZ L'AGENT DE POLICE 049 è\n< 03 LACIBLE 083 È\n"
+                                  "| 04 roue 128 k\nL |  À05 |'SouRRE 139 F\n| À 06 ASSASSIN 157 1\n- | 07 LEPRIX 175 | 4")
+        self.assertEqual([(x["num"], x["page"]) for x in l], [(1, 1), (2, 49), (3, 83), (4, 128), (5, 139), (6, 157), (7, 175)])
+
+    def test_chapitres_par_noms_des_images(self):                # tomes assemblés par une équipe (« c0047.00-p001.jpg »)
+        noms = ["c0047.00-p001.png", "c0047.00-p002.jpg", "c0048.00-p001.jpg", "c0048.00-p002.jpg", "c0048.5-p001.jpg"]
+        l = sommaire.chapitres_par_noms(noms)
+        self.assertEqual([(x["num"], x["image"]) for x in l], [(47, 0), (48, 2), (48.5, 4)])
+        noms = ["001-00_3026.jpg", "002-01_5806.jpg", "003-00_6260.jpg", "004-01_1111.jpg"]
+        self.assertEqual([(x["num"], x["image"]) for x in sommaire.chapitres_par_noms(noms, [68.0, 69.0])], [(68, 0), (69, 2)])
+        self.assertEqual(sommaire.chapitres_par_noms(["0001.jpg", "0002.jpg"]), [])
+
+    def test_page_aberrante_estimee(self):                       # Crows tome 2 : « 419 » pour 119, « 4f9 », « OS » pour 05
+        l = sommaire._meilleure_lecture("CHAPITRE OS : LINE FUITE PLEINE DE RAGE ! ... 7\nCHAPITRE 06 : FEEL SO GOOD-...... 58\n"
+                                        "CHAPITRE O7 : CROIRE AUX RUMEURS ? :-..... 419\nCHAPITRE O8 : GHOST BUSTER C PARTIE O1)-- 4f9\n"
+                                        "CHAPITRE 09 : GHOST BUSTER (PARTIE 02) ...... 171")
+        self.assertEqual([x["num"] for x in l], [5, 6, 7, 8, 9])
+        self.assertEqual([l[0]["page"], l[1]["page"], l[4]["page"]], [7, 58, 171])
+        self.assertTrue(58 < l[2]["page"] < l[3]["page"] < 171)
