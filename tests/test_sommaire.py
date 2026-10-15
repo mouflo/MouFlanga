@@ -349,3 +349,7 @@ class FormesApprisesTest(unittest.TestCase):
         self.assertEqual([x["num"] for x in l], list(range(238, 248)))
         self.assertTrue(l[0].get("estimee") and l[-1].get("estimee"))
         self.assertEqual(sommaire._completer_bords(c, [float(x) for x in range(239, 247)], 190), c)
+
+    def test_ordinaux_tres_abimes(self):                         # Gintama tome 34 : « DIN » pour dix, « QUATRE-INGT »
+        self.assertEqual(sommaire.nombre_fr("DEUX CENT QUATRE-NINGT-DIN-NEUVIÈME"), 299)
+        self.assertEqual(sommaire.nombre_fr("DEUX CENT QUATRE-INGT-SÉIZIÈME"), 296)

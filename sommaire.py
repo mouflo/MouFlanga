@@ -128,8 +128,8 @@ def nombre_fr(texte: str):
     ordinaux, unites, dizaines = ({_simple(k): v for k, v in d.items()} for d in (_ORDINAUX, _UNITES, _DIZAINES))
     connus = list(ordinaux) + list(unites) + list(dizaines) + ["quatre", "vingts", "cents"]
     for k, m in enumerate(mots):                             # « QUATRE-NINGT » : le mot connu le plus proche (vingt)
-        if m not in connus and len(m) >= 4:
-            proche = difflib.get_close_matches(m, connus, n=1, cutoff=0.75)
+        if m not in connus and len(m) >= 3:                 # « DIN » pour dix, « INGT » pour vingt
+            proche = difflib.get_close_matches(m, connus, n=1, cutoff=0.75 if len(m) >= 4 else 0.66)
             if proche:
                 mots[k] = proche[0]
     total, courant = 0, 0
