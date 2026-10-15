@@ -161,10 +161,13 @@ def _sans_decor(ligne: str) -> str:
     ligne = re.sub(r"^\W*(?:(?:[^\w\s]{1,2}|[^\W\d_])\s+){1,2}(?=ch\w{0,3}p)", "", ligne, flags=re.I)  # « k Chapitre 9 »
     ligne = re.sub(r"^.{0,14}?\s(?=(?:ch)?[a-z]?apitre\s*[0-9OoIl]{1,4}\b)", "", ligne, flags=re.I)  # « CP 1 | ea ! Chapitre 13 »
     ligne = re.sub(r"^\W*[a-z]?\s?apitre(?=\s*\d)", "Chapitre", ligne, flags=re.I)                     # « x apitre 12 »
+    ligne = re.sub(r"([Pp]\.\s*)([0-9uUsSoO]{1,3})\W*$",                                  # « P. us » (45), « P.1u7 » (147)
+                   lambda m: m.group(1) + m.group(2).translate(str.maketrans("uUsSoO", "445500")), ligne)
     if not re.match(r"^\W*" + _MOTS, ligne, re.I):
         return ligne
     ligne = re.sub(r"(\d)[Oo](\d)", r"\g<1>0\2", ligne)                                # « 1O5 »
     ligne = re.sub(r"(?<=[\s.·…_,])[Oo](\d{1,2})\W*$", r"0\1", ligne)                     # « ……… O7 »
+
     ligne = re.sub(r"(\d{2,3})\s+[^\w\s]+\s+\d\W*$", r"\1", ligne)                 # « 114 | 4 »
     ligne = re.sub(r"(\d{2,3})\s+[a-zà-ÿ]{3}\W*$", r"\1", ligne)                       # « 001 ain »
     ligne = re.sub(r"([\dT]{1,3})(?:\s*(?:[^\w\s]+[^\W\d_]{0,2}|\s[^\W\d_]{1,2}\W*)){1,3}\s*$", r"\1", ligne)
@@ -256,7 +259,7 @@ def _reparer_lignes(texte: str) -> list[dict]:
     brutes = []
     for k, l in enumerate(lignes_txt):                       # « Chapitre 3 … », « La 11e nuit … », « La11enuit … »
         m = re.search(mot, _plat(l[:18]), re.I)
-        if m:
+        if m and m.start() <= 9:                             # « MANGA BONUS RAVE 0077 » : le mot n'ouvre pas la ligne
             if not re.search(r"\d\W*$", l[m.end():]):         # titre sur deux lignes, page au bout de la seconde
                 for suite in lignes_txt[k + 1:k + 3]:
                     if re.search(mot, _plat(suite[:18]), re.I):
@@ -282,7 +285,7 @@ def _reparer_lignes(texte: str) -> list[dict]:
         titre = re.sub(r"\s*[Pp]?[./]*\s*$", "", re.sub(r"\s+[Pp]\.?$", "", titre.strip()))   # « … P. 3 », « ?P/ » : le P de page
         titre = re.sub(r"^[^\w«\"“‘'(\[]+", "", titre).strip(" .:-–—=,'\"‘’|+")
         lus.append((_numero(n.group(1)) if n else None, titre, int(p.group(1)) if p else None))
-    if sum(1 for x in lus if x[2] is not None) < 0.6 * len(lus):
+    if sum(1 for x in lus if x[2] is not None) < 0.5 * len(lus):
         return []
     connus = [(k, n) for k, (n, _, _) in enumerate(lus) if n is not None]
     if not connus:

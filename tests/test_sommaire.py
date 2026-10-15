@@ -311,3 +311,11 @@ class FormesApprisesTest(unittest.TestCase):
         l = sommaire._meilleure_lecture(texte)
         self.assertEqual([x["num"] for x in l], [62, 63, 64, 65, 66, 67, 68])
         self.assertEqual(l[0]["titre"], "Ce qu'il me reste à faire")
+
+    def test_page_p_lettres(self):                               # Rave tome 9 : « P. us » (45), « P.1u7 » (147), bonus ignoré
+        l = sommaire._meilleure_lecture("RAVE : 67 UNE DÉTERMINATION INFINIE p. us\nRAVE : ©B DES SENTIMENTS TOURNÉS VERS P. 65\n"
+                                        "RAVE : 70 À LA RECHERCHE DE LA LUMIÈRE P. 107\nRAVE : 71 L'AVENIR EST ENTRE SES MAINS P. 127\n"
+                                        "RAVE : 72 LE BUT ULTIME DE KING !/ P.1u7\nRAVE : 73 DES LIENS ÉTERNELS P. 168\n"
+                                        "MANGA BONUS RAVE 0077 P. 1©7")
+        self.assertEqual([x["num"] for x in l], [67, 68, 69, 70, 71, 72, 73])
+        self.assertEqual([l[0]["page"], l[5]["page"]], [45, 147])
