@@ -301,3 +301,13 @@ class FormesApprisesTest(unittest.TestCase):
                                         "CHAPITRE 24 : PARCE QUE LA LUNE EST SI BLEUE.........,,,,87\n"
                                         "CHAPITRE 25 : LES GRENOUILLES VIENNENT DE L'OCÉAN..139")
         self.assertEqual([(x["num"], x["page"]) for x in l], [(23, 7), (24, 87), (25, 139)])
+
+    def test_quart_temps(self):                                  # Kuroko's Basket : séparateur lu « H », points lus « LELELE »
+        texte = ("62° Quart-temps H Ce qu'il me reste à faire CEELTETETEETETETTITETIITET] 005\n"
+                 "63° Quart-temps H Le temps d'une vie LEALELLLLELELLELELLELLELELLE EE EL! 045 |\n"
+                 "66° Quart-temps 2 Mise en garde LLLLLELELELEELELEELEELEELELLEEEE] 105\n"
+                 "67° Quart-temps H J'arrête LERLRLLELELELELLEEELLELELEEELELEEEL2] 125 |\n"
+                 "68° Quart-temps Hi Tout est possible LLRLELELRLELELLELLELRLELRLEL)] 145 |")
+        l = sommaire._meilleure_lecture(texte)
+        self.assertEqual([x["num"] for x in l], [62, 63, 64, 65, 66, 67, 68])
+        self.assertEqual(l[0]["titre"], "Ce qu'il me reste à faire")

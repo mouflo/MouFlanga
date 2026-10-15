@@ -676,7 +676,7 @@ def analyser_nus(texte: str) -> list[dict]:
     return _estimer_pages(sortie)
 
 
-_LIGNE_MOT_APPRIS = re.compile(r"^\W*([0-9OoIl]{1,3})?\s*(?:e|°|er|[èe]me)?\s+([^\W\d_][\w\-]{2,})\s*[:.\-–—]\s*(.*?)[\s.·…_,|]+([0-9OoIl]{1,3})\W*$")
+_LIGNE_MOT_APPRIS = re.compile(r"^\W*([0-9OoIl]{1,3})?\s*(?:e|°|er|[èe]me)?\s+([^\W\d_][\w\-]{2,})\s*(?:[:.\-–—*]|\s\S{1,2}\s)\s*(.*?)[\s.·…_,|\]\)]+([0-9OoIl]{1,3})\W*$")
 
 
 def analyser_mot_appris(texte: str) -> list[dict]:
@@ -697,14 +697,22 @@ def analyser_mot_appris(texte: str) -> list[dict]:
         n = m.group(1).translate(_CHIFFRES_LUS) if m.group(1) else None
         p = m.group(4).translate(_CHIFFRES_LUS)
         sortie.append({"num": float(n) if n and n.isdigit() else None,
-                       "titre": re.sub(r"[.·…_]{2,}.*$", "", m.group(3)).strip(" .:-–—,'\"‘’|"),
+                       "titre": re.sub(r"\s*[A-Z\]\)]*[LEITPR]{8,}.*$", "", re.sub(r"[.·…_]{2,}.*$", "", m.group(3))).strip(" .:-–—,'\"‘’|"),
                        "page": int(p) if p.isdigit() else None})
     connus = [(k, x["num"]) for k, x in enumerate(sortie) if x["num"] is not None]
     if not connus:
         return []
-    d = Counter(n - k for k, n in connus).most_common(1)[0][0]
-    for k, x in enumerate(sortie):
-        x["num"] = float(d + k)
+    lus = [n for _, n in connus]
+    if len(lus) >= 3 and all(a < b <= a + 3 for a, b in zip(lus, lus[1:])):
+        prec = None                                         # numéros lus qui se suivent (lignes sautées) : on les garde
+        for k, x in enumerate(sortie):
+            if x["num"] is None:
+                x["num"] = prec + 1 if prec is not None else connus[0][1] - connus[0][0] + k
+            prec = x["num"]
+    else:
+        d = Counter(n - k for k, n in connus).most_common(1)[0][0]
+        for k, x in enumerate(sortie):
+            x["num"] = float(d + k)
     return _estimer_pages(sortie) if len(sortie) >= 3 else []
 
 
