@@ -483,6 +483,22 @@ def _entetes_chapitre(mots):
                     entetes.append({"num": _numero(re.sub(r"(?:e|er|[èe]me)$", "", a["t"])), "x0": a["x"],
                                     "x1": m["x"] + m["w"], "y": min(a["y"], m["y"]), "h": max(a["h"], m["h"]), "ids": {i, j},
                                     "dessous": True})
+            x0 = sorted(e["x0"] for e in entetes)[len(entetes) // 2]
+            for j, m in enumerate(mots[1:], 1):             # « SEE punch », « 5de punch » : le mot appris, numéro illisible
+                if m["t"].lower() == mot[0][0] and not any(abs(m["y"] - e["y"]) < m["h"] for e in entetes):
+                    a = mots[j - 1]
+                    if abs(a["y"] - m["y"]) < m["h"] and abs(a["x"] - x0) < m["h"] * 1.5:
+                        entetes.append({"num": None, "x0": a["x"], "x1": m["x"] + m["w"], "y": min(a["y"], m["y"]),
+                                        "h": max(a["h"], m["h"]), "ids": {j - 1, j}, "dessous": True})
+            entetes.sort(key=lambda e: e["y"])
+            if len(entetes) >= 3:                            # en-tête complètement illisible : un trou deux fois plus grand
+                ecarts = sorted(b["y"] - a["y"] for a, b in zip(entetes, entetes[1:]))
+                pas = ecarts[len(ecarts) // 2]
+                for a, b in list(zip(entetes, entetes[1:])):
+                    n = round((b["y"] - a["y"]) / pas)
+                    if n >= 2 and abs(b["y"] - a["y"] - n * pas) < pas * 0.3:
+                        for k in range(1, n):
+                            entetes.append(dict(a, num=None, y=a["y"] + k * pas, ids=set()))
     return sorted(entetes, key=lambda e: e["y"])
 
 
@@ -738,8 +754,11 @@ def analyser_rouge(image_octets: bytes, numeros=None) -> list[dict]:
             nombres += [(int(txt[i * 3:i * 3 + 3]), x + int(w * (i + .5) / k), y + h, h, w / k) for i in range(k)]
         elif len(txt) <= 3:
             nombres.append((int(txt), x + w // 2, y + h, h, w))
+    # même taille que les numéros en vedette (pas les taches) : largeur d'un chiffre comparable ; la hauteur lue varie
+    # quand la bande rouge sous le numéro est prise avec lui
+    larg = max((n[4] / max(1, len(str(n[0]).zfill(3))) for n in nombres), default=0)
     grand = max((n[3] for n in nombres), default=0)
-    nombres = [n for n in nombres if n[3] >= grand * 0.75]      # même taille que les numéros en vedette (pas les taches)
+    nombres = [n for n in nombres if n[4] / max(1, len(str(n[0]).zfill(3))) >= larg * 0.6 and n[3] >= grand * 0.4]
     if len(nombres) < 3:
         return []
     nombres.sort(key=lambda n: n[0])
