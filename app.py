@@ -1203,6 +1203,7 @@ def api_serie_isbn():
     return jsonify({"ok": True, "message": msg})
 
 
+_CACHE_RESUME_FICHIER = {}                              # (chemin, date, taille) → le fichier porte-t-il un résumé ?
 _CACHE_ECRIT = {}                                        # (chemin, date, taille) → le fichier porte-t-il les infos écrites par MouFlanga ?
 
 
@@ -1232,6 +1233,7 @@ def api_series_travail_comptes():
     comptes["isbn"] = sum(1 for t in numeros if str(t) in _isbn_connus(infos))
     comptes["couvertures"] = sum(1 for t in numeros if couvertures_tomes.remplacement(MANGA_DIR / name, t))
     ecrits = 0
+    resume_fichier = set()                                # tomes dont le fichier porte un résumé (balise Summary)
     for t in numeros:
         rel = _fichier_du_tome(name, t)
         if not rel or not rel.lower().endswith((".cbz", ".zip")):
@@ -1242,11 +1244,19 @@ def api_series_travail_comptes():
         except OSError:
             continue
         cle = (str(chemin), st.st_mtime_ns, st.st_size)
-        if cle not in _CACHE_ECRIT:
+        if cle not in _CACHE_ECRIT or cle not in _CACHE_RESUME_FICHIER:
             if len(_CACHE_ECRIT) > 5000:
                 _CACHE_ECRIT.clear()
-            _CACHE_ECRIT[cle] = bool((signets.lire_infos(chemin) or {}).get("notes"))
+                _CACHE_RESUME_FICHIER.clear()
+            du = signets.lire_infos(chemin) or {}
+            _CACHE_ECRIT[cle] = bool(du.get("notes"))
+            _CACHE_RESUME_FICHIER[cle] = bool((du.get("resume") or "").strip())
         ecrits += 1 if _CACHE_ECRIT[cle] else 0
+        if _CACHE_RESUME_FICHIER[cle]:
+            resume_fichier.add(t)
+    # un résumé écrit dans le fichier du tome compte comme un résumé trouvé (comme dans la fiche du tome)
+    comptes["resumes"] = sum(1 for t in numeros if t in resume_fichier or manuels.get(str(t)) or (details.get(str(t)) or {}).get("resume")
+                             or tomes.resume_tome_memoire(name, t))
     comptes["reecriture"] = ecrits
     return jsonify({"total": len(numeros), "comptes": comptes})
 

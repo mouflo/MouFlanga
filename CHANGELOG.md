@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 📝 Compteur des résumés : ceux écrits dans le fichier comptent (15 octobre 2026)
+- Le compteur de la série (« 2/37 résumés » pour Air Gear) ignorait les résumés écrits dans le fichier de chaque tome, alors que la fiche du tome les affiche. Ils sont maintenant comptés (37/37 pour Air Gear).
+
 ## 📖 Sommaire : lignes « Chapitre N - Titre ..... 7 » mal lues rattrapées (15 octobre 2026)
 - Un sommaire dont quelques lignes sont mal lues par l'OCR (« ChapitreMSllaccostage PP 7 43 », un numéro de page qui recule) était rejeté en entier : le tome restait sans chapitres (20th Century Boys, tome 4). Une ligne « Chapitre » vaut maintenant un chapitre, numérotés à la suite ; une page illisible est estimée d'après l'écart habituel entre chapitres.
 
