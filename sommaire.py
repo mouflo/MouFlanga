@@ -206,6 +206,50 @@ def analyser(texte: str) -> list[dict]:
     return _numeroter_speciaux(out)
 
 
+def _reparer_lignes(texte: str) -> list[dict]:
+    """Sommaire « Chapitre 1 - Titre ..... 7 » dont quelques lignes sont mal lues (« ChapitreMSllaccostage PP 7 43 »,
+    « Chapitre T0 EUKURE RE 177 ») : une ligne « Chapitre » = un chapitre, numérotés à la suite du premier lu ; la page est
+    le nombre au bout de la ligne si elle suit la précédente, sinon estimée d'après l'écart habituel entre chapitres.
+    [] si ce n'est pas une liste de lignes « Chapitre » (au moins 4, la plupart avec une page)."""
+    brutes = [l.strip() for l in (texte or "").splitlines() if re.match(r"^\W*ch\w{0,3}p\w{0,4}tre", l.strip(), re.I)]
+    if len(brutes) < 4:
+        return []
+    lus = []
+    for l in brutes:
+        m = re.match(r"^\W*ch\w{0,3}p\w{0,4}tre\s*([0-9OoIlT|]{1,4})?\W*(.*?)[\s.·…_,]*(\d{1,3})?\s*$", l, re.I)
+        if not m:
+            return []
+        titre = re.sub(r"[.·…_]{2,}.*$", "", m.group(2) or "").strip(" .:-–—=,'\"‘’|")
+        lus.append((_numero(m.group(1)) if m.group(1) else None, titre, int(m.group(3)) if m.group(3) else None))
+    if sum(1 for x in lus if x[2] is not None) < 0.6 * len(lus):
+        return []
+    premier = next((n for n, _, _ in lus if n is not None), None)
+    if premier is None:
+        return []
+    premier = premier - next(i for i, (n, _, _) in enumerate(lus) if n is not None)
+    if premier < 0 or premier > 1:
+        premier = 1
+    pages = [x[2] for x in lus]
+    ecarts = sorted(b - a for a, b in zip(pages, pages[1:]) if a is not None and b is not None and 5 <= b - a <= 60)
+    if not ecarts:
+        return []
+    pas = ecarts[len(ecarts) // 2]
+    sortie, prec = [], None
+    for k, (_, titre, page) in enumerate(lus):
+        estimee = page is None or (prec is not None and not (prec < page <= prec + 2.5 * pas))
+        if estimee:
+            page = (prec + pas) if prec is not None else None
+        if page is None:
+            return []
+        c = {"num": float(premier + k), "titre": titre, "page": page}
+        if estimee:
+            c["estimee"] = True
+        sortie.append(c)
+        prec = page
+    return sortie
+
+
+
 def _numeroter_speciaux(lignes):
     """Chapitres spéciaux (« Épisode spécial 3 ») : numérotés 33,1 ; 33,2… après le chapitre qui les précède (ou avant le
     premier chapitre ordinaire s'ils ouvrent le tome), sans perturber la suite des chapitres."""
@@ -1021,6 +1065,10 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
                     textes[i], lignes = clair, cols
             except Exception as e:
                 logger.info("Sommaire de %s, page %d (colonnes claires) : %s", chemin, i, e.__class__.__name__)
+        if not _vraisemblable(lignes):
+            rep = _reparer_lignes(textes[i])                 # quelques lignes « Chapitre » mal lues : numéros et pages rétablis
+            if _vraisemblable(rep):
+                lignes = rep
         if numeros and len(numeros) >= 2 and len(lignes) < len(numeros) and re.search(r"(?i)sommaire", textes[i]):
             try:                                             # lecture incomplète : « CHAPITRE N : » + titre + « P. 31 »
                 pp = analyser_pages_p(octets, numeros)

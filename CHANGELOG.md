@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 📖 Sommaire : lignes « Chapitre N - Titre ..... 7 » mal lues rattrapées (15 octobre 2026)
+- Un sommaire dont quelques lignes sont mal lues par l'OCR (« ChapitreMSllaccostage PP 7 43 », un numéro de page qui recule) était rejeté en entier : le tome restait sans chapitres (20th Century Boys, tome 4). Une ligne « Chapitre » vaut maintenant un chapitre, numérotés à la suite ; une page illisible est estimée d'après l'écart habituel entre chapitres.
+
 ## 📖 Sommaire : « CHAPITRE N : » puis titre et « P. 31 » (15 octobre 2026)
 - Les sommaires où chaque chapitre est écrit sur deux lignes (en-tête décoratif « CHAPITRE 8 : », puis le titre et « P. 7 » au bout, comme Eyeshield 21) n'étaient lus qu'à moitié (2 chapitres sur 9). Les numéros viennent maintenant de la liste des chapitres du tome (Wikipédia), rangés dans l'ordre, et chaque numéro de page est relu seul de plusieurs façons (la suite doit croître) ; le titre cherché dans les pages voisines corrige ensuite les chiffres douteux.
 - Les tomes déjà lus par l'ancienne version sont relus.
