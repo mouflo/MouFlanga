@@ -556,6 +556,8 @@ def _numeroter(sortie, numeros):
         for k, x in enumerate(sortie):
             x["num"] = float(d + k)
         return sortie
+    if any(x["num"] is None for x in sortie):               # numéros trop mal lus pour décider
+        return []
     return _numeros_suivis(sortie)
 
 
@@ -565,6 +567,86 @@ def _inverse(image_octets: bytes) -> bytes:
     buf = io.BytesIO()
     ImageOps.invert(Image.open(io.BytesIO(image_octets)).convert("RGB")).save(buf, "PNG")
     return buf.getvalue()
+
+
+def _cases_noires(im_gris, bloc=8):
+    """Rectangles pleins et sombres de la page (cases noires où le texte est écrit en blanc) : [(x0, y0, x1, y1)]."""
+    import numpy as np
+    a = np.asarray(im_gris)
+    H, W = a.shape[0] // bloc, a.shape[1] // bloc
+    g = (a[:H * bloc, :W * bloc] < 90).reshape(H, bloc, W, bloc).mean(axis=(1, 3)) > 0.45
+    vu = np.zeros_like(g)
+    cases = []
+    for i in range(H):
+        for j in range(W):
+            if not g[i, j] or vu[i, j]:
+                continue
+            pile, pts = [(i, j)], []
+            vu[i, j] = True
+            while pile:
+                y, x = pile.pop()
+                pts.append((y, x))
+                for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    yy, xx = y + dy, x + dx
+                    if 0 <= yy < H and 0 <= xx < W and g[yy, xx] and not vu[yy, xx]:
+                        vu[yy, xx] = True
+                        pile.append((yy, xx))
+            ys, xs = [p[0] for p in pts], [p[1] for p in pts]
+            h, w = max(ys) - min(ys) + 1, max(xs) - min(xs) + 1
+            if h >= H * 0.025 and w >= W * 0.04 and h <= H * 0.2 and w <= W * 0.35 and len(pts) >= 0.55 * h * w:
+                cases.append((min(xs) * bloc, min(ys) * bloc, (max(xs) + 1) * bloc, (max(ys) + 1) * bloc))
+    return cases
+
+
+def analyser_cases(image_octets: bytes, numeros=None) -> list[dict]:
+    """Une rangée par chapitre : case noire à gauche (« PAGE 107 » : numéro du chapitre, en blanc), titre au milieu,
+    case noire à droite (numéro de page en blanc) (Bakuman). Les deux cases sont relues seules, en négatif."""
+    from PIL import Image, ImageOps
+    im = Image.open(io.BytesIO(image_octets)).convert("RGB")
+    gris = ImageOps.grayscale(im)
+    cases = sorted(_cases_noires(gris), key=lambda c: (c[1] + c[3]) / 2)
+    rangees = []
+    for c in cases:
+        cy, h = (c[1] + c[3]) / 2, c[3] - c[1]
+        if rangees and abs(cy - rangees[-1][0]) < h * 0.5:
+            rangees[-1][1].append(c)
+        else:
+            rangees.append([cy, [c]])
+    sortie = []
+    env = dict(os.environ, OMP_THREAD_LIMIT="1")
+    for _, r in rangees:
+        if len(r) < 2:
+            continue
+        g, d = min(r, key=lambda c: c[0]), max(r, key=lambda c: c[0])
+        if d[0] - g[2] < im.width * 0.1:
+            continue
+        case = ImageOps.invert(gris.crop(g))
+        case = ImageOps.expand(case.resize((case.width * 2, case.height * 2)), border=20, fill=255)
+        buf = io.BytesIO()
+        case.save(buf, "PNG")
+        t = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "6"], input=buf.getvalue(),
+                           capture_output=True, timeout=60, env=env).stdout.decode("utf-8", "replace")
+        n = re.findall(r"[0-9OoIl]{1,4}", re.sub(r"(?i)page", "", t))
+        num = _numero(n[-1]) if n else None
+        votes = _lectures_chiffres(im, d)
+        milieu = gris.crop((g[2], min(g[1], d[1]), d[0], max(g[3], d[3])))
+        buf = io.BytesIO()
+        milieu.save(buf, "PNG")
+        titre = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "6"], input=buf.getvalue(),
+                               capture_output=True, timeout=60, env=env).stdout.decode("utf-8", "replace")
+        titre = re.sub(r"\s+", " ", titre).strip(" .:-–—,'\"‘’|")
+        dans_titre = re.findall(r"\b(\d{2,4})\b", titre)     # bord de la case de gauche lu avec le titre : « 108 »
+        if dans_titre:
+            num = float(dans_titre[0]) if num is None or len(str(int(num))) < len(dans_titre[0]) else num
+            titre = re.sub(r"\b\d{2,4}\b", "", titre)
+        titre = re.sub(r"^(?:(?:\S*[^\w\s\-'’]\S*|\S*\d\S*|\w)\s+)+(?=[A-ZÀ-Ý]{2})", "", re.sub(r"\s+", " ", titre).strip())
+        sortie.append({"num": num, "titre": titre[:120], "page": votes.most_common(1)[0][0] if votes else None,
+                       "_cands": dict(votes)})
+    if len(sortie) < 3:
+        return []
+    sortie = _numeroter(sortie, numeros)
+    return _pages_sures(sortie) if sortie else []
+
 
 
 def analyser_blocs(image_octets: bytes, numeros=None, inverse=False) -> list[dict]:
@@ -1894,6 +1976,13 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
                     lignes = bl
             except Exception as e:
                 logger.info("Sommaire de %s, page %d (blocs) : %s", chemin, i, e.__class__.__name__)
+        if incomplet() and re.search(r"(?i)ommaire|table des mati|page\s*\d", textes[i]):
+            try:                                             # cases noires : numéro et page en blanc (Bakuman)
+                ca = analyser_cases(octets, numeros)
+                if plus_long(ca):
+                    lignes = ca
+            except Exception as e:
+                logger.info("Sommaire de %s, page %d (cases) : %s", chemin, i, e.__class__.__name__)
         if incomplet() and re.search(r"(?i)ommaire|table des mati", textes[i]):
             try:                                             # rangées encadrées : chaque bande lue comme une ligne
                 bd = _meilleure_lecture(texte_par_bandes(octets))
@@ -1958,7 +2047,8 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
         for i in pages_essai:
             try:
                 octets = lire_page(i)
-                for essai in (analyser_pages_dessous(octets, numeros), analyser_blocs(octets, numeros)):
+                for essai in (analyser_pages_dessous(octets, numeros), analyser_blocs(octets, numeros),
+                              analyser_cases(octets, numeros)):
                     if _vraisemblable(essai) and len(essai) >= 3 and len(essai) > len(trouve):
                         trouve, page_sommaire = essai, i
                         break

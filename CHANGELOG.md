@@ -7,7 +7,9 @@ Balayage des tomes jamais lus, un par un ; chaque forme de sommaire mal lue est 
 - Décor lu après la page (« 113 L », « 001 ain »), « T3 » pour 73, « OS » pour 05 ; lignes sautées comblées entre deux chapitres reconnus ; pages aberrantes (« 419 » pour 119) estimées d'après les voisines.
 - Toutes les lectures d'une page sont comparées : la plus complète gagne (une lecture partielle ne passe plus devant).
 - Faux sommaires écartés : page de crédits lue « 1, 2, 7 », phrases d'une page de présentation (chapitres d'une ou deux pages).
-- Tomes assemblés par une équipe sans sommaire : les chapitres viennent du nom des images (« c0047.00-p001.jpg »).
+- Tomes assemblés par une équipe sans sommaire : les chapitres viennent du nom des images (« c0047.00-p001.jpg »), qui font foi pour leur place.
+- Sommaires « en cases » (numéro et page en blanc dans des cases noires, Bakuman), rangées encadrées lues bande par bande (Air Gear), doubles pages scannées d'un seul tenant (deux pages par image : image cherchée d'après la moitié de la page).
+- Chiffres départagés par la longueur habituelle des chapitres ; chapitre illisible entre deux chapitres lus ajouté (page estimée) ; ordinaux en lettres mal lus (« QUATRE-NINGT ») rapprochés du mot connu.
 
 ## 📖 Sommaire : pages relevées même quand la liste d'Internet n'a que des titres (15 octobre 2026)
 - Une liste de chapitres venue d'Internet avec titres mais sans pages ne lançait pas la lecture du sommaire imprimé : pas de numéros de page. La lecture se lance maintenant aussi dans ce cas (en arrière-plan, un tome à la fois) : les titres restent, les pages viennent du sommaire.
