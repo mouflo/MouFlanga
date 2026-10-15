@@ -1924,6 +1924,14 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
                 logger.info("Sommaire par Claude impossible pour %s : %s", chemin, e)
         return {"chapitres": [], "page_sommaire": None, "decalage": None, **({"isbn": isbn} if isbn else {})}
     _completer_ordinaux(trouve)
+    par_noms = chapitres_par_noms(noms, numeros)
+    if par_noms:                                             # le nom des images fait foi pour leur place ; titres du sommaire
+        titres = {float(c["num"]): c.get("titre") for c in trouve if c.get("num") is not None}
+        for c in par_noms:
+            if titres.get(c["num"]):
+                c["titre"] = titres[c["num"]]
+        return {"chapitres": par_noms, "page_sommaire": page_sommaire, "decalage": None, "source": "noms des images",
+                **({"isbn": isbn} if isbn else {})}
     for k in (10, 20, 30, 40, 50):                           # sommaire trouvé tôt : quelques images de plus pour juger
         if len(paysages) >= 8 or k >= nb_pages:
             break
