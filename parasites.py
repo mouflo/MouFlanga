@@ -263,3 +263,60 @@ def lancer_nettoyage(serie, travaux, vers_corbeille, apres=None) -> bool:
         logger.info("Pages parasites de « %s » : %s", serie, msg)
     threading.Thread(target=travail, daemon=True).start()
     return True
+
+
+LONGUEUR_MIN = 8               # pages au moins dans un chapitre (sinon : plusieurs pages d'équipe à la suite)
+
+
+def debuts_de_chapitres(reperes, nb_pages: int) -> list:
+    """Débuts de chapitres d'un tome d'après la place des pages d'équipe (avant leur retrait) : une suite de pages
+    d'équipe (crédits au début d'un chapitre, « on recrute » à la fin) sépare deux chapitres ; le chapitre suivant
+    commence à la première page qui n'en est pas une. Renvoie [(index, estimé)] : les trous réguliers (un passage
+    sans crédits long de 2 ou 3 chapitres) reçoivent des débuts estimés d'après la longueur habituelle."""
+    reperes = set(reperes)
+    debuts = []
+    for i in sorted(reperes):
+        j = i + 1
+        while j in reperes:
+            j += 1
+        if j < nb_pages and (not debuts or j != debuts[-1]):
+            debuts.append(j)
+    propres = []                                           # chapitres trop courts : pages d'équipe proches, un seul début
+    for d in debuts:
+        if not propres or d - propres[-1] >= LONGUEUR_MIN:
+            propres.append(d)
+    if len(propres) < 2:
+        return [(d, False) for d in propres]
+    fin = max([i for i in range(nb_pages) if i not in reperes] or [nb_pages - 1]) + 1
+    bornes = propres + [fin]
+    longueurs = sorted(b - a for a, b in zip(bornes, bornes[1:]))
+    L = longueurs[len(longueurs) // 2]                     # longueur habituelle d'un chapitre (médiane)
+    sortie = []
+    premier = min([i for i in range(nb_pages) if i not in reperes] or [0])
+    avant = propres[0] - premier                           # pages sans crédits au début du tome : chapitres entiers ?
+    k = round(avant / L) if L else 0
+    if k >= 1 and abs(avant - k * L) <= 0.3 * L * k:
+        sortie += [(propres[0] - (k - n) * round(avant / k), True) for n in range(k)]
+    for a, b in zip(bornes, bornes[1:]):
+        sortie.append((a, False))
+        k = round((b - a) / L) if L else 1
+        if k >= 2 and abs((b - a) - k * L) <= 0.3 * L * k:
+            sortie += [(a + n * round((b - a) / k), True) for n in range(1, k)]
+    return sortie
+
+
+def chapitres_par_reperes(reperes, nb_pages: int, numeros=(), suite_de=None) -> list:
+    """Chapitres numérotés : numéros connus du tome (liste Internet) s'il y en a autant que de débuts, sinon suite du
+    tome précédent (suite_de = dernier chapitre). [] si on ne peut pas numéroter sans risque de décalage."""
+    debuts = debuts_de_chapitres(reperes, nb_pages)
+    if len(debuts) < 2:
+        return []
+    numeros = sorted(float(n) for n in numeros or [])
+    if numeros and len(numeros) == len(debuts):
+        nums = numeros
+    elif not numeros and suite_de is not None:
+        nums = [float(int(suite_de) + 1 + k) for k in range(len(debuts))]
+    else:
+        return []
+    return [{"num": n, "titre": f"Chapitre {n:g}", "page": i + 1, "image": i, **({"estimee": True} if e else {})}
+            for n, (i, e) in zip(nums, debuts)]

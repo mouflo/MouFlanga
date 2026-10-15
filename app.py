@@ -1712,6 +1712,39 @@ def _serie_occupee(name):
                 or optimiser.coupes_etat(name).get("en_cours") or parasites.etat(name).get("en_cours"))
 
 
+def _chapitres_par_parasites(name, chemin, reperes):
+    """Avant le retrait : la place des pages d'équipe donne les débuts de chapitres du tome (voir
+    parasites.chapitres_par_reperes). Seulement pour un tome dont les chapitres ne sont pas encore connus ; le sommaire
+    imprimé, s'il est lu plus tard, reste prioritaire."""
+    import edition
+    import sommaire
+    tome = _numero_tome(chemin.name)
+    if tome is None:
+        tome = _numero_tome(chemin.parent.name)
+    if tome is None:
+        return
+    t = str(int(tome))
+    infos = edition.lire(MANGA_DIR / name)
+    if (((infos.get("sommaires") or {}).get(t)) or {}).get("chapitres"):
+        return
+    try:
+        fiche = tomes._charger(name) or {}
+        numeros = sorted(n for n, x in (fiche.get("tomes") or {}).items() if x is not None and int(x) == int(tome))
+    except Exception:
+        numeros = []
+    prec = [c.get("num") for c in (((infos.get("sommaires") or {}).get(str(int(tome) - 1))) or {}).get("chapitres") or []
+            if c.get("num") is not None]
+    chap = parasites.chapitres_par_reperes(reperes, len(archives.pages(chemin)), numeros, max(prec) if prec else None)
+    if not chap:
+        logger.info("Pages d'équipe de %s : chapitres non déduits (compte incertain)", chemin.name)
+        return
+    infos.setdefault("sommaires", {})[t] = {"chapitres": chap, "page_sommaire": None, "decalage": None,
+                                            "source": "pages d'équipe", "date": datetime.now().strftime("%Y-%m-%d"),
+                                            "version": sommaire.VERSION}
+    edition.ecrire(MANGA_DIR / name, infos)
+    logger.info("Pages d'équipe de %s : %d chapitres déduits (%g à %g)", chemin.name, len(chap), chap[0]["num"], chap[-1]["num"])
+
+
 def _apres_nettoyage(name, chemin, carte):
     """Position de lecture recalée et tome noté comme vérifié (il ne sera pas réexaminé tant qu'il ne change pas)."""
     import edition
@@ -1730,6 +1763,8 @@ def _apres_nettoyage(name, chemin, carte):
             return carte[k] if k is not None else i
         for c in lu.get("chapitres") or []:
             c["image"] = suivre(c.get("image"))
+            if lu.get("source") == "pages d'équipe" and isinstance(c["image"], int):
+                c["page"] = c["image"] + 1                   # pas de numéro imprimé : la place dans le fichier
         lu["page_sommaire"] = suivre(lu.get("page_sommaire"))
     edition.ecrire(MANGA_DIR / name, infos)
     edition.invalider(MANGA_DIR / name)
@@ -1793,6 +1828,11 @@ def api_parasites_retirer():
     infos = edition.lire(MANGA_DIR / name)
     infos["pages_parasites"] = sorted(set(infos.get("pages_parasites") or []) | {g["empreinte"] for g in groupes})
     edition.ecrire(MANGA_DIR / name, infos)
+    for f in sorted(plan, key=lambda x: _numero_tome(x) or 0):   # dans l'ordre : un tome continue la suite du précédent
+        try:
+            _chapitres_par_parasites(name, fichiers[f], plan[f])
+        except Exception as e:
+            logger.warning("Chapitres d'après les pages d'équipe de %s : %s", f, e)
     edition.invalider(MANGA_DIR / name)
     parasites.lancer_nettoyage(name, [(fichiers[f], ind) for f, ind in sorted(plan.items())], _vers_corbeille,
                                lambda chemin, carte: _apres_nettoyage(name, chemin, carte))
@@ -1844,6 +1884,7 @@ def _nettoyer_nouveaux_tomes():
                     continue
                 indices = parasites.a_retirer(f, refusees)
                 if indices:
+                    _chapitres_par_parasites(name, f, indices)
                     res = parasites.nettoyer_tome(f, set(indices), name, _vers_corbeille)
                     if "carte" in res:
                         _apres_nettoyage(name, f, res["carte"])
@@ -4586,6 +4627,8 @@ def _lire_sommaire(name, tome, e, forcer=False):
         avant = (infos.get("sommaires") or {}).get(str(tome)) or {}
         if avant.get("saisie") and avant.get("chapitres") and not forcer:
             return                                       # chapitres écrits à la main : intouchables sans demande explicite
+        if avant.get("source") == "pages d'équipe" and avant.get("chapitres") and not r.get("chapitres"):
+            return                                       # rien de lisible dans le tome : les chapitres déduits restent
         if avant.get("manuel") or avant.get("valide_le"):
             # fiche déjà validée avec des titres d'avant (souvent ceux de Wikipédia) : relue une fois avec le lecteur
             # amélioré ; les titres du sommaire imprimé la remplacent si ce sont les mêmes chapitres, sinon on la garde

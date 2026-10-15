@@ -107,6 +107,32 @@ class ParasitesTest(unittest.TestCase):
             parasites.retirer(self.t2, set(range(6)))
 
 
+class ChapitresParReperesTest(unittest.TestCase):
+    """Les pages d'équipe (avant retrait) donnent les débuts de chapitres (Defense Devil)."""
+
+    def test_credits_au_debut_de_chaque_chapitre(self):                 # tome 4 : crédits 0, 19, 38…
+        c = parasites.chapitres_par_reperes([0, 19, 38, 57, 74, 96, 114, 133, 152, 174], 193, range(28, 38))
+        self.assertEqual([x["image"] for x in c], [1, 20, 39, 58, 75, 97, 115, 134, 153, 175])
+        self.assertEqual([x["num"] for x in c], [float(n) for n in range(28, 38)])
+        self.assertFalse(any(x.get("estimee") for x in c))
+
+    def test_trou_regulier_comble(self):                                # tome 3 : 3 chapitres sans crédits
+        d = parasites.debuts_de_chapitres([0, 18, 37, 56, 75, 131, 149, 167], 186)
+        self.assertEqual([i for i, _ in d], [1, 19, 38, 57, 76, 95, 114, 132, 150, 168])
+        self.assertEqual([i for i, e in d if e], [95, 114])
+
+    def test_pages_d_equipe_qui_se_suivent_en_fin_de_tome(self):
+        d = parasites.debuts_de_chapitres([0, 1, 2, 22, 42, 60, 61, 62, 63, 64], 65)
+        self.assertEqual([i for i, _ in d], [3, 23, 43])
+
+    def test_compte_different_de_la_liste_rien(self):                  # mieux vaut rien qu'un décalage
+        self.assertEqual(parasites.chapitres_par_reperes([0, 19, 38, 57], 76, range(10, 15)), [])
+
+    def test_suite_du_tome_precedent(self):
+        c = parasites.chapitres_par_reperes([0, 19, 38, 57], 76, (), suite_de=17)
+        self.assertEqual([x["num"] for x in c], [18.0, 19.0, 20.0, 21.0])
+
+
 class ParasitesRoutesTest(unittest.TestCase):
     """Routes : seul l'administrateur nettoie ; empreintes retenues avec la série ; nouveaux tomes nettoyés seuls."""
 
@@ -166,6 +192,27 @@ class ParasitesRoutesTest(unittest.TestCase):
         self.A._nettoyer_nouveaux_tomes()
         with zipfile.ZipFile(f2) as z:
             self.assertEqual(sorted(n for n in z.namelist() if n.endswith(".jpg")), ["0002.jpg", "0003.jpg"])
+
+    def test_chapitres_deduits_avant_retrait(self):
+        """Un long tome : crédits au début de chaque chapitre ; après retrait, les chapitres pointent sur la 1re page."""
+        f = self.root / "Serie" / "Tome 02" / "Serie - Tome 02.cbz"
+        pages = []
+        for ch in range(4):
+            pages += [_image(0, f"equipe {ch}")] + [_image(100 + ch * 20 + k) for k in range(12)]
+        _tome(f, pages)
+        import edition
+        infos = edition.lire(self.root / "Serie")
+        infos["sommaires"] = {"1": {"chapitres": [{"num": 1.0, "image": 0}, {"num": 2.0, "image": 5}]}}
+        edition.ecrire(self.root / "Serie", infos)
+        self.client.post("/api/parasites/analyser", json={"series": "Serie"})
+        self.attendre()
+        e = self.client.get("/api/parasites?series=Serie").get_json()["groupes"][0]["empreinte"]
+        self.client.post("/api/parasites/retirer", json={"series": "Serie", "empreintes": [e]})
+        self.attendre()
+        lu = edition.lire(self.root / "Serie")["sommaires"]["2"]
+        self.assertEqual(lu["source"], "pages d'équipe")
+        self.assertEqual([(c["num"], c["image"], c["page"]) for c in lu["chapitres"]],
+                         [(3.0, 0, 1), (4.0, 12, 13), (5.0, 24, 25), (6.0, 36, 37)])
 
     def test_page_du_lecteur(self):
         r = self.client.post("/api/parasites/page", json={"series": "Serie", "fichier": "Serie/Tome 01/Serie - Tome 01.cbz", "index": 1}).get_json()
