@@ -20,7 +20,7 @@
         .msg.err { background: #2a1416; color: #ffb4b4; border: 1px solid #6b2f35; }
         .cv-liens a { display: inline-block; padding: 8px 12px; border-radius: 8px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; text-decoration: none; }
     </style>
-<link rel="stylesheet" href="/skin.css{{ '?off=1' if request.args.get('skin') == 'off' else '' }}">
+<link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
 </head>
 <body>
     <div class="container">

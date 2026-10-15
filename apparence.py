@@ -225,8 +225,24 @@ def init_app(app):
         if cle and request.args.get("off") != "1":
             css = css_de(cle, lire_choix(cle))
         r = Response(css, mimetype="text/css")
-        r.headers["Cache-Control"] = "no-cache"
+        r.headers["Cache-Control"] = "private, no-store, max-age=0"
         return r
+
+    @app.context_processor
+    def _skin_url():
+        """Adresse de la feuille de style avec une empreinte de son contenu : une copie ancienne gardée par un
+        relais ou le navigateur ne peut plus être resservie dès que les couleurs changent."""
+        def skin_url(off=False):
+            if off:
+                return "/skin.css?off=1"
+            try:
+                import hashlib
+                cle = _compte()
+                css = css_de(cle, lire_choix(cle)) if cle else ""
+                return "/skin.css?v=" + hashlib.md5(css.encode("utf-8")).hexdigest()[:10]
+            except Exception:
+                return "/skin.css"
+        return {"skin_url": skin_url}
 
     @app.route("/apparence/reset")
     def apparence_reset():

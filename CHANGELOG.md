@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 🎨 Apparence : les couleurs changées s'appliquent tout de suite (15 octobre 2026)
+- La feuille de style de l'apparence (`/skin.css`) porte maintenant une empreinte de son contenu dans son adresse : une ancienne copie gardée par un relais ou le navigateur n'est plus resservie, les couleurs choisies (ou remises d'origine) apparaissent immédiatement.
+- Réponse envoyée avec `private, no-store`.
+
 ## 🔇 Les tests n'envoient plus de vrais messages (14 octobre 2026)
 - Lancer la suite de tests (`python -m unittest`) envoyait de vrais messages Telegram (« 🪶 MouFlanga : allègement terminé pour « Serie » … ») et pouvait notifier les téléphones : les tests tournent avec les vrais réglages du serveur. `notifier` n'envoie plus rien quand il est lancé par unittest ou pytest ; les tests qui simulent l'envoi continuent de marcher.
 

@@ -12,7 +12,7 @@
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
 <script src="/ui/verif-banniere.js?v={{ version|urlencode }}" defer></script>
 <script src="/ui/mou-settings.js?v={{ version|urlencode }}"></script>
-<link rel="stylesheet" href="/skin.css{{ '?off=1' if request.args.get('skin') == 'off' else '' }}">
+<link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
 </head>
 <body>
 <div class="container">
