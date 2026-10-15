@@ -270,3 +270,22 @@ class FormesApprisesTest(unittest.TestCase):
                                         "| Chapire 11 - Même si tu venais à mourir 109 |\n| Chapitre 12 - Un banquet chaotique 129 |")
         self.assertEqual([(x["num"], x["page"]) for x in l], [(6, 3), (7, 23), (8, 43), (9, 68), (10, 89), (11, 109), (12, 129)])
         self.assertEqual(l[5]["titre"], "Même si tu venais à mourir")
+
+    def test_ligne_sans_page_comblee(self):                      # Judge tome 3 : « Chapitre 14 : Aveux WI »
+        l = sommaire._meilleure_lecture("A Chapitre 11 : Choix 003 |\nx apitre 12 : Deuxième jugement 039 |\n"
+                                        "CP 1 | ea ! Chapitre 13 : Témoignage 075\n9 Î Chapitre 14 : Aveux WI\n"
+                                        "À | | Chapitre 15 : Procès inéquitable 149")
+        self.assertEqual([x["num"] for x in l], [11, 12, 13, 14, 15])
+        self.assertTrue(l[3].get("estimee") and 75 < l[3]["page"] < 149)
+        self.assertEqual(l[3]["titre"], "Aveux")
+
+    def test_rangees_encadrees_lues_par_bandes(self):            # Air Gear tome 9 : bord de la rangée lu « EE »
+        l = sommaire._meilleure_lecture("EE Trick:69 ss)\nEE Trick:70) 23)\nEE Trick:71 43 })\nEE Trick:72 61 })\n"
+                                        "EE Trick:73 5655)\nEE Trick:74 107 })\nEE Trick:75 129 })")
+        self.assertEqual([x["num"] for x in l], [69, 70, 71, 72, 73, 74, 75])
+        self.assertEqual([x["page"] for x in l if not x.get("estimee")], [23, 43, 61, 107, 129])
+
+    def test_numeros_lus_avec_un_trou(self):                     # Reborn tome 3 : « CIBLE 22 » illisible
+        l = sommaire._meilleure_lecture("CIBLE 19 : PREMIER MEURTRE 51\nCIBLE 20 : GRIVELERIE 73\nCIBLE 21 : RECHERCHE BABY-SITTER\n"
+                                        "CIBLE 23 : I-PIN 139\nCIBLE 24 : I-PIN CONTRE LAMBO lé!\nCIBLE 25 : KYOKO CONTRE HARU 81")
+        self.assertEqual([x["num"] for x in l], [19, 20, 21, 23, 24, 25])
