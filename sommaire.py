@@ -796,17 +796,17 @@ def analyser_empile(texte: str) -> list[dict]:
     """Chaque chapitre sur trois lignes : « Épisode 1 », puis le titre, puis la page seule (« 005 ») (Dandadan).
     Numéro illisible (« Épisode F. ») : suite du précédent."""
     sortie, cur = [], None
-    fort = r"(?:chapitre|chap|kapitel|sc[eè]ne|[ée]pisode|acte|round|le[cç]on|lesson|partie|nuit|trick|stage|level)"
+    fort = r"(?:c?hapitre|chap|kapitel|sc[eè]ne|[ée]pisode|acte|round|le[cç]on|lesson|partie|nuit|trick|stage|level)"
     for ligne in (texte or "").splitlines():
         ligne = ligne.strip()
         if not ligne:
             continue
-        fin = re.search(r"(?:^|\s)(" + fort + r"\.?\s*[0-9OoIlSZ|]{1,4}(?:\s+\S{1,2})?\W*)$", ligne, re.I)
+        fin = re.search(r"(?:^|\s)(" + fort + r"\b\.?\s*(?:[0-9OoIlSZ|]{1,4}|\S{1,4})?(?:\s+\S{1,2})?\W*)$", ligne, re.I)
         if fin:                                              # dessin à gauche lu comme du texte : « \_ ; \ | Chapitre 11 »
             ligne = fin.group(1)
         else:
-            ligne = re.sub(r"^(?:\S{1,3}\s+){1,5}(?=[A-ZÀ-Ý][a-zà-ÿ'’]|L['’])", "", ligne)
-        debut = re.match(r"^\W*" + fort + r"\.?\s*([0-9OoIlSZ|]{1,4})?(?:\s+\S{1,2})?\W*$", ligne, re.I)
+            ligne = re.sub(r"^(?:\S{1,4}\s+){1,5}(?=[A-ZÀ-Ý][a-zà-ÿ'’]|L['’])", "", ligne)
+        debut = re.match(r"^\W*" + fort + r"\b\.?\s*([0-9OoIlSZ|]{1,4}|\S{1,4})?(?:\s+\S{1,2})?\W*$", ligne, re.I)
         if debut:
             if cur is not None and cur["titre"]:                # chapitre précédent sans page lue : estimée plus bas
                 sortie.append(cur)
