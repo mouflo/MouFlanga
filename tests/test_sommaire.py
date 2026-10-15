@@ -333,3 +333,12 @@ class FormesApprisesTest(unittest.TestCase):
         l = sommaire._meilleure_lecture(texte)
         self.assertEqual([x["num"] for x in l], list(range(100, 109)))
         self.assertEqual([l[1]["page"], l[2]["page"], l[8]["page"]], [25, 45, 169])
+
+    def test_ordinaux_longs(self):                               # Gintama tome 23
+        self.assertEqual(sommaire.nombre_fr("CENT QUATRE-VINGT-DIX-SÉPTIÈME"), 197)
+        self.assertEqual(sommaire.nombre_fr("DEUX CENTIÈME"), 200)
+        l = sommaire.analyser_ordinaux("CENT QUATRE-VINGT-QUATORZIÈME PRÉCÉPTÉ : LES HUMAINS 4\n"
+                                       "CENT QUATRE-VINGT-QUINZIÈME PRÉCÉPTE : IL EST PARFOIS BON. 27\n"
+                                       "CENT QUATRE-VINGT-DIX-SÉPTIÈME PRÉCÉPTÉ : LES BONS À RIEN. 67\n"
+                                       "DEUX CENTIÈME PRÉCÉPTÉ : JE ME FICHE. 128")
+        self.assertEqual([x["num"] for x in l], [194, 195, 197, 200])

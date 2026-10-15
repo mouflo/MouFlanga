@@ -146,7 +146,7 @@ def nombre_fr(texte: str):
             return None
         if m in ("vingt", "vingts", "vingtieme") and mots[k - 1:k] == ["quatre"]:
             courant = courant - 4 + 80 if courant >= 4 else 80
-        elif m in ("cent", "cents") and courant in range(2, 10):
+        elif m in ("cent", "cents", "centieme") and courant in range(2, 10):      # « deux centième » : 200
             courant *= 100
         else:
             courant += v
@@ -817,7 +817,7 @@ def analyser_mot_appris(texte: str) -> list[dict]:
 
 
 
-_ENTETE_ORDINAL = re.compile(r"^\W*((?:[^\W\d_]+[\s\-]){0,3}?[^\W\d_]+)\s+([^\W\d_]{4,})\s*:\s*(.*)$")
+_ENTETE_ORDINAL = re.compile(r"^\W*((?:[^\W\d_]+[\s\-]){0,6}?[^\W\d_]+)\s+([^\W\d_]{4,})\s*:\s*(.*)$")
 
 
 def analyser_ordinaux(texte: str) -> list[dict]:
