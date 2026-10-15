@@ -1806,6 +1806,24 @@ def texte_par_bandes(image_octets: bytes) -> str:
     return meilleur
 
 
+def lecture_sans_trame(image_octets: bytes) -> list[dict]:
+    """Rangées en pilule à fond tramé (points gris en dégradé, Air Gear tome 8) : tesseract n'y voit que du bruit. Un
+    filtre médian efface la trame, puis seuls les traits presque noirs (le texte) sont gardés. Deux tailles de filtre
+    ne perdent pas les mêmes lignes : les pages estimées de la plus longue lecture sont reprises de l'autre."""
+    from PIL import Image, ImageFilter
+    im = Image.open(io.BytesIO(image_octets)).convert("L")
+    lectures = []
+    for filtre in (5, 3):
+        g = im.filter(ImageFilter.MedianFilter(filtre)).point(lambda v: 0 if v < 70 else 255)
+        buf = io.BytesIO()
+        g.save(buf, "PNG")
+        lectures.append(_meilleure_lecture(ocr(buf.getvalue())))
+    lectures.sort(key=lambda l: (-len(l), sum(1 for x in l if x.get("estimee"))))
+    meilleure, autre = lectures
+    sures = {x["num"]: x for x in autre if not x.get("estimee")}
+    return [dict(sures[x["num"]]) if x.get("estimee") and x["num"] in sures else x for x in meilleure]
+
+
 def _bandes(im) -> str:
     """Lignes encadrées (rangées en forme de pilule, tableau) que tesseract saute quand il lit la page entière (Air Gear
     tome 9) : les traits horizontaux sombres délimitent des bandes, chacune est lue seule comme une ligne."""
@@ -2057,6 +2075,13 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
                     lignes = bd
             except Exception as e:
                 logger.info("Sommaire de %s, page %d (bandes) : %s", chemin, i, e.__class__.__name__)
+        if incomplet() and re.search(r"(?i)ommaire|table des mati", textes[i]):
+            try:                                             # pilules à fond tramé : trame effacée avant lecture
+                st = lecture_sans_trame(octets)
+                if plus_long(st):
+                    lignes = st
+            except Exception as e:
+                logger.info("Sommaire de %s, page %d (trame) : %s", chemin, i, e.__class__.__name__)
         if not trouve and (not _vraisemblable(lignes) or len(lignes) < max(6, len(numeros or []))) and _est_paysage(octets):
             try:                                             # double page d'un seul tenant : chaque moitié relue agrandie
                 for moitie in _moities(octets):
@@ -2117,7 +2142,8 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
             try:
                 octets = lire_page(i)
                 for essai in (analyser_pages_dessous(octets, numeros), analyser_blocs(octets, numeros),
-                              analyser_cases(octets, numeros), _meilleure_lecture(texte_par_bandes(octets))):
+                              analyser_cases(octets, numeros), _meilleure_lecture(texte_par_bandes(octets)),
+                              lecture_sans_trame(octets)):
                     if _vraisemblable(essai) and len(essai) >= 3 and len(essai) > len(trouve) and _compatible(essai, numeros):
                         trouve, page_sommaire = essai, i
                         break
