@@ -1904,7 +1904,9 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
                 logger.info("Sommaire de %s, page %d (P.) : %s", chemin, i, e.__class__.__name__)
         if trouve and lignes and lignes[0]["num"] > trouve[-1]["num"] and _vraisemblable(trouve + lignes):
             trouve += lignes                                 # sommaire sur deux pages
-        elif not trouve and _vraisemblable(lignes) and _ecart_median(lignes) >= 5:
+        elif not trouve and _vraisemblable(lignes) and _ecart_median(lignes) >= 5 and \
+                all(x["num"] >= 0 and x["page"] <= nb_pages * 2.2 + 10 for x in lignes) and \
+                (len(lignes) > 2 or lignes[1]["page"] - lignes[0]["page"] <= 80):   # « -1, 0 » ou page 737 : du bruit
             trouve, page_sommaire = lignes, i
         elif trouve and i > page_sommaire + 2:
             break
