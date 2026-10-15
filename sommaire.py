@@ -1787,11 +1787,25 @@ def _pages_sures(sortie):
 
 
 def texte_par_bandes(image_octets: bytes) -> str:
+    """Lecture bande par bande (voir _bandes) sur la page entière, puis sur sa moitié droite et sa moitié gauche
+    (colonne sombre d'un seul côté, Air Gear tome 23) : le texte qui donne le plus de lignes terminées par un nombre."""
+    from PIL import Image
+    im = Image.open(io.BytesIO(image_octets)).convert("L")
+    meilleur, score = "", -1
+    for x0, x1 in ((0, 1), (0.45, 1), (0, 0.55)):
+        t = _bandes(im.crop((int(im.width * x0), 0, int(im.width * x1), im.height)))
+        sc = sum(1 for l in t.splitlines() if re.search(r"\d\W*$", l))
+        if sc > score:
+            meilleur, score = t, sc
+        if sc >= 6:
+            break
+    return meilleur
+
+
+def _bandes(im) -> str:
     """Lignes encadrées (rangées en forme de pilule, tableau) que tesseract saute quand il lit la page entière (Air Gear
     tome 9) : les traits horizontaux sombres délimitent des bandes, chacune est lue seule comme une ligne."""
     import numpy as np
-    from PIL import Image
-    im = Image.open(io.BytesIO(image_octets)).convert("L")
     a = np.asarray(im) < 100
     h, w = a.shape
     sombre = a.mean(axis=1) > 0.35
