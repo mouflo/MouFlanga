@@ -502,7 +502,30 @@ def _entetes_chapitre(mots):
                     if n >= 2 and abs(b["y"] - a["y"] - n * pas) < pas * 0.3:
                         for k in range(1, n):
                             entetes.append(dict(a, num=None, y=a["y"] + k * pas, ids=set()))
-    return sorted(entetes, key=lambda e: e["y"])
+    entetes.sort(key=lambda e: e["y"])
+    if len(entetes) >= 3 and not entetes[0].get("dessous"):
+        # en-têtes réguliers : un trou deux fois plus grand cache un en-tête illisible ; on prolonge aussi la série
+        # tant qu'un mot se trouve dans la colonne des numéros à l'endroit attendu (« CHRAFITRE GB », « EL Te »)
+        ecarts = sorted(b["y"] - a["y"] for a, b in zip(entetes, entetes[1:]))
+        pas = ecarts[len(ecarts) // 2]
+        cols = sorted(e["xn"] for e in entetes if e.get("xn") is not None)
+        col = cols[len(cols) // 2] if cols else None
+        h = sorted(e["h"] for e in entetes)[len(entetes) // 2]
+        ajout = []
+        for a, b in zip(entetes, entetes[1:]):
+            n = round((b["y"] - a["y"]) / pas)
+            if n >= 2 and abs(b["y"] - a["y"] - n * pas) < pas * 0.25:
+                ajout += [dict(a, num=None, y=a["y"] + k * pas, ids=set()) for k in range(1, n)]
+        dernier = entetes[-1]
+        while col is not None:
+            y = dernier["y"] + pas
+            m = next((m for m in mots if abs(m["x"] - col) < h and abs(m["y"] - y) < pas * 0.2), None)
+            if m is None:
+                break
+            dernier = dict(dernier, num=None, y=m["y"], ids=set())
+            ajout.append(dernier)
+        entetes = sorted(entetes + ajout, key=lambda e: e["y"])
+    return entetes
 
 
 def _numeroter(sortie, numeros):
