@@ -2298,7 +2298,8 @@ def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=N
         return gagnante
 
     generique = len(chapitres) >= 2 and lire_page is not None and all(
-        re.fullmatch(r"(?:[A-Za-zÀ-ÿ]+\s*:?\s*\d+(?:[.,]\d)?)?", (c.get("titre") or "").strip()) for c in chapitres)   # ou sans titre du tout
+        re.fullmatch(r"(?:[A-Za-zÀ-ÿ]+\s*:?\s*\d+(?:[.,]\d)?)?", (c.get("titre") or "").strip())
+        or len(re.sub(r"[^A-Za-zÀ-ÿ]", "", c.get("titre") or "")) < 3 for c in chapitres)   # sans titre, ou bribes (« BT », « 8e »)
     glob = None
     if generique:                                            # « Trick 6 » : aucun titre à chercher, les numéros imprimés décident
         votes = Counter()
@@ -2331,6 +2332,8 @@ def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=N
                 image = c["page"] + e if e is not None else None
         if image is not None and lire_page is not None:
             ecart_lu = _ecart_imprime(lire_page, nb_pages, c["page"], image, page_sommaire)   # le numéro imprimé tranche
+            if glob is not None and ecart_lu is not None and abs(ecart_lu - glob) > 2:
+                ecart_lu = None                              # numéro mal lu : une double page décale de 1 ou 2, pas plus
             if ecart_lu is not None and 0 <= c["page"] + ecart_lu < (nb_pages or 10 ** 6) and c["page"] + ecart_lu > page_sommaire:
                 image = c["page"] + ecart_lu
                 confirme[k] = ecart_lu

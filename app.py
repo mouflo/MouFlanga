@@ -3512,7 +3512,7 @@ def _elements_torrents(avec_ok=False):
             except OSError:
                 continue
             # archives, PDF, mais aussi des dossiers d'images (« Arago Tome 01/001.jpg ») : importés comme un vrai torrent
-            if not any(f.suffix.lower() in (".cbz", ".cbr", ".zip", ".rar", ".7z", ".pdf", ".jpg", ".jpeg", ".png", ".webp") for f in fichiers):
+            if not any(torrents.suffixe(f) in (".cbz", ".cbr", ".zip", ".rar", ".7z", ".pdf", ".jpg", ".jpeg", ".png", ".webp") for f in fichiers):
                 continue
             serie = _nom_depuis_archive(d.name + ".zip", existantes)
             out.append({"nom": d.name, "base": base, "serie": serie, "existe": serie in existantes, "fichiers": len(fichiers),
@@ -3526,7 +3526,8 @@ def _doublons_torrent(serie, source, fichiers=None):
     retenu pour cette série (« regle »). Sert à décider DANS la fenêtre d'import, sans aller dans une autre page."""
     try:
         fichiers = fichiers if fichiers is not None else torrents.fichiers_du_torrent(Path(source))
-        numeros = sorted({_numero_tome(f.stem) for f in fichiers if f.suffix.lower() in (".cbz", ".cbr") and _numero_tome(f.stem) is not None})
+        numeros = sorted({_numero_tome(torrents.nom_sans_ext(f)) for f in fichiers
+                          if torrents.suffixe(f) in (".cbz", ".cbr") and _numero_tome(torrents.nom_sans_ext(f)) is not None})
         deja = sorted(_tomes_deja_la(serie, source))
     except OSError:
         numeros, deja = [], []

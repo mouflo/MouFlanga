@@ -96,6 +96,8 @@ async function lireTorrents(garderCoches) {
         : '<div class="tabsinfo">' + (r.dossier ? 'Rien à importer dans ce dossier.' : 'Dossier des torrents non réglé (⚙️ Réglages → Torrents).') + '</div>';
     document.querySelectorAll('#rescanListe .groupe').forEach(el => { if (gardees.has(elements[+el.dataset.i].nom)) el.querySelector('.rescan-coche').checked = true; });
     $('rescanGo').hidden = !elements.length;
+    $('rescanCherche').hidden = elements.length < 2;
+    filtrerRescan();
     const f = r.file || {};
     const actif = f.en_cours || (f.attente || []).length;
     $('rescanFileBox').hidden = !actif && !f.message;
@@ -108,6 +110,22 @@ async function lireTorrents(garderCoches) {
     if (actif) suiviRescan = setTimeout(() => lireTorrents(true), 4000);
 }
 
+// 🔎 Recherche dans la liste : sans accents ni majuscules, sur le nom du torrent et le nom de série (même modifié).
+// Un élément caché par la recherche garde sa case cochée.
+const simple = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+function filtrerRescan() {
+    const mots = simple($('rescanCherche').value).split(' ').filter(Boolean);
+    let vus = 0;
+    document.querySelectorAll('#rescanListe .groupe').forEach(el => {
+        const g = elements[+el.dataset.i] || {};
+        const texte = simple(g.nom + ' ' + g.serie + ' ' + (el.querySelector('.groupe-nom') || {}).value);
+        const ok = mots.every(m => texte.includes(m));
+        el.hidden = !ok;
+        if (ok) vus++;
+    });
+    $('rescanCompte').textContent = mots.length ? `${vus} élément${vus > 1 ? 's' : ''} sur ${elements.length}` : '';
+}
+$('rescanCherche').addEventListener('input', filtrerRescan);
 $('rescanLire').addEventListener('click', () => lireTorrents(true));
 if ($('rescanOk')) $('rescanOk').addEventListener('change', () => lireTorrents(false));
 $('rescanGo').addEventListener('click', async () => {

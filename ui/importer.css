@@ -19,3 +19,6 @@
 .choix-ligne small { display: block; color: var(--muted); font-size: .8rem; font-weight: 400; }
 .choix-toujours { display: flex; gap: 10px; align-items: center; padding-top: 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: .85rem; }
 .choix-toujours input { width: 20px; height: 20px; flex: none; }
+
+/* 🔎 recherche dans la liste du rescan */
+.groupe[hidden] { display: none !important; }
