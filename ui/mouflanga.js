@@ -496,7 +496,7 @@
       return '<div class="chap' + (c.read ? ' read' : '') + (c.key === s.current ? ' cur' : '') + '" data-path="' + esc(c.key) + '">' +
         '<span class="dot"></span><span class="ct">' + esc(c.title) + (c.sous ? '<small class="ct2">' + esc(c.sous) + '</small>' : '') + '</span>' +
         (c.tome != null || c.hs != null ? '<button class="tog tinfo' + (c.titres_ch ? ' vert' : '') + '" data-tinfo="' + (c.tome != null ? c.tome : c.hs) + '" title="Infos du tome">ⓘ</button>' : '') +
-        (c.groupe === 'Hors-série' ? '<button class="tog" data-hs="' + esc(c.key) + '" title="Identifier ce hors-série">🔎</button>' : '') + '<span class="cs">' + taille(c.size_mb) + '</span>' +
+        '<span class="cs">' + taille(c.size_mb) + '</span>' +
         '<button class="tog" data-tog="' + esc(c.key) + '" title="Marquer ' + (c.read ? 'non lu' : 'lu') + '">' + (c.read ? '↺' : '✔') + '</button>' +
         '<button class="tog del" data-del="' + esc(c.key) + '" title="Supprimer ce chapitre">🗑</button></div>';
     }
@@ -1606,6 +1606,7 @@
           '<button type="button" class="mou-btn ghost" id="chapDecaler">↔ Appliquer</button></div>' +
           '<div class="ident-actions"><button type="button" class="mou-btn" id="chapEnregistrer" data-tome="' + n + '">💾 Enregistrer</button>' +
           '<button type="button" class="mou-btn ghost" id="chapAnnuler">Annuler</button></div></div>' : '') +
+        (d.hors_serie ? '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" data-hs-ident="' + n + '">🔎 Identifier ce hors-série</button></div>' : '') +
         boutonGarder(n) +
         '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-prov="' + n + '">✏️ Noter la provenance (équipe, origine)</button>' +
         '<button type="button" class="mou-btn ghost admin-seul" data-isbn="' + n + '">📚 Noter les ISBN de la série</button>' +
@@ -1700,6 +1701,11 @@
       var r = await post('/api/tome/provenance', {series: current.id, tome: pv.dataset.prov, equipe: equipe.trim(), origine: origine.trim()});
       note('listMsg', r.message || r.error, r.ok ? 'ok' : 'err');
       if (r.ok) $('infosVue').hidden = true;
+    });
+    $('infosCorps').addEventListener('click', function (e) {              // 🔎 identifier un hors-série (depuis sa fiche ⓘ)
+      var b = e.target.closest('[data-hs-ident]'); if (!b) return;
+      var h = (current.chapters || []).find(function (c) { return String(c.hs) === b.dataset.hsIdent; });
+      if (h) ouvrirHorsSerie(h.key, h.title);
     });
     $('infosCorps').addEventListener('click', function (e) {              // toucher la couverture du tome = grand format
       var im = e.target.closest('.tome-couv'); if (!im) return;

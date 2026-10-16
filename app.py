@@ -498,13 +498,18 @@ def _ordre_entree(e):
 
 
 def _compte(entrees):
-    """« 50 tomes », « 43 tomes + 12 chapitres », « 20 chapitres »."""
+    """« 50 tomes », « 43 tomes + 12 chapitres », « 20 chapitres », « 43 tomes + 1 hors-série »."""
     tomes = {_tome_de_entree(e) for e in entrees} - {None}
-    autres = sum(1 for e in entrees if _tome_de_entree(e) is None)
-    if not tomes:
-        return f"{autres} chapitre{'s' if autres > 1 else ''}"
-    texte = f"{len(tomes)} tome{'s' if len(tomes) > 1 else ''}"
-    return texte + (f" + {autres} chapitre{'s' if autres > 1 else ''}" if autres else "")
+    hs = sum(1 for e in entrees if e.get("groupe") == HORS_SERIE)
+    autres = sum(1 for e in entrees if _tome_de_entree(e) is None and e.get("groupe") != HORS_SERIE)
+    morceaux = []
+    if tomes:
+        morceaux.append(f"{len(tomes)} tome{'s' if len(tomes) > 1 else ''}")
+    if autres or not (tomes or hs):
+        morceaux.append(f"{autres} chapitre{'s' if autres > 1 else ''}")
+    if hs:
+        morceaux.append(f"{hs} hors-série")
+    return " + ".join(morceaux)
 
 
 _MEMO_FICHIERS = {}
