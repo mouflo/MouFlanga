@@ -38,7 +38,17 @@ _SUITE_TITRE = re.compile(r"^\W*(.*?)[\s.·…_,\-–—]+(\d{1,3})\s*$")
 
 _ETAT = {}                      # (série, tome) → {"en_cours", "message"}
 _VERROU = threading.Lock()
-_FILE = threading.Semaphore(1)  # un seul tome lu à la fois (le processeur reste disponible pour le reste)
+
+
+def _coeurs() -> int:
+    try:
+        return len(os.sched_getaffinity(0))      # cœurs donnés au conteneur (os.cpu_count compterait ceux de Proxmox)
+    except (AttributeError, OSError):
+        return os.cpu_count() or 1
+
+
+SIMULTANES = max(1, _coeurs() - 1)  # tomes lus en même temps : un par cœur, un cœur gardé libre pour l'appli
+_FILE = threading.Semaphore(SIMULTANES)
 
 
 def disponible() -> bool:

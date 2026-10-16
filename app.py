@@ -4959,6 +4959,9 @@ def _sommaire_du_tome(name, tome, d):
                      "manquants": _numeros_manquants([c.get("num") for c in (lu or {}).get("chapitres", [])])}
 
 
+_VERROU_SOMMAIRES = threading.Lock()
+
+
 def _lire_sommaire(name, tome, e, forcer=False):
     """forcer : relecture demandée par la personne (bouton) ; sinon une liste saisie à la main n'est jamais remplacée."""
     import sommaire
@@ -4966,6 +4969,10 @@ def _lire_sommaire(name, tome, e, forcer=False):
     chemin = MANGA_DIR / e["path"]
 
     def enregistrer(r):
+        with _VERROU_SOMMAIRES:                          # plusieurs tomes lus en même temps : une écriture à la fois
+            _enregistrer(r)
+
+    def _enregistrer(r):
         infos = edition.lire(MANGA_DIR / name)
         if any(c.get("relatif") for c in r.get("chapitres", [])):             # leçons comptées depuis 1 dans chaque tome
             prec = ((infos.get("sommaires") or {}).get(str(int(tome) - 1)) or {}).get("chapitres") or []
@@ -6104,6 +6111,16 @@ def _signature_serie(nom):
                                              *(_stat_index(p) or (0, 0))) for p in (_scan().get(nom) or [])])
 
 
+def _attendre_lectures(sommaire, nom, en_lecture, garder):
+    """Attend que les sommaires en cours de lecture ne soient plus que « garder » (15 min au plus par tome)."""
+    debut = time.time()
+    while True:
+        en_lecture[:] = [t for t in en_lecture if sommaire.etat(nom, t).get("en_cours")]
+        if len(en_lecture) <= garder or time.time() - debut > 900:
+            return
+        time.sleep(2)
+
+
 def _preparer_serie(nom, progression):
     """Tout ce que la fiche d'un tome irait chercher, fait d'avance : titres des tomes, résumés, analyse de l'édition,
     sommaire imprimé des tomes (un par un, après les vrais travaux)."""
@@ -6133,6 +6150,7 @@ def _preparer_serie(nom, progression):
     reprendre = google is None and bool(tomes.cle_google_books()) and bool(_tomes_sans_isbn(nom))
     numeros = sorted(_tomes_de(nom))
     differente = _edition_differente(nom)
+    en_lecture = []
     with app.test_request_context():                       # _sommaire_du_tome lit le rôle de la session
         for i, t in enumerate(numeros, 1):
             progression(f"{nom} : tome {t} ({i}/{len(numeros)})")
@@ -6142,12 +6160,12 @@ def _preparer_serie(nom, progression):
                     tomes.resume_tome_google(nom, t)       # Internet, une seule fois (gardé 30 jours)
                     d = tomes.details_tome(nom, t)
                 _sommaire_du_tome(nom, t, d)               # lance la lecture du sommaire si elle est utile
-                attente = 0
-                while sommaire.etat(nom, t).get("en_cours") and attente < 900:
-                    time.sleep(2)
-                    attente += 2
+                if sommaire.etat(nom, t).get("en_cours"):
+                    en_lecture.append(t)
+                _attendre_lectures(sommaire, nom, en_lecture, sommaire.SIMULTANES - 1)   # un tome par cœur libre
             except Exception as e:
                 logger.info("Préparation de %s tome %s : %s", nom, t, e.__class__.__name__)
+        _attendre_lectures(sommaire, nom, en_lecture, 0)
     reste = [] if reprendre else _tomes_sans_isbn(nom)    # ni Google ni le sommaire : l'ISBN imprimé dans les pages
     if reste and sommaire.disponible() and not (_ISBN_SERIE.get(nom) or {}).get("en_cours"):
         progression(f"{nom} : ISBN lus dans les pages ({len(reste)} tome(s))")

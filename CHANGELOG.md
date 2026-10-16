@@ -1,5 +1,9 @@
 # Historique des versions
 
+## ⚡ Préparation plus rapide (16 octobre 2026)
+- La lecture des sommaires en arrière-plan lit **plusieurs tomes en même temps** : un par cœur du serveur, en gardant un cœur libre pour que l'appli reste fluide (3 tomes à la fois avec 4 cœurs, environ 3 fois plus rapide). Le nombre suit tout seul les cœurs donnés au conteneur : en ajouter accélère encore.
+- Les tomes d'une même série lus en même temps enregistrent leurs chapitres chacun leur tour (aucun ne peut effacer celui d'à côté).
+
 ## 🧹 Pages parasites et 🎵 choix du générique (15 octobre 2026)
 - 🧹 **Pages parasites** (menu ⋯ de la série) : les pages qui reviennent à l'identique dans plusieurs chapitres (crédits de l'équipe de scan, « on recrute », pubs pour leur site) sont regroupées et montrées en vignettes. On coche les groupes à jeter, ils sont retirés de tous les tomes (ancien fichier à la corbeille 30 jours, fichier partagé par qBittorrent jamais modifié sur place). Les signets des chapitres posés sur une page retirée passent à la page suivante ; position de lecture et chapitres lus suivent.
 - Les pages refusées sont retenues avec la série : les tomes qui arrivent ensuite en sont nettoyés tout seuls (toutes les 6 heures).
