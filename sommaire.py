@@ -22,7 +22,7 @@ from pathlib import Path
 logger = logging.getLogger("mouflanga")
 
 PAGES_MAX = 14                  # images lues au début du tome
-VERSION = 6                     # version du lecteur : un tome « sans sommaire » lu par une version plus ancienne est relu
+VERSION = 7                     # version du lecteur : un tome « sans sommaire » lu par une version plus ancienne est relu
 _MOTS = r"(?:chapitre|kapitel|chap|ch|sc[eè]ne|[ée]pisode|ep|acte|round|le[cç]on|lesson|partie|nuit|jour|histoire|file|stage|level|trick|#)"
 _CHIFFRES_OCR = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1", "S": "5", "A": "4", "B": "8", "Z": "2"})
 # « SCÈNE 1 La tueuse aux yeux d'argent .......5 », « Chapitre 12 : Le retour 45 », « 12. Le retour ...... 45 »

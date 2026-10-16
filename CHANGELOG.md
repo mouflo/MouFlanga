@@ -8,8 +8,9 @@
 - 🎵 **Changer le générique** (menu ⋯, séries dont l'anime n'est pas dans Emby) : tous les openings et endings de l'anime (AnimeThemes), à écouter avant d'en choisir un ; ou « 🔇 Aucun générique ». Le choix est gardé : la recherche automatique n'y touche plus.
 - 🔊 Les génériques des mangas sont mis **au même volume que ceux de MouFlopening** (même méthode et même niveau réglé là-bas) ; bouton dans ⚙️ Réglages pour remettre au niveau ceux déjà posés.
 - Sommaires : « PRÉCÉPTEÉ » mal lu, « CHAPITRE SPÉCIAL » en fin de liste, « CINQUANTE -SIXIÈME » (Gintama) ; pilules à fond tramé lues après effacement de la trame (Air Gear).
+- Lecteur de sommaires en version 7 : « 🚀 Préparer toute la bibliothèque » relit aussi les tomes restés sans chapitres le 15 octobre (bilan de l'apprentissage : 446 tomes sur 853 lus correctement, contre 385 au premier passage).
 
-## 🧠 Sommaires : apprentissage sur toute la bibliothèque (15 octobre 2026, en cours)
+## 🧠 Sommaires : apprentissage sur toute la bibliothèque (15 octobre 2026)
 Balayage des tomes jamais lus, un par un ; chaque forme de sommaire mal lue est apprise par le lecteur :
 - « La 39e nuit Titre ---- 21 » (numéro avant le mot), « p077 02 Titre » (page d'abord), « 01 TITRE 001 » (ni mot ni points), « PREMIER PRÉCEPTE : … 5 » (ordinaux en lettres), « 2e Quart-temps : … 063 » (mot propre à la série, appris sur la page), « Épisode 1 / titre / 005 » sur trois lignes, « (Trick:43 24) ».
 - « Chapitre 131 » avec la page dans un bandeau noir dessous ; blocs « CHAPITRE 128 » + titre sur deux lignes + « …… 005 » ; « 16e punch » au-dessus du titre, texte blanc sur fond sombre ; grands numéros de page en couleur sur une illustration ; double page scannée d'un seul tenant (chaque moitié relue).
