@@ -68,3 +68,11 @@ class FichierPartTest(unittest.TestCase):
             vide.write_bytes(b"\0" * 10)                     # vraiment incomplet : pas une archive
             self.assertEqual(torrents.fichiers_du_torrent(Path(d)), [bon])
             self.assertEqual((torrents.suffixe(bon), torrents.nom_sans_ext(bon)), (".cbz", "Tokyo Revengers T01 - Ken Wakui"))
+
+    def test_rar_nomme_cbz(self):
+        import tempfile
+        import torrents
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "Tokyo Revengers T16 - Ken Wakui.cbz.part"
+            f.write_bytes(b"Rar!\x1a\x07\x01\x00" + b"\0" * 20)
+            self.assertEqual(torrents.suffixe(f), ".cbr")

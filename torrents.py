@@ -255,12 +255,21 @@ def _ext_cachee(f: Path) -> str:
     if f.suffix.lower() != ".part":
         return ""
     ext = Path(f.stem).suffix.lower()
-    sig = _SIGNATURES.get(ext)
+    if ext not in _SIGNATURES:
+        return ""
     try:
         with open(f, "rb") as h:
-            return ext if sig and h.read(len(sig)) == sig else ""
+            debut = h.read(8)
     except OSError:
         return ""
+    if debut.startswith(_SIGNATURES[ext]):
+        return ext
+    # « .cbz » qui contient en fait du RAR (ou l'inverse) : le contenu décide
+    bd = ext in (".cbz", ".cbr")
+    for vraie, sig in _SIGNATURES.items():
+        if debut.startswith(sig) and (vraie in (".cbz", ".cbr")) == bd and vraie not in (".7z", ".pdf"):
+            return vraie
+    return ""
 
 
 def suffixe(f: Path) -> str:
