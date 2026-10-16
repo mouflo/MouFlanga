@@ -4904,7 +4904,7 @@ def api_tome_chapitres():
         _apprendre_chiffres(name, tome)
     except Exception as e:
         logger.info("Chiffres du sommaire de %s : %s", name, e.__class__.__name__)
-    return jsonify({"ok": True, "message": f"Tome {tome} : {len(chapitres)} chapitres enregistrés (pas encore validés)."})
+    return jsonify({"ok": True, "message": f"{_nom_tome(name, tome)} : {len(chapitres)} chapitres enregistrés (pas encore validés)."})
 
 
 def _apprendre_chiffres(name, tome):
@@ -4960,7 +4960,7 @@ def api_tome_valider():
         _apprendre_chiffres(name, tome)
     except Exception as e:
         logger.info("Chiffres du sommaire de %s : %s", name, e.__class__.__name__)
-    return jsonify({"ok": True, "message": f"Tome {tome} : chapitres validés, l'appli n'y touchera plus."})
+    return jsonify({"ok": True, "message": f"{_nom_tome(name, tome)} : chapitres validés, l'appli n'y touchera plus."})
 
 
 _SIGNETS = {}              # (série, tome) → {"en_cours", "message", "ok"} : écriture des chapitres dans le .cbz
