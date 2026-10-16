@@ -3854,7 +3854,11 @@ def _ranger_oeuvres_derivees(nom, fichiers):
     for f in fichiers:
         if torrents.suffixe(f) not in (".cbz", ".cbr", ".pdf"):
             continue
-        rel = tomes.classer(nom, torrents.nom_sans_ext(f), liste) or _derive_par_mot(nom, torrents.nom_sans_ext(f))
+        rel = tomes.classer(nom, torrents.nom_sans_ext(f), liste)
+        if not rel and tomes.reste_du_nom(nom, torrents.nom_sans_ext(f)):     # titre inconnu : une œuvre nouvelle sur AniList ?
+            liste = [r for r in tomes.relations(nom, forcer=True) if r["relation"] in _RELATIONS_DERIVEES]
+            rel = tomes.classer(nom, torrents.nom_sans_ext(f), liste)
+        rel = rel or _derive_par_mot(nom, torrents.nom_sans_ext(f))
         if rel:
             par_rel.setdefault(rel["id"], (rel, []))[1].append(f)
     if not par_rel:
@@ -3884,7 +3888,7 @@ def _ranger_oeuvres_derivees(nom, fichiers):
                 cible = MANGA_DIR / nom / f"{nom} HS - {titre}{torrents.suffixe(f)}"
                 if not cible.exists():
                     torrents.lier(f, cible)
-                place = tomes.place_par_date(nom, rel.get("debut"))
+                place = tomes.place_par_date(nom, rel.get("debut"), max(_tomes_de(nom) or [0]))
                 if place:
                     infos.setdefault("places_hs", {})[cible.name] = place
             edition.ecrire(MANGA_DIR / nom, infos)
@@ -3926,7 +3930,7 @@ def _placer_hors_series(nom):
         if e.get("groupe") != HORS_SERIE or e.get("identifie") or Path(e["path"]).name in places:
             continue
         rel = tomes.classer(nom, Path(e["path"]).stem, liste)
-        place = tomes.place_par_date(nom, rel.get("debut")) if rel else None
+        place = tomes.place_par_date(nom, rel.get("debut"), max(_tomes_de(nom) or [0])) if rel else None
         if place:
             places[Path(e["path"]).name] = place
             change = True
@@ -6109,7 +6113,7 @@ def _preparer_serie(nom, progression):
         return
     progression(f"{nom} : titres des tomes")
     try:
-        tomes.titres_tomes(nom)
+        tomes.titres_tomes(nom, tome_max=max(_tomes_de(nom) or [0]))
     except Exception as e:
         logger.info("Préparation de %s, titres des tomes : %s", nom, e.__class__.__name__)
     _infos_edition(nom, fichiers)                          # lance l'analyse des pages (en fond) si elle n'est pas faite

@@ -954,7 +954,8 @@ def resume_tome_google(serie: str, tome, reseau: bool = True):
     n = int(tome)
     brut = _charger(serie) or {}
     garde = (brut.get("resumes_tomes") or {}).get(str(n))
-    if garde and (not reseau or time.time() - garde.get("date", 0) < RESUME_TOME_DUREE and garde.get("v", 1) >= RESUME_VERSION):
+    if garde and (not reseau or (garde.get("v", 1) >= RESUME_VERSION
+                                  and (garde.get("texte") or time.time() - garde.get("date", 0) < RESUME_TOME_DUREE))):
         return _resume_de_serie(garde.get("texte", ""), brut, n)
     if not reseau:
         return None                                    # pas encore cherché : l'appelant le fait faire en arrière-plan
@@ -1036,10 +1037,14 @@ def _editeurs_propres(v: str) -> str:
 
 
 def fiche(serie: str, forcer=False) -> dict:
-    """Dates de parution, auteurs, genres, éditeurs (AniList + Wikipédia FR) ; gardé 30 jours dans data/tomes/<série>.json."""
+    """Dates de parution, auteurs, genres, éditeurs (AniList + Wikipédia FR) ; gardée pour de bon une fois trouvée
+    (data/tomes/<série>.json) : seul « 🔄 Relancer l'identification » la refait. Sans résultat : réessais espacés."""
     garde = _charger(serie) or {}
     f = garde.get("fiche")
-    if f and not forcer and garde_a_jour(f, garde, FICHE_DUREE):
+    trouvee = f and any(f.get(k) for k in ("genres", "editeur_fr", "editeur_jp", "debut"))
+    st_actuel = (garde.get("statut_officiel") or {}).get("statut")
+    fin_annoncee = trouvee and st_actuel in TERMINES and not f.get("fin")   # la série vient de se terminer : date de fin à prendre
+    if f and not forcer and ((trouvee and not fin_annoncee) or (not trouvee and garde_a_jour(f, garde, FICHE_DUREE, trouve=False))):
         return f
     st = garde.get("statut_officiel") or {}
     if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans identifiant) : on la refait une fois
@@ -1176,14 +1181,20 @@ def details_tome(serie: str, tome) -> dict:
     return d
 
 
-def titres_tomes(serie: str, forcer=False) -> dict:
+def titres_tomes(serie: str, forcer=False, tome_max=None) -> dict:
     """{numéro de tome (texte): titre} : Wikipédia français (TomeBD, titre_2 = titre français) en priorité,
-    sinon Wikipédia anglais (Graphic novel list : LicensedTitle, sinon TranslitTitle). Gardé 30 jours."""
+    sinon Wikipédia anglais (Graphic novel list : LicensedTitle, sinon TranslitTitle). Gardés pour de bon une fois
+    trouvés ; redemandés seulement s'il manque le titre d'un tome qu'on a (tome_max : nouveau tome), au plus une fois
+    par semaine. Rien trouvé : réessais espacés."""
     garde = _charger(serie) or {}
     t = garde.get("titres_tomes")
-    if t and "details" in t and t.get("v") == VERSION_TITRES and not forcer \
-            and garde_a_jour(t, garde, FICHE_DUREE, trouve=bool(t.get("titres"))):
-        return t.get("titres", {})
+    if t and "details" in t and t.get("v") == VERSION_TITRES and not forcer:
+        connus = t.get("titres") or {}
+        manque = bool(tome_max) and connus and any(str(n) not in connus for n in range(1, int(tome_max) + 1))
+        if connus and not (manque and time.time() - t.get("date", 0) > 7 * 86400):
+            return connus
+        if not connus and garde_a_jour(t, garde, FICHE_DUREE, trouve=False):
+            return connus
     st = garde.get("statut_officiel") or {}
     if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans titre anglais) : refaite une fois
         st = statut_officiel(serie, forcer=True) or st
@@ -1279,43 +1290,39 @@ def titres_tomes(serie: str, forcer=False) -> dict:
 # le placer dans l'ordre de lecture d'après les dates japonaises des tomes (Wikipédia anglais), comme les épisodes
 # spéciaux de TVDB (« après l'épisode 4 »).
 
-RELATIONS_DUREE = 30 * 86400
 _TYPES_LIES = {"SIDE_STORY", "SPIN_OFF", "ALTERNATIVE", "SEQUEL", "PREQUEL", "PARENT", "SUMMARY", "COMPILATION", "OTHER"}
 _MOTS_VIDES = {"the", "a", "an", "of", "no", "to", "de", "la", "le", "les", "du", "des", "et", "and", "from", "kara", "manga",
                "fr", "vf", "cbz", "cbr", "digital", "ebook", "french", "integrale", "tome", "tomes", "vol", "volume", "edition"}
 
 
-def _ecrire_cache(serie, cle, valeur):
-    DOSSIER.mkdir(parents=True, exist_ok=True)
-    try:
-        brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        brut = {}
-    brut[cle] = valeur
-    tmp = _fichier(serie).with_suffix(".tmp")
-    tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(_fichier(serie))
+def _cle_connaissance(serie):
+    """Clé d'une série dans data/connaissances.sqlite : son numéro AniList (il ne change pas si on renomme la série)."""
+    ident = ((_charger(serie) or {}).get("statut_officiel") or {}).get("anilist")
+    return f"anilist:{ident}" if ident else None
 
 
 def relations(serie: str, forcer=False) -> list[dict]:
     """Œuvres liées à la série sur AniList (romans exclus) : [{id, relation, format, volumes, debut "AAAA-MM-JJ", titres}].
-    Gardées 30 jours ; [] si la série n'est pas identifiée sur AniList ou si AniList ne répond pas."""
-    garde = (_charger(serie) or {}).get("relations")
-    if garde and not forcer and time.time() - garde.get("date", 0) < RELATIONS_DUREE:
-        return garde.get("liste") or []
-    ident = ((_charger(serie) or {}).get("statut_officiel") or {}).get("anilist")
-    if not ident:
+    Apprises une fois pour toutes (data/connaissances.sqlite) ; forcer=True (un fichier porte un titre inconnu : il y a
+    peut-être une nouvelle œuvre) redemande à AniList, au plus une fois par jour. [] si la série n'est pas sur AniList."""
+    import connaissances
+    cle = _cle_connaissance(serie)
+    if not cle:
         return []
+    ident = int(cle.split(":")[1])
+    garde = connaissances.oeuvres_liees(cle)
+    if garde is not None and (not forcer or time.time() - (connaissances.derniere_demande(cle, "oeuvres_liees") or 0) < 86400):
+        return garde
     q = ("query($i:Int){Media(id:$i,type:MANGA){relations{edges{relationType node{id type format volumes "
          "title{romaji english native} synonyms startDate{year month day}}}}}}")
     try:
-        r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"i": int(ident)}}, timeout=15)
+        r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"i": ident}}, timeout=15)
         if r.status_code != 200:
-            return (garde or {}).get("liste") or []
+            return garde or []
         aretes = r.json()["data"]["Media"]["relations"]["edges"]
     except Exception as e:
         logger.info("Œuvres liées de %s : %s", serie, e.__class__.__name__)
-        return (garde or {}).get("liste") or []
+        return garde or []
     liste = []
     for a in aretes:
         n = a.get("node") or {}
@@ -1326,8 +1333,8 @@ def relations(serie: str, forcer=False) -> list[dict]:
         liste.append({"id": n.get("id"), "relation": a["relationType"], "format": n.get("format"), "volumes": n.get("volumes"),
                       "debut": "%04d-%02d-%02d" % (d["year"], d.get("month") or 1, d.get("day") or 1) if d.get("year") else "",
                       "titres": [x for x in (t.get("english"), t.get("romaji"), *(n.get("synonyms") or [])) if x]})
-    _ecrire_cache(serie, "relations", {"date": time.time(), "liste": liste})
-    return liste
+    connaissances.garder_oeuvres_liees(cle, liste)
+    return connaissances.oeuvres_liees(cle) or []
 
 
 def _mots(texte: str) -> list[str]:
@@ -1365,11 +1372,17 @@ def classer(serie: str, nom: str, liste=None) -> dict | None:
     return meilleure
 
 
-def dates_japon(serie: str, forcer=False) -> dict:
-    """{tome (texte): "AAAA-MM-JJ"} : sortie au Japon de chaque tome (Wikipédia anglais, OriginalRelDate). Gardé 30 jours."""
-    garde = (_charger(serie) or {}).get("dates_jp")
-    if garde and not forcer and time.time() - garde.get("date", 0) < RELATIONS_DUREE:
-        return garde.get("tomes") or {}
+def dates_japon(serie: str, tome_max=None, forcer=False) -> dict:
+    """{tome (texte): "AAAA-MM-JJ"} : sortie au Japon de chaque tome (Wikipédia anglais, OriginalRelDate). Apprises une
+    fois pour toutes (data/connaissances.sqlite) ; redemandées seulement s'il manque la date d'un tome qu'on a
+    (tome_max : un nouveau tome est sorti), au plus une fois par semaine."""
+    import connaissances
+    cle = _cle_connaissance(serie) or f"nom:{_simple(serie)}"
+    garde = connaissances.dates_tomes(cle)
+    derniere = connaissances.derniere_demande(cle, "dates_tomes")
+    manque = bool(tome_max) and any(str(t) not in garde for t in range(1, int(tome_max) + 1))
+    if derniere is not None and not forcer and not (manque and time.time() - derniere > 7 * 86400):
+        return garde
     st = (_charger(serie) or {}).get("statut_officiel") or {}
     noms = list(dict.fromkeys([x for x in (st.get("titre"), st.get("titre_en")) if x] + _variantes(serie)))
     dates = {}
@@ -1383,16 +1396,16 @@ def dates_japon(serie: str, forcer=False) -> dict:
                     dates.setdefault(vol.group(1), d)           # 1re liste = édition d'origine (pas les rééditions plus bas)
     except Exception as e:
         logger.info("Dates japonaises de %s : %s", serie, e.__class__.__name__)
-        return (garde or {}).get("tomes") or {}
-    _ecrire_cache(serie, "dates_jp", {"date": time.time(), "tomes": dates})
-    return dates
+        return garde
+    connaissances.garder_dates_tomes(cle, dates)
+    return connaissances.dates_tomes(cle)
 
 
-def place_par_date(serie: str, debut: str):
+def place_par_date(serie: str, debut: str, tome_max=None):
     """Dernier tome sorti au Japon avant (ou le même jour que) l'œuvre liée : elle se lit après lui. None si inconnu."""
     if not debut:
         return None
-    avant = [int(t) for t, d in dates_japon(serie).items() if d and d <= debut]
+    avant = [int(t) for t, d in dates_japon(serie, tome_max).items() if d and d <= debut]
     return max(avant) if avant else None
 
 
