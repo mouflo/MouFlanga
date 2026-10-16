@@ -76,3 +76,16 @@ class FichierPartTest(unittest.TestCase):
             f = Path(d) / "Tokyo Revengers T16 - Ken Wakui.cbz.part"
             f.write_bytes(b"Rar!\x1a\x07\x01\x00" + b"\0" * 20)
             self.assertEqual(torrents.suffixe(f), ".cbr")
+
+
+class OeuvresLieesTest(unittest.TestCase):
+    """« Naruto Gaiden » : tous ses mots sont dans le titre d'une seule œuvre liée d'au moins un tome."""
+
+    def test_nom_court_inclus_dans_le_titre(self):
+        liste = [{"id": 1, "volumes": 1, "titres": ["Naruto Gaiden - Nanadaime Hokage to Akairo no Hanatsuzuki"]},
+                 {"id": 2, "volumes": None, "titres": ["NARUTO Gaiden: Uzu no Naka no Tsumujikaze"]},
+                 {"id": 3, "volumes": 20, "titres": ["Boruto: Naruto Next Generations"]}]
+        self.assertEqual(tomes.classer("Naruto", "Naruto Gaiden", liste)["id"], 1)
+        liste[1]["volumes"] = 1                             # deux œuvres possibles : on ne choisit pas au hasard
+        self.assertIsNone(tomes.classer("Naruto", "Naruto Gaiden", liste))
+        self.assertIsNone(tomes.classer("Naruto", "Naruto T05 - Masashi Kishimoto", liste))

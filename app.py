@@ -3857,7 +3857,7 @@ def _ranger_oeuvres_derivees(nom, fichiers):
         rel = tomes.classer(nom, torrents.nom_sans_ext(f), liste)
         if not rel and tomes.reste_du_nom(nom, torrents.nom_sans_ext(f)):     # titre inconnu : une œuvre nouvelle sur AniList ?
             liste = [r for r in tomes.relations(nom, forcer=True) if r["relation"] in _RELATIONS_DERIVEES]
-            rel = tomes.classer(nom, torrents.nom_sans_ext(f), liste)
+            rel = tomes.classer(nom, torrents.nom_sans_ext(f), liste) or tomes.chercher_oeuvre(nom, torrents.nom_sans_ext(f))
         rel = rel or _derive_par_mot(nom, torrents.nom_sans_ext(f))
         if rel:
             par_rel.setdefault(rel["id"], (rel, []))[1].append(f)
@@ -3929,7 +3929,7 @@ def _placer_hors_series(nom):
     for e in _entrees(_scan().get(nom) or []):
         if e.get("groupe") != HORS_SERIE or e.get("identifie") or Path(e["path"]).name in places:
             continue
-        rel = tomes.classer(nom, Path(e["path"]).stem, liste)
+        rel = tomes.classer(nom, Path(e["path"]).stem, liste) or tomes.chercher_oeuvre(nom, Path(e["path"]).stem)
         place = tomes.place_par_date(nom, rel.get("debut"), max(_tomes_de(nom) or [0])) if rel else None
         if place:
             places[Path(e["path"]).name] = place

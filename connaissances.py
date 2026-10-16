@@ -87,3 +87,15 @@ def derniere_demande(serie: str, sujet: str):
     """Date (secondes) de la dernière demande faite à Internet sur ce sujet, ou None."""
     return _lire(("dem", serie, sujet), "SELECT date FROM demandes WHERE serie=? AND sujet=?", (serie, sujet),
                  lambda rs: rs[0][0] if rs else None)
+
+
+def garder_demande(serie: str, sujet: str):
+    """Note qu'une demande a été faite (pour ne jamais refaire la même recherche)."""
+    with _VERROU:
+        c = _connexion()
+        try:
+            with c:
+                c.execute("INSERT OR REPLACE INTO demandes VALUES (?,?,?)", (serie, sujet, time.time()))
+        finally:
+            c.close()
+    _MEMOIRE.pop(("dem", serie, sujet), None)

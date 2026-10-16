@@ -1311,6 +1311,13 @@ def relations(serie: str, forcer=False) -> list[dict]:
         return []
     ident = int(cle.split(":")[1])
     garde = connaissances.oeuvres_liees(cle)
+    if garde is not None and connaissances.derniere_demande(cle, "mangaupdates") is None:
+        try:                                             # liste apprise avant que MangaUpdates ne serve : complétée une fois
+            connaissances.garder_oeuvres_liees(cle, _relations_mangaupdates(serie, garde))
+            connaissances.garder_demande(cle, "mangaupdates")
+            garde = connaissances.oeuvres_liees(cle)
+        except Exception as e:
+            logger.info("Œuvres liées de %s (MangaUpdates) : %s", serie, e.__class__.__name__)
     if garde is not None and (not forcer or time.time() - (connaissances.derniere_demande(cle, "oeuvres_liees") or 0) < 86400):
         return garde
     q = ("query($i:Int){Media(id:$i,type:MANGA){relations{edges{relationType node{id type format volumes "
@@ -1333,8 +1340,60 @@ def relations(serie: str, forcer=False) -> list[dict]:
         liste.append({"id": n.get("id"), "relation": a["relationType"], "format": n.get("format"), "volumes": n.get("volumes"),
                       "debut": "%04d-%02d-%02d" % (d["year"], d.get("month") or 1, d.get("day") or 1) if d.get("year") else "",
                       "titres": [x for x in (t.get("english"), t.get("romaji"), *(n.get("synonyms") or [])) if x]})
+    try:
+        liste += _relations_mangaupdates(serie, liste)
+        connaissances.garder_demande(cle, "mangaupdates")
+    except Exception as e:
+        logger.info("Œuvres liées de %s (MangaUpdates) : %s", serie, e.__class__.__name__)
     connaissances.garder_oeuvres_liees(cle, liste)
     return connaissances.oeuvres_liees(cle) or []
+
+
+_RELATIONS_MU = {"side story": "SIDE_STORY", "spin-off": "SPIN_OFF", "sequel": "SEQUEL", "prequel": "PREQUEL",
+                 "alternate story": "ALTERNATIVE", "main story": "PARENT"}
+
+
+def _deja_connue(titres, liste):
+    """Une œuvre MangaUpdates est-elle déjà dans la liste d'AniList (mêmes mots de titre) ?"""
+    for titre in titres:
+        mt = set(_mots(titre))
+        for o in liste:
+            for t in o.get("titres") or []:
+                mo = set(_mots(t))
+                if mt and mo and len(mt & mo) / max(len(mt), len(mo)) >= 0.6:
+                    return True
+    return False
+
+
+def _relations_mangaupdates(serie: str, liste: list[dict]) -> list[dict]:
+    """Œuvres liées d'après MangaUpdates, que la fiche AniList de la série ne cite pas (liens à sens unique : « Naruto
+    Gaiden » ne figure pas dans la fiche AniList de Naruto, mais MangaUpdates le donne comme suite). Romans exclus.
+    Date : l'année seulement (fin d'année, faute de mieux)."""
+    mu = ((_charger(serie) or {}).get("fiche") or {}).get("mangaupdates")
+    if not mu:
+        return []
+    d = _SESSION.get(f"https://api.mangaupdates.com/v1/series/{mu}", timeout=15).json()
+    out = []
+    for z in d.get("related_series") or []:
+        rel = _RELATIONS_MU.get((z.get("relation_type") or "").lower())
+        nom = z.get("related_series_name") or ""
+        if not rel or re.search(r"\((?:novel|light novel)\)|\bdj\b", nom, re.I) or _deja_connue([nom], liste):
+            continue
+        try:
+            x = _SESSION.get(f"https://api.mangaupdates.com/v1/series/{z['related_series_id']}", timeout=15).json()
+        except Exception:
+            continue
+        if (x.get("type") or "").lower() not in ("manga", "manhwa", "manhua"):
+            continue
+        vol = re.search(r"(\d+)\s*Volumes?", x.get("status") or "", re.I)
+        titres = [x.get("title") or nom] + [a.get("title") for a in x.get("associated") or [] if a.get("title")][:8]
+        if _deja_connue(titres, liste):
+            continue
+        out.append({"id": int(z["related_series_id"]), "relation": rel, "format": "MANGA",
+                    "volumes": int(vol.group(1)) if vol else (0 if re.search(r"chapter|oneshot", x.get("status") or "", re.I) else None),
+                    "debut": f"{x['year']}-12-31" if str(x.get("year") or "").isdigit() else "", "titres": titres})
+        time.sleep(0.3)
+    return out
 
 
 def _mots(texte: str) -> list[str]:
@@ -1369,7 +1428,53 @@ def classer(serie: str, nom: str, liste=None) -> dict | None:
             s = len(mt & reste) / len(mt)
             if communs and s >= 0.5 and s > score:
                 meilleure, score = rel, s
-    return meilleure
+    if meilleure:
+        return meilleure
+    # « Naruto Gaiden » : tous les mots du nom sont dans le titre d'une œuvre (« NARUTO Gaiden: Nanadaime Hokage… ») ;
+    # gardé seulement si une seule œuvre de ce genre fait au moins un tome (sinon : impossible de choisir)
+    if not any(len(m) >= 4 for m in reste):
+        return None
+    candidates = [rel for rel in (liste if liste is not None else relations(serie))
+                  if (rel.get("volumes") or 0) >= 1 and any(reste <= {m for m in _mots(t)} for t in rel.get("titres") or [])]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def chercher_oeuvre(serie: str, nom: str):
+    """Recherche « dans l'autre sens » : le nom du fichier sur AniList, quand la fiche de la série ne cite pas l'œuvre.
+    Gardée si son titre commence par le nom de la série et contient tous les mots du nom ; ajoutée pour de bon aux
+    œuvres liées de la série. Une même recherche n'est jamais refaite."""
+    import connaissances
+    cle = _cle_connaissance(serie)
+    reste = reste_du_nom(serie, nom)
+    if not cle or not reste:
+        return None
+    sujet = "recherche:" + " ".join(reste)
+    if connaissances.derniere_demande(cle, sujet) is not None:
+        return None
+    relations(serie)                                     # la liste complète d'abord : la trouvaille s'y ajoute
+    q = ("query($s:String){Page(perPage:8){media(search:$s,type:MANGA,format_not:NOVEL){id format volumes "
+         "title{romaji english} synonyms startDate{year month day}}}}")
+    try:
+        r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": f"{serie} {' '.join(reste)}"}}, timeout=15)
+        medias = r.json()["data"]["Page"]["media"] if r.status_code == 200 else None
+    except Exception:
+        medias = None
+    if medias is None:
+        return None
+    base = _simple(serie)
+    trouvees = []
+    for m in medias:
+        titres = [x for x in (m["title"].get("english"), m["title"].get("romaji"), *(m.get("synonyms") or [])) if x]
+        if any(_simple(t).startswith(base) and set(reste) <= set(_mots(t)) for t in titres) and (m.get("volumes") or 0) >= 1:
+            d = m.get("startDate") or {}
+            trouvees.append({"id": m["id"], "relation": "SIDE_STORY", "format": m.get("format"), "volumes": m.get("volumes"),
+                             "debut": "%04d-%02d-%02d" % (d["year"], d.get("month") or 1, d.get("day") or 1) if d.get("year") else "",
+                             "titres": titres})
+    connaissances.garder_demande(cle, sujet)
+    if len(trouvees) != 1:
+        return None
+    connaissances.garder_oeuvres_liees(cle, trouvees)
+    return trouvees[0]
 
 
 def dates_japon(serie: str, tome_max=None, forcer=False) -> dict:
