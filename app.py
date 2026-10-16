@@ -1226,8 +1226,8 @@ def api_series_travail_comptes():
     comptes["resumes"] = sum(1 for t in numeros if manuels.get(str(t)) or (details.get(str(t)) or {}).get("resume")
                              or tomes.resume_tome_memoire(name, t))
     chap = lambda t: (sommaires.get(str(t)) or {}).get("chapitres") or []
-    # « fait » = sommaire VALIDÉ (bouton ✅ ou saisi à la main), pas seulement lu automatiquement
-    valide = lambda t: bool((sommaires.get(str(t)) or {}).get("valide_le") or (sommaires.get(str(t)) or {}).get("manuel"))
+    # « fait » = sommaire VALIDÉ (bouton ✅), pas seulement lu automatiquement ni enregistré en cours de saisie
+    valide = lambda t: bool((sommaires.get(str(t)) or {}).get("valide_le"))
     comptes["titres"] = sum(1 for t in numeros if chap(t) and valide(t))
     comptes["liens"] = sum(1 for t in numeros if chap(t) and valide(t) and signets.nb_signets(chap(t)) == len(chap(t)))
     comptes["isbn"] = sum(1 for t in numeros if str(t) in _isbn_connus(infos))
@@ -4179,8 +4179,12 @@ def _relire_fichiers_serie(serie, infos):
             chapitres = signets.lire(f)           # les « liens » : chaque chapitre avec la page de lecture où il commence
             if chapitres:
                 rec = {"chapitres": chapitres, "fichier": True}
-                if notes.get("sommaire") == "manuel":          # saisi à la main : reste verrouillé, jamais relu automatiquement
-                    rec.update(manuel=True, valide_le=notes.get("valide_le", ""))
+                if notes.get("sommaire") == "manuel":          # saisi à la main : jamais relu automatiquement
+                    rec.update(manuel=True)
+                    if notes.get("valide_le"):
+                        rec["valide_le"] = notes["valide_le"]  # validé : verrouillé
+                    else:
+                        rec["saisie"] = True                   # saisie pas encore validée
                 infos.setdefault("sommaires", {})[t] = rec
     if titres:
         infos["titres_fichiers"] = titres[:5]
@@ -4558,7 +4562,6 @@ def _sommaire_du_tome(name, tome, d):
     import edition
     lu = (edition.lire(MANGA_DIR / name).get("sommaires") or {}).get(str(tome))
     e = _tome_complet(name, tome)
-    wiki_avant = [re.sub(r"^\d+(?:[.,]\d)?\.?\s*", "", c).strip().lower() for c in (d.get("chapitres") or [])]
     if not lu and e:                                     # chapitres déjà écrits dans le fichier (série reçue d'un partage)
         import signets
         notes = signets.lire(MANGA_DIR / e["path"])
@@ -4572,7 +4575,7 @@ def _sommaire_du_tome(name, tome, d):
     besoin = not d.get("chapitres") or d.get("chapitres_langue") == "en" or differente or sans_titres
     if lu and lu.get("chapitres") and (besoin or lu.get("manuel")):
         d["chapitres"] = [f"{c['num']:g}. {c['titre']}" if c.get("titre") else f"{c['num']:g}." for c in lu["chapitres"]]
-        d["chapitres_langue"], d["chapitres_source"] = "", "corrigés à la main" if lu.get("manuel") else "écrits dans le fichier" if lu.get("fichier") else "sommaire du tome, lu automatiquement"
+        d["chapitres_langue"], d["chapitres_source"] = "", "validés à la main" if lu.get("valide_le") else "saisis à la main" if lu.get("manuel") else "écrits dans le fichier" if lu.get("fichier") else "sommaire du tome, lu automatiquement"
         if e:
             d["chapitres_pages"] = [c.get("image") for c in lu["chapitres"]]
             d["fichier"] = e["key"]
@@ -4593,17 +4596,16 @@ def _sommaire_du_tome(name, tome, d):
             pages.append(c.get("image") if c is not None else None)
         if ok:
             d["chapitres"], d["chapitres_pages"], d["fichier"] = titres, pages, e["key"]
-    copie = bool(lu and (lu.get("manuel") or lu.get("valide_le")) and wiki_avant and sum(
-        (c.get("titre") or "").strip().lower() in wiki_avant for c in lu.get("chapitres", [])) * 2 >= len(lu.get("chapitres", [])))
-    ancien = bool(lu and not lu.get("fichier") and not lu.get("saisie") and lu.get("version", 1) < sommaire.VERSION
-                  and (copie or not (lu.get("manuel") or lu.get("valide_le"))))   # validé avec les titres de Wikipédia, ou pas validé
+    # lu par une version plus ancienne du lecteur : relu, sauf si tu y as touché (saisie en cours ou tome validé)
+    ancien = bool(lu and not lu.get("fichier") and lu.get("version", 1) < sommaire.VERSION
+                  and not (lu.get("saisie") or lu.get("manuel") or lu.get("valide_le")))
     # liste venue d'Internet avec des titres mais sans pages : le sommaire imprimé sert à relever les numéros de page
     if e and sommaire.disponible() and (not lu or ancien) and (besoin or ancien or d.get("chapitres")) and auth.role() != "lecteur":
         _lire_sommaire(name, tome, e)
     et = sommaire.etat(name, tome)
     d["sommaire"] = {"possible": bool(e) and sommaire.disponible(), "en_cours": bool(et.get("en_cours")),
                      "message": et.get("message", ""), "lu": bool(lu), "manuel": bool(lu and lu.get("manuel")),
-                     "valide_le": (lu or {}).get("valide_le", ""), "fichier": bool(lu and lu.get("fichier")),
+                     "valide_le": (lu or {}).get("valide_le", ""), "saisie": bool(lu and lu.get("saisie")), "fichier": bool(lu and lu.get("fichier")),
                      "manquants": _numeros_manquants([c.get("num") for c in (lu or {}).get("chapitres", [])])}
 
 
@@ -4625,8 +4627,8 @@ def _lire_sommaire(name, tome, e, forcer=False):
         if r.get("isbn") and not (infos.get("isbn") or {}).get(str(tome)):        # ISBN imprimé dans le tome : gardé comme info
             infos.setdefault("isbn", {})[str(tome)] = r["isbn"]
         avant = (infos.get("sommaires") or {}).get(str(tome)) or {}
-        if avant.get("saisie") and avant.get("chapitres") and not forcer:
-            return                                       # chapitres écrits à la main : intouchables sans demande explicite
+        if (avant.get("saisie") or avant.get("manuel") or avant.get("valide_le")) and avant.get("chapitres") and not forcer:
+            return                                       # tome validé ou saisi à la main : intouchable sans demande explicite
         if avant.get("source") == "pages d'équipe" and avant.get("chapitres") and not r.get("chapitres"):
             return                                       # rien de lisible dans le tome : les chapitres déduits restent
         if avant.get("manuel") or avant.get("valide_le"):
@@ -4715,14 +4717,15 @@ def api_tome_chapitres():
         return jsonify({"ok": False, "error": "Aucun chapitre : ajoute au moins une ligne."}), 400
     chapitres.sort(key=lambda c: c["num"])
     nouveau = dict(ancien)
-    nouveau.update(chapitres=chapitres, manuel=True, saisie=True, valide_le=time.strftime("%Y-%m-%d"))
+    nouveau.update(chapitres=chapitres, manuel=True, saisie=True)
+    nouveau.pop("valide_le", None)                       # enregistré, pas validé : le bouton ✅ Valider verrouille le tome
     infos.setdefault("sommaires", {})[str(tome)] = nouveau
     edition.ecrire(MANGA_DIR / name, infos)
     try:
         _apprendre_chiffres(name, tome)
     except Exception as e:
         logger.info("Chiffres du sommaire de %s : %s", name, e.__class__.__name__)
-    return jsonify({"ok": True, "message": f"Tome {tome} : {len(chapitres)} chapitres enregistrés."})
+    return jsonify({"ok": True, "message": f"Tome {tome} : {len(chapitres)} chapitres enregistrés (pas encore validés)."})
 
 
 def _apprendre_chiffres(name, tome):
@@ -4757,8 +4760,8 @@ def _apprendre_chiffres(name, tome):
 
 @app.route("/api/tome/valider", methods=["POST"])
 def api_tome_valider():
-    """✅ « C'est bon » : le sommaire lu automatiquement est vérifié, il passe en « validé à la main » (il n'est plus
-    remplacé par une relecture sans confirmation, et le tome n'est plus signalé « à vérifier »)."""
+    """✅ Valider : la liste des chapitres et leurs pages sont complètes et justes (lue automatiquement ou saisie à la
+    main). Le tome est verrouillé : plus jamais relu ni modifié automatiquement, plus signalé « à vérifier »."""
     import edition
     body = request.get_json(silent=True) or {}
     name = str(body.get("series", ""))
@@ -4778,7 +4781,7 @@ def api_tome_valider():
         _apprendre_chiffres(name, tome)
     except Exception as e:
         logger.info("Chiffres du sommaire de %s : %s", name, e.__class__.__name__)
-    return jsonify({"ok": True, "message": f"Tome {tome} : chapitres validés."})
+    return jsonify({"ok": True, "message": f"Tome {tome} : chapitres validés, l'appli n'y touchera plus."})
 
 
 _SIGNETS = {}              # (série, tome) → {"en_cours", "message", "ok"} : écriture des chapitres dans le .cbz

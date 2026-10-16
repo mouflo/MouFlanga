@@ -8,6 +8,7 @@
 - 🎵 **Changer le générique** (menu ⋯, séries dont l'anime n'est pas dans Emby) : tous les openings et endings de l'anime (AnimeThemes), à écouter avant d'en choisir un ; ou « 🔇 Aucun générique ». Le choix est gardé : la recherche automatique n'y touche plus.
 - 🔊 Les génériques des mangas sont mis **au même volume que ceux de MouFlopening** (même méthode et même niveau réglé là-bas) ; bouton dans ⚙️ Réglages pour remettre au niveau ceux déjà posés.
 - Sommaires : « PRÉCÉPTEÉ » mal lu, « CHAPITRE SPÉCIAL » en fin de liste, « CINQUANTE -SIXIÈME » (Gintama) ; pilules à fond tramé lues après effacement de la trame (Air Gear).
+- ✅ **Enregistrer n'est plus valider** : 💾 Enregistrer garde ta saisie des chapitres (« ✏️ Enregistré, pas encore validé ») pour y revenir plus tard ; le bouton **✅ Valider le tome** verrouille le tome quand la liste et les pages sont complètes. Un tome validé n'est plus jamais relu ni modifié automatiquement (avant, une liste validée dont les titres ressemblaient à ceux de Wikipédia était relue une fois et ses pages pouvaient être remplacées). Une saisie en cours n'est pas relue non plus. Modifier un tome validé le repasse en « pas encore validé ». Le pense-bête ne compte que les tomes validés.
 - Lecteur de sommaires en version 7 : « 🚀 Préparer toute la bibliothèque » relit aussi les tomes restés sans chapitres le 15 octobre (bilan de l'apprentissage : 446 tomes sur 853 lus correctement, contre 385 au premier passage).
 
 ## 🧠 Sommaires : apprentissage sur toute la bibliothèque (15 octobre 2026)

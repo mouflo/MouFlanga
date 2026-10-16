@@ -404,6 +404,41 @@ class OrganiserTest(BibliothequeTest):
         som = edition.lire(self.root / "Serie")["sommaires"]["1"]
         self.assertEqual([c["titre"] for c in som["chapitres"]], ["Mon titre", "Autre titre"])
 
+    def test_enregistrer_ne_valide_pas_et_le_tome_valide_n_est_jamais_relu(self):
+        import edition
+        import sommaire
+        self.client.post("/api/tome/chapitres", json={"series": "Serie", "tome": 1, "texte": "1. Mon titre @5"})
+        som = edition.lire(self.root / "Serie")["sommaires"]["1"]
+        self.assertTrue(som["saisie"])
+        self.assertNotIn("valide_le", som)                               # enregistré seulement : pas encore validé
+        self.client.post("/api/tome/valider", json={"series": "Serie", "tome": 1})
+        self.assertTrue(edition.lire(self.root / "Serie")["sommaires"]["1"]["valide_le"])
+        self.client.post("/api/tome/chapitres", json={"series": "Serie", "tome": 1, "texte": "1. Mon titre @6"})
+        self.assertNotIn("valide_le", edition.lire(self.root / "Serie")["sommaires"]["1"])   # modifié : à revalider
+        # tome validé (titres identiques à Wikipédia, ancienne version du lecteur) : aucune relecture, aucun changement
+        infos = edition.lire(self.root / "Serie")
+        infos["sommaires"]["1"] = {"chapitres": [{"num": 1.0, "titre": "Mon titre", "image": 4}], "manuel": True,
+                                   "valide_le": "2026-10-13", "version": 1}
+        edition.ecrire(self.root / "Serie", infos)
+        lance = []
+        vrai = self.A._lire_sommaire
+        self.A._lire_sommaire = lambda *a, **k: lance.append(a)
+        try:
+            self.A._sommaire_du_tome("Serie", 1, {"chapitres": ["1. Mon titre"]})
+        finally:
+            self.A._lire_sommaire = vrai
+        self.assertEqual(lance, [])
+        pris = {}
+        vrai, vraies_pages = sommaire.lancer, self.A.archives.pages
+        self.A.archives.pages = lambda c: []
+        sommaire.lancer = lambda n, t, c, lire, nb, enreg, **k: pris.setdefault("enreg", enreg)
+        try:
+            self.A._lire_sommaire("Serie", 1, {"path": "Serie/x.cbz"})
+            pris["enreg"]({"chapitres": [{"num": 1.0, "titre": "Mon titre", "image": 9}], "version": 99})
+        finally:
+            sommaire.lancer, self.A.archives.pages = vrai, vraies_pages
+        self.assertEqual(edition.lire(self.root / "Serie")["sommaires"]["1"]["chapitres"][0]["image"], 4)
+
     def test_valider_les_chapitres_lus_automatiquement(self):
         import edition
         infos = edition.lire(self.root / "Serie")

@@ -149,7 +149,8 @@ class ComptesTest(unittest.TestCase):
         d["resumes_tomes"] = {"1": "Un résumé écrit à la main", "2": "Un autre"}
         d["isbn"] = {"1": "9782505013112", "3": "9782505013129", "4": "9782505013136"}
         d["sommaires"] = {"1": {"chapitres": [{"num": 1, "titre": "A", "image": 3}], "valide_le": "2026-10-14"},
-                          "2": {"chapitres": [{"num": 2, "titre": "B"}], "manuel": True},
+                          "2": {"chapitres": [{"num": 2, "titre": "B"}], "manuel": True, "valide_le": "2026-10-15"},
+                          "5": {"chapitres": [{"num": 5, "titre": "E", "image": 4}], "manuel": True, "saisie": True},   # enregistré, pas validé
                           "3": {"chapitres": [{"num": 3, "titre": "C", "image": 5}]}}      # lu mais pas validé : ne compte pas
         edition.ecrire(self.root / "Serie", d)
         self.A._CACHE_EDITION.clear()

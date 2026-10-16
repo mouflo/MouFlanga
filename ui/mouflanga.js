@@ -1586,17 +1586,18 @@
           : (som.message && !chap.length ? '<div class="dem-sous">' + esc(som.message) + '</div>' : '')) +
         (som.manquants && som.manquants.length ? '<div class="tome-statut verif">⚠️ Il manque dans la liste le' + (som.manquants.length > 1 ? 's chapitres ' : ' chapitre ') +
           esc(som.manquants.join(', ')) + ' : le sommaire du tome les compte-t-il ? Corrige la liste (✏️) ou relis le sommaire.</div>' : '') +
-        (som.lu ? '<div class="tome-statut ' + (som.manuel || som.fichier ? 'ok' : 'verif') + '">' +
-          (som.fichier ? '✅ Chapitres écrits dans le fichier' :
-           som.manuel ? '✅ Validé à la main' + (som.valide_le ? ' le ' + esc(som.valide_le) : '') + ' : rien à revérifier' :
-           '⚠️ Lu automatiquement : titres fiables, pages approximatives. À vérifier, puis valider.' +
-           '<div class="ident-actions admin-seul"><button type="button" class="mou-btn" data-valider="' + n + '">✅ C\'est bon, valider</button></div>') + '</div>' : '') +
+        (som.lu ? '<div class="tome-statut ' + (som.valide_le || (som.fichier && !som.saisie) ? 'ok' : 'verif') + '">' +
+          (som.valide_le ? '✅ Validé le ' + esc(som.valide_le) + ' : l\'appli n\'y touche plus' :
+           som.fichier && !som.saisie ? '✅ Chapitres écrits dans le fichier' :
+           (som.saisie ? '✏️ Enregistré, pas encore validé : tu peux revenir le compléter. Quand la liste et les pages sont complètes, valide le tome.'
+             : '⚠️ Lu automatiquement : titres fiables, pages approximatives. À vérifier, puis valider.') +
+           '<div class="ident-actions admin-seul"><button type="button" class="mou-btn" data-valider="' + n + '">✅ Valider le tome</button></div>') + '</div>' : '') +
         (chap.length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') +
           (d.chapitres_source ? ' <small>(' + esc(d.chapitres_source) + ')</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c, i) { return '<li>' + lien(c, i) + '</li>'; }).join('') + '</ol>' : '') +
         (true ? '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEditer">✏️ ' + (chap.length ? 'Corriger les chapitres' : 'Saisir les chapitres à la main') + '</button>' +
           '</div>' +
           '<div id="chapEdition" hidden><textarea id="chapTexte" class="mou-field" rows="' + Math.max(5, Math.min(14, chap.length + 2)) + '" spellcheck="false" style="width:100%"' + (chap.length ? '' : ' placeholder="1. Titre du chapitre\n2. Titre du chapitre @64"') + '></textarea>' +
-          '<div class="dem-sous">Une ligne par chapitre, avec son numéro : « 2. La valeur de la vie ». Après <b>@</b> : la page du lecteur où le chapitre commence (« 2. La valeur de la vie @64 »). Un @ resté vide ou absent : la page déjà connue est gardée.</div>' +
+          '<div class="dem-sous">Une ligne par chapitre, avec son numéro : « 2. La valeur de la vie ». Après <b>@</b> : la page du lecteur où le chapitre commence (« 2. La valeur de la vie @64 »). Un @ resté vide ou absent : la page déjà connue est gardée.<br>💾 Enregistrer garde ta saisie sans la valider : tu peux revenir la compléter. Un tome validé qu\'on modifie redevient « pas encore validé ».</div>' +
           '<div class="ident-actions"><label>Décaler toutes les pages de <input type="number" id="chapDecalage" value="0" style="width:4.5em"></label>' +
           '<button type="button" class="mou-btn ghost" id="chapDecaler">↔ Appliquer</button></div>' +
           '<div class="ident-actions"><button type="button" class="mou-btn" id="chapEnregistrer" data-tome="' + n + '">💾 Enregistrer</button>' +
@@ -1604,7 +1605,7 @@
         boutonGarder(n) +
         '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-prov="' + n + '">✏️ Noter la provenance (équipe, origine)</button>' +
         '<button type="button" class="mou-btn ghost admin-seul" data-isbn="' + n + '">📚 Noter les ISBN de la série</button>' +
-        (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '"' + (som.manuel ? ' data-manuel="1"' : '') + '>🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' +
+        (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '"' + (som.manuel || som.valide_le || som.saisie ? ' data-manuel="1"' : '') + '>🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' +
         (d.ecriture_possible ? '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEcrire" data-tome="' + n + '" title="Résumé, chapitres, provenance… suivent le fichier quand tu le partages">📝 Écrire les infos dans le fichier</button></div>' : '') +
         '<div id="chapEcrireMsg" class="dem-sous"></div>' ;
       var zone = $('chapTexte');
@@ -1639,7 +1640,7 @@
     });
     $('infosCorps').addEventListener('click', async function (e) {         // 🔍 relire le sommaire imprimé du tome (OCR)
       var b = e.target.closest('[data-sommaire]'); if (!b) return;
-      if (b.dataset.manuel && !confirm('Tu as corrigé ces chapitres à la main. Relire le sommaire les remplace par la lecture automatique. Continuer ?')) return;
+      if (b.dataset.manuel && !confirm('Tu as saisi ou validé ces chapitres à la main. Relire le sommaire peut les remplacer par la lecture automatique. Continuer ?')) return;
       b.disabled = true;
       var r = await post('/api/tome/sommaire', {series: current.id, tome: b.dataset.sommaire, force: !!b.dataset.manuel});
       if (!r.ok) { b.disabled = false; alert(r.error || 'Impossible'); return; }
