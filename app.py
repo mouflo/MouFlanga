@@ -426,6 +426,14 @@ HORS_SERIE = "Hors-série"
 _MOTS_HORS_SERIE = re.compile(r"\bHS\d*\b|hors[ -]?s[ée]rie|data[ -]?book|art[ -]?book|one[ -]?shot|\bgaiden\b|side[ -]?stor(?:y|ies)", re.I)
 
 
+_HS_EXPLICITE = re.compile(r"\bHS\d*\b|hors[ -]?s[ée]rie", re.I)
+
+
+def _hs_du_nom(titre):
+    """Hors-série d'après le nom : un mot de hors-série sans numéro de tome, ou « HS » écrit même avec un numéro."""
+    return _est_hors_serie(titre) and (_numero_tome(titre) is None or bool(_HS_EXPLICITE.search(titre or "")))
+
+
 def _est_hors_serie(titre):
     """« One Piece HS - Blue (Oda) (2005) … » : un hors-série, Data Book, artbook ou one-shot (nom du fichier)."""
     return bool(_MOTS_HORS_SERIE.search((titre or "").replace("_", " ")))
@@ -452,7 +460,7 @@ HS_BASE = 1000
 def _numeros_hs(files):
     """{chemin du fichier: numéro} pour les hors-série de la liste (deux noms qui tombent sur le même numéro : le suivant libre)."""
     out, pris = {}, set()
-    hs = sorted((f for f in files if _numero_tome(_title_of(f)) is None and _est_hors_serie(_title_of(f))), key=lambda f: f.name.lower())
+    hs = sorted((f for f in files if _hs_du_nom(_title_of(f))), key=lambda f: f.name.lower())
     for f in hs:
         n = HS_BASE + zlib.crc32(f.name.lower().encode()) % 8999
         while n in pris:
@@ -574,7 +582,7 @@ def _entrees(files):
             entree = {"key": rel, "path": rel, "title": titre, "num": _numero_chapitre(titre), "groupe": None,
                       "debut": 0, "nb": None, "size_mb": round(taille / 1048576, 1)}
             tome = _numero_tome(titre)
-            if tome is None and _est_hors_serie(titre):
+            if _hs_du_nom(titre):
                 entree.update(groupe=HORS_SERIE, title=_titre_hors_serie(titre), hs=numeros_hs.get(str(f)))
                 ident = hors_serie.lire(_infos_serie(f.relative_to(MANGA_DIR).parts[0])).get(rel)
                 if ident:                                 # identifié à la main ou sur AniList/MangaDex
@@ -582,6 +590,11 @@ def _entrees(files):
                                   descriptif=ident.get("descriptif", ""),
                                   sous=" · ".join(str(x) for x in (ident.get("type"), ident.get("annee"), ident.get("auteur"), ident.get("source"),
                                                                    f"à lire après le tome {ident['apres_tome']}" if ident.get("apres_tome") else "") if x))
+                if not entree.get("apres_tome"):          # place trouvée toute seule (date de sortie au Japon, AniList)
+                    place = (_infos_serie(f.relative_to(MANGA_DIR).parts[0]).get("places_hs") or {}).get(f.name)
+                    if place:
+                        entree["apres_tome"] = place
+                        entree["sous"] = " · ".join(x for x in (entree.get("sous"), f"à lire après le tome {place}") if x)
             elif tome is not None:
                 # Tome complet (un fichier = un tome) : affiché « Tome 03 · chapitres 17 à 25 »
                 couverts, plage = _plage_chapitres(f.relative_to(MANGA_DIR).parts[0], tome)
@@ -3787,6 +3800,148 @@ def _empreintes_tomes(nom):
     return out
 
 
+# ---------------- Œuvres dérivées (spin-off, histoires annexes, gaiden) : reconnues d'après AniList ----------------
+_RELATIONS_DERIVEES = ("SIDE_STORY", "SPIN_OFF", "SEQUEL", "PREQUEL", "ALTERNATIVE", "OTHER")
+
+
+def _titre_derive(nom, rel):
+    """« A Letter from Keisuke Baji » : titre de l'œuvre liée sans le nom de la série mère."""
+    titre = next((t for t in rel.get("titres") or [] if re.search(r"[a-z]", t)), (rel.get("titres") or ["Hors-série"])[0])
+    simple_serie = tomes._simple(nom)
+    mots = titre.replace("卍", " ").split()
+    while mots and tomes._simple(mots[0]).strip() and tomes._simple(mots[0]) in simple_serie.split():
+        mots.pop(0)
+    return re.sub(r"^[\s:–-]+", "", " ".join(mots)).strip() or titre
+
+
+def _relier_univers(mere, fille):
+    """Met la série dérivée dans l'univers de la série mère (créé au nom de la mère s'il n'existe pas). Un univers choisi
+    à la main n'est jamais changé."""
+    import edition
+    dm, df = edition.lire(MANGA_DIR / mere), edition.lire(MANGA_DIR / fille)
+    univers = dm.get("univers") or df.get("univers") or mere
+    if df.get("univers") and df["univers"] != univers:
+        return
+    ordres = [_univers_de(x)["ordre_univers"] or 0 for x in _scan() if _univers_de(x)["univers"] == univers]
+    if not dm.get("univers"):
+        dm.update(univers=univers, ordre_univers=dm.get("ordre_univers") or 1)
+        edition.ecrire(MANGA_DIR / mere, dm)
+    if not df.get("univers"):
+        df.update(univers=univers, ordre_univers=max(ordres + [1]) + 1)
+        edition.ecrire(MANGA_DIR / fille, df)
+        logger.info("Univers « %s » : « %s » relié à « %s »", univers, fille, mere)
+
+
+def _serie_derivee(nom, rel):
+    """Série de la bibliothèque qui EST déjà cette œuvre dérivée (même titre), ou un nom neuf « Mère - Titre »."""
+    for x in _scan():
+        if x not in (nom, "(Sans série)") and (tomes.classer(nom, x, [rel]) or {}).get("id") == rel["id"]:
+            return x
+    return f"{nom} - {_titre_derive(nom, rel)}"
+
+
+def _ranger_oeuvres_derivees(nom, fichiers):
+    """Fichiers d'un torrent qui sont une œuvre liée à la série (AniList) : un spin-off de plusieurs tomes va dans SA
+    série (reliée par univers), une histoire annexe d'un seul livre devient un hors-série de la série. Renvoie les
+    fichiers qui restent pour la série elle-même."""
+    try:
+        if not ((tomes._charger(nom) or {}).get("statut_officiel") or {}).get("anilist"):
+            tomes.statut_officiel(nom)                   # série neuve : sa fiche AniList d'abord (ses œuvres liées en dépendent)
+        liste = [r for r in tomes.relations(nom) if r["relation"] in _RELATIONS_DERIVEES]
+    except Exception:
+        liste = []
+    par_rel = {}
+    for f in fichiers:
+        if torrents.suffixe(f) not in (".cbz", ".cbr", ".pdf"):
+            continue
+        rel = tomes.classer(nom, torrents.nom_sans_ext(f), liste) or _derive_par_mot(nom, torrents.nom_sans_ext(f))
+        if rel:
+            par_rel.setdefault(rel["id"], (rel, []))[1].append(f)
+    if not par_rel:
+        return fichiers
+    import edition
+    restent = [f for f in fichiers if not any(f in fs for _, fs in par_rel.values())]
+    for rel, fs in par_rel.values():
+        if (rel.get("volumes") or 0) >= 2 or len(fs) >= 2:              # spin-off en plusieurs tomes : sa propre série
+            fille = _serie_derivee(nom, rel)
+            dossier = MANGA_DIR / fille
+            for f in fs:
+                ext, t = torrents.suffixe(f), _numero_tome(torrents.nom_sans_ext(f))
+                cible = tomes_cbz.fichier_tome(dossier, fille, t).with_suffix(ext) if t is not None else dossier / (torrents.nom_sans_ext(f) + ext)
+                if not cible.exists():
+                    torrents.lier(f, cible)
+            _scan_invalider()
+            _relier_univers(nom, fille)
+            logger.info("Torrent → « %s » : %d fichier(s) de « %s » (spin-off) placés dans sa série « %s »", nom, len(fs), rel["titres"][0], fille)
+            try:
+                _lancer_import(fille, attendre=True)
+            except Exception as e:
+                logger.warning("Import de la série dérivée « %s » : %s", fille, e)
+        else:                                                           # un seul livre : hors-série de la série
+            titre = _titre_derive(nom, rel)
+            infos = edition.lire(MANGA_DIR / nom)
+            for f in fs:
+                cible = MANGA_DIR / nom / f"{nom} HS - {titre}{torrents.suffixe(f)}"
+                if not cible.exists():
+                    torrents.lier(f, cible)
+                place = tomes.place_par_date(nom, rel.get("debut"))
+                if place:
+                    infos.setdefault("places_hs", {})[cible.name] = place
+            edition.ecrire(MANGA_DIR / nom, infos)
+            logger.info("Torrent → « %s » : « %s » rangé en hors-série", nom, titre)
+    return restent
+
+
+_MOT_DERIVE = re.compile(r"\bgaiden\b|side[ -]?stor(?:y|ies)|spin[ -]?off|\bbangai|\bextras?\b", re.I)
+
+
+def _derive_par_mot(nom, nom_fichier):
+    """Secours quand AniList ne connaît pas l'œuvre : « Tokyo.Revengers.Side.Stories.T01 » (mot de récit dérivé après le
+    nom de la série) → œuvre « Side Stories ». Jamais sur le seul nom d'un auteur ou d'une équipe (il faut un de ces mots)."""
+    reste = tomes.reste_du_nom(nom, nom_fichier)
+    plat = re.sub(r"[._]+", " ", re.sub(r"\[[^\]]*\]|\([^)]*\)", " ", nom_fichier))
+    if not reste or not _MOT_DERIVE.search(" ".join(reste) if len(reste) > 1 else plat):
+        return None
+    if not _MOT_DERIVE.search(plat):
+        return None
+    mots = [m for m in plat.split() if tomes._simple(m) in reste]
+    titre = " ".join(dict.fromkeys(mots)) or " ".join(reste)
+    return {"id": "mot:" + " ".join(reste), "relation": "SIDE_STORY", "volumes": None, "debut": "", "titres": [titre]}
+
+
+def _placer_hors_series(nom):
+    """Préparation : chaque hors-série sans place connue est placé dans l'ordre de lecture d'après sa date de sortie au
+    Japon (œuvre liée sur AniList), et les séries dérivées de la bibliothèque sont reliées par univers."""
+    import edition
+    try:
+        liste = tomes.relations(nom)
+    except Exception:
+        return
+    if not liste:
+        return
+    infos = edition.lire(MANGA_DIR / nom)
+    places = infos.get("places_hs") or {}
+    change = False
+    for e in _entrees(_scan().get(nom) or []):
+        if e.get("groupe") != HORS_SERIE or e.get("identifie") or Path(e["path"]).name in places:
+            continue
+        rel = tomes.classer(nom, Path(e["path"]).stem, liste)
+        place = tomes.place_par_date(nom, rel.get("debut")) if rel else None
+        if place:
+            places[Path(e["path"]).name] = place
+            change = True
+    if change:
+        infos = edition.lire(MANGA_DIR / nom)
+        infos["places_hs"] = places
+        edition.ecrire(MANGA_DIR / nom, infos)
+    for rel in liste:                                    # séries de la bibliothèque qui sont des œuvres dérivées de celle-ci
+        if rel["relation"] not in ("SPIN_OFF", "SIDE_STORY"):
+            continue
+        for x in _scan():
+            if x not in (nom, "(Sans série)") and (tomes.classer(nom, x, [rel]) or {}).get("id") == rel["id"]:
+                _relier_univers(nom, x)
+
+
 def _importer_torrent(nom, source, remplacer=False):
     """Contenu d'un torrent → bibliothèque, sans jamais renommer ni effacer ses fichiers (le NAS le refuse tant que
     qBittorrent partage) : un tome complet est placé directement sous « Tome NN/<série> - Tome NN.cbz », un chapitre
@@ -3796,6 +3951,7 @@ def _importer_torrent(nom, source, remplacer=False):
     if not fichiers:
         raise RuntimeError("aucun fichier de manga dans le torrent")
     import edition
+    fichiers = _ranger_oeuvres_derivees(nom, fichiers)  # spin-off → sa propre série ; histoire annexe d'un livre → hors-série
     empreintes_avant = _empreintes_tomes(nom)
     deja_note = Path(source).name in (edition.lire(dossier).get("archives") or [])
     a_tomes = {}
@@ -5957,6 +6113,11 @@ def _preparer_serie(nom, progression):
     except Exception as e:
         logger.info("Préparation de %s, titres des tomes : %s", nom, e.__class__.__name__)
     _infos_edition(nom, fichiers)                          # lance l'analyse des pages (en fond) si elle n'est pas faite
+    progression(f"{nom} : hors-série et séries dérivées")
+    try:
+        _placer_hors_series(nom)
+    except Exception as e:
+        logger.info("Préparation de %s, hors-série : %s", nom, e.__class__.__name__)
     progression(f"{nom} : ISBN (Google Books)")
     google = 0
     try:

@@ -502,10 +502,17 @@
     }
     var groupes = [];
     s.chapters.forEach(function (c) {
+      // hors-série « à lire après le tome 72 » : à sa place de lecture, dans un groupe à part (comme les spéciaux d'Emby)
+      var nomG = c.groupe === 'Hors-série' && c.apres_tome ? 'Hors-série · après le tome ' + c.apres_tome : (c.groupe || '');
       var g = groupes[groupes.length - 1];
-      if (!g || g.nom !== (c.groupe || '')) groupes.push(g = {nom: c.groupe || '', titre: c.groupe_titre || '', chapitres: []});
+      if (!g || g.nom !== nomG) groupes.push(g = {nom: nomG, titre: c.groupe_titre || '', chapitres: []});
       g.chapitres.push(c);
     });
+    var tousHs = s.chapters.filter(function (c) { return c.groupe === 'Hors-série'; });
+    if (tousHs.some(function (c) { return c.apres_tome; })) {   // … et tous ensemble en haut, dans « Hors-série »
+      groupes = groupes.filter(function (g) { return g.nom !== 'Hors-série'; });
+      groupes.unshift({nom: 'Hors-série', titre: '', chapitres: tousHs});
+    }
     if (!tomesOuverts[s.id] && groupes.some(function (g) { return g.nom; })) {
       var actuel = s.chapters.find(function (c) { return c.key === s.current; }) || s.chapters.find(function (c) { return !c.read; }) || {};
       tomesOuverts[s.id] = {}; tomesOuverts[s.id][actuel.groupe || ''] = true;

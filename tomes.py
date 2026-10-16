@@ -1271,3 +1271,144 @@ def titres_tomes(serie: str, forcer=False) -> dict:
     tmp.replace(_fichier(serie))
     logger.info("Titres des tomes de %s : %d trouvé(s)", serie, len(titres))
     return titres
+
+
+# ---------------------------------------------------------------- Œuvres liées (hors-série, spin-off, gaiden…)
+# AniList liste pour chaque manga ses œuvres liées (SIDE_STORY, SPIN_OFF…), avec titres, nombre de tomes et date
+# de sortie au Japon. Elles servent à reconnaître un fichier (« Tokyo Revengers Letter from Keisuke Baji T01 ») et à
+# le placer dans l'ordre de lecture d'après les dates japonaises des tomes (Wikipédia anglais), comme les épisodes
+# spéciaux de TVDB (« après l'épisode 4 »).
+
+RELATIONS_DUREE = 30 * 86400
+_TYPES_LIES = {"SIDE_STORY", "SPIN_OFF", "ALTERNATIVE", "SEQUEL", "PREQUEL", "PARENT", "SUMMARY", "COMPILATION", "OTHER"}
+_MOTS_VIDES = {"the", "a", "an", "of", "no", "to", "de", "la", "le", "les", "du", "des", "et", "and", "from", "kara", "manga",
+               "fr", "vf", "cbz", "cbr", "digital", "ebook", "french", "integrale", "tome", "tomes", "vol", "volume", "edition"}
+
+
+def _ecrire_cache(serie, cle, valeur):
+    DOSSIER.mkdir(parents=True, exist_ok=True)
+    try:
+        brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        brut = {}
+    brut[cle] = valeur
+    tmp = _fichier(serie).with_suffix(".tmp")
+    tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(_fichier(serie))
+
+
+def relations(serie: str, forcer=False) -> list[dict]:
+    """Œuvres liées à la série sur AniList (romans exclus) : [{id, relation, format, volumes, debut "AAAA-MM-JJ", titres}].
+    Gardées 30 jours ; [] si la série n'est pas identifiée sur AniList ou si AniList ne répond pas."""
+    garde = (_charger(serie) or {}).get("relations")
+    if garde and not forcer and time.time() - garde.get("date", 0) < RELATIONS_DUREE:
+        return garde.get("liste") or []
+    ident = ((_charger(serie) or {}).get("statut_officiel") or {}).get("anilist")
+    if not ident:
+        return []
+    q = ("query($i:Int){Media(id:$i,type:MANGA){relations{edges{relationType node{id type format volumes "
+         "title{romaji english native} synonyms startDate{year month day}}}}}}")
+    try:
+        r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"i": int(ident)}}, timeout=15)
+        if r.status_code != 200:
+            return (garde or {}).get("liste") or []
+        aretes = r.json()["data"]["Media"]["relations"]["edges"]
+    except Exception as e:
+        logger.info("Œuvres liées de %s : %s", serie, e.__class__.__name__)
+        return (garde or {}).get("liste") or []
+    liste = []
+    for a in aretes:
+        n = a.get("node") or {}
+        if n.get("type") != "MANGA" or n.get("format") == "NOVEL" or a.get("relationType") not in _TYPES_LIES:
+            continue
+        d = n.get("startDate") or {}
+        t = n.get("title") or {}
+        liste.append({"id": n.get("id"), "relation": a["relationType"], "format": n.get("format"), "volumes": n.get("volumes"),
+                      "debut": "%04d-%02d-%02d" % (d["year"], d.get("month") or 1, d.get("day") or 1) if d.get("year") else "",
+                      "titres": [x for x in (t.get("english"), t.get("romaji"), *(n.get("synonyms") or [])) if x]})
+    _ecrire_cache(serie, "relations", {"date": time.time(), "liste": liste})
+    return liste
+
+
+def _mots(texte: str) -> list[str]:
+    return [m for m in _simple(texte).split() if m not in _MOTS_VIDES and not m.isdigit() and not re.fullmatch(r"t\d+", m)]
+
+
+def reste_du_nom(serie: str, nom: str) -> list[str]:
+    """Mots du nom de fichier qui ne sont pas ceux de la série, avant le numéro de tome et sans les mots d'édition :
+    « Tokyo.Revengers.Letter.from.Keisuke.Baji.T01.Ken.Wakui » → [letter, keisuke, baji]. [] si rien de plus."""
+    import noms_editions
+    t = re.sub(r"[._]+", " ", nom)
+    t = re.sub(r"\[[^\]]*\]|\([^)]*\)", " ", t)
+    t = noms_editions.MENTION.sub(" ", t)
+    t = re.split(r"\b(?:t|tome|vol\.?|volume)\s*\d", t, maxsplit=1, flags=re.I)[0]
+    mots_serie = set(_simple(serie).split())
+    return [m for m in _mots(t) if m not in mots_serie]
+
+
+def classer(serie: str, nom: str, liste=None) -> dict | None:
+    """Œuvre liée dont le nom du fichier porte le titre (au moins la moitié de ses mots distinctifs), ou None."""
+    reste = set(reste_du_nom(serie, nom))
+    if not reste:
+        return None
+    mots_serie = set(_simple(serie).split())
+    meilleure, score = None, 0.0
+    for rel in (liste if liste is not None else relations(serie)):
+        for titre in rel.get("titres") or []:
+            mt = {m for m in _mots(titre) if m not in mots_serie}
+            if not mt:
+                continue
+            communs = {m for m in mt & reste if len(m) >= 4}
+            s = len(mt & reste) / len(mt)
+            if communs and s >= 0.5 and s > score:
+                meilleure, score = rel, s
+    return meilleure
+
+
+def dates_japon(serie: str, forcer=False) -> dict:
+    """{tome (texte): "AAAA-MM-JJ"} : sortie au Japon de chaque tome (Wikipédia anglais, OriginalRelDate). Gardé 30 jours."""
+    garde = (_charger(serie) or {}).get("dates_jp")
+    if garde and not forcer and time.time() - garde.get("date", 0) < RELATIONS_DUREE:
+        return garde.get("tomes") or {}
+    st = (_charger(serie) or {}).get("statut_officiel") or {}
+    noms = list(dict.fromkeys([x for x in (st.get("titre"), st.get("titre_en")) if x] + _variantes(serie)))
+    dates = {}
+    try:
+        for page in _pages_wiki(noms):
+            texte = _wiki({"action": "parse", "page": page, "prop": "wikitext", "redirects": 1}).get("parse", {}).get("wikitext", "")
+            for bloc in re.split(r"\{\{\s*Graphic novel list", re.sub(r"<!--.*?-->", "", texte, flags=re.S))[1:]:
+                vol = re.search(r"\|\s*VolumeNumber\s*=\s*(\d+)", bloc)
+                d = _date_wiki((re.search(r"\|\s*OriginalRelDate\s*=\s*([^\n<]*)", bloc) or [None, ""])[1])
+                if vol and d:
+                    dates.setdefault(vol.group(1), d)           # 1re liste = édition d'origine (pas les rééditions plus bas)
+    except Exception as e:
+        logger.info("Dates japonaises de %s : %s", serie, e.__class__.__name__)
+        return (garde or {}).get("tomes") or {}
+    _ecrire_cache(serie, "dates_jp", {"date": time.time(), "tomes": dates})
+    return dates
+
+
+def place_par_date(serie: str, debut: str):
+    """Dernier tome sorti au Japon avant (ou le même jour que) l'œuvre liée : elle se lit après lui. None si inconnu."""
+    if not debut:
+        return None
+    avant = [int(t) for t, d in dates_japon(serie).items() if d and d <= debut]
+    return max(avant) if avant else None
+
+
+_MOIS_EN = {m: i for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july", "august", "september",
+                                        "october", "november", "december"], 1)}
+
+
+def _date_wiki(v: str) -> str:
+    """« {{Start date|2017|5|17}} », « May 17, 2017 » ou « 17 May 2017 » → « 2017-05-17 » ; "" sinon."""
+    m = re.search(r"(\d{4})\s*\|\s*(\d{1,2})\s*\|\s*(\d{1,2})", v)
+    if m:
+        return "%s-%02d-%02d" % (m.group(1), int(m.group(2)), int(m.group(3)))
+    m = re.search(r"([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})", v) or re.search(r"(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})", v)
+    if m:
+        a, b, annee = m.groups()
+        mois, jour = (a, b) if a.isalpha() else (b, a)
+        if mois.lower() in _MOIS_EN:
+            return "%s-%02d-%02d" % (annee, _MOIS_EN[mois.lower()], int(jour))
+    return ""
