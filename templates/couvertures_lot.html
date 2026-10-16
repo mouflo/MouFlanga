@@ -54,6 +54,9 @@
                         {% for n in presents %}
                         <option value="{{ n }}"{% if n == l.suggere %} selected{% endif %}>Tome {{ '%02d'|format(n) }}</option>
                         {% endfor %}
+                        {% for n, titre in hors_series %}
+                        <option value="{{ n }}">Hors-série : {{ titre }}</option>
+                        {% endfor %}
                     </select>
                 </div>
             </div>

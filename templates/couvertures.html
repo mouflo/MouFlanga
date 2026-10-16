@@ -74,10 +74,10 @@
 
         {% for l in lignes %}
         <div class="cv-ligne">
-            <div class="cv-tome">Tome {{ '%02d'|format(l.tome) }}{% if l.remplacee %}<br><span class="cv-langue">remplacée (à la main ou en ligne)</span>{% endif %}</div>
+            <div class="cv-tome">{{ l.nom }}{% if l.remplacee %}<br><span class="cv-langue">remplacée (à la main ou en ligne)</span>{% endif %}</div>
             <div class="cv-paires">
                 <div class="cv-case">
-                    <img src="/api/tome/couverture?id={{ nom|urlencode }}&tome={{ l.tome }}&grand=1" alt="Actuelle, tome {{ l.tome }}" loading="lazy">
+                    <img src="/api/tome/couverture?id={{ nom|urlencode }}&tome={{ l.tome }}&grand=1" alt="Actuelle, {{ l.nom }}" loading="lazy">
                     Actuelle
                     {% if l.remplacee %}
                     <form class="cv-retirer" method="post" action="/couvertures/retirer">
@@ -92,7 +92,7 @@
                     <img src="{{ c.vignette }}" alt="Trouvée en ligne, tome {{ l.tome }}" loading="lazy">
                     En ligne
                     <div class="cv-langue">{{ c.langue or 'langue ?' }}</div>
-                    <form method="post" action="/couvertures/appliquer" onsubmit="return confirm('Remplacer la couverture du tome {{ l.tome }} ?');">
+                    <form method="post" action="/couvertures/appliquer" onsubmit="return confirm('Remplacer la couverture ({{ l.nom }}) ?');">
                         <input type="hidden" name="id" value="{{ nom }}"><input type="hidden" name="tome" value="{{ l.tome }}"><input type="hidden" name="url" value="{{ c.url }}">
                         <button type="submit" class="vert">Remplacer par celle-ci</button>
                     </form>

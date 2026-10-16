@@ -495,7 +495,7 @@
     function ligne(c) {
       return '<div class="chap' + (c.read ? ' read' : '') + (c.key === s.current ? ' cur' : '') + '" data-path="' + esc(c.key) + '">' +
         '<span class="dot"></span><span class="ct">' + esc(c.title) + (c.sous ? '<small class="ct2">' + esc(c.sous) + '</small>' : '') + '</span>' +
-        (c.tome != null ? '<button class="tog tinfo' + (c.titres_ch ? ' vert' : '') + '" data-tinfo="' + c.tome + '" title="Infos du tome">ⓘ</button>' : '') +
+        (c.tome != null || c.hs != null ? '<button class="tog tinfo' + (c.titres_ch ? ' vert' : '') + '" data-tinfo="' + (c.tome != null ? c.tome : c.hs) + '" title="Infos du tome">ⓘ</button>' : '') +
         (c.groupe === 'Hors-série' ? '<button class="tog" data-hs="' + esc(c.key) + '" title="Identifier ce hors-série">🔎</button>' : '') + '<span class="cs">' + taille(c.size_mb) + '</span>' +
         '<button class="tog" data-tog="' + esc(c.key) + '" title="Marquer ' + (c.read ? 'non lu' : 'lu') + '">' + (c.read ? '↺' : '✔') + '</button>' +
         '<button class="tog del" data-del="' + esc(c.key) + '" title="Supprimer ce chapitre">🗑</button></div>';
@@ -1201,7 +1201,7 @@
 
     // 📱 Tomes gardés sur ce téléphone (lecture sans réseau) et notifications
     function fichierDuTome(n) {
-      var es = (current.chapters || []).filter(function (c) { return String(c.tome) === String(Number(n)) || c.groupe === 'Tome ' + String(n).padStart(2, '0'); });
+      var es = (current.chapters || []).filter(function (c) { return String(c.tome) === String(Number(n)) || String(c.hs) === String(Number(n)) || c.groupe === 'Tome ' + String(n).padStart(2, '0'); });
       if (!es.length) return null;
       var path = es[0].path;
       return {path: path, mo: es.filter(function (c) { return c.path === path; }).reduce(function (t, c) { return t + (c.size_mb || 0); }, 0), cle: es[0].key};
@@ -1222,7 +1222,7 @@
         (p ? '\nPlace libre pour l\'appli : ' + (p.libre / 1073741824).toFixed(1) + ' Go' : ''))) return;
       b.disabled = true;
       try {
-        await hl.garder({serie: current.id, path: f.path, cle: f.cle, titre: current.title + ' · Tome ' + String(n).padStart(2, '0'), tailleMo: f.mo},
+        await hl.garder({serie: current.id, path: f.path, cle: f.cle, titre: current.title + ' · ' + nomTome(n), tailleMo: f.mo},
           function (k, total) { b.textContent = '⬇️ ' + k + ' / ' + total + ' pages…'; });
         afficherTome(n, false);
       } catch (x) { b.disabled = false; alert(x.message); }
@@ -1555,19 +1555,23 @@
       afficherTome(b.dataset.tinfo, true);
     }, true);
     var suiviSommaire = null;
+    function nomTome(n) {                    // un hors-série a un numéro à lui (1000 et plus) : on montre son titre
+      var h = Number(n) >= 1000 && (current.chapters || []).find(function (c) { return String(c.hs) === String(Number(n)); });
+      return h ? 'Hors-série : ' + h.title : 'Tome ' + String(n).padStart(2, '0');
+    }
     async function afficherTome(n, premier) {
       clearTimeout(suiviSommaire);
-      if (premier) { $('infosTitre').textContent = 'ℹ️ Tome ' + String(n).padStart(2, '0'); $('infosCorps').innerHTML = '<div class="dem-sous">…</div>'; $('infosVue').hidden = false; }
+      if (premier) { $('infosTitre').textContent = 'ℹ️ ' + nomTome(n); $('infosCorps').innerHTML = '<div class="dem-sous">…</div>'; $('infosVue').hidden = false; }
       if ($('infosVue').hidden) return;
       var d = await api('/api/tome?id=' + encodeURIComponent(current.id) + '&tome=' + n);
-      if ($('infosVue').hidden || $('infosTitre').textContent !== 'ℹ️ Tome ' + String(n).padStart(2, '0')) return;
+      if ($('infosVue').hidden || $('infosTitre').textContent !== 'ℹ️ ' + nomTome(n)) return;
       var som = d.sommaire || {};
       var cov = '/api/tome/couverture?id=' + encodeURIComponent(current.id) + '&tome=' + n;
       var prov = d.provenance || {};
       var provOrigine = String(prov.origine || '').replace(/[.\s]+$/, '');
       var equipeDejaLa = prov.equipe && provOrigine.toLowerCase().indexOf(String(prov.equipe).toLowerCase()) >= 0;   // le nom du torrent contient déjà l'équipe : pas de doublon
       var provTexte = (prov.equipe && !equipeDejaLa ? 'Équipe : ' + prov.equipe + ' · ' : '') + provOrigine + (prov.manuel ? ' (saisi à la main)' : '');
-      var champs = [['Titre', d.titre], ['Sortie en France', d.sortie], ['ISBN', d.isbn], ['Provenance', provTexte.trim() ? provTexte : '']].filter(function (x) { return x[1]; });
+      var champs = [['Titre', d.titre], ['Infos', d.infos_hs], ['Sortie en France', d.sortie], ['ISBN', d.isbn], ['Provenance', provTexte.trim() ? provTexte : '']].filter(function (x) { return x[1]; });
       var chap = d.chapitres || [], pagesCh = d.chapitres_pages || [];
       var lien = function (c, i) {                    // chapitre lu dans le sommaire d'un tome complet : ouvert à sa page
         if (d.fichier && pagesCh[i] != null) return '<a href="/lire?s=' + encodeURIComponent(current.id) + '&c=' + encodeURIComponent(d.fichier) + '&p=' + pagesCh[i] + '">' + esc(c) + '</a>';

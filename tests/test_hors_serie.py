@@ -41,6 +41,16 @@ class HorsSerieTest(unittest.TestCase):
         self.assertFalse(h._adresse_permise("file:///etc/passwd"))
         self.assertTrue(h._adresse_permise("https://www.glenat.com/x"))
 
+    def test_numero_a_part_et_fixe(self):
+        """Un hors-série a son numéro (1000 et plus) pour sa couverture et sa fiche ⓘ ; en ajouter un ne change pas les autres."""
+        blue, red = Path("/m/One Piece/One Piece HS - Blue.cbz"), Path("/m/One Piece/OP Databook Red.cbz")
+        tome = Path("/m/One Piece/One Piece - Tome 105.cbz")
+        n = A._numeros_hs([blue, tome])
+        self.assertEqual(list(n), [str(blue)])
+        self.assertGreaterEqual(n[str(blue)], A.HS_BASE)
+        self.assertEqual(A._numeros_hs([red, blue, tome])[str(blue)], n[str(blue)])
+        self.assertTrue(A._est_numero_hs(n[str(blue)]) and not A._est_numero_hs(105))
+
 
 if __name__ == "__main__":
     unittest.main()

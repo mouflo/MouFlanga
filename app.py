@@ -18,6 +18,7 @@ import sys
 import threading
 import time
 import uuid
+import zlib
 from datetime import datetime
 import zipfile
 from pathlib import Path
@@ -337,7 +338,7 @@ def _fichier_du_tome(name, tome):
     """Chemin (relatif) du fichier du tome : tome complet ou fichier de tome assemblé par l'appli ; "" sinon."""
     groupe = tomes_cbz.dossier_tome(tome)
     for e in _entrees(_scan().get(name) or []):
-        if e.get("tome") == tome or e.get("groupe") == groupe:
+        if e.get("tome") == tome or e.get("hs") == tome or e.get("groupe") == groupe:
             return e.get("path") or ""
     return ""
 
@@ -352,10 +353,11 @@ def _infos_tome(name, tome):
     if tome is None:
         return {}
     tome = int(tome)
+    hs = _entree_hs(name, tome) if _est_numero_hs(tome) else None
     differente = _edition_differente(name)           # autre édition que celle de Wikipédia : titres et dates ne valent pas
-    det = {} if differente else tomes.details_tome(name, tome)
+    det = {"titre": hs["title"], "resume": hs.get("descriptif", "")} if hs else {} if differente else tomes.details_tome(name, tome)
     perso = (ed.get("resumes_tomes") or {}).get(str(tome)) or ""
-    resume = perso or det.get("resume") or tomes.resume_tome_memoire(name, tome)
+    resume = perso or det.get("resume") or ("" if hs else tomes.resume_tome_memoire(name, tome))
     prov = provenance.lire(ed).get(str(tome)) or {}
     lu = (ed.get("sommaires") or {}).get(str(tome)) or {}
     notes = {"v": 1, "resume": "manuel" if perso else ("web" if resume else ""),
@@ -373,7 +375,8 @@ def _infos_tome(name, tome):
                                             "titre": st.get("titre", ""), "titre_en": st.get("titre_en", ""),
                                             "resume": (_read_json(RESUMES, {}).get(name) or "")}.items() if v not in ("", None, False)}
     notes = {k: v for k, v in notes.items() if v not in ("", False)}
-    infos = {"Title": det.get("titre", ""), "Summary": resume, "Number": str(tome), "Volume": str(tome), "GTIN": isbn, "Format": ed.get("edition", ""),
+    infos = {"Title": det.get("titre", ""), "Summary": resume, "Number": "" if hs else str(tome), "Volume": "" if hs else str(tome),
+             "GTIN": isbn, "Format": ed.get("edition", ""),
              "Notes": signets.MARQUE + " " + json.dumps(notes, ensure_ascii=False, separators=(",", ":"))}
     for balise, v in zip(("Year", "Month", "Day"), _date_sortie(det.get("sortie", ""))):
         infos[balise] = v
@@ -382,7 +385,7 @@ def _infos_tome(name, tome):
         if serie.get(cle) and balise not in infos:
             infos[balise] = str(serie[cle])
     nb = _volumes_edition(name)
-    if nb:
+    if nb and not hs:
         infos["Count"] = str(nb)
     return {k: v for k, v in infos.items() if v}
 
@@ -436,6 +439,41 @@ def _titre_hors_serie(titre):
     court = re.sub(r"\s*\([^)]*(?:papri|printer|digital|manga fr|scan)[^)]*\)", "", court, flags=re.I)  # (PRiNTER-PapriKa+)
     court = court.strip()
     return court or titre
+
+
+# Un hors-série a un numéro à lui (1000 et plus, jamais celui d'un vrai tome) : couverture, fiche ⓘ, résumé, provenance,
+# sommaire… passent par les mêmes fonctions que les tomes. Tiré du nom du fichier, il ne bouge pas quand on en ajoute un.
+HS_BASE = 1000
+
+
+def _numeros_hs(files):
+    """{chemin du fichier: numéro} pour les hors-série de la liste (deux noms qui tombent sur le même numéro : le suivant libre)."""
+    out, pris = {}, set()
+    hs = sorted((f for f in files if _numero_tome(_title_of(f)) is None and _est_hors_serie(_title_of(f))), key=lambda f: f.name.lower())
+    for f in hs:
+        n = HS_BASE + zlib.crc32(f.name.lower().encode()) % 8999
+        while n in pris:
+            n = HS_BASE + (n - HS_BASE + 1) % 8999
+        pris.add(n)
+        out[str(f)] = n
+    return out
+
+
+def _est_numero_hs(tome):
+    return tome is not None and int(tome) >= HS_BASE
+
+
+def _entree_hs(name, numero):
+    """Entrée (liste des chapitres) du hors-série portant ce numéro, ou None."""
+    return next((e for e in _entrees(_scan().get(name) or []) if e.get("hs") == int(numero)), None)
+
+
+def _nom_tome(name, tome):
+    """« Tome 3 » ou « Hors-série « Blue » » pour les messages."""
+    if _est_numero_hs(tome):
+        e = _entree_hs(name, tome)
+        return f"Hors-série « {e['title']} »" if e else "Hors-série"
+    return f"Tome {tome}"
 
 
 def _chapitre_de_tome(e):
@@ -493,6 +531,7 @@ def _entrees(files):
     Fichier ordinaire = un chapitre (clé : son chemin). Fichier de tome = plusieurs chapitres (clé : « #12 »),
     repérés par leur première page et leur nombre de pages dans le fichier."""
     out, titres_de = [], {}
+    numeros_hs = _numeros_hs(files)
 
     connus_de = {}
 
@@ -526,7 +565,7 @@ def _entrees(files):
                       "debut": 0, "nb": None, "size_mb": round(taille / 1048576, 1)}
             tome = _numero_tome(titre)
             if tome is None and _est_hors_serie(titre):
-                entree.update(groupe=HORS_SERIE, title=_titre_hors_serie(titre))
+                entree.update(groupe=HORS_SERIE, title=_titre_hors_serie(titre), hs=numeros_hs.get(str(f)))
                 ident = hors_serie.lire(_infos_serie(f.relative_to(MANGA_DIR).parts[0])).get(rel)
                 if ident:                                 # identifié à la main ou sur AniList/MangaDex
                     entree.update(title=ident.get("titre") or entree["title"], identifie=True, apres_tome=ident.get("apres_tome"),
@@ -1151,7 +1190,7 @@ def api_tome_provenance():
     infos = edition.lire(dossier)
     provenance.noter(infos, tome, equipe, origine or "Saisie à la main", manuel=True, ecrase=True)
     edition.ecrire(dossier, infos)
-    return jsonify({"ok": True, "message": f"Tome {tome} : provenance enregistrée."})
+    return jsonify({"ok": True, "message": f"{_nom_tome(name, tome)} : provenance enregistrée."})
 
 
 @app.route("/api/serie/provenance", methods=["POST"])
@@ -1347,7 +1386,7 @@ def api_tome_couverture():
         return r
     groupe = tomes_cbz.dossier_tome(tome)
     for e in _entrees(files):
-        if not e.get("a_importer") and (e.get("tome") == tome or e.get("groupe") == groupe):
+        if not e.get("a_importer") and (e.get("tome") == tome or e.get("hs") == tome or e.get("groupe") == groupe):
             return _vignette(MANGA_DIR / e["path"], e["debut"], f"{name} tome {tome}", request.args.get("grand") == "1")
     return Response(status=404)
 
@@ -1361,6 +1400,11 @@ def _titres_serie(name):
 
 def _tomes_presents(name):
     return sorted({int(e["tome"]) for e in _entrees(_scan().get(name) or []) if e.get("tome") is not None and not e.get("a_importer")})
+
+
+def _hs_presents(name):
+    """[(numéro, titre)] des hors-série de la série, dans l'ordre de la liste."""
+    return [(e["hs"], e["title"]) for e in _entrees(_scan().get(name) or []) if e.get("hs") is not None and not e.get("a_importer")]
 
 
 def _preferees(candidates):
@@ -2003,8 +2047,10 @@ def page_couvertures():
     except Exception as e:
         logger.warning("Couvertures en ligne de %s : %s", name, e)
     dossier = MANGA_DIR / name
-    lignes = [{"tome": n, "remplacee": bool(couvertures_tomes.remplacement(dossier, n)), "candidates": _preferees(trouvees.get(n, []))[:3]}
-              for n in _tomes_presents(name)]
+    lignes = [{"tome": n, "nom": f"Tome {n:02d}", "remplacee": bool(couvertures_tomes.remplacement(dossier, n)),
+               "candidates": _preferees(trouvees.get(n, []))[:3]} for n in _tomes_presents(name)]
+    lignes += [{"tome": n, "nom": f"Hors-série : {titre}", "remplacee": bool(couvertures_tomes.remplacement(dossier, n)), "candidates": []}
+               for n, titre in _hs_presents(name)]                # pas de recherche en ligne : MangaDex ne range que les tomes
     return render_template("couvertures.html", version=APP_VERSION, nom=name, lignes=lignes,
                            total_trouvees=sum(1 for x in lignes if x["candidates"]),
                            ok=request.args.get("ok", ""), erreur=request.args.get("erreur", ""))
@@ -2023,7 +2069,7 @@ def couvertures_envoyer():
         couvertures_tomes.enregistrer_image(MANGA_DIR / name, tome, image.read())
     except ValueError as e:
         return _retour_couvertures(name, erreur=str(e))
-    return _retour_couvertures(name, ok=f"Couverture du tome {tome} remplacée (l'ancienne est gardée).")
+    return _retour_couvertures(name, ok=f"{_nom_tome(name, tome)} : couverture remplacée (l'ancienne est gardée).")
 
 
 @app.route("/couvertures/retirer", methods=["POST"])
@@ -2036,7 +2082,7 @@ def couvertures_retirer():
     except ValueError:
         return _retour_couvertures(name, erreur="Tome inconnu.")
     if couvertures_tomes.retirer(MANGA_DIR / name, tome):
-        return _retour_couvertures(name, ok=f"Tome {tome} : retour à la première page du fichier.")
+        return _retour_couvertures(name, ok=f"{_nom_tome(name, tome)} : retour à la première page du fichier.")
     return _retour_couvertures(name, erreur="Ce tome n'a pas de remplacement.")
 
 
@@ -2110,7 +2156,7 @@ def couvertures_lot():
         lu = couvertures_tomes.numero_lu(octets)
         lignes.append({"index": i, "lu": lu, "suggere": lu if lu in presents else None})
     return render_template("couvertures_lot.html", version=APP_VERSION, nom=name, jeton=jeton, lignes=lignes,
-                           presents=presents, refusees=refusees, ocr=sommaire.disponible())
+                           presents=presents, hors_series=_hs_presents(name), refusees=refusees, ocr=sommaire.disponible())
 
 
 @app.route("/couvertures/lot/image/<jeton>/<int:index>")
@@ -2128,7 +2174,7 @@ def couvertures_lot_valider():
     jeton = request.form.get("jeton", "")
     if name not in _scan():
         return Response("Série introuvable", status=404)
-    presents = set(_tomes_presents(name))
+    presents = set(_tomes_presents(name)) | {n for n, _ in _hs_presents(name)}
     choix = {}
     for cle, valeur in request.form.items():
         if not cle.startswith("tome_") or not valeur:
@@ -2140,7 +2186,7 @@ def couvertures_lot_valider():
         if tome not in presents:
             return _retour_couvertures(name, erreur=f"Le tome {tome} n'est pas dans la série.")
         if tome in choix:
-            return _retour_couvertures(name, erreur=f"Le tome {tome} est choisi pour deux images : corrige l'aperçu.")
+            return _retour_couvertures(name, erreur=f"{_nom_tome(name, tome)} : choisi pour deux images, corrige l'aperçu.")
         choix[tome] = index
     if not choix:
         return _retour_couvertures(name, erreur="Aucune image affectée à un tome.")
@@ -4495,15 +4541,18 @@ def api_tome():
         tome = float(request.args.get("tome", "0"))
     except (TypeError, ValueError):
         return jsonify({"error": "Tome inconnu"}), 400
-    d = tomes.details_tome(name, tome)
-    differente = _edition_differente(name)               # Deluxe, Perfect… : le tome 1 n'est pas le tome 1 de Wikipédia
+    hs = _entree_hs(name, tome) if _est_numero_hs(tome) else None
+    if _est_numero_hs(tome) and not hs:
+        return jsonify({"error": "Hors-série introuvable"}), 404
+    d = tomes.details_tome(name, tome) if not hs else {"titre": hs["title"], "hors_serie": True, "infos_hs": hs.get("sous", "")}
+    differente = _edition_differente(name) and not hs    # Deluxe, Perfect… : le tome 1 n'est pas le tome 1 de Wikipédia
     if differente:
         d = {k: v for k, v in d.items() if k == "couverture"}
         d["edition_differente"] = True
     import edition
     prov = provenance.lire(edition.lire(MANGA_DIR / name)).get(str(int(tome))) or {}
     if not prov:                                         # pas encore notée : d'après le nom du fichier du tome
-        nom_fichier = next((Path(e["path"]).name for e in _entrees(_scan().get(name) or []) if e.get("tome") == int(tome)), "")
+        nom_fichier = next((Path(e["path"]).name for e in _entrees(_scan().get(name) or []) if int(tome) in (e.get("tome"), e.get("hs"))), "")
         if provenance.equipe_du_nom(nom_fichier):
             prov = {"equipe": provenance.equipe_du_nom(nom_fichier), "origine": f"Nom du fichier : {nom_fichier}", "manuel": False}
     import signets
@@ -4522,7 +4571,9 @@ def api_tome():
         d["resume"], d["resume_source"], d["resume_manuel"] = perso, "écrit à la main", True
     if du_fichier.get("resume") and not d.get("resume_manuel") and nf.get("resume") == "manuel":
         d["resume"], d["resume_source"], d["resume_manuel"] = du_fichier["resume"], "écrit dans le fichier", True
-    if not d.get("resume") and not differente:           # Wikipédia n'a pas de résumé de ce tome : notice Google Books en français
+    if not d.get("resume") and hs and hs.get("descriptif"):       # hors-série identifié : son petit descriptif
+        d["resume"], d["resume_source"] = hs["descriptif"], "fiche du hors-série"
+    if not d.get("resume") and not differente and not hs:  # Wikipédia n'a pas de résumé de ce tome : notice Google Books en français
         try:
             d["resume"] = tomes.resume_tome_google(name, tome, reseau=False)      # jamais d'attente sur Internet ici
         except Exception as e:
@@ -4547,7 +4598,7 @@ def api_tome():
 def _tome_complet(name, tome):
     """Entrée du fichier « tome complet » (un fichier = un tome, pas un fichier de tome fait par l'appli), ou None."""
     for e in _entrees(_scan().get(name) or []):
-        if e.get("tome") == tome and e.get("key") == e.get("path") and not e.get("a_importer"):
+        if tome in (e.get("tome"), e.get("hs")) and e.get("key") == e.get("path") and not e.get("a_importer"):
             return e
     return None
 
@@ -5019,7 +5070,7 @@ def api_tome_chapitres_ecrire():
         try:
             _ecrire_fichier_tome(name, tome, chemin, chapitres, infos, partage)
             n = signets.nb_signets(chapitres or [])
-            _SIGNETS[cle] = {"en_cours": False, "ok": True, "message": f"Infos du tome {tome} écrites dans le fichier" + (f" ({n} chapitres)." if n else ".")
+            _SIGNETS[cle] = {"en_cours": False, "ok": True, "message": f"{_nom_tome(name, tome)} : infos écrites dans le fichier" + (f" ({n} chapitres)." if n else ".")
                              + (" Le fichier du torrent n'est pas touché." if partage else "")}
         except Exception as ex:
             logger.warning("Chapitres écrits dans %s : %s", chemin, ex)
