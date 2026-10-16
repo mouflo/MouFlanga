@@ -12,6 +12,7 @@ Résultat gardé dans data/tomes/<série>.json (3 jours), pour ne pas interroger
 import json
 import logging
 import re
+import threading
 import time
 import unicodedata
 from pathlib import Path
@@ -721,6 +722,127 @@ def _google_books(titre: str) -> dict | None:
 RESUME_TOME_DUREE = 30 * 86400
 _GOOGLE_PAUSE = {"jusqua": 0.0}          # quota Google Books atteint : plus aucun appel avant cette heure
 GOOGLE_PAUSE_DUREE = 3 * 3600
+
+
+_MOTS_TITRE_TOME = {"edition", "originale", "tome", "t", "vol", "volume", "de", "la", "l", "le", "manga"}
+
+
+def _isbn13_valide(c: str) -> bool:
+    if not re.fullmatch(r"97[89]\d{10}", c or ""):
+        return False
+    somme = sum(int(d) * (1 if i % 2 == 0 else 3) for i, d in enumerate(c[:12]))
+    return (10 - somme % 10) % 10 == int(c[12])
+
+
+def _isbn_de_notice(v: dict, titres: list[str], edition: str = ""):
+    """(tome, ISBN-13 français) d'une notice Google Books « <série> - Tome 12 » ou « <série> - Édition originale - T12 »,
+    ou None : un autre mot dans le titre (« Doors », « Édition limitée », « fanbook ») veut dire un autre livre."""
+    ids = {x.get("type"): x.get("identifier", "") for x in v.get("industryIdentifiers") or []}
+    isbn = ids.get("ISBN_13", "")
+    if not _isbn13_valide(isbn) or not isbn.startswith(("9782", "97910")):      # éditeur français seulement
+        return None
+    nom = _simple(v.get("title") or "")
+    n = _tome_du_titre(v.get("title") or "")
+    if n is None:
+        return None
+    serie = next((t for t in (_simple(x) for x in titres if x) if t and nom.startswith(t)), None)
+    if not serie:
+        return None
+    permis = _MOTS_TITRE_TOME | set(_simple(edition).split())
+    reste = [m for m in nom[len(serie):].split() if not m.isdigit() and not re.fullmatch(r"t\d+", m)]
+    if any(m not in permis for m in reste) or (edition and not set(_simple(edition).split()) - {"edition"} <= set(reste)):
+        return None
+    return n, isbn
+
+
+# Google Books limite à 1 000 requêtes par jour : les ISBN n'en prennent qu'une partie, le reste garde de la place pour
+# les résumés des tomes. Compteur du jour gardé dans data/ (il survit aux redémarrages).
+ISBN_REQUETES_PAR_JOUR = 400
+_BUDGET_FICHIER = Path(__file__).resolve().parent / "data" / "google-isbn-budget.json"
+_BUDGET_VERROU = threading.Lock()
+
+
+def _prendre_requete_isbn() -> bool:
+    """Compte une requête Google Books pour les ISBN ; False si le plafond du jour est atteint."""
+    jour = time.strftime("%Y-%m-%d")
+    with _BUDGET_VERROU:
+        try:
+            b = json.loads(_BUDGET_FICHIER.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            b = {}
+        if b.get("jour") != jour:
+            b = {"jour": jour, "n": 0}
+        if b["n"] >= ISBN_REQUETES_PAR_JOUR:
+            return False
+        b["n"] += 1
+        try:
+            _BUDGET_FICHIER.parent.mkdir(parents=True, exist_ok=True)
+            _BUDGET_FICHIER.write_text(json.dumps(b), encoding="utf-8")
+        except OSError:
+            pass
+        return True
+
+
+def isbn_google(titres: list[str], numeros, edition: str = "", par_tome_max: int = 10):
+    """({tome: ISBN}, complet) des tomes d'une série d'après Google Books (clé requise) : d'abord quelques pages de
+    résultats pour toute la série (20 notices par requête), puis une requête par tome encore manquant (au plus
+    par_tome_max). complet=False : arrêté par le plafond du jour ou le quota (à refaire plus tard).
+    None si Google n'est pas utilisable du tout (pas de clé, quota ou plafond déjà atteint)."""
+    cle = cle_google_books()
+    if not cle or time.time() < _GOOGLE_PAUSE["jusqua"]:
+        return None
+    voulus = {int(n) for n in numeros}
+    trouves = {}
+    faites = [0]
+
+    def chercher(q, debut=0):
+        if not _prendre_requete_isbn():
+            logger.info("Google Books : plafond de %d requêtes d'ISBN atteint pour aujourd'hui", ISBN_REQUETES_PAR_JOUR)
+            raise PermissionError
+        faites[0] += 1
+        for _ in range(3):                                   # Google répond parfois 503 : on réessaie
+            r = _SESSION.get(GOOGLE_BOOKS, params={"q": q, "langRestrict": "fr", "maxResults": 40, "startIndex": debut,
+                                                   "printType": "books", "key": cle}, timeout=15)
+            if r.status_code < 500:
+                break
+            time.sleep(1.5)
+        if r.status_code in (429, 403):
+            _GOOGLE_PAUSE["jusqua"] = time.time() + GOOGLE_PAUSE_DUREE
+            logger.info("Google Books : réponse %s (quota ou clé) : pause de %d h", r.status_code, GOOGLE_PAUSE_DUREE // 3600)
+            raise PermissionError
+        if r.status_code != 200:
+            return []
+        out = []
+        for it in r.json().get("items") or []:
+            x = _isbn_de_notice(it.get("volumeInfo") or {}, titres, edition)
+            if x and x[0] in voulus:
+                out.append(x)
+        return out if r.json().get("items") else None
+
+    titre = next((t for t in titres if t), "")
+    try:
+        sans_neuf = 0
+        for page in range(8):                                # toute la série d'un coup, 20 par 20
+            r = chercher(f"{titre} {edition} tome".replace("  ", " "), page * 20)
+            if r is None:
+                break
+            neufs = [x for x in r if x[0] not in trouves]
+            for n, isbn in neufs:
+                trouves.setdefault(n, isbn)                  # même tome deux fois (papier / numérique) : le mieux classé
+            sans_neuf = 0 if neufs else sans_neuf + 1
+            if voulus <= set(trouves) or sans_neuf >= 2:
+                break
+        for n in sorted(voulus - set(trouves))[:par_tome_max]:
+            for t, isbn in chercher(f"{titre} {edition} tome {n}".replace("  ", " ")) or []:
+                if t == n:
+                    trouves[n] = isbn
+                    break
+    except PermissionError:
+        return (trouves, False) if faites[0] or trouves else None
+    except Exception as e:
+        logger.info("ISBN Google Books de %s : %s", titre, e.__class__.__name__)
+        return trouves, False
+    return trouves, True
 
 
 def _tome_du_titre(titre: str):

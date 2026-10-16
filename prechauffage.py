@@ -16,7 +16,7 @@ from pathlib import Path
 
 logger = logging.getLogger("mouflanga")
 
-VERSION = 3                      # monte quand la préparation fait plus de choses : les séries sont refaites une fois
+VERSION = 4                      # monte quand la préparation fait plus de choses : les séries sont refaites une fois
 _VERROU = threading.Lock()
 _FILE = []                       # séries en attente (dans l'ordre)
 _ETAT = {"en_cours": False, "serie": "", "fait": 0, "total": 0, "message": "", "debut": 0.0, "fin": 0.0,
@@ -75,7 +75,7 @@ def a_preparer(forcer=False) -> list:
         if nom == "(Sans série)":
             continue
         d = deja.get(nom) or {}
-        if forcer or d.get("v") != VERSION or d.get("signature") != _CFG["signature"](nom):
+        if forcer or d.get("v") != VERSION or d.get("signature") != _CFG["signature"](nom) or time.time() >= d.get("reprendre", float("inf")):
             out.append(nom)
     return out
 
@@ -123,7 +123,7 @@ def _travail():
                 return
             nom = _FILE.pop(0)
             _ETAT["serie"] = nom
-        erreur = False
+        erreur, reprendre = False, None
         try:
             attendu = 0
             while _CFG["occupe"]() and attendu < 3600:     # un vrai travail passe d'abord (import, téléchargement…)
@@ -137,7 +137,7 @@ def _travail():
             def progression(texte):
                 with _VERROU:
                     _ETAT["detail"] = str(texte)[:100]
-            _CFG["traiter"](nom, progression)
+            reprendre = _CFG["traiter"](nom, progression)     # une heure : la série est à reprendre à partir de là
         except Exception as e:
             erreur = True
             logger.warning("Préparation de « %s » : %s", nom, e)
@@ -146,7 +146,8 @@ def _travail():
         try:                                       # noté même en cas d'erreur : refait seulement si les fichiers changent
             deja = _lire()
             deja[nom] = {"v": VERSION, "signature": _CFG["signature"](nom), "date": time.strftime("%Y-%m-%d %H:%M"),
-                         **({"erreur": True} if erreur else {})}
+                         **({"erreur": True} if erreur else {}),
+                         **({"reprendre": reprendre} if isinstance(reprendre, (int, float)) else {})}
             _ecrire(deja)
         except Exception as e:
             logger.info("Préparation de « %s » : état non gardé (%s)", nom, e.__class__.__name__)

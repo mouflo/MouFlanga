@@ -33,7 +33,7 @@ class AvancementTest(unittest.TestCase):
             time.sleep(0.05)
         etapes = A._IDENTIFICATIONS["Série test"]["etapes"]
         self.assertTrue(A._IDENTIFICATIONS["Série test"]["fini"])
-        self.assertEqual([e["etat"] for e in etapes], ["ok", "ok", "ok", "echec", "ok"])
+        self.assertEqual([e["etat"] for e in etapes], ["ok", "ok", "ok", "echec", "ok", "ok"])
         self.assertIn("2 tome(s), 2 chapitre(s) répartis", etapes[1]["detail"])
         self.assertIn("19 tome(s) annoncés", etapes[2]["detail"])
 

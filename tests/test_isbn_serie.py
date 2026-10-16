@@ -42,6 +42,8 @@ class IsbnSerieTest(unittest.TestCase):
         self.isbn = {10: "9782505013112", 30: "9782505013129"}        # couleur du gris de la dernière page -> ISBN
         sommaire.ocr = self._faux_ocr
         A.MANGA_DIR = self.root
+        self._google = A.tomes.isbn_google
+        A.tomes.isbn_google = lambda *a, **k: None                    # jamais Internet dans les tests : Google « indisponible »
         A._scan_invalider()
         self.c = A.app.test_client()
 
@@ -53,6 +55,7 @@ class IsbnSerieTest(unittest.TestCase):
     def tearDown(self):
         self.auth.role = self._role
         self.som.ocr, self.som.disponible = self._ocr, self._dispo
+        self.A.tomes.isbn_google = self._google
         self.tmp.cleanup()
 
     def _attendre(self):
