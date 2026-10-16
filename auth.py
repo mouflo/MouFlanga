@@ -107,6 +107,14 @@ def utilisateur():
     return session.get("u") if role() else None
 
 
+def appel_local():
+    """Requête venue du serveur lui-même (deploy.sh, curl local), sans passer par le relais : l'adresse vue par le
+    socket, pas celle d'un en-tête X-Forwarded-For (inventable par n'importe qui qui joint le port directement)."""
+    orig = request.environ.get("werkzeug.proxy_fix.orig") or {}
+    adresse = orig.get("REMOTE_ADDR", request.environ.get("REMOTE_ADDR", ""))
+    return adresse in ("127.0.0.1", "::1") and not request.headers.get("X-Forwarded-For")
+
+
 def _secret_key():
     env = os.getenv("SECRET_KEY", "").strip()
     if env:
@@ -279,7 +287,7 @@ def init_app(app, version=""):
         # /api/externe/ : accès des autres applis, protégé par la clé API (api_externe.py)
         if request.path in ("/login", "/healthz", "/favicon.ico", "/skin.css") or request.path.startswith(("/icons/", "/ui/", "/api/externe/")):
             return None
-        if request.path == "/api/occupe" and (request.remote_addr or "") in ("127.0.0.1", "::1"):
+        if request.path == "/api/occupe" and appel_local():
             return None
         r = role()
         if r == "admin":

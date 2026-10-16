@@ -61,8 +61,25 @@ def _ecrire(d):
     tmp.replace(f)
 
 
+# Services de notification des navigateurs : aucune autre adresse n'est acceptée (sinon un compte pourrait faire
+# envoyer des requêtes par le serveur vers le réseau local : NAS, Proxmox, box…)
+SERVICES_PUSH = ("fcm.googleapis.com", "android.googleapis.com", "updates.push.services.mozilla.com",
+                 "push.services.mozilla.com", "push.apple.com", "notify.windows.com")
+
+
+def adresse_permise(endpoint: str) -> bool:
+    from urllib.parse import urlsplit
+    try:
+        u = urlsplit(str(endpoint))
+        hote = (u.hostname or "").lower()
+    except ValueError:
+        return False
+    return u.scheme == "https" and u.port in (None, 443) and not u.username and \
+        any(hote == h or hote.endswith("." + h) for h in SERVICES_PUSH)
+
+
 def abonner(compte: str, abonnement: dict, sujets, appareil: str = ""):
-    if not isinstance(abonnement, dict) or not str(abonnement.get("endpoint", "")).startswith("https://"):
+    if not isinstance(abonnement, dict) or not adresse_permise(abonnement.get("endpoint", "")):
         raise ValueError("Abonnement invalide")
     with _VERROU:
         d = _lire()
@@ -99,7 +116,7 @@ def envoyer(comptes, sujet: str, titre: str, texte: str, url: str = "/"):
             if comptes is not None and compte not in comptes:
                 continue
             for a in liste:
-                if sujet not in a.get("sujets", []):
+                if sujet not in a.get("sujets", []) or not adresse_permise(a["sub"].get("endpoint", "")):
                     continue
                 try:
                     webpush(a["sub"], message, vapid_private_key=prive, vapid_claims={"sub": "mailto:mouflanga@localhost"}, timeout=10)

@@ -161,8 +161,8 @@ def init_app(app, version, manga_dir_fn, extra_fn=None):
     def api_clientlog():
         """Erreurs JavaScript du navigateur, pour qu'elles apparaissent aussi dans le journal"""
         data = request.get_json(silent=True) or {}
-        msg = str(data.get("message", ""))[:400]
-        where = str(data.get("where", ""))[:200]
+        msg = " ".join(str(data.get("message", "")).split())[:400]      # une seule ligne : pas de fausses lignes dans le Journal
+        where = " ".join(str(data.get("where", "")).split())[:200]
         logger.error(f"[navigateur] {msg} ({where})")
         return jsonify({"ok": True})
 

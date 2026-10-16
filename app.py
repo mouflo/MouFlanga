@@ -121,7 +121,8 @@ def _safe_path(rel):
     root = MANGA_DIR.resolve()
     try:
         full = (root / rel).resolve()
-        full.relative_to(root)
+        if any(x.startswith(".") for x in full.relative_to(root).parts):
+            return None                                  # corbeille, versions en cours d'écriture, dossiers cachés
     except (ValueError, OSError, RuntimeError):
         return None
     return full if full.is_file() and full.suffix.lower() in archives.ARCHIVE_EXT else None
@@ -1053,7 +1054,7 @@ def api_series():
     if perso:
         st = dict(st, resume=perso, resume_langue="perso")
     a_ranger = name != "(Sans série)" and any(not c["groupe"] and c["num"] is not None for c in chapters)
-    return jsonify({"id": name, "title": name, "chapters": chapters,
+    rep = {"id": name, "title": name, "chapters": chapters,
                     "current": p.get("current", ""), "page": p.get("page", 0),
                     "rar": archives.rar_available(),
                     "en_tomes": en_tomes, "a_ranger": a_ranger, "rangement": _etat_rangement(name),
@@ -1072,7 +1073,14 @@ def api_series():
                     **({"recherchee": True, "cover_externe": vide.get("couverture") or "",
                         "compte": " · ".join(str(x) for x in ("📥 Pas encore de tomes", vide.get("annee"), vide.get("auteur"),
                                                               vide.get("editeur"), vide.get("source")) if x),
-                        "lien": vide.get("lien") or ""} if vide is not None else {})})
+                        "lien": vide.get("lien") or ""} if vide is not None else {})}
+    if auth.role() == "lecteur":                         # adresses des autres applis et chemins du NAS : pas pour un lecteur
+        for k in ("moufloster", "moufloster_externe", "mouflopening", "mouflopening_externe"):
+            rep[k] = ""
+        if rep.get("anime") and rep["anime"].get("dossier"):
+            rep["anime"] = dict(rep["anime"], dossier="emby")
+        rep["organiser"], rep["rangement"], rep["suivi"] = None, None, None
+    return jsonify(rep)
 
 
 @app.route("/api/cover")
@@ -3519,7 +3527,7 @@ def api_import_torrents():
 @app.route("/api/occupe")
 def api_occupe():
     """L'appli fait-elle un travail long ? (lu par deploy.sh avant de redémarrer : seulement depuis le serveur lui-même)"""
-    if (request.remote_addr or "") not in ("127.0.0.1", "::1"):
+    if not auth.appel_local():
         return jsonify({"error": "réservé au serveur"}), 403
     raisons = _travaux_en_cours()
     return jsonify({"occupe": bool(raisons), "raisons": raisons})
@@ -4408,7 +4416,7 @@ def _theme_de(dossier):
 
 
 # ---------------- Comptes « lecteur » (admin seulement : les lecteurs n'ont pas accès à ces routes) ----------------
-_ID_LECTEUR = re.compile(r"[A-Za-z0-9._@+-]{2,64}")
+_ID_LECTEUR = re.compile(r"[A-Za-z0-9@+-][A-Za-z0-9._@+-]{1,63}")     # jamais « _admin » (styles de l'admin) ni « . » au début
 
 
 @app.route("/api/utilisateurs", methods=["GET", "POST"])
@@ -4423,7 +4431,7 @@ def api_utilisateurs():
     d = auth.lire_utilisateurs()
     if action == "ajouter":
         if not _ID_LECTEUR.fullmatch(uid):
-            return jsonify({"ok": False, "error": "Identifiant : 2 à 64 caractères (lettres, chiffres, . _ @ + -), sans espace ni accent."}), 400
+            return jsonify({"ok": False, "error": "Identifiant : 2 à 64 caractères (lettres, chiffres, . _ @ + -), sans espace ni accent, sans « . » ni « _ » au début."}), 400
         if uid in d or uid == os.getenv("APP_USER", ""):
             return jsonify({"ok": False, "error": f"L'identifiant « {uid} » est déjà pris."}), 409
     elif uid not in d:
