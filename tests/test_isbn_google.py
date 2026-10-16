@@ -52,3 +52,19 @@ class SourceDuTorrentTest(unittest.TestCase):
             edition.noter_volumes = ancien
         self.assertEqual(appels, [])
         self.assertNotIn("Série test", A._TOMES_DU_TORRENT)
+
+
+class FichierPartTest(unittest.TestCase):
+    """Torrent dont l'auteur a laissé « .cbz.part » sur des tomes complets : reconnus et placés en .cbz."""
+
+    def test_part_complet(self):
+        import tempfile, zipfile
+        import torrents
+        with tempfile.TemporaryDirectory() as d:
+            bon = Path(d) / "Tokyo Revengers T01 - Ken Wakui.cbz.part"
+            with zipfile.ZipFile(bon, "w") as z:
+                z.writestr("001.jpg", b"x")
+            vide = Path(d) / "Autre T02.cbz.part"
+            vide.write_bytes(b"\0" * 10)                     # vraiment incomplet : pas une archive
+            self.assertEqual(torrents.fichiers_du_torrent(Path(d)), [bon])
+            self.assertEqual((torrents.suffixe(bon), torrents.nom_sans_ext(bon)), (".cbz", "Tokyo Revengers T01 - Ken Wakui"))

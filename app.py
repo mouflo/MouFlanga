@@ -3790,8 +3790,8 @@ def _importer_torrent(nom, source, remplacer=False):
     deja_note = Path(source).name in (edition.lire(dossier).get("archives") or [])
     a_tomes = {}
     for f in fichiers:
-        if f.suffix.lower() in (".cbz", ".cbr") and _numero_tome(f.stem) is not None:
-            a_tomes.setdefault(_numero_tome(f.stem), f)
+        if torrents.suffixe(f) in (".cbz", ".cbr") and _numero_tome(torrents.nom_sans_ext(f)) is not None:
+            a_tomes.setdefault(_numero_tome(torrents.nom_sans_ext(f)), f)
     if remplacer:
         hors = _tomes_hors_integrale(nom, Path(source).name, set(a_tomes))
         if hors:
@@ -3803,12 +3803,13 @@ def _importer_torrent(nom, source, remplacer=False):
             edition.oublier_source(dossier)
     lots, places = [], 0
     for f in fichiers:
-        ext = f.suffix.lower()
+        ext = torrents.suffixe(f)                        # « .cbz.part » complet : placé en « .cbz »
+        nom_f = torrents.nom_sans_ext(f) + ext
         if ext in (".cbz", ".cbr"):
-            t = _numero_tome(f.stem)
-            cible = tomes_cbz.fichier_tome(dossier, nom, t).with_suffix(ext) if t is not None and a_tomes.get(t) == f else dossier / f.name
+            t = _numero_tome(torrents.nom_sans_ext(f))
+            cible = tomes_cbz.fichier_tome(dossier, nom, t).with_suffix(ext) if t is not None and a_tomes.get(t) == f else dossier / nom_f
         elif ext in (".zip", ".rar", ".7z", ".pdf"):
-            cible = dossier / ".torrent" / f.name
+            cible = dossier / ".torrent" / nom_f
             lots.append(cible)
         elif ext in (".nfo", ".txt"):
             cible = dossier / ".torrent" / f.name
@@ -4006,7 +4007,7 @@ def _tomes_deja_la(nom, source):
     """Numéros des tomes du torrent qui existent déjà dans la série (un même fichier, lien physique, ne compte pas)."""
     dossier, deja = MANGA_DIR / nom, set()
     for f in torrents.fichiers_du_torrent(Path(source)):
-        t = _numero_tome(f.stem) if f.suffix.lower() in (".cbz", ".cbr") else None
+        t = _numero_tome(torrents.nom_sans_ext(f)) if torrents.suffixe(f) in (".cbz", ".cbr") else None
         if t is not None:
             ancien = tomes_cbz.fichier_tome(dossier, nom, t)
             if ancien.is_file() and not _meme_fichier(ancien, f):

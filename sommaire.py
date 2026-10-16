@@ -2298,7 +2298,7 @@ def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=N
         return gagnante
 
     generique = len(chapitres) >= 2 and lire_page is not None and all(
-        re.fullmatch(r"[A-Za-zÀ-ÿ]+\s*:?\s*\d+(?:[.,]\d)?", c.get("titre") or "") for c in chapitres)
+        re.fullmatch(r"(?:[A-Za-zÀ-ÿ]+\s*:?\s*\d+(?:[.,]\d)?)?", (c.get("titre") or "").strip()) for c in chapitres)   # ou sans titre du tout
     glob = None
     if generique:                                            # « Trick 6 » : aucun titre à chercher, les numéros imprimés décident
         votes = Counter()
@@ -2368,7 +2368,7 @@ def _decalage_par_nom(page, noms, page_sommaire):
     """Dernier recours : beaucoup de scans nomment les images d'après la page imprimée (« 005.jpg »). Un fichier
     dont le numéro est la page du 1er chapitre, après le sommaire, donne le décalage."""
     for i, nom in enumerate(noms or []):
-        m = re.match(r"(\d{2,4})", os.path.basename(nom))
+        m = re.match(r"(\d{2,4})(?!\d)", os.path.basename(nom))        # « 00070.jpg » (5 chiffres) n'est pas la page 7
         if m and i > page_sommaire and int(m.group(1)) == page:
             return i - page
     return None

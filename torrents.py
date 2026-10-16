@@ -246,9 +246,36 @@ def liste():
     return list(reversed(_lire()))
 
 
+_SIGNATURES = {".cbz": b"PK", ".zip": b"PK", ".cbr": b"Rar!", ".rar": b"Rar!", ".7z": b"7z\xbc\xaf", ".pdf": b"%PDF"}
+
+
+def _ext_cachee(f: Path) -> str:
+    """« Tome 01.cbz.part » : extension laissée par l'auteur du torrent sur un fichier pourtant complet. Renvoie la vraie
+    extension (« .cbz ») si le contenu est bien une archive de ce type, sinon ""."""
+    if f.suffix.lower() != ".part":
+        return ""
+    ext = Path(f.stem).suffix.lower()
+    sig = _SIGNATURES.get(ext)
+    try:
+        with open(f, "rb") as h:
+            return ext if sig and h.read(len(sig)) == sig else ""
+    except OSError:
+        return ""
+
+
+def suffixe(f: Path) -> str:
+    """Extension utile d'un fichier de torrent (« .cbz » même pour « Tome 01.cbz.part » complet)."""
+    return _ext_cachee(f) or f.suffix.lower()
+
+
+def nom_sans_ext(f: Path) -> str:
+    """« Tokyo Revengers T01 - Ken Wakui » pour « Tokyo Revengers T01 - Ken Wakui.cbz.part »."""
+    return Path(f.stem).stem if _ext_cachee(f) else f.stem
+
+
 def fichiers_du_torrent(source: Path) -> list[Path]:
     fichiers = [source] if source.is_file() else [f for f in sorted(source.rglob("*")) if f.is_file()]
-    return [f for f in fichiers if f.suffix.lower() in EXT_IMPORT]
+    return [f for f in fichiers if suffixe(f) in EXT_IMPORT]
 
 
 def lier(f: Path, cible: Path):
