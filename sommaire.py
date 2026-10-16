@@ -2230,6 +2230,28 @@ def _score(texte, mots, num):
     return total
 
 
+# Mention imprimée sur la page d'ouverture d'un chapitre (« Trick:166 », « Chapitre 12 », « Épisode 3 »…)
+_ETIQUETTE = r"(?:chap\w*|kapitel|trick|episode|lecon|round|stage|mission|punch|nuit|quart\w*)"
+
+
+def _page_de_titre(lire_page, textes, num, estimation, bas, haut, nb_pages):
+    """Image (la plus proche de l'estimation) où est écrit « Trick:166 » / « Chapitre 166 », ou None."""
+    if num is None or lire_page is None:
+        return None
+    motif = re.compile(r"\b%s\s*0*%d\b" % (_ETIQUETTE, int(num)))
+    for i in sorted(range(bas, haut), key=lambda j: abs(j - estimation)):
+        if i < 0 or (nb_pages and i >= nb_pages):
+            continue
+        if i not in textes:
+            try:
+                textes[i] = ocr(lire_page(i))
+            except Exception:
+                continue
+        if motif.search(_simple(textes[i])):
+            return i
+    return None
+
+
 def numero_imprime(image_octets: bytes) -> int | None:
     """Numéro de page imprimé en bas de l'image (coin gauche ou droit), ou None (page sans numéro, pleine page…)."""
     from PIL import Image, ImageOps
@@ -2313,9 +2335,21 @@ def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=N
                     votes[i - n] += 1
         if votes:
             glob = votes.most_common(1)[0][0]
+            if chapitres[0]["page"] + glob <= page_sommaire:  # 1er chapitre avant le sommaire : numéros mal lus
+                glob = None
     for k, c in enumerate(chapitres):
         mots = _mots_titre(c["titre"])
         par_nom = _image_par_nom(c["page"], noms, page_sommaire) if glob is None else c["page"] + glob
+        if generique:                                        # « Trick:166 » écrit sur la page d'ouverture : il fait foi
+            est = c["page"] + (ecart if ecart is not None else (glob if glob is not None else 1))
+            titre_lu = _page_de_titre(lire_page, textes, c.get("num"), est, max(est - 4, precedente + 1, page_sommaire + 1), est + 12, nb_pages)
+            if titre_lu is not None:
+                images.append(titre_lu)
+                confirme[k] = titre_lu - c["page"]
+                precedente, ecart = max(precedente, titre_lu), titre_lu - c["page"]
+                if decalage is None:
+                    decalage = ecart
+                continue
         if par_nom is not None:
             image = par_nom             # essayé : ajuster sur le titre des pages voisines accorde moins (23/45 contre 29/45)
         else:

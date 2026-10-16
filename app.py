@@ -423,7 +423,7 @@ def _tome_de_entree(e):
 
 
 HORS_SERIE = "Hors-série"
-_MOTS_HORS_SERIE = re.compile(r"\bHS\d*\b|hors[ -]?s[ée]rie|data[ -]?book|art[ -]?book|one[ -]?shot", re.I)
+_MOTS_HORS_SERIE = re.compile(r"\bHS\d*\b|hors[ -]?s[ée]rie|data[ -]?book|art[ -]?book|one[ -]?shot|\bgaiden\b|side[ -]?stor(?:y|ies)", re.I)
 
 
 def _est_hors_serie(titre):
@@ -434,6 +434,9 @@ def _est_hors_serie(titre):
 def _titre_hors_serie(titre):
     """« One Piece HS - Blue (Oda) (2005) [Digital-1920] (PRiNTER-PapriKa+) » → « Blue (Oda) »."""
     titre = (titre or "").replace("_", " ")
+    if re.search(r"\bgaiden\b|side[ -]?stor", titre, re.I) and not re.search(r"\bHS\d*\b|hors[ -]?s[ée]rie", titre, re.I):
+        court = re.sub(r"\s*\[[^\]]*\]", "", titre).strip()          # « Naruto Gaiden » : le nom entier est le titre
+        return court or titre
     court = re.sub(r"^.*?(?:\bHS\d*\b|hors[ -]?s[ée]rie|data[ -]?book|art[ -]?book|one[ -]?shot)\s*[-–:]?\s*", "", titre, count=1, flags=re.I)
     court = re.sub(r"\s*\[[^\]]*\]", "", court)                                             # [Digital-1920] [Manga FR]
     court = re.sub(r"\s*\([^)]*(?:papri|printer|digital|manga fr|scan)[^)]*\)", "", court, flags=re.I)  # (PRiNTER-PapriKa+)
@@ -490,7 +493,9 @@ def _infos_serie(name):
 def _ordre_entree(e):
     """Hors-série en premier, puis tomes dans l'ordre (tome complet ou tome à chapitres), puis chapitres « hors tome », puis le reste."""
     if e.get("groupe") == HORS_SERIE:                    # dans l'ordre de lecture : Blue (après le tome 24) avant Yellow (46)
-        return (-1, e.get("apres_tome") or 9999, e.get("title") or "")
+        if e.get("apres_tome"):                          # « à lire après le tome 72 » : rangé juste après ce tome
+            return (0, float(e["apres_tome"]) + 0.5, e.get("title") or "")
+        return (-1, 9999, e.get("title") or "")
     t = _tome_de_entree(e)
     if t is not None:
         return (0, t, e.get("num") or 0)
@@ -601,6 +606,10 @@ def _entrees(files):
                         "titres_ch": bool(c["titre"]) or wiki_fr(f.relative_to(MANGA_DIR).parts[0], info.get("tome"))
                                       or _sommaire_connu(f.relative_to(MANGA_DIR).parts[0], info.get("tome")),
                         "size_mb": round(taille * c["nb"] / total / 1048576, 1)})
+    dernier = max((e["tome"] for e in out if e.get("tome") is not None), default=None)
+    for e in out:                                        # « Naruto Gaiden » sans autre indication : épilogue, après le dernier tome
+        if e.get("groupe") == HORS_SERIE and not e.get("apres_tome") and dernier and re.search(r"\bgaiden\b", e.get("path") or "", re.I):
+            e["apres_tome"] = dernier
     if any(e["groupe"] or e.get("tome") is not None for e in out):
         out.sort(key=_ordre_entree)
     return out

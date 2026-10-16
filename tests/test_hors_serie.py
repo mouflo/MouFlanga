@@ -10,7 +10,7 @@ import app as A  # noqa: E402
 class HorsSerieTest(unittest.TestCase):
     def test_reconnu(self):
         for nom in ("One Piece HS - Blue (Oda) (2005) [Digital-1920] (PRiNTER-PapriKa+)",
-                    "Seven Deadly Sins Data Book", "Kenshin Artbook", "Bakuman one-shot", "Seven_Deadly_Sins_-_HS1"):
+                    "Seven Deadly Sins Data Book", "Kenshin Artbook", "Bakuman one-shot", "Seven_Deadly_Sins_-_HS1", "Naruto Gaiden"):
             self.assertTrue(A._est_hors_serie(nom), nom)
 
     def test_tome_normal_non(self):
