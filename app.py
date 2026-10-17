@@ -928,6 +928,7 @@ def api_library():
         return jsonify({"error": f"Dossier des mangas introuvable : {MANGA_DIR} (le partage est-il monté ? voir ⚙️ Réglages)", "series": []}), 200
     _organiser_auto()
     progress = _read_json(_fichier_progression(), {})
+    admin = auth.role() != "lecteur"
     out, a_remplir = [], []
     for name, files in _scan().items():
         p = progress.get(name, {})
@@ -953,7 +954,7 @@ def api_library():
             "last_read": p.get("last", ""), "added": newest, "favori": bool(p.get("favori")),
             "cover": f"/api/cover?id={_q(name)}&v={int(max(newest, _couverture_mtime(name)))}",
             **_auteur_editeur(name), **_univers_de(name), **_note_de(name),
-            "travail_complet": _travail_de(name)["complet"],
+            "travail_complet": admin and _travail_de(name)["complet"],      # pense-bête : l'administrateur seul
         })
     presentes = {x["id"] for x in out}
     for nom, x in suivi.lire()["series"].items():          # ➕ séries ajoutées mais encore vides : grisées
@@ -1215,7 +1216,8 @@ def api_series():
                     "moufloster": os.getenv("MOUFLOSTER_URL", "").strip(),
                     "moufloster_externe": os.getenv("MOUFLOSTER_URL_EXTERNE", "").strip(),
                     **_infos_anime(name), "edition": _infos_edition(name, files), "_t": _titres_tomes_en_fond(name, chapters),
-                    "travail": _travail_de(name), "travail_liste": [{"cle": k, "nom": n} for k, n in TRAVAIL],
+                    **({"travail": _travail_de(name), "travail_liste": [{"cle": k, "nom": n} for k, n in TRAVAIL]}
+                       if auth.role() != "lecteur" else {}),
                     "suivi": suivi.lire()["series"].get(name),
                     **({"recherchee": True, "cover_externe": vide.get("couverture") or "",
                         "compte": " · ".join(str(x) for x in ("📥 Pas encore de tomes", vide.get("annee"), vide.get("auteur"),

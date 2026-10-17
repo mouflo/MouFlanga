@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 👁 Connexion et pense-bête (17 octobre 2026)
+- Page de connexion : case « Afficher le mot de passe » pour voir ce qu'on tape (les quatre applis).
+- Le ✅ « tout est fait » du pense-bête n'apparaît plus sur les cartes des lecteurs : le pense-bête ne concerne que l'administrateur.
+
 ## ⚡ Préparation plus rapide (16 octobre 2026)
 - La lecture des sommaires en arrière-plan lit **plusieurs tomes en même temps** : un par cœur du serveur, en gardant un cœur libre pour que l'appli reste fluide (3 tomes à la fois avec 4 cœurs, environ 3 fois plus rapide). Le nombre suit tout seul les cœurs donnés au conteneur : en ajouter accélère encore.
 - Les tomes d'une même série lus en même temps enregistrent leurs chapitres chacun leur tour (aucun ne peut effacer celui d'à côté).
