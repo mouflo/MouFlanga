@@ -226,12 +226,27 @@ def rappeler_a_valider(envoyer):
         _maj(j["id"], rappel_le=maintenant.strftime(fmt))
 
 
+def _forcer_demarrage(q, jid):
+    """Un torrent fraîchement ajouté reste parfois « bloqué » en attendant sa première annonce au tracker :
+    on le force à démarrer dès qu'il apparaît, pour éviter qu'il ne stagne sans intervention manuelle."""
+    for _ in range(5):
+        time.sleep(1)
+        infos = q.info(tag=f"mf-{jid}")
+        if infos:
+            try:
+                q.appel("torrents/setForceStart", hashes=infos[0]["hash"], value="true")
+            except Exception as e:
+                logger.warning("Forçage du démarrage impossible : %s", e)
+            return
+
+
 def lancer(lien: str, titre: str, serie: str, remplacer: bool | None = None) -> dict:
     r = reglages()
     q = Qbit()
     q.preparer_categorie()
     jid = uuid.uuid4().hex[:10]
     q.appel("torrents/add", urls=lien, category=CATEGORIE, tags=f"mouflanga,mf-{jid}", savepath=r["nok"], autoTMM="false")
+    _forcer_demarrage(q, jid)
     j = {"id": jid, "titre": titre, "serie": serie, "remplacer": remplacer, "etat": "telechargement", "progression": 0, "debut": datetime.now().strftime("%Y-%m-%d %H:%M"),
          "message": "Envoyé à qBittorrent"}
     with _verrou:
