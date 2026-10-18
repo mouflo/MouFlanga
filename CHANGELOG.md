@@ -1,5 +1,12 @@
 # Historique des versions
 
+## 🔎 Deux lecteurs de texte pour les sommaires et les ISBN (18 octobre 2026)
+- Les sommaires sont lus par **deux lecteurs de texte** : tesseract (réglé sur la bibliothèque) et **RapidOCR** (IA de lecture moderne, tourne sur le processeur, aucun envoi sur Internet). L'appli garde le meilleur résultat ; à égalité, celui de tesseract ; si tesseract a déjà tout trouvé et sûr, le second n'est pas lancé. Essai sur 85 tomes difficiles : 24 passent de « rien » à des chapitres, 46 identiques, aucun recul.
+- Les ISBN sont lus par tesseract puis, s'il ne trouve rien, par le lecteur moderne.
+- Un **ISBN lu dans les pages et partagé par deux tomes de la série** est mis en doute : les deux sont relus (Naruto 49/50, Detective Conan 66/67). Un ISBN noté à la main n'est jamais mis en doute.
+- Les tomes lus à la main, saisis ou validés restent intouchables. Lecteur de sommaires en version 8 et préparation en version 5 : les tomes restés sans chapitres sont relus une fois, en fond.
+- Les sommaires lus par plusieurs tomes en même temps (un par cœur du serveur, un cœur gardé libre).
+
 ## 👁 Connexion et pense-bête (17 octobre 2026)
 - Page de connexion : case « Afficher le mot de passe » pour voir ce qu'on tape (les quatre applis).
 - Le ✅ « tout est fait » du pense-bête n'apparaît plus sur les cartes des lecteurs : le pense-bête ne concerne que l'administrateur.

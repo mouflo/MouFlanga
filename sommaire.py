@@ -22,7 +22,7 @@ from pathlib import Path
 logger = logging.getLogger("mouflanga")
 
 PAGES_MAX = 14                  # images lues au début du tome
-VERSION = 7                     # version du lecteur : un tome « sans sommaire » lu par une version plus ancienne est relu
+VERSION = 8                     # version du lecteur (8 : deux lecteurs de texte) : un tome « sans sommaire » lu par une version plus ancienne est relu
 _MOTS = r"(?:chapitre|kapitel|chap|ch|sc[eè]ne|[ée]pisode|ep|acte|round|le[cç]on|lesson|partie|nuit|jour|histoire|file|stage|level|trick|#)"
 _CHIFFRES_OCR = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1", "S": "5", "A": "4", "B": "8", "Z": "2"})
 # « SCÈNE 1 La tueuse aux yeux d'argent .......5 », « Chapitre 12 : Le retour 45 », « 12. Le retour ...... 45 »
@@ -52,7 +52,65 @@ _FILE = threading.Semaphore(SIMULTANES)
 
 
 def disponible() -> bool:
-    return shutil.which("tesseract") is not None
+    return shutil.which("tesseract") is not None or _moteur() is not None
+
+
+_LOCAL = threading.local()
+_MOTEUR_ABSENT = False
+
+
+def _moteur():
+    """Lecteur de texte moderne (RapidOCR, modèles PP-OCRv5 latin) : un par fil, chargé à la première lecture.
+    None s'il n'est pas installé : tesseract prend alors le relais. Il lit bien mieux que tesseract les titres stylisés,
+    en couleur ou sur fond chargé ; il est plus lent, ce qui ne compte pas pour quelques tomes de temps en temps."""
+    global _MOTEUR_ABSENT
+    if _MOTEUR_ABSENT:
+        return None
+    m = getattr(_LOCAL, "moteur", None)
+    if m is None:
+        try:
+            from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
+            m = RapidOCR(params={"Rec.lang_type": LangRec.LATIN, "Rec.ocr_version": OCRVersion.PPOCRV5,
+                                 "Rec.model_type": ModelType.MOBILE,
+                                 "EngineConfig.onnxruntime.intra_op_num_threads": 2,    # 2 cœurs par lecture : plusieurs tomes en même temps
+                                 "EngineConfig.onnxruntime.inter_op_num_threads": 1})
+        except Exception as e:
+            logger.info("Lecteur de texte moderne indisponible (%s) : tesseract seul", e.__class__.__name__)
+            _MOTEUR_ABSENT = True
+            return None
+        _LOCAL.moteur = m
+    return m
+
+
+def _ocr_moderne(im) -> str | None:
+    """Texte d'une image PIL, une ligne par ligne de texte (cases rapprochées en hauteur réunies de gauche à droite).
+    None si le lecteur moderne est absent ou en échec."""
+    moteur = _moteur()
+    if moteur is None:
+        return None
+    try:
+        import numpy as np
+        r = moteur(np.array(im.convert("RGB"))[:, :, ::-1])
+        if r is None or r.boxes is None or not len(r.txts):
+            return ""
+        cases = []
+        for box, txt in zip(r.boxes, r.txts):
+            ys = [p[1] for p in box]; xs = [p[0] for p in box]
+            cases.append((sum(ys) / 4, max(ys) - min(ys), min(xs), txt))
+        cases.sort()
+        lignes = []                                       # [hauteur du centre (moyenne), hauteur de case (la plus petite), cases]
+        for cy, h, x, txt in cases:
+            if lignes and abs(cy - lignes[-1][0]) <= max(6, min(h, lignes[-1][1]) * .4):
+                l = lignes[-1]
+                l[0] = (l[0] * len(l[2]) + cy) / (len(l[2]) + 1)
+                l[1] = min(l[1], h)
+                l[2].append((x, txt))
+            else:
+                lignes.append([cy, h, [(x, txt)]])
+        return "\n".join(" ".join(t for _, t in sorted(l[2])) for l in lignes)
+    except Exception as e:
+        logger.info("Lecteur de texte moderne en échec (%s) : tesseract", e.__class__.__name__)
+        return None
 
 
 def _simple(t):
@@ -71,6 +129,9 @@ def ocr(image_octets: bytes, clair: bool = False) -> str:
         im = ImageChops.darker(ImageChops.darker(r, g), b).point(lambda v: 255 if v > 180 else 0)
     else:
         im = ImageOps.grayscale(im)
+    moderne = _ocr_moderne(im) if getattr(_LOCAL, "mode", "tesseract") == "moderne" else None
+    if moderne is not None:
+        return moderne
     if im.width < 1400:                                   # petites images : agrandies, l'OCR lit mieux
         im = im.resize((im.width * 2, im.height * 2))
     buf = io.BytesIO()
@@ -116,14 +177,20 @@ def lire_isbn(lire_page, nb_pages: int, fin: int = 6, debut: int = 5):
     puis les premières (page de titre, copyright). Seul un ISBN à somme de contrôle valide est rendu ; None sinon."""
     fin_pages = list(range(nb_pages - 1, max(nb_pages - 1 - fin, -1), -1))
     debut_pages = [i for i in range(min(debut, nb_pages)) if i not in fin_pages]
-    for i in fin_pages + debut_pages:
-        try:
-            v = isbn_du_texte(ocr(lire_page(i)))
-        except Exception as e:
-            logger.info("ISBN, page %d : %s", i, e.__class__.__name__)
-            continue
-        if v:
-            return v
+    modes = ["tesseract"] + (["moderne"] if _moteur() is not None else [])     # le lecteur moderne, seulement si tesseract ne trouve rien
+    try:
+        for mode in modes:
+            _LOCAL.mode = mode
+            for i in fin_pages + debut_pages:
+                try:
+                    v = isbn_du_texte(ocr(lire_page(i)))
+                except Exception as e:
+                    logger.info("ISBN, page %d : %s", i, e.__class__.__name__)
+                    continue
+                if v:
+                    return v
+    finally:
+        _LOCAL.mode = "tesseract"
     return None
 
 
@@ -1958,9 +2025,10 @@ def chapitres_par_noms(noms, numeros=None) -> list[dict]:
 
 
 
-def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
+def _lire_avec(mode, vision, chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
     """{"chapitres": [{"num", "titre", "page" (imprimée), "image" (position dans le fichier ou None)}], "page_sommaire"}
     lire_page(i) → octets de l'image i. Sans sommaire trouvé : chapitres vide."""
+    _LOCAL.mode = mode                                       # « tesseract » ou « moderne » : le lecteur de texte de cette lecture
     textes, trouve, page_sommaire = {}, [], None
     paysages = []                                            # double page scannée d'un seul tenant (deux pages par image)
     for i in range(min(nb_pages, PAGES_MAX)):
@@ -2167,7 +2235,7 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
             return {"chapitres": par_noms, "page_sommaire": None, "decalage": None, "source": "noms des images",
                     **({"isbn": isbn} if isbn else {})}
     if not trouve:
-        if cle_claude():                                   # sommaire stylisé (Bakuman) : lu par l'analyse d'image de Claude
+        if vision and cle_claude():                        # sommaire stylisé (Bakuman) : lu par l'analyse d'image de Claude
             try:
                 return lire_vision(lire_page, nb_pages, cle_claude())
             except Exception as e:
@@ -2204,6 +2272,45 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
     for c, image in zip(trouve, images):
         c["image"] = image if image is not None and image < nb_pages else None
     return {"chapitres": trouve, "page_sommaire": page_sommaire, "decalage": decalage, **({"isbn": isbn} if isbn else {})}
+
+
+def _qualite(r, numeros) -> tuple:
+    """Pour départager deux lectures du même tome : le plus de chapitres (ni trop, ni trop peu si la liste est connue),
+    moins de pages estimées."""
+    ch = r.get("chapitres") or []
+    ecart = -abs(len(ch) - len(numeros)) if numeros else 0
+    return (ecart, len(ch) - 0.5 * sum(1 for c in ch if c.get("estimee")))
+
+
+def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
+    """Lit le sommaire avec les deux lecteurs de texte (tesseract, réglé pendant des semaines sur les cas de la
+    bibliothèque, et le lecteur moderne, bien meilleur sur les titres stylisés, en couleur ou sur fond chargé) et garde
+    le meilleur résultat ; à égalité, celui de tesseract. L'analyse d'image de Claude (clé payante) n'est tentée
+    qu'une fois, si aucun des deux n'a rien trouvé."""
+    tesseract = shutil.which("tesseract") is not None
+    moderne = _moteur() is not None
+    modes = [m for m, ok in (("tesseract", tesseract), ("moderne", moderne)) if ok] or ["tesseract"]
+    meilleur = None
+    for mode in modes:
+        try:
+            r = _lire_avec(mode, False, chemin, lire_page, nb_pages, noms, numeros)
+        except Exception as e:
+            logger.info("Sommaire de %s (%s) : %s", chemin, mode, e.__class__.__name__)
+            continue
+        if meilleur is None or _qualite(r, numeros) > _qualite(meilleur, numeros):
+            meilleur = r
+        ch = meilleur.get("chapitres") or []
+        if ch and numeros and len(ch) >= len(numeros) and not any(c.get("estimee") for c in ch):
+            break                                            # complet et sûr : inutile de relire avec l'autre lecteur
+    _LOCAL.mode = "tesseract"                               # les autres lectures du fil (ISBN…) restent comme avant
+    if meilleur is None:
+        raise RuntimeError("lecture impossible")
+    if not meilleur.get("chapitres") and cle_claude():
+        try:
+            return lire_vision(lire_page, nb_pages, cle_claude())
+        except Exception as e:
+            logger.info("Sommaire par Claude impossible pour %s : %s", chemin, e)
+    return meilleur
 
 
 def _proche(mot, morceaux):

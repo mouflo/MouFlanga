@@ -11,3 +11,5 @@ camoufox
 pymupdf
 pywebpush
 pillow-heif
+rapidocr
+onnxruntime

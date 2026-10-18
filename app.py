@@ -863,10 +863,22 @@ def _isbn_google_serie(nom, forcer=False):
     return len(trouves) if complet else None
 
 
+def _isbn_en_double(infos):
+    """Tomes (textes) dont l'ISBN lu dans les pages est aussi celui d'un autre tome de la série : un des deux est faux
+    (page de publicité ou « à suivre » lue à la place). Un ISBN noté à la main n'est jamais mis en doute."""
+    from collections import Counter
+    lus = {str(t): v["isbn"] for t, v in (infos.get("sommaires") or {}).items() if isinstance(v, dict) and v.get("isbn")}
+    notes = infos.get("isbn") or {}
+    nb = Counter(c for c in notes.values() if c)
+    return {t for t, c in lus.items() if notes.get(t) == c and nb[c] > 1}
+
+
 def _tomes_sans_isbn(nom, tout=False):
-    """[(tome, fichier)] des tomes complets dont l'ISBN n'est pas connu (tout=True : tous), pour les lire dans les pages."""
+    """[(tome, fichier)] des tomes complets dont l'ISBN n'est pas connu (tout=True : tous), pour les lire dans les pages.
+    Un ISBN partagé par deux tomes de la série compte comme inconnu : ces tomes sont relus."""
     import edition
-    connus = _isbn_connus(edition.lire(MANGA_DIR / nom))
+    infos = edition.lire(MANGA_DIR / nom)
+    connus = {t: c for t, c in _isbn_connus(infos).items() if t not in _isbn_en_double(infos)}
     return [(e["tome"], MANGA_DIR / e["path"])
             for e in sorted((x for x in _entrees(_scan().get(nom) or []) if x.get("tome") is not None and x.get("key") == x.get("path")
                              and not x.get("a_importer")), key=lambda x: x["tome"])
