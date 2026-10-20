@@ -5045,6 +5045,30 @@ def api_tome_sommaire():
     return jsonify({"ok": True, "message": "Lecture du sommaire en cours (environ une minute)…"})
 
 
+@app.route("/api/titres-chapitres", methods=["GET", "POST"])
+def api_titres_chapitres():
+    """🏷 Titres des chapitres sur le modèle régulier de la série (« Trick 12 »). GET : aperçu seul.
+    POST {series, confirmer: true} : écrit les titres proposés dans les infos du tome (rien n'est touché sans confirmation)."""
+    import edition
+    import titres_chapitres
+    donnees = request.get_json(silent=True) or {} if request.method == "POST" else request.args
+    name = str(donnees.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    dossier = MANGA_DIR / name
+    infos = edition.lire(dossier)
+    sommaires = infos.get("sommaires") or {}
+    if request.method == "GET":
+        return jsonify({"ok": True, **titres_chapitres.proposer(sommaires)})
+    if not donnees.get("confirmer"):
+        return jsonify({"ok": False, "error": "Confirme l'écriture pour appliquer les titres."}), 400
+    ecrits = titres_chapitres.appliquer(sommaires, titres_chapitres.proposer(sommaires)["changements"])
+    infos["sommaires"] = sommaires
+    edition.ecrire(dossier, infos)
+    logger.info("Titres des chapitres de « %s » : %d écrit(s)", name, ecrits)
+    return jsonify({"ok": True, "ecrits": ecrits})
+
+
 @app.route("/api/tome/chapitres", methods=["POST"])
 def api_tome_chapitres():
     """Correction à la main de la liste des chapitres d'un tome : une ligne « 2. La valeur de la vie » par chapitre.

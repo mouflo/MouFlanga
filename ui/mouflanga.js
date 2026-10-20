@@ -1858,6 +1858,17 @@
       if (!r.ok) { note('sMsg', r.error); return; }
       await openSeries(current.id, false);
     });
+    $('sTitres').addEventListener('click', async function () {
+      // Aperçu d'abord : le nom appris sur les tomes bien nommés, puis confirmation avant d'écrire
+      var a = await api('/api/titres-chapitres?series=' + encodeURIComponent(current.id));
+      if (!a.ok) { note('sMsg', a.error); return; }
+      if (!a.changements.length) { note('sMsg', 'Tous les titres de chapitres suivent déjà le modèle « ' + a.modele + ' ».', 'ok'); return; }
+      var exemples = a.changements.slice(0, 5).map(function (c) { return 'Tome ' + c.tome + ' : « ' + (c.avant || '(vide)') + ' » → « ' + c.apres + ' »'; }).join('\n');
+      if (!await MouConfirm('Modèle appris : « ' + a.modele + ' » (d\'après ' + a.nb_appris + ' chapitres bien nommés).\n\n' + a.changements.length + ' titre(s) à écrire, par exemple :\n' + exemples + '\n\nLes vrais titres ne sont pas touchés. Appliquer ?')) return;
+      var r = await post('/api/titres-chapitres', {series: current.id, confirmer: true});
+      if (!r.ok) { note('sMsg', r.error); return; }
+      note('sMsg', r.ecrits + ' titre(s) de chapitres écrit(s).', 'ok');
+    });
     $('sOrgaGo').addEventListener('click', async function () {
       var nom = $('sOrgaNom').value.trim(); if (!nom) return;
       $('sOrgaGo').disabled = true; note('sMsg', 'Rangement des fichiers…', 'warn');

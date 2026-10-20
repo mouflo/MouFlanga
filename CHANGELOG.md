@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 🏷 Titres de chapitres sur un modèle régulier (20 octobre 2026)
+- 🏷 Nouveau bouton « Titres des chapitres » dans le menu « ⋯ » d'une série : l'appli repère le nom régulier des chapitres (par exemple « Trick 12 ») d'après les tomes déjà bien nommés, montre un aperçu, puis écrit après confirmation.
+- Ne sont proposés que les titres vides, les titres en chiffres seuls et les titres dont le numéro ne correspond plus au chapitre. Les vrais titres ne sont jamais modifiés.
+- Air Gear : 67 titres remis au modèle « Trick N » (tomes 10, 13, 14 et suivants).
+
 ## 🟢→🎨 Le vert suit le skin (20 octobre 2026)
 - Les zones vertes codées en dur (« ✅ Validé le… l'appli n'y touche plus », bandeaux, boutons, onglets, lecteur, couvertures, règles…) prennent maintenant la couleur d'accent du skin.
 
