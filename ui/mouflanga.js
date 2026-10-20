@@ -1766,6 +1766,23 @@
       if (r.ok) await openSeries(current.id, false);          // recharge d'abord : le message reste affiché
       note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err');
     });
+    async function envoyerNfo(texte) {
+      var r = await post('/api/serie/nfo', {series: current.id, texte: texte});
+      if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
+      window.MouToast('✅ ' + r.message, 'ok');
+      await openSeries(current.id, false);
+    }
+    $('sNfoImport').addEventListener('click', function () {              // 📄 NFO reçu à part : le fichier .nfo ou .txt est choisi ici
+      fermerMenus();
+      $('sNfoFichier').value = '';
+      $('sNfoFichier').click();
+    });
+    $('sNfoFichier').addEventListener('change', function () {
+      var f = this.files && this.files[0]; if (!f) return;
+      var lecteur = new FileReader();
+      lecteur.onload = function () { envoyerNfo(String(lecteur.result || '')); };
+      lecteur.readAsText(f);
+    });
     $('sIsbnLire').addEventListener('click', async function () {
       fermerMenus();
       var etat = await api('/api/serie/isbn/lire?series=' + encodeURIComponent(current.id));

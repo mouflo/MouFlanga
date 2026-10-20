@@ -1380,6 +1380,31 @@ def api_serie_isbn():
     return jsonify({"ok": True, "message": msg})
 
 
+@app.route("/api/serie/nfo", methods=["POST"])
+def api_serie_nfo():
+    """Importe un NFO reçu à part (texte collé ou fichier .nfo/.txt) : titres, auteur, synopsis et ISBN des tomes."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    texte = str(body.get("texte", ""))[:200_000]
+    dossier = MANGA_DIR / name
+    avant = len(edition.lire(dossier).get("isbn") or {})
+    nfo = edition.noter_nfo(dossier, texte)
+    if not nfo:
+        return jsonify({"ok": False, "error": "Rien d'utile trouvé dans ce NFO (titre, auteur, synopsis ou « Tome 01 -- ISBN : 978… »)."}), 400
+    apres = len(edition.lire(dossier).get("isbn") or {})
+    morceaux = []
+    if nfo.get("isbn"):
+        morceaux.append(f"{apres - avant} ISBN ajouté(s) sur {len(nfo['isbn'])} lus" + (" (les autres étaient déjà notés)" if apres - avant < len(nfo["isbn"]) else ""))
+    if nfo.get("synopsis"):
+        morceaux.append("synopsis")
+    morceaux += [n for c, n in (("titre_fr", "titre français"), ("auteur", "auteur")) if nfo.get(c)]
+    logger.info("NFO importé pour « %s » : %s", name, ", ".join(morceaux))
+    return jsonify({"ok": True, "message": "NFO importé : " + ", ".join(morceaux) + "."})
+
+
 _CACHE_RESUME_FICHIER = {}                              # (chemin, date, taille) → le fichier porte-t-il un résumé ?
 _CACHE_ECRIT = {}                                        # (chemin, date, taille) → le fichier porte-t-il les infos écrites par MouFlanga ?
 

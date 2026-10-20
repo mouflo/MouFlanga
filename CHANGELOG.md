@@ -1,6 +1,7 @@
 # Historique des versions
 
 ## 📄 Le NFO du torrent est lu (20 octobre 2026)
+- 📄 Nouveau bouton « Importer un NFO (fichier) » dans le menu « ⋯ » d'une série : on choisit le fichier .nfo ou .txt reçu à part, et ses titres, son synopsis et ses ISBN sont enregistrés.
 - L'appli lit maintenant le NFO d'un torrent ou d'une archive : titre original et français, auteur, éditeur, synopsis et l'ISBN de chaque tome (« Tome 01 -- ISBN : 978-… »). Seuls les ISBN à la somme de contrôle juste sont gardés, et un ISBN déjà noté (à la main ou lu dans les pages) n'est jamais remplacé.
 - Le synopsis français du NFO sert de résumé quand aucun résumé français n'a été trouvé sur Internet.
 
