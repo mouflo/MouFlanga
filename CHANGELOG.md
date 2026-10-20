@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🎨 Interface commune v2 et skins (20 octobre 2026)
+- 🎨 **Interface commune, version 2** (identique dans les cinq applis) : les fenêtres et les bulles de message suivent les couleurs du skin choisi, les fenêtres plus hautes que l'écran défilent avec leurs boutons collés en bas, la touche « retour » du téléphone ferme la fenêtre ouverte au lieu de quitter l'appli, et le **logo de l'en-tête et l'icône de l'onglet changent de couleur avec le skin**.
+
 ## 🔎 Deux lecteurs de texte pour les sommaires et les ISBN (18 octobre 2026)
 - Les sommaires sont lus par **deux lecteurs de texte** : tesseract (réglé sur la bibliothèque) et **RapidOCR** (IA de lecture moderne, tourne sur le processeur, aucun envoi sur Internet). L'appli garde le meilleur résultat ; à égalité, celui de tesseract ; si tesseract a déjà tout trouvé et sûr, le second n'est pas lancé. Essai sur 85 tomes difficiles : 24 passent de « rien » à des chapitres, 46 identiques, aucun recul.
 - Les ISBN sont lus par tesseract puis, s'il ne trouve rien, par le lecteur moderne.
