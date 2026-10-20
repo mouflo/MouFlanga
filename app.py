@@ -5673,6 +5673,10 @@ def _rangement_complet(name, forcer=False):
         if not info:
             etat.update(en_cours=False, message="Aucune source (Wikipédia, MangaDex) ne connaît les tomes de cette série : les chapitres restent un fichier chacun.")
             return 0
+        try:
+            _separer_doubles(name, info, etat)
+        except Exception as e:
+            logger.warning("Coupure des fichiers à deux tomes de « %s » : %s", name, e)
         n = _ranger_en_tomes(name, info, garder_en_cours=True)
         etat.update(en_cours=False, message=f"✅ {n} chapitre(s) rangé(s) en tomes (d'après {info['source']})." if n
                     else f"Déjà rangée (d'après {info['source']}).")
