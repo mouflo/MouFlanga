@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 📚 Résumé en français et titre complet d'une série (20 octobre 2026)
+- Le résumé Wikipédia en français est retrouvé même quand l'article s'écrit autrement que le dossier (« Ken-ichi » pour « Kenichi »). Avant, la série retombait sur un résumé en anglais.
+- Un torrent dont le nom est le titre français complet d'une série déjà présente (« Kenichi Le Disciple Ultime Matsuena ») n'est plus pris pour une suite rangée à part : il va dans la série existante, où l'appli demande de remplacer ou d'ajouter les manquants. L'article Wikipédia en français confirme que le sous-titre est bien celui de la même série ; le nom de l'auteur en fin de titre est ignoré. Les vraies suites (« Kurokos Basket Extra Game ») restent rangées à part.
+
 ## 📖 Sommaires en « Dossier » et numérotés de 1 à N (20 octobre 2026)
 - Le lecteur de sommaires reconnaît le mot « Dossier » (Détective Conan : « DOSSIER 1 Le décalage horaire 5 »).
 - Un sommaire numéroté de 1 à N propre au tome (Dossier 1 à 10 dans un tome qui contient les chapitres 91 à 100) n'est plus écarté : il reprend les numéros de chapitres annoncés pour le tome, à condition qu'il y ait exactement autant de lignes que de chapitres.

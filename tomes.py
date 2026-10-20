@@ -482,7 +482,8 @@ def page_correspond(page: str, noms) -> bool:
     """La page Wikipédia est-elle bien celle de la série ? Tous les mots d'un des noms doivent figurer dans son titre
     (« Arago » → « Arago (manga) » oui ; « Akame ga Kill! Zero » → « Red Eyes Sword: Akame ga Kill! » non : c'est la
     série principale). Les parties d'un nom « Série : Suite » comptent, sauf celle qui est une autre série de la bibliothèque."""
-    mots_page = set(_simple(page).split())
+    jetons = _simple(page).split()
+    mots_page = set(jetons) | {a + b for a, b in zip(jetons, jetons[1:])}     # « Ken-ichi » correspond à « Kenichi »
     autres = {_simple(x) for x in SERIES_EXISTANTES()}
     candidats = []
     for n in [x for x in noms if x]:
@@ -523,6 +524,44 @@ def _wikipedia_fr(m, serie=""):
         except Exception:
             continue
     return ""
+
+
+_INTRO_FR = {}
+
+
+def introduction_fr(serie: str) -> str:
+    """Introduction de l'article Wikipédia en français sur la série (« » si introuvable). Gardée en mémoire."""
+    if serie in _INTRO_FR:
+        return _INTRO_FR[serie]
+    try:
+        r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={
+            "action": "query", "list": "search", "srsearch": f"{serie} manga", "srlimit": 3,
+            "format": "json", "formatversion": 2}, timeout=15).json()
+        for res in r.get("query", {}).get("search", []):
+            if not page_correspond(res["title"], [serie]):
+                continue
+            d = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={
+                "action": "query", "prop": "extracts", "explaintext": 1, "exintro": 1, "titles": res["title"],
+                "format": "json", "formatversion": 2}, timeout=15).json()
+            texte = ((d.get("query", {}).get("pages") or [{}])[0].get("extract") or "")
+            if "manga" in texte[:1500].lower():
+                _INTRO_FR[serie] = texte
+                return texte
+        _INTRO_FR[serie] = ""
+    except Exception:
+        pass
+    return _INTRO_FR.get(serie, "")
+
+
+def meme_serie_sous_titre(serie: str, reste: str) -> bool:
+    """« Kenichi » + « Le Disciple Ultime Matsuena » : le sous-titre est le titre français complet de la même série (l'article
+    Wikipédia en français l'écrit : « Ken-ichi, le disciple ultime »), pas une suite. Les mots en trop au bout (le nom de
+    l'auteur) sont ignorés ; il faut au moins deux mots qui se suivent dans l'article."""
+    mots = (reste or "").split()
+    if len(mots) < 2:
+        return False
+    intro = f" {_simple(introduction_fr(serie))} "
+    return any(f" {_simple(' '.join(mots[:k]))} " in intro for k in range(len(mots), 1, -1))
 
 
 ID_CHOISI = lambda serie: None          # remplacé par l'appli : identifiant AniList choisi à la main pour la série

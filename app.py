@@ -3416,6 +3416,8 @@ def _nom_sans_edition(nom_fichier, existantes):
                 reste = mots[k:]
                 while len(reste) >= 3 and all(m.isupper() and len(m) >= 3 for m in reste[-2:]) and not reste[-3].isupper():
                     reste = reste[:-2]                         # « Replace Plus TAKAHASHI FUJIMAKI » : noms d'auteurs en fin de nom
+                if not any(m.lower().strip(":-–") in _MOTS_SUITE for m in reste) and tomes.meme_serie_sous_titre(e, " ".join(reste)):
+                    return e                                   # « Kenichi Le Disciple Ultime Matsuena » : le titre complet de « Kenichi », pas une suite
                 return _nom_serie(f"{e} : {' '.join(reste).lstrip(':-– ')}")
     for e in existantes:                                   # série déjà dans la bibliothèque (ex. Gamaran)
         if _cle_nom(e) == _cle_nom(t):
