@@ -27,10 +27,10 @@ body.hide-ui .foot { transform:translateY(100%); position:absolute; left:0; righ
 .zone.left { left:0; } .zone.right { right:0; }
 .rmsg { display:none; position:absolute; inset:0; align-items:center; justify-content:center; text-align:center; padding:24px; color:#ffb4ae; z-index:3; line-height:1.6; background:#000; }
 .rmsg.show { display:flex; }
-.foot input[type=range] { flex:1; accent-color:#52b54b; }
+.foot input[type=range] { flex:1; accent-color:var(--accent); }
 body.rtl .foot input[type=range] { direction:rtl; }
 @media (max-width:700px) { .rbtn { padding:9px 9px; } #prevCh, #nextCh { font-size:0; } #prevCh::before { content:"⏮"; font-size:1rem; } #nextCh::before { content:"⏭"; font-size:1rem; } .rtitle small { display:none; } .rcount { font-size:.8rem; } }
-#scroll .suite { display:block; margin:24px auto 60px; padding:14px 22px; font:inherit; font-weight:600; border:0; border-radius:6px; background:#52b54b; color:#fff; cursor:pointer; max-width:90%; }
+#scroll .suite { display:block; margin:24px auto 60px; padding:14px 22px; font:inherit; font-weight:600; border:0; border-radius:6px; background:var(--accent); color:#fff; cursor:pointer; max-width:90%; }
 
 /* Zoom, doubles pages, annonce du chapitre, aide */
 .stage:not(.mode-scroll) { touch-action: pan-y; }
@@ -43,8 +43,8 @@ body.rtl .foot input[type=range] { direction:rtl; }
 .aide[hidden] { display: none; }
 .aide-boite { background: #1b1b1b; border: 1px solid #333; border-radius: 10px; padding: 16px 18px; max-width: 520px; max-height: 88vh; overflow: auto; line-height: 1.45; font-size: .92rem; }
 .aide-boite h2 { margin: 0 0 6px; font-size: 1.15rem; }
-.aide-boite h3 { margin: 14px 0 4px; font-size: .95rem; color: #52b54b; }
+.aide-boite h3 { margin: 14px 0 4px; font-size: .95rem; color: var(--accent); }
 .aide-boite ul { margin: 0; padding-left: 18px; }
 .aide-boite li { margin: 4px 0; }
 .aide-note { color: #aaa; font-size: .85rem; }
-#aideFermer { margin-top: 10px; width: 100%; background: #52b54b; color: #fff; font-weight: 600; }
+#aideFermer { margin-top: 10px; width: 100%; background: var(--accent); color: #fff; font-weight: 600; }

@@ -293,12 +293,12 @@
 }
 
 .job-status.running {
-    background: rgba(82, 181, 75, 0.2);
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
     color: var(--accent);
 }
 
 .job-status.completed {
-    background: rgba(82, 181, 75, 0.2);
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
     color: var(--accent);
 }
 
@@ -350,7 +350,7 @@
 
 /* Chapitres déjà présents dans la bibliothèque */
 .chapter-item.deja .chapter-item-name { color: var(--muted, #999); }
-.badge-deja { display: inline-block; margin-left: 6px; font-size: .75rem; color: #52b54b; white-space: nowrap; }
+.badge-deja { display: inline-block; margin-left: 6px; font-size: .75rem; color: var(--accent); white-space: nowrap; }
 .chap-manquants { color: var(--muted, #999); font-size: .85rem; margin: 6px 0; }
 
 /* Étape 1 : liste alphabétique des séries */
@@ -381,7 +381,7 @@ body.mou-skin .serie-ligne { background: none; color: var(--text, #eee); font-we
 .tor-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
 .tor-info b { font-size:.88rem; overflow-wrap:anywhere; }
 .tor-info small, .tor-info span { font-size:.76rem; color:var(--muted, #999); overflow-wrap:anywhere; }
-.tor-badges i { font-style:normal; display:inline-block; margin:2px 4px 0 0; padding:1px 7px; border-radius:9px; background:rgba(82,181,75,.15); color:#9ad58f; font-size:.72rem; }
+.tor-badges i { font-style:normal; display:inline-block; margin:2px 4px 0 0; padding:1px 7px; border-radius:9px; background:color-mix(in srgb, var(--accent) 15%, transparent); color:var(--accent); font-size:.72rem; }
 .tor-act { display:flex; gap:6px; flex:none; }
 .tor-envoi { flex-basis:100%; display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:6px 0 2px; }
 .tor-envoi label { font-size:.8rem; color:var(--muted, #999); flex-basis:100%; }

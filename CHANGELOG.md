@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🟢→🎨 Le vert suit le skin (20 octobre 2026)
+- Les zones vertes codées en dur (« ✅ Validé le… l'appli n'y touche plus », bandeaux, boutons, onglets, lecteur, couvertures, règles…) prennent maintenant la couleur d'accent du skin.
+
 ## 🪟 Fenêtres de confirmation aux couleurs du skin (20 octobre 2026)
 - Les questions (« Supprimer ? », « Garder sur ce téléphone ? »), les messages d'erreur et les saisies de texte (nom, ISBN, équipe…) n'utilisent plus les fenêtres grises du navigateur : elles prennent les couleurs du skin choisi. Dans le kit commun : `MouConfirm`, `MouAlert`, `MouPrompt` et `data-confirme` sur les formulaires.
 

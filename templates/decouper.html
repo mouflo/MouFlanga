@@ -12,8 +12,8 @@
         .dc-page { position: relative; border: 2px solid transparent; border-radius: 8px; background: #0f1012; cursor: pointer; overflow: hidden; }
         .dc-page img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; display: block; }
         .dc-page .n { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.65); color: #ccc; font-size: 12px; text-align: center; padding: 2px; }
-        .dc-page.debut { border-color: #52b54b; }
-        .dc-page.debut::before { content: attr(data-tome); position: absolute; top: 0; left: 0; right: 0; background: #52b54b; color: #0b0c0e; font-weight: 700; font-size: 13px; text-align: center; padding: 3px; z-index: 1; }
+        .dc-page.debut { border-color: var(--accent); }
+        .dc-page.debut::before { content: attr(data-tome); position: absolute; top: 0; left: 0; right: 0; background: var(--accent); color: #0b0c0e; font-weight: 700; font-size: 13px; text-align: center; padding: 3px; z-index: 1; }
         .dc-barre { position: fixed; left: 0; right: 0; bottom: 0; background: #17181c; border-top: 1px solid #2c2f36; padding: 10px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         .dc-barre .btn { flex: 1; min-width: 140px; }
         .dc-sauts { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }

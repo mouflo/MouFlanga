@@ -9,7 +9,7 @@
     <style>
         .regles-onglets { display: flex; gap: 8px; margin: 16px 0; flex-wrap: wrap; }
         .regles-onglets a { padding: 10px 14px; border-radius: 10px; background: #1f2126; color: #ddd; text-decoration: none; border: 1px solid #2c2f36; }
-        .regles-onglets a.actif { background: #52b54b; color: #0b0c0e; border-color: #52b54b; font-weight: 600; }
+        .regles-onglets a.actif { background: var(--accent); color: #0b0c0e; border-color: var(--accent); font-weight: 600; }
         .regle { border: 1px solid #2c2f36; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; background: #17181c; }
         .regle .nom { font-weight: 600; font-size: 1.05em; }
         .regle .detail { color: #aaa; font-size: 0.92em; margin-top: 4px; line-height: 1.5; }
@@ -18,13 +18,13 @@
         .regle .actions button { background: #3a1f22; color: #ffb4b4; border: 1px solid #6b2f35; cursor: pointer; }
         .regle .actions a { background: #1f2126; color: #ddd; text-decoration: none; border: 1px solid #2c2f36; }
         .regle .off { color: #e0a84a; }
-        .formulaire { border: 1px solid #52b54b; border-radius: 12px; padding: 14px; margin: 16px 0; background: #14191a; }
+        .formulaire { border: 1px solid var(--accent); border-radius: 12px; padding: 14px; margin: 16px 0; background: var(--card, #14191a); }
         .formulaire label { display: block; margin-top: 10px; font-weight: 600; }
         .formulaire input[type=text], .formulaire input[type=number], .formulaire textarea { width: 100%; box-sizing: border-box; font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid #2c2f36; background: #0f1012; color: #eee; margin-top: 4px; }
         .formulaire textarea { min-height: 70px; }
         .formulaire .aide { color: #aaa; font-size: 0.9em; margin-top: 4px; }
         .formulaire .coche { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-        .formulaire button { margin-top: 14px; width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; background: #52b54b; color: #0b0c0e; border: none; font-weight: 600; }
+        .formulaire button { margin-top: 14px; width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; background: var(--accent); color: #0b0c0e; border: none; font-weight: 600; }
         .msg { padding: 10px 12px; border-radius: 8px; margin: 10px 0; }
         .msg.ok { background: #14291a; color: #9be3a6; border: 1px solid #2f6b3a; }
         .msg.err { background: #2a1416; color: #ffb4b4; border: 1px solid #6b2f35; }
