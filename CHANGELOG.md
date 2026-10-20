@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 📖 Sommaires en « Dossier » et numérotés de 1 à N (20 octobre 2026)
+- Le lecteur de sommaires reconnaît le mot « Dossier » (Détective Conan : « DOSSIER 1 Le décalage horaire 5 »).
+- Un sommaire numéroté de 1 à N propre au tome (Dossier 1 à 10 dans un tome qui contient les chapitres 91 à 100) n'est plus écarté : il reprend les numéros de chapitres annoncés pour le tome, à condition qu'il y ait exactement autant de lignes que de chapitres.
+- Les tomes sans sommaire sont relus une fois par la préparation en arrière-plan (version 6).
+
 ## 🔢 ISBN : le bon ISBN lu dans les pages remplace une copie fausse (20 octobre 2026)
 - Quand l'ISBN noté pour un tome est aussi celui d'un autre tome, et que la lecture des pages de ce tome a trouvé un ISBN différent qui n'appartient à aucun autre tome, c'est ce dernier qui est utilisé (Naruto 50). Un ISBN noté qui n'est pas en double n'est jamais remplacé.
 

@@ -22,8 +22,8 @@ from pathlib import Path
 logger = logging.getLogger("mouflanga")
 
 PAGES_MAX = 14                  # images lues au début du tome
-VERSION = 8                     # version du lecteur (8 : deux lecteurs de texte) : un tome « sans sommaire » lu par une version plus ancienne est relu
-_MOTS = r"(?:chapitre|kapitel|chap|ch|sc[eè]ne|[ée]pisode|ep|acte|round|le[cç]on|lesson|partie|nuit|jour|histoire|file|stage|level|trick|#)"
+VERSION = 9                     # version du lecteur (9 : mot « dossier » et numérotation propre au tome) : un tome « sans sommaire » lu par une version plus ancienne est relu
+_MOTS = r"(?:chapitre|kapitel|chap|ch|sc[eè]ne|[ée]pisode|ep|acte|round|le[cç]on|lesson|partie|nuit|jour|histoire|file|stage|level|trick|dossier|#)"
 _CHIFFRES_OCR = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1", "S": "5", "A": "4", "B": "8", "Z": "2"})
 # « SCÈNE 1 La tueuse aux yeux d'argent .......5 », « Chapitre 12 : Le retour 45 », « 12. Le retour ...... 45 »
 _LIGNE_MOT = re.compile(r"^\W*" + _MOTS + r"[.:]?\s*([0-9OoIlSABZ|]{1,4})\b\s*[:.\-–—]?\s*(.*?)[\s.·…_,]+(\d{1,3})\s*$", re.I)
@@ -1980,7 +1980,23 @@ def _inserer_manquants(lignes: list[dict]) -> list[dict]:
 def _compatible(lignes, numeros) -> bool:
     """Les numéros lus ne sont pas à des dizaines de chapitres de ceux que la liste du tome annonce (une page de crédits
     lue « chapitres 1 à 4 » dans un tome qui contient le 257)."""
-    return not (numeros and lignes and all(min(abs(x["num"] - n) for n in numeros) > 20 for x in lignes))
+    return _numerotation_du_tome(lignes, numeros) or not (numeros and lignes and all(min(abs(x["num"] - n) for n in numeros) > 20 for x in lignes))
+
+
+def _numerotation_du_tome(lignes, numeros) -> bool:
+    """Sommaire numéroté de 1 à N propre au tome (« Dossier 1 à 10 » dans Détective Conan 10, qui contient les chapitres 91 à 100) :
+    il y a exactement autant de lignes que de chapitres entiers annoncés pour le tome, et ils sont bien plus loin que 1."""
+    entiers = sorted(n for n in (numeros or []) if float(n).is_integer())
+    return bool(lignes) and len(entiers) == len(lignes) and min(entiers) > 20 and \
+        [x["num"] for x in lignes] == [float(k) for k in range(1, len(lignes) + 1)]
+
+
+def _renumeroter_du_tome(lignes, numeros):
+    """Les lignes d'un sommaire numéroté de 1 à N reprennent les numéros de chapitres annoncés pour le tome."""
+    if _numerotation_du_tome(lignes, numeros):
+        for x, n in zip(lignes, sorted(n for n in numeros if float(n).is_integer())):
+            x["num"] = float(n)
+    return lignes
 
 
 def _completer_bords(chapitres, numeros, nb_pages):
@@ -2241,6 +2257,7 @@ def _lire_avec(mode, vision, chemin, lire_page, nb_pages, noms=None, numeros=Non
             except Exception as e:
                 logger.info("Sommaire par Claude impossible pour %s : %s", chemin, e)
         return {"chapitres": [], "page_sommaire": None, "decalage": None, **({"isbn": isbn} if isbn else {})}
+    _renumeroter_du_tome(trouve, numeros)
     _completer_ordinaux(trouve)
     trouve = _completer_bords(trouve, numeros, nb_pages)
     par_noms = chapitres_par_noms(noms, numeros)
