@@ -21,7 +21,9 @@ class RouteNfoTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def _appel(self, corps):
-        with mock.patch.object(self.A, "_scan", return_value={"Kenichi": []}):
+        # MANGA_DIR de data/secrets.env écrase l'environnement : on le force ici, jamais la vraie bibliothèque
+        with mock.patch.object(self.A, "_scan", return_value={"Kenichi": []}), \
+                mock.patch.object(self.A, "MANGA_DIR", Path(self.tmp.name)):
             with self.A.app.test_request_context("/api/serie/nfo", method="POST", json=corps):
                 rep = self.A.api_serie_nfo()
         return rep if isinstance(rep, tuple) else (rep, 200)
