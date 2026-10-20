@@ -46,8 +46,8 @@ $('groupes').addEventListener('click', e => {
     const b = e.target.closest('.groupe-go'); if (!b) return;
     importer([groupeDepuis(b.closest('.groupe'))]);
 });
-$('toutImporter').addEventListener('click', () => {
-    if (!confirm(`Importer les ${groupes.length} séries ? Ça peut prendre plusieurs heures pour beaucoup de gigaoctets ; tu recevras un message Telegram à la fin.`)) return;
+$('toutImporter').addEventListener('click', async () => {
+    if (!await MouConfirm(`Importer les ${groupes.length} séries ? Ça peut prendre plusieurs heures pour beaucoup de gigaoctets ; tu recevras un message Telegram à la fin.`)) return;
     importer([...document.querySelectorAll('.groupe')].map(groupeDepuis));
 });
 charger();
@@ -137,7 +137,7 @@ $('rescanGo').addEventListener('click', async () => {
         });
     if (!choisis.length) { say('rescanMsg', 'Coche au moins un élément.', false); return; }
     const remplace = choisis.filter(c => c.choix === 'remplacer').length;
-    if (!confirm(`Importer ${choisis.length} élément${choisis.length > 1 ? 's' : ''} ?` +
+    if (!await MouConfirm(`Importer ${choisis.length} élément${choisis.length > 1 ? 's' : ''} ?` +
         (remplace ? `\n\n♻️ ${remplace} avec remplacement des tomes en double (les anciens vont à la corbeille 30 jours).` : '') +
         '\nTu recevras un message Telegram à la fin.')) return;
     const r = await post('/api/import/torrents', {elements: choisis});

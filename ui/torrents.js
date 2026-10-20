@@ -63,7 +63,7 @@
                 body: JSON.stringify({lien: x.lien, titre: x.titre, serie: nom, confirme, proposition: params.get("proposition") || ""})}).then(q => q.json());
             let r = await envoyer(serie, false);
             if (!r.ok && r.proche) {          // nom proche d'une série déjà là : la rejoindre, ou garder le nom tapé
-                r = await envoyer(confirm(r.error + "\n\nOK : ranger dans « " + r.proche + " ».\nAnnuler : garder « " + serie + " » (nouvelle série).") ? r.proche : serie, true);
+                r = await envoyer(await MouConfirm(r.error + "\n\nRanger dans « " + r.proche + " » ou garder « " + serie + " » (nouvelle série) ?", {ok: "Ranger dans « " + r.proche + " »", annuler: "Garder mon nom"}) ? r.proche : serie, true);
             }
             env.parentNode.innerHTML = `<div class="note ${r.ok ? "ok" : "err"}">${esc(r.message || r.error)}</div>`;
             etat();
@@ -72,7 +72,7 @@
         const dec = e.target.closest("[data-decider]");
         if (dec) {
             const choix = dec.dataset.remplacer, bloc = dec.closest(".tor-choix");
-            if (choix === "1" && !confirm("Les tomes actuels iront à la corbeille (30 jours). Continuer ?")) return;
+            if (choix === "1" && !await MouConfirm("Les tomes actuels iront à la corbeille (30 jours). Continuer ?")) return;
             bloc.querySelectorAll("button").forEach(b => b.disabled = true);
             const remplacer = choix === "ignorer" ? "ignorer" : choix === "1";
             const r = await (await fetch("/api/torrents/decider", {method: "POST", headers: {"Content-Type": "application/json"},

@@ -593,11 +593,11 @@
         return;
       }
       if (e.target.closest('[data-manuel]')) {
-        var titre = prompt('Titre du manga (obligatoire) :', $('demRecherche').value.trim());
+        var titre = await MouPrompt('Titre du manga (obligatoire) :', $('demRecherche').value.trim());
         if (!titre || !titre.trim()) return;
-        var auteur = prompt('Auteur (facultatif) :', '') || '';
-        var editeur = prompt('Éditeur (facultatif) :', '') || '';
-        var lien = prompt('Lien vers le site qui décrit le manga (facultatif) :', '') || '';
+        var auteur = await MouPrompt('Auteur (facultatif) :', '') || '';
+        var editeur = await MouPrompt('Éditeur (facultatif) :', '') || '';
+        var lien = await MouPrompt('Lien vers le site qui décrit le manga (facultatif) :', '') || '';
         var rm = await post('/api/suivies', {action: 'ajouter', nom: titre.trim(), serie: {titre: titre.trim(), auteur: auteur.trim(), editeur: editeur.trim(), lien: lien.trim(), source: 'Saisie manuelle'}});
         note('demMsg', rm.message || rm.error, rm.ok ? 'ok' : 'err');
         if (rm.ok) loadList();
@@ -622,7 +622,7 @@
       var aj = e.target.closest('[data-ajouter]');
       if (aj) {
         var x = demResultats[+aj.dataset.ajouter];
-        var nom = prompt('Nom de la série dans ta bibliothèque :', x.titre);
+        var nom = await MouPrompt('Nom de la série dans ta bibliothèque :', x.titre);
         if (!nom) return;
         var ra = await post('/api/suivies', {action: 'ajouter', nom: nom, serie: x});
         note('demMsg', ra.message || ra.error, ra.ok ? 'ok' : 'err');
@@ -631,7 +631,7 @@
       }
       var a = e.target.closest('[data-dem]'); if (!a) return;
       var corps = {action: a.dataset.dem, id: a.dataset.id};
-      if (corps.action === 'refuser') { var m = prompt('Refuser cette demande ? Motif (facultatif, visible par le lecteur) :', ''); if (m === null) return; corps.motif = m; }
+      if (corps.action === 'refuser') { var m = await MouPrompt('Refuser cette demande ? Motif (facultatif, visible par le lecteur) :', ''); if (m === null) return; corps.motif = m; }
       var r2 = await post('/api/demandes', corps);
       note('demMsg', r2.message || r2.error, r2.ok ? 'ok' : 'err');
       chargerDemandes();
@@ -668,16 +668,16 @@
         var sf = series.filter(function (s) { return s.id === fv.dataset.favori; })[0]; if (!sf) return;
         var veut = !sf.favori; sf.favori = veut; drawGrid();
         var rf = await post('/api/favori', {series: sf.id, favori: veut});
-        if (!rf.ok) { sf.favori = !veut; drawGrid(); alert(rf.error || 'Favori impossible'); }
+        if (!rf.ok) { sf.favori = !veut; drawGrid(); MouAlert(rf.error || 'Favori impossible'); }
         return;
       }
       var x = e.target.closest('[data-retirer-suivie]');
       if (x) {                                              // fiche grisée (série ajoutée, encore rien sur le NAS) : on la supprime
         e.stopPropagation();
-        if (!confirm('Supprimer la fiche « ' + x.dataset.retirerSuivie + ' » ? Elle n\'est plus suivie (aucun fichier n\'est touché).')) return;
+        if (!await MouConfirm('Supprimer la fiche « ' + x.dataset.retirerSuivie + ' » ? Elle n\'est plus suivie (aucun fichier n\'est touché).')) return;
         var r = await post('/api/suivies', {action: 'retirer', nom: x.dataset.retirerSuivie});
         if (r.ok) { series = series.filter(function (s) { return s.id !== x.dataset.retirerSuivie; }); drawGrid(); }
-        else alert(r.error || 'Suppression impossible');
+        else MouAlert(r.error || 'Suppression impossible');
         return;
       }
       var c = e.target.closest('.card'); if (c) ouvrirCarte(c);
@@ -704,7 +704,7 @@
       if (d) {
         e.stopPropagation();
         var ch = current.chapters.find(function (x) { return x.key === d.dataset.del; });
-        if (!confirm('Supprimer « ' + ch.title + ' » ?\n\nLe fichier va dans la corbeille du dossier des mangas (effacé pour de bon après 30 jours).')) return;
+        if (!await MouConfirm('Supprimer « ' + ch.title + ' » ?\n\nLe fichier va dans la corbeille du dossier des mangas (effacé pour de bon après 30 jours).')) return;
         var r = await post('/api/delete', {series: current.id, path: ch.key});
         if (!r.ok) { note('sMsg', r.error); return; }
         if (current.chapters.length <= 1) { history.pushState({}, '', location.pathname); showList(); }
@@ -737,7 +737,7 @@
       await openSeries(current.id, false);
     });
     $('sCoverAuto').addEventListener('click', async function () {
-      if (!confirm('Revenir à la couverture automatique (1re page du 1er chapitre) ?\n\nTa couverture va dans la corbeille.')) return;
+      if (!await MouConfirm('Revenir à la couverture automatique (1re page du 1er chapitre) ?\n\nTa couverture va dans la corbeille.')) return;
       var r = await post('/api/cover/automatique', {id: current.id});
       if (!r.ok) { note('sMsg', r.error); return; }
       await openSeries(current.id, false);
@@ -784,10 +784,10 @@
     note('listMsg', r.message || r.error, r.ok ? 'ok' : 'err');
     if (r.ok) { $('infosVue').hidden = true; openSeries(current.id, false); }
   }
-  $('infosCorps').addEventListener('click', function (e) {
+  $('infosCorps').addEventListener('click', async function (e) {
     var b = e.target.closest('[data-hs-choix],[data-hs-manuel],[data-hs-retirer],[data-hs-lire],[data-hs-renommer]'); if (!b) return;
     if (b.dataset.hsRenommer) {
-      var nouveau = prompt('Nouveau nom affiché pour ce hors-série :', ($('infosTitre').textContent || '').replace(/^🔎 Hors-série : /, ''));
+      var nouveau = await MouPrompt('Nouveau nom affiché pour ce hors-série :', ($('infosTitre').textContent || '').replace(/^🔎 Hors-série : /, ''));
       if (!nouveau || !nouveau.trim()) return;
       return enregistrerHorsSerie({action: 'renommer', titre: nouveau.trim()});
     }
@@ -806,11 +806,11 @@
     }
     if (b.dataset.hsRetirer) return enregistrerHorsSerie({action: 'retirer'});
     if (b.dataset.hsManuel) {
-      var titre = prompt('Titre du hors-série (obligatoire) :', '');
+      var titre = await MouPrompt('Titre du hors-série (obligatoire) :', '');
       if (!titre || !titre.trim()) return;
-      var annee = prompt('Année (facultatif) :', '') || '';
-      var auteur = prompt('Auteur (facultatif) :', '') || '';
-      var lien = prompt('Lien vers le site qui le décrit (facultatif) :', '') || '';
+      var annee = await MouPrompt('Année (facultatif) :', '') || '';
+      var auteur = await MouPrompt('Auteur (facultatif) :', '') || '';
+      var lien = await MouPrompt('Lien vers le site qui le décrit (facultatif) :', '') || '';
       return enregistrerHorsSerie({action: 'choisir', titre: titre.trim(), annee: annee.trim(), auteur: auteur.trim(), source: 'Saisie manuelle', lien: lien.trim()});
     }
     var c = hsCandidats[+b.dataset.hsChoix];
@@ -821,13 +821,13 @@
 
   $('sUnivers').addEventListener('click', async function () {
       var actuel = current.univers || '';
-      var nom = prompt('Univers de « ' + current.title + ' » (ex. Seven Deadly Sins). Laisse vide pour la sortir de son univers :', actuel);
+      var nom = await MouPrompt('Univers de « ' + current.title + ' » (ex. Seven Deadly Sins). Laisse vide pour la sortir de son univers :', actuel);
       if (nom === null) return;
       nom = nom.trim();
       var ordre = '', description = '';
       if (nom) {
-        ordre = prompt('Rang de lecture dans l\'univers (1, 2, 3…) — facultatif :', current.ordre_univers || '') || '';
-        description = prompt('Description de l\'univers (facultatif, gardée une fois pour toutes) :', '') || '';
+        ordre = await MouPrompt('Rang de lecture dans l\'univers (1, 2, 3…) — facultatif :', current.ordre_univers || '') || '';
+        description = await MouPrompt('Description de l\'univers (facultatif, gardée une fois pour toutes) :', '') || '';
       }
       var r = await post('/api/univers', {series: current.id, univers: nom, ordre: ordre.trim(), description: description.trim()});
       note('listMsg', r.message || r.error, r.ok ? 'ok' : 'err');
@@ -842,7 +842,7 @@
 
     // 📎 Rattacher une série (artbook, databook…) comme hors-série d'une autre
     async function rattacher(cible) {
-      if (!cible || !confirm('Rattacher « ' + current.title + ' » comme hors-série de « ' + cible + ' » ? Ses fichiers rejoignent cette série (groupe Hors-série).')) return;
+      if (!cible || !await MouConfirm('Rattacher « ' + current.title + ' » comme hors-série de « ' + cible + ' » ? Ses fichiers rejoignent cette série (groupe Hors-série).')) return;
       var r = await post('/api/rattacher', {series: current.id, cible: cible});
       if (!r.ok) { note('sMsg', r.error, 'err'); return; }
       series = []; history.replaceState({s: r.id}, '', '#' + encodeURIComponent(r.id));
@@ -853,7 +853,7 @@
       fermerMenus();
       if (!series.length) { var l = await api('/api/library'); series = l.series || []; }
       var noms = series.filter(function (x) { return !x.recherchee && x.id !== current.id; }).map(function (x) { return x.id; });
-      var tape = prompt('Nom de la série dont « ' + current.title + ' » est un hors-série :', current.rattacher_a || '');
+      var tape = await MouPrompt('Nom de la série dont « ' + current.title + ' » est un hors-série :', current.rattacher_a || '');
       if (!tape) return;
       var cle = function (t) { return t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, ''); };
       var cible = noms.find(function (n) { return cle(n) === cle(tape); }) || noms.find(function (n) { return cle(n).indexOf(cle(tape)) === 0; });
@@ -1165,10 +1165,10 @@
       if (e.target.closest('#dblCouper')) {
         var tome = dblTome(); if (!tome) return;
         var indices = tome.pages.filter(function (pg) { return !dblGardees[tome.fichier + '|' + pg.index]; }).map(function (pg) { return pg.index; });
-        if (!indices.length) { alert('Toutes les doubles sont gardées entières : rien à couper.'); return; }
-        if (!confirm('Couper ' + indices.length + ' double(s) en deux dans « ' + tome.fichier + ' » ? L\'ancien fichier va à la corbeille (30 jours).')) return;
+        if (!indices.length) { MouAlert('Toutes les doubles sont gardées entières : rien à couper.'); return; }
+        if (!await MouConfirm('Couper ' + indices.length + ' double(s) en deux dans « ' + tome.fichier + ' » ? L\'ancien fichier va à la corbeille (30 jours).')) return;
         var r = await post('/api/doubles/couper', {series: current.id, sens: $('dblSens').value, plan: [{fichier: tome.fichier, indices: indices}]});
-        if (!r.ok) { alert(r.error || 'Impossible'); return; }
+        if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
         suivreDoubles();
       }
     });
@@ -1196,11 +1196,11 @@
       var b = e.target.closest('[data-alleger]'); if (!b) return;
       var appliquer = b.dataset.alleger === '1';
       var opt = optionsAllegement();
-      if (opt.fichiers && !opt.fichiers.length) { alert('Coche au moins un tome.'); return; }
+      if (opt.fichiers && !opt.fichiers.length) { MouAlert('Coche au moins un tome.'); return; }
       var nb = opt.fichiers ? opt.fichiers.length : null;
-      if (appliquer && !confirm('Alléger ' + (nb ? nb + ' tome' + (nb > 1 ? 's' : '') : 'tous les tomes') + ' de « ' + current.title + ' » avec ces réglages ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
+      if (appliquer && !await MouConfirm('Alléger ' + (nb ? nb + ' tome' + (nb > 1 ? 's' : '') : 'tous les tomes') + ' de « ' + current.title + ' » avec ces réglages ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
       var r = await post('/api/optimiser', Object.assign({series: current.id, appliquer: appliquer}, opt));
-      if (!r.ok) { alert(r.error || 'Impossible'); return; }
+      if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
       if (appliquer) { cmp = null; if ($('allCmp')) $('allCmp').innerHTML = ''; }
       setTimeout(suivreAllegement, 800);
       veillerAllegement(current.id);
@@ -1225,14 +1225,14 @@
       var n = b.dataset.garder || b.dataset.oublier, f = fichierDuTome(n), hl = window.MFHorsLigne;
       if (b.dataset.oublier) { await hl.retirer(current.id, f.path); afficherTome(n, false); return; }
       var p = await hl.place();
-      if (!confirm('Garder ce tome sur le téléphone pour le lire sans réseau ?\nTaille : ' + Math.round(f.mo) + ' Mo' +
+      if (!await MouConfirm('Garder ce tome sur le téléphone pour le lire sans réseau ?\nTaille : ' + Math.round(f.mo) + ' Mo' +
         (p ? '\nPlace libre pour l\'appli : ' + (p.libre / 1073741824).toFixed(1) + ' Go' : ''))) return;
       b.disabled = true;
       try {
         await hl.garder({serie: current.id, path: f.path, cle: f.cle, titre: current.title + ' · ' + nomTome(n), tailleMo: f.mo},
           function (k, total) { b.textContent = '⬇️ ' + k + ' / ' + total + ' pages…'; });
         afficherTome(n, false);
-      } catch (x) { b.disabled = false; alert(x.message); }
+      } catch (x) { b.disabled = false; MouAlert(x.message); }
     });
     $('btnTelephone').addEventListener('click', async function () {
       var hl = window.MFHorsLigne;
@@ -1272,9 +1272,9 @@
       var hl = window.MFHorsLigne;
       try {
         if (b.dataset.notif === 'couper') await hl.couperNotifications();
-        else if (b.dataset.notif === 'essai') { var x = await hl.essaiNotification(); alert(x.message || x.error); }
+        else if (b.dataset.notif === 'essai') { var x = await hl.essaiNotification(); MouAlert(x.message || x.error); }
         else await hl.activerNotifications([].slice.call(document.querySelectorAll('[data-sujet]')).filter(function (c) { return c.checked; }).map(function (c) { return c.dataset.sujet; }));
-      } catch (x) { alert(x.message); }
+      } catch (x) { MouAlert(x.message); }
       dessinerNotifications();
     });
 
@@ -1310,7 +1310,7 @@
     $('infosCorps').addEventListener('click', async function (e) {
       var b = e.target.closest('[data-fiche],[data-fiche-auto]'); if (!b) return;
       var r = await post('/api/identifier/choisir', {series: current.id, anilist: b.dataset.fiche || null});
-      if (!r.ok) { alert(r.error || 'Impossible'); return; }
+      if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
       suivreIdentification(current.id);
     });
 
@@ -1386,15 +1386,15 @@
       if (e.target.closest('#parChercher')) {
         parCoches = {};
         var l = await post('/api/parasites/analyser', {series: parSerie});
-        if (!l.ok) { alert(l.error || 'Impossible'); return; }
+        if (!l.ok) { MouAlert(l.error || 'Impossible'); return; }
         setTimeout(function () { suivreParasites(false); }, 800); return;
       }
       if (e.target.closest('#parRetirer')) {
         var choisies = Object.keys(parCoches).filter(function (k) { return parCoches[k]; });
         var n = 0; parGroupes.forEach(function (x) { if (parCoches[x.empreinte]) n += x.nb; });
-        if (!choisies.length || !confirm('Retirer ' + n + ' page(s) parasite(s) des tomes ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
+        if (!choisies.length || !await MouConfirm('Retirer ' + n + ' page(s) parasite(s) des tomes ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
         var r = await post('/api/parasites/retirer', {series: parSerie, empreintes: choisies});
-        if (!r.ok) { alert(r.error || 'Impossible'); return; }
+        if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
         setTimeout(function () { suivreParasites(false); }, 1000);
       }
     });
@@ -1485,7 +1485,7 @@
     }
 
     $('sRenommer').addEventListener('click', async function () {
-      var nom = prompt('Nouveau nom de la série :', current.title);
+      var nom = await MouPrompt('Nouveau nom de la série :', current.title);
       if (!nom || nom.trim() === current.title) return;
       var r = await post('/api/renommer', {series: current.id, nom: nom.trim()});
       if (!r.ok && r.existe) {
@@ -1628,10 +1628,10 @@
     }
     $('infosCorps').addEventListener('click', async function (e) {         // 📚 ISBN collés (Tome 01 : 978…, Tome 02 : 978…)
       var bi = e.target.closest('[data-isbn]'); if (!bi) return;
-      var t = prompt('Colle les ISBN de la série (ex. « Tome 01 : 9782756058061 Tome 02 : 9782756058078 … »)', '');
+      var t = await MouPrompt('Colle les ISBN de la série (ex. « Tome 01 : 9782756058061 Tome 02 : 9782756058078 … »)', '');
       if (!t) return;
       var r = await post('/api/serie/isbn', {series: current.id, texte: t});
-      if (!r.ok) { alert(r.error || 'Impossible'); return; }
+      if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
       window.MouToast('✅ ' + r.message, 'ok');
       afficherTome(bi.dataset.isbn, false);
     });
@@ -1646,23 +1646,23 @@
       var texte = sv.id === 'tomeResumeAuto' ? '' : $('tomeResumeZone').value;
       sv.disabled = true;
       var r = await post('/api/tome/resume', {series: current.id, tome: sv.dataset.tome, texte: texte});
-      if (!r.ok) { sv.disabled = false; alert(r.error || 'Impossible'); return; }
+      if (!r.ok) { sv.disabled = false; MouAlert(r.error || 'Impossible'); return; }
       window.MouToast('✅ ' + r.message, 'ok');
       afficherTome(sv.dataset.tome, false);
     });
     $('infosCorps').addEventListener('click', async function (e) {         // 🔍 relire le sommaire imprimé du tome (OCR)
       var b = e.target.closest('[data-sommaire]'); if (!b) return;
-      if (b.dataset.manuel && !confirm('Tu as saisi ou validé ces chapitres à la main. Relire le sommaire peut les remplacer par la lecture automatique. Continuer ?')) return;
+      if (b.dataset.manuel && !await MouConfirm('Tu as saisi ou validé ces chapitres à la main. Relire le sommaire peut les remplacer par la lecture automatique. Continuer ?')) return;
       b.disabled = true;
       var r = await post('/api/tome/sommaire', {series: current.id, tome: b.dataset.sommaire, force: !!b.dataset.manuel});
-      if (!r.ok) { b.disabled = false; alert(r.error || 'Impossible'); return; }
+      if (!r.ok) { b.disabled = false; MouAlert(r.error || 'Impossible'); return; }
       afficherTome(b.dataset.sommaire, false);
     });
     $('infosCorps').addEventListener('click', async function (e) {         // ✅ chapitres lus automatiquement : vérifiés, validés
       var v = e.target.closest('[data-valider]'); if (!v) return;
       v.disabled = true;
       var r = await post('/api/tome/valider', {series: current.id, tome: v.dataset.valider});
-      if (!r.ok) { v.disabled = false; alert(r.error || 'Impossible'); return; }
+      if (!r.ok) { v.disabled = false; MouAlert(r.error || 'Impossible'); return; }
       window.MouToast('✅ ' + r.message, 'ok');
       afficherTome(v.dataset.valider, false);
     });
@@ -1670,10 +1670,10 @@
       if (e.target.closest('#chapEditer')) { $('chapEdition').hidden = false; $('chapEditer').hidden = true; $('chapTexte').focus(); return; }
       var w = e.target.closest('#chapEcrire');
       if (w) {                                                              // 📝 chapitres écrits dans le .cbz (partage de la série)
-        if (!confirm('Écrire les infos du tome (résumé, chapitres, provenance…) dans son fichier ? Le fichier est réécrit (l\'ancien va à la corbeille 30 jours).')) return;
+        if (!await MouConfirm('Écrire les infos du tome (résumé, chapitres, provenance…) dans son fichier ? Le fichier est réécrit (l\'ancien va à la corbeille 30 jours).')) return;
         w.disabled = true;
         var rr = await post('/api/tome/chapitres/ecrire', {series: current.id, tome: w.dataset.tome});
-        if (!rr.ok) { w.disabled = false; alert(rr.error || 'Impossible'); return; }
+        if (!rr.ok) { w.disabled = false; MouAlert(rr.error || 'Impossible'); return; }
         var msg = $('chapEcrireMsg'); if (msg) msg.textContent = '📝 ' + rr.message + ' (ça continue même si tu fermes la fenêtre)';
         (async function suivre() {
           var st = await api('/api/tome/chapitres/ecrire?series=' + encodeURIComponent(current.id) + '&tome=' + w.dataset.tome);
@@ -1695,16 +1695,16 @@
       b.disabled = true;
       var r = await post('/api/tome/chapitres', {series: current.id, tome: b.dataset.tome, texte: $('chapTexte').value});
       b.disabled = false;
-      if (!r.ok) { alert(r.error || 'Impossible'); return; }
+      if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
       window.MouToast('✏️ ' + r.message, 'ok');
       afficherTome(b.dataset.tome, false);
     });
     $('infosVue').addEventListener('click', function (e) { if (e.target === $('infosVue')) $('infosVue').hidden = true; });
     $('infosCorps').addEventListener('click', async function (e) {         // provenance d'un tome : équipe et origine notées à la main
       var pv = e.target.closest('[data-prov]'); if (!pv) return;
-      var equipe = prompt('Équipe de scan de ce tome (ex. PapriKa+). Tu peux aussi coller le nom complet du torrent : l\'équipe en sera tirée.', '');
+      var equipe = await MouPrompt('Équipe de scan de ce tome (ex. PapriKa+). Tu peux aussi coller le nom complet du torrent : l\'équipe en sera tirée.', '');
       if (equipe === null) return;
-      var origine = prompt('Origine (torrent, Japscan, achat…) — facultatif :', '') || '';
+      var origine = await MouPrompt('Origine (torrent, Japscan, achat…) — facultatif :', '') || '';
       var r = await post('/api/tome/provenance', {series: current.id, tome: pv.dataset.prov, equipe: equipe.trim(), origine: origine.trim()});
       note('listMsg', r.message || r.error, r.ok ? 'ok' : 'err');
       if (r.ok) $('infosVue').hidden = true;
@@ -1759,7 +1759,7 @@
     // ✏️ Provenance de tous les tomes d'un coup : nom du torrent (l'équipe en est tirée) ou équipe seule
     $('sProvenance').addEventListener('click', async function () {
       fermerMenus();
-      var t = prompt('Nom du torrent (ex. « Video Girl - Ai (01-15) (Katsura) (2008) [Digital-1482] (PapriKa+) [CBZ] ») ou équipe seule (ex. PapriKa+).\n\n' +
+      var t = await MouPrompt('Nom du torrent (ex. « Video Girl - Ai (01-15) (Katsura) (2008) [Digital-1482] (PapriKa+) [CBZ] ») ou équipe seule (ex. PapriKa+).\n\n' +
         'L\'équipe est tirée du nom ; le nom complet est gardé comme origine. S\'applique à TOUS les tomes de « ' + current.title + ' ».', '');
       if (t === null || !t.trim()) return;
       var r = await post('/api/serie/provenance', {series: current.id, texte: t.trim()});
@@ -1772,7 +1772,7 @@
       if (etat && etat.disponible === false) { note('sMsg', 'Le lecteur de texte (tesseract) est absent du serveur.', 'err'); return; }
       if (etat && etat.en_cours) { note('sMsg', 'Une lecture des ISBN est déjà en cours pour cette série.'); suivreIsbn(current.id); return; }
       if (!etat || !etat.total) { note('sMsg', 'Tous les tomes de cette série ont déjà leur ISBN.', 'ok'); return; }
-      if (!confirm('Lire par OCR l\'ISBN de ' + etat.total + ' tome(s) de « ' + current.title + ' » ?\n\n' +
+      if (!await MouConfirm('Lire par OCR l\'ISBN de ' + etat.total + ' tome(s) de « ' + current.title + ' » ?\n\n' +
           'Les dernières pages (achevé d\'imprimer, 4e de couverture) puis les premières sont lues, tome après tome. ' +
           'Seul un ISBN à somme de contrôle valide est gardé. Aucun fichier n\'est modifié.\n\nLe travail continue même si tu fermes la page.')) return;
       var r = await post('/api/serie/isbn/lire', {series: current.id});
@@ -1793,7 +1793,7 @@
         'Les pages sont recopiées telles quelles, puis comparées une à une avant tout remplacement. Ta progression de lecture est gardée.\n' +
         'L\'ancien fichier part à la corbeille (30 jours). Un fichier partagé par qBittorrent est copié à part : le torrent n\'est pas touché.' +
         (exclus.length ? '\n\nNon convertis : ' + exclus.join(', ') + '.' : '') + '\n\nLe travail continue même si tu fermes la page.';
-      if (!confirm(question)) return;
+      if (!await MouConfirm(question)) return;
       var r = await post('/api/serie/convertir', {series: current.id});
       if (!r.ok) { note('sMsg', r.error, 'err'); return; }
       note('sMsg', '🔄 Conversion de ' + etat.total + ' fichier(s) en cours…', 'ok');
@@ -1810,7 +1810,7 @@
         'Chaque fichier est réécrit ; l\'ancien part à la corbeille (30 jours).\n' +
         'Les fichiers partagés par qBittorrent ne sont pas touchés dans le torrent.' +
         (exclus.length ? '\n\nNon réécrits : ' + exclus.join(', ') + '.' : '') + '\n\nLe travail continue même si tu fermes la page.';
-      if (!confirm(question)) return;
+      if (!await MouConfirm(question)) return;
       var r = await post('/api/tomes/infos-ecrire', {series: current.id});
       if (!r.ok) { note('sMsg', r.error, 'err'); return; }
       note('sMsg', '📝 Réécriture de ' + etat.total + ' tome(s) en cours…', 'ok');
@@ -1837,7 +1837,7 @@
     });
     $('sVolumes').addEventListener('click', async function () {
       fermerMenus();
-      var v = prompt('Combien de tomes compte TON édition de « ' + current.title + ' » (ex. 11 pour une Perfect Édition) ?\n\nLes chapitres affichés suivront alors le sommaire de chaque tome, pas la liste de Wikipédia.\nLaisse vide pour que l\'appli le détecte toute seule.');
+      var v = await MouPrompt('Combien de tomes compte TON édition de « ' + current.title + ' » (ex. 11 pour une Perfect Édition) ?\n\nLes chapitres affichés suivront alors le sommaire de chaque tome, pas la liste de Wikipédia.\nLaisse vide pour que l\'appli le détecte toute seule.');
       if (v === null) return;
       var r = await post('/api/edition/volumes', {series: current.id, volumes: v});
       note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err');
@@ -1849,11 +1849,11 @@
     });
     $('sPitchAnnuler').addEventListener('click', function () { editionResume(false); });
     $('sPitchOk').addEventListener('click', function () { enregistrerResume($('sPitchZone').value); });
-    $('sPitchAuto').addEventListener('click', function () {
-      if (confirm('Effacer ton synopsis et reprendre celui trouvé sur Internet ?')) enregistrerResume('');
+    $('sPitchAuto').addEventListener('click', async function () {
+      if (await MouConfirm('Effacer ton synopsis et reprendre celui trouvé sur Internet ?')) enregistrerResume('');
     });
     $('sTomes').addEventListener('click', async function () {
-      if (!confirm('Ranger « ' + current.title + ' » en tomes ?\n\nL\'appli cherche sur Internet (Wikipédia, MangaDex) quels chapitres vont dans quel tome, puis regroupe les chapitres : un fichier par tome, les chapitres pas encore sortis en tome dans « Hors tome ». Ta progression de lecture est gardée ; les anciens fichiers vont dans la corbeille.')) return;
+      if (!await MouConfirm('Ranger « ' + current.title + ' » en tomes ?\n\nL\'appli cherche sur Internet (Wikipédia, MangaDex) quels chapitres vont dans quel tome, puis regroupe les chapitres : un fichier par tome, les chapitres pas encore sortis en tome dans « Hors tome ». Ta progression de lecture est gardée ; les anciens fichiers vont dans la corbeille.')) return;
       var r = await post('/api/tomes/ranger', {series: current.id});
       if (!r.ok) { note('sMsg', r.error); return; }
       await openSeries(current.id, false);
@@ -1882,12 +1882,12 @@
     ['menuCover', 'menuMore'].forEach(function (m) { $(m).addEventListener('click', function () { setTimeout(fermerMenus, 0); }); });
     $('sDelete').addEventListener('click', async function () {
       var n = current.chapters.length;
-      if (!confirm('Supprimer toute la série « ' + current.title + ' » (' + n + ' chapitre' + (n > 1 ? 's' : '') + ') ?\n\nLes fichiers vont dans la corbeille du dossier des mangas (effacés pour de bon après 30 jours).')) return;
+      if (!await MouConfirm('Supprimer toute la série « ' + current.title + ' » (' + n + ' chapitre' + (n > 1 ? 's' : '') + ') ?\n\nLes fichiers vont dans la corbeille du dossier des mangas (effacés pour de bon après 30 jours).')) return;
       var r = await post('/api/delete', {series: current.id, all: true});
       if (!r.ok) { note('sMsg', r.error); return; }
       history.pushState({}, '', location.pathname); showList();
     });
-    $('sAllUnread').addEventListener('click', function () { if (confirm('Tout marquer comme non lu pour cette série ?')) markAll(false); });
+    $('sAllUnread').addEventListener('click', async function () { if (await MouConfirm('Tout marquer comme non lu pour cette série ?')) markAll(false); });
     // Bouton retour du téléphone : une fenêtre ouverte (ⓘ d'un tome, infos, affichage…) se ferme et on reste sur la fiche
     ['infosVue', 'affVue'].forEach(function (id) {
       var el = $(id); if (!el) return;

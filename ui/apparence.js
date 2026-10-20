@@ -77,7 +77,7 @@
           if (r4.ok) { var r5 = await api('/api/apparence', {skin: r4.id, couleurs: lire().couleurs}); if (r5.ok) location.reload(); else msg(r5.error); }
           else msg(r4.error || 'Échec');
         } else if (t.dataset.suppr) {
-          if (!confirm('Supprimer ce brouillon ?')) return;
+          if (!await MouConfirm('Supprimer ce brouillon ?')) return;
           await api('/api/apparence/brouillon', {supprimer: t.dataset.suppr}); charger();
         }
       });

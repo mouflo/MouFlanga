@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🪟 Fenêtres de confirmation aux couleurs du skin (20 octobre 2026)
+- Les questions (« Supprimer ? », « Garder sur ce téléphone ? »), les messages d'erreur et les saisies de texte (nom, ISBN, équipe…) n'utilisent plus les fenêtres grises du navigateur : elles prennent les couleurs du skin choisi. Dans le kit commun : `MouConfirm`, `MouAlert`, `MouPrompt` et `data-confirme` sur les formulaires.
+
 ## 🎨 Interface commune v2 et skins (20 octobre 2026)
 - 🎨 **Interface commune, version 2** (identique dans les cinq applis) : les fenêtres et les bulles de message suivent les couleurs du skin choisi, les fenêtres plus hautes que l'écran défilent avec leurs boutons collés en bas, la touche « retour » du téléphone ferme la fenêtre ouverte au lieu de quitter l'appli, et le **logo de l'en-tête et l'icône de l'onglet changent de couleur avec le skin**.
 

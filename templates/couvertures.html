@@ -31,6 +31,7 @@
         .cv-liens a { display: inline-block; padding: 8px 12px; border-radius: 8px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; text-decoration: none; margin-right: 6px; }
     </style>
 <link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
+<script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
 </head>
 <body>
     <div class="container">
@@ -56,7 +57,7 @@
         </form>
 
         {% if total_trouvees %}
-        <form class="cv-tout" method="post" action="/couvertures/appliquer" onsubmit="return confirm('Remplacer les couvertures de tous les tomes par celles trouvées en ligne ? Les anciennes sont gardées.');">
+        <form class="cv-tout" method="post" action="/couvertures/appliquer" data-confirme="Remplacer les couvertures de tous les tomes par celles trouvées en ligne ? Les anciennes sont gardées.">
             <input type="hidden" name="id" value="{{ nom }}">
             <input type="hidden" name="tout" value="1">
             <p class="note" style="margin-top: 0;">{{ total_trouvees }} tome(s) ont une couverture trouvée en ligne.</p>
@@ -92,7 +93,7 @@
                     <img src="{{ c.vignette }}" alt="Trouvée en ligne, tome {{ l.tome }}" loading="lazy">
                     En ligne
                     <div class="cv-langue">{{ c.langue or 'langue ?' }}</div>
-                    <form method="post" action="/couvertures/appliquer" onsubmit="return confirm('Remplacer la couverture ({{ l.nom }}) ?');">
+                    <form method="post" action="/couvertures/appliquer" data-confirme="Remplacer la couverture ({{ l.nom }}) ?">
                         <input type="hidden" name="id" value="{{ nom }}"><input type="hidden" name="tome" value="{{ l.tome }}"><input type="hidden" name="url" value="{{ c.url }}">
                         <button type="submit" class="vert">Remplacer par celle-ci</button>
                     </form>

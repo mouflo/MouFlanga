@@ -30,6 +30,7 @@
         .msg.err { background: #2a1416; color: #ffb4b4; border: 1px solid #6b2f35; }
     </style>
 <link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
+<script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
 </head>
 <body>
     <div class="container">
@@ -60,7 +61,7 @@
                     </div>
                     <div class="actions">
                         <a href="/regles?onglet=profils&edit={{ p.id }}">✏️ Modifier</a>
-                        <form method="post" action="/regles/enregistrer" style="margin:0" onsubmit="return confirm('Supprimer ce profil ?');">
+                        <form method="post" action="/regles/enregistrer" style="margin:0" data-confirme="Supprimer ce profil ?">
                             <input type="hidden" name="quoi" value="profil"><input type="hidden" name="id" value="{{ p.id }}"><input type="hidden" name="supprimer" value="1">
                             <button type="submit">🗑 Supprimer</button>
                         </form>
@@ -98,7 +99,7 @@
                     <div class="detail">Mots : {{ f.termes|join(', ') or '—' }}</div>
                     <div class="actions">
                         <a href="/regles?onglet=formats&edit={{ f.id }}">✏️ Modifier</a>
-                        <form method="post" action="/regles/enregistrer" style="margin:0" onsubmit="return confirm('Supprimer ce format ?');">
+                        <form method="post" action="/regles/enregistrer" style="margin:0" data-confirme="Supprimer ce format ?">
                             <input type="hidden" name="quoi" value="format"><input type="hidden" name="id" value="{{ f.id }}"><input type="hidden" name="supprimer" value="1">
                             <button type="submit">🗑 Supprimer</button>
                         </form>
@@ -134,7 +135,7 @@
                 <button type="submit" name="action" value="enregistrer">💾 Enregistrer la clé</button>
             </form>
             {% if cle_gb %}
-            <form method="post" action="/regles/google-books" style="margin-top: 10px;" onsubmit="return confirm('Retirer la clé Google Books ?');">
+            <form method="post" action="/regles/google-books" style="margin-top: 10px;" data-confirme="Retirer la clé Google Books ?">
                 <button type="submit" name="action" value="retirer">🗑 Retirer la clé</button>
             </form>
             {% endif %}
@@ -148,7 +149,7 @@
                 <button type="submit" name="action" value="enregistrer">💾 Enregistrer la clé</button>
             </form>
             {% if cle_claude %}
-            <form method="post" action="/regles/claude" style="margin-top: 10px;" onsubmit="return confirm('Retirer la clé de Claude ?');">
+            <form method="post" action="/regles/claude" style="margin-top: 10px;" data-confirme="Retirer la clé de Claude ?">
                 <button type="submit" name="action" value="retirer">🗑 Retirer la clé</button>
             </form>
             {% endif %}

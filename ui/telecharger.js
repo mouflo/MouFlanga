@@ -163,7 +163,7 @@ function suivreCatalogue(e) {
     }
 }
 $("btn-catalogue").addEventListener("click", async () => {
-    if (!confirm("Charger tout le catalogue de Japscan (environ 17 000 séries) ?\n\nÇa prend 20 à 30 minutes en arrière-plan ; pendant ce temps, pas de téléchargement. Tu recevras un message Telegram à la fin.")) return;
+    if (!await MouConfirm("Charger tout le catalogue de Japscan (environ 17 000 séries) ?\n\nÇa prend 20 à 30 minutes en arrière-plan ; pendant ce temps, pas de téléchargement. Tu recevras un message Telegram à la fin.")) return;
     const r = await (await fetch("/api/japscan/catalogue", {method: "POST"})).json();
     if (!r.ok) { $("catalogue-etat").textContent = r.error || "Impossible"; return; }
     suivreCatalogue({en_cours: true, message: r.message});
@@ -320,7 +320,7 @@ $("btn-download").addEventListener("click", startDownload);
 
 async function startDownload() {
     if (!selectedManga || selectedChapters.length === 0) {
-        alert("Erreur: données manquantes");
+        MouAlert("Erreur: données manquantes");
         return;
     }
 
@@ -339,14 +339,14 @@ async function startDownload() {
 
         const data = await resp.json();
         if (!data.ok) {
-            alert(`Erreur: ${data.error}`);
+            MouAlert(`Erreur: ${data.error}`);
             return;
         }
 
         currentJobId = data.job_id;
         monitorDownload();
     } catch (e) {
-        alert(`Erreur: ${e.message}`);
+        MouAlert(`Erreur: ${e.message}`);
     }
 }
 

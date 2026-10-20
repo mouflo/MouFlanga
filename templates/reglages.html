@@ -210,8 +210,8 @@ $('usrAjouter').addEventListener('click', async () => {
 $('usrListe').addEventListener('click', async e => {
     const b = e.target.closest('[data-a]'); if (!b) return;
     const u = b.dataset.u, a = b.dataset.a, corps = {action: a, id: u};
-    if (a === 'motdepasse') { const m = prompt('Nouveau mot de passe pour « ' + u + ' » (8 caractères minimum) :'); if (!m) return; corps.mdp = m; }
-    if (a === 'supprimer' && !confirm('Supprimer le compte « ' + u + ' » ? Il ne pourra plus se connecter.')) return;
+    if (a === 'motdepasse') { const m = await MouPrompt('Nouveau mot de passe pour « ' + u + ' » (8 caractères minimum) :'); if (!m) return; corps.mdp = m; }
+    if (a === 'supprimer' && !await MouConfirm('Supprimer le compte « ' + u + ' » ? Il ne pourra plus se connecter.')) return;
     if (a === 'activer') corps.actif = !!b.dataset.v;
     const r = await post('/api/utilisateurs', corps);
     say('usrMsg', r.message || r.error, r.ok); loadUsr();
@@ -251,7 +251,7 @@ async function loadGen() {
 }
 $('genGo').addEventListener('click', async () => { const r = await post('/api/generiques', {}); say('genMsg', r.message || r.error, r.ok); loadGen(); });
 $('genForcer').addEventListener('click', async () => {
-    if (!confirm('Revérifier toutes les séries, même celles déjà traitées ? (quelques minutes)')) return;
+    if (!await MouConfirm('Revérifier toutes les séries, même celles déjà traitées ? (quelques minutes)')) return;
     const r = await post('/api/generiques', {forcer: true}); say('genMsg', r.message || r.error, r.ok); loadGen();
 });
 loadGen();
@@ -262,7 +262,7 @@ async function loadPaths() {
     $('pathsInfo').innerHTML = `📚 Mangas : ${p.manga_ok ? 'accessible' : '⚠️ introuvable'}`;
 }
 $('pathsSave').addEventListener('click', async () => {
-    if (!confirm('Enregistrer ce dossier ? L\'appli va redémarrer (quelques secondes).')) return;
+    if (!await MouConfirm('Enregistrer ce dossier ? L\'appli va redémarrer (quelques secondes).')) return;
     const r = await post('/api/settings/paths', {manga: $('pathManga').value});
     if (!r.ok) return say('pathsMsg', r.error, false);
     say('pathsMsg', r.message, 'warn');
@@ -349,7 +349,7 @@ $('genHarmo').addEventListener('click', async () => {
 suivreHarmo();
 simpleSave('mfoUrlSave', 'mfoUrlMsg', '/api/settings/mouflopening', () => ({url: $('mfoUrl').value, url_externe: $('mfoUrlExt').value}));
 $('cleGenerer').addEventListener('click', async () => {
-    if ($('cleSupprimer').hidden === false && !confirm('Générer une nouvelle clé ? L\'ancienne ne marchera plus : il faudra coller la nouvelle dans MouFloster.')) return;
+    if ($('cleSupprimer').hidden === false && !await MouConfirm('Générer une nouvelle clé ? L\'ancienne ne marchera plus : il faudra coller la nouvelle dans MouFloster.')) return;
     const r = await post('/api/settings/cle-api', {action: 'generer'});
     say('cleMsg', r.message || r.error, r.ok);
     if (r.ok) { $('cleValeur').value = r.cle; $('cleBox').style.display = ''; loadCle(); }
@@ -359,7 +359,7 @@ $('cleCopier').addEventListener('click', async () => {
     catch (e) { $('cleValeur').select(); say('cleMsg', 'Copie automatique impossible : appuie longuement sur la clé pour la copier.', 'warn'); }
 });
 $('cleSupprimer').addEventListener('click', async () => {
-    if (!confirm('Supprimer la clé API ? MouFloster ne pourra plus envoyer de couverture.')) return;
+    if (!await MouConfirm('Supprimer la clé API ? MouFloster ne pourra plus envoyer de couverture.')) return;
     const r = await post('/api/settings/cle-api', {action: 'supprimer'});
     say('cleMsg', r.message || r.error, r.ok); $('cleBox').style.display = 'none'; loadCle();
 });

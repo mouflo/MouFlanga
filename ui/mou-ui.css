@@ -138,3 +138,12 @@ body.mou-login { display:flex; align-items:center; justify-content:center; paddi
 .mou-modal .mou-box > .mou-actions-row { position:sticky; bottom:-18px; z-index:5; background:var(--card); padding:12px 0 6px; margin-top:12px; border-top:1px solid var(--line); }
 .mou-logo { width:40px; height:40px; flex:none; display:block; border-radius:10px; }
 a.mou-btn, a.btn { text-decoration:none; }
+
+/* Fenêtres de dialogue (MouConfirm / MouAlert / MouPrompt) : au-dessus des autres fenêtres */
+.mou-dialogue { z-index:2500; }
+.mou-dialogue .mou-box { max-width:440px; height:auto; }
+.mou-dlg-msg { white-space:pre-line; overflow-wrap:anywhere; line-height:1.45; margin-bottom:6px; }
+.mou-dialogue .mou-box input { margin-top:8px; }
+.mou-dialogue .mou-actions-row { justify-content:flex-end; position:static; border-top:0; padding-top:4px; }
+.mou-dialogue .mou-actions-row .mou-btn { flex:1 1 120px; }
+@media (max-width:800px) { .mou-dialogue { padding:16px; align-items:center; } .mou-dialogue .mou-box { max-width:440px; height:auto; border-radius:16px; } }
