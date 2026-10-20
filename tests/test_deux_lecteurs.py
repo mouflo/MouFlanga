@@ -74,6 +74,19 @@ class IsbnEnDoubleTest(unittest.TestCase):
         infos = {"isbn": {"1": "9782505008712", "2": "9782505008712"}, "sommaires": {}}
         self.assertEqual(self.A._isbn_en_double(infos), set())
 
+    def test_le_bon_isbn_lu_remplace_la_copie_du_tome_voisin(self):
+        # Naruto 50 : l'ISBN noté est celui du tome 49, mais la lecture des pages a trouvé le bon
+        infos = {"isbn": {"49": "9782505008712", "50": "9782505008712"},
+                 "sommaires": {"49": {"isbn": "9782505008712"}, "50": {"isbn": "9782505009566"}}}
+        connus = self.A._isbn_connus(infos)
+        self.assertEqual(connus["50"], "9782505009566")
+        self.assertEqual(connus["49"], "9782505008712")
+
+    def test_isbn_unique_note_n_est_pas_remplace(self):
+        infos = {"isbn": {"49": "9782505008712", "50": "9782505009924"},
+                 "sommaires": {"50": {"isbn": "9782505009566"}}}
+        self.assertEqual(self.A._isbn_connus(infos)["50"], "9782505009924")
+
 
 if __name__ == "__main__":
     unittest.main()

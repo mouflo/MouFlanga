@@ -817,9 +817,13 @@ def _isbn_connus(infos, google=True):
     """{numéro de tome (texte): ISBN} déjà notés pour une série : collés à la main ou lus dans les pages d'abord,
     puis (google=True) ceux trouvés sur Google Books, moins sûrs (l'édition du fichier peut être une autre)."""
     out = {str(t): c for t, c in (infos.get("isbn") or {}).items() if c}
-    for t, v in (infos.get("sommaires") or {}).items():
-        if isinstance(v, dict) and v.get("isbn"):
-            out.setdefault(str(t), v["isbn"])
+    lus = {str(t): v["isbn"] for t, v in (infos.get("sommaires") or {}).items() if isinstance(v, dict) and v.get("isbn")}
+    for t, c in lus.items():
+        # Un ISBN noté qui est aussi celui d'un autre tome est faux pour l'un des deux : si la lecture des pages de ce tome
+        # a trouvé un ISBN différent, qui n'est celui d'aucun autre tome, c'est lui qui est le bon.
+        if t in out and out[t] != c and sum(1 for x in out.values() if x == out[t]) > 1 and c not in out.values():
+            out[t] = c
+        out.setdefault(t, c)
     if google:
         for t, c in (infos.get("isbn_google") or {}).items():
             if c:

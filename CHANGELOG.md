@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🔢 ISBN : le bon ISBN lu dans les pages remplace une copie fausse (20 octobre 2026)
+- Quand l'ISBN noté pour un tome est aussi celui d'un autre tome, et que la lecture des pages de ce tome a trouvé un ISBN différent qui n'appartient à aucun autre tome, c'est ce dernier qui est utilisé (Naruto 50). Un ISBN noté qui n'est pas en double n'est jamais remplacé.
+
 ## 🏷 Titres de chapitres sur un modèle régulier (20 octobre 2026)
 - 🏷 Nouveau bouton « Titres des chapitres » dans le menu « ⋯ » d'une série : l'appli repère le nom régulier des chapitres (par exemple « Trick 12 ») d'après les tomes déjà bien nommés, montre un aperçu, puis écrit après confirmation.
 - Ne sont proposés que les titres vides, les titres en chiffres seuls et les titres dont le numéro ne correspond plus au chapitre. Les vrais titres ne sont jamais modifiés.
