@@ -1,5 +1,11 @@
 # Historique des versions
 
+## ✂️ Fichiers « deux tomes en un » coupés en deux tomes (20 octobre 2026)
+- Un fichier comme « Kenichi T45-46 » (deux tomes dans un seul .cbz) restait à la racine de la série sans être rangé : seuls les tomes simples comptaient (Kenichi : 45 tomes sur 61). Il est maintenant coupé en deux fichiers « Tome 45 » et « Tome 46 », puis l'original va à la corbeille 30 jours.
+- Le début du second tome est trouvé d'après son premier chapitre (connu par la fiche de la série : « BATAILLE 448 »), lu avec le lecteur moderne qui déchiffre les titres posés sur un dessin. La page de titre et le sommaire du tome, s'ils existent, partent avec lui. Sur les 8 fichiers de Kenichi (T45-46 à T59-60), la coupure tombe à chaque fois sur le titre du bon chapitre.
+- Si la coupure n'est pas trouvée, ou si un des deux tomes existe déjà, rien n'est coupé ni écrasé.
+- La coupure se fait pendant l'import (« Organiser »), en arrière-plan.
+
 ## 📄 Le NFO du torrent est lu (20 octobre 2026)
 - 📄 Nouveau bouton « Importer un NFO (fichier) » dans le menu « ⋯ » d'une série : on choisit le fichier .nfo ou .txt reçu à part, et ses titres, son synopsis et ses ISBN sont enregistrés.
 - L'appli lit maintenant le NFO d'un torrent ou d'une archive : titre original et français, auteur, éditeur, synopsis et l'ISBN de chaque tome (« Tome 01 -- ISBN : 978-… »). Seuls les ISBN à la somme de contrôle juste sont gardés, et un ISBN déjà noté (à la main ou lu dans les pages) n'est jamais remplacé.

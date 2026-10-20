@@ -44,6 +44,7 @@ import archives
 import tomes
 import tomes_cbz
 import importer
+import deux_tomes
 import diag
 import japscan_scraper
 
@@ -2916,6 +2917,8 @@ def _plan_organiser(name, files):
             tomes_fichiers.append(t)
             if f.relative_to(MANGA_DIR / name).parent != Path(tomes_cbz.dossier_tome(t)):   # seul le dossier compte : le nom du fichier peut garder celui du torrent
                 a_deplacer += 1
+        elif f.suffix.lower() == ".cbz" and deux_tomes.numeros(f.stem):
+            a_deplacer += 1                                  # « T45-46 » : à couper en deux tomes
         elif _numero_chapitre(f.stem) is not None:
             chapitres += 1
     if propose == name and not a_deplacer and not chapitres and not lots:
@@ -3251,6 +3254,28 @@ def _noter_choix(dossier, propose, choisi):
     _write_json(CHOIX, choix[-200:])
 
 
+def _separer_doubles(nom, info, etat=None):
+    """Fichiers « Série T45-46 » (deux tomes dans un seul .cbz) : coupés en deux tomes ; l'original va à la corbeille.
+    Un fichier dont on ne trouve pas la coupure reste tel quel. Renvoie le nombre de fichiers coupés."""
+    dossier, faits = MANGA_DIR / nom, 0
+    for f in list(_scan().get(nom) or []):
+        paire = deux_tomes.numeros(f.stem) if f.suffix.lower() == ".cbz" and tomes_cbz.lire_info(f) is None else None
+        if not paire:
+            continue
+        cibles = [tomes_cbz.fichier_tome(dossier, nom, n) for n in paire]
+        if any(c.exists() for c in cibles):
+            continue                                      # un tome déjà là (peut-être validé) : jamais touché
+        if etat is not None:
+            etat["message"] = f"Coupure de {f.name}…"
+        if deux_tomes.separer(f, cibles, deux_tomes.premier_chapitre(info, paire[1])):
+            _vers_corbeille(f)
+            _noter_provenances(dossier, [(n, f.name) for n in paire], "Coupé depuis le fichier")
+            faits += 1
+    if faits:
+        _scan_invalider()
+    return faits
+
+
 def _lancer_import(nouveau, attendre=False, lots_forces=None):
     """Archives de tomes et PDF convertis, puis chapitres regroupés en tomes : en arrière-plan,
     ou tout de suite si « attendre » (file d'import). « lots_forces » : archives à extraire quelle que soit leur taille.
@@ -3306,6 +3331,12 @@ def _lancer_import(nouveau, attendre=False, lots_forces=None):
         try:
             info = tomes.chercher(nouveau, forcer=True)
             msg = "✅ Série organisée" + (f" : {crees} tome(s) importé(s)" if lots else "")
+            try:
+                coupes = _separer_doubles(nouveau, info, etat)
+                if coupes:
+                    msg += f" ; {coupes} fichier(s) de deux tomes coupé(s)"
+            except Exception as e:
+                logger.warning("Coupure des fichiers à deux tomes de « %s » : %s", nouveau, e)
             if info:                                  # chapitres séparés ou « hors tome » : rangés d'après Internet
                 n = _ranger_en_tomes(nouveau, info, garder_en_cours=True)
                 if n:
