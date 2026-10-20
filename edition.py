@@ -46,6 +46,49 @@ def _texte(octets: bytes) -> str:
     return octets.decode("utf-8", "replace")
 
 
+def _isbn13_valide(c: str) -> bool:
+    return len(c) == 13 and c.isdigit() and (10 - sum(int(x) * (1 if k % 2 == 0 else 3) for k, x in enumerate(c[:12])) % 10) % 10 == int(c[12])
+
+
+def analyser_nfo(texte: str) -> dict:
+    """Ce que dit un NFO de torrent : titres, auteur, éditeur, synopsis et l'ISBN de chaque tome (« Tome 01 -- ISBN : 978-… »).
+    Seuls les ISBN dont la somme de contrôle est juste sont gardés."""
+    out = {}
+    for cle, motif in (("titre_original", r"Titre Original\s*:\s*(.+)"), ("titre_fr", r"Titre Fran[cç]ais\s*:\s*(.+)"),
+                       ("auteur", r"Auteurs?\s*:\s*(.+)"), ("editeur", r"[ÉE]diteur\s*:\s*(.+)")):
+        m = re.search(motif, texte or "", re.I)
+        if m and m.group(1).strip():
+            out[cle] = m.group(1).strip()
+    isbn = {}
+    for m in re.finditer(r"Tome\s*0*(\d{1,3})\s*[-–—:]*\s*ISBN\s*:?\s*(97[89][\d\- ]{10,16})", texte or "", re.I):
+        c = re.sub(r"\D", "", m.group(2))[:13]
+        if _isbn13_valide(c):
+            isbn[str(int(m.group(1)))] = c
+    if isbn:
+        out["isbn"] = isbn
+    m = re.search(r"\bSynopsis\s*\n\s*-{5,}\s*\n(.*?)\n\s*-{5,}", texte or "", re.S | re.I)
+    if m and len(m.group(1).split()) >= 8:
+        out["synopsis"] = re.sub(r"\s+", " ", m.group(1)).strip()
+    return out
+
+
+def noter_nfo(dossier: Path, texte: str) -> dict:
+    """Garde les infos d'un NFO dans celles de la série (« nfo_infos ») et note les ISBN des tomes qui n'en ont pas encore :
+    un ISBN déjà noté (à la main ou lu dans les pages) n'est jamais remplacé."""
+    nfo = analyser_nfo(texte)
+    if not nfo:
+        return {}
+    d = lire(dossier)
+    d["nfo_infos"] = {**(d.get("nfo_infos") or {}), **nfo}
+    notes = d.setdefault("isbn", {})
+    for t, c in (nfo.get("isbn") or {}).items():
+        if not notes.get(t):
+            notes[t] = c
+    Path(dossier).mkdir(parents=True, exist_ok=True)
+    ecrire(dossier, d)
+    return nfo
+
+
 def noter_import(dossier: Path, archive: str, temp: Path):
     """À l'import d'une archive : garde son nom et le texte des NFO (ou petits .txt d'infos) trouvés dedans."""
     textes = []
@@ -64,6 +107,8 @@ def noter_import(dossier: Path, archive: str, temp: Path):
     d.pop("analyse", None)                       # nouvelle source : on refera l'analyse
     Path(dossier).mkdir(parents=True, exist_ok=True)
     ecrire(dossier, d)
+    for t in textes:
+        noter_nfo(dossier, t)                    # titres, synopsis et ISBN du NFO, gardés à part
 
 
 def _blancheur(img) -> float:

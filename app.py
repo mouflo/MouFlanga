@@ -1217,6 +1217,10 @@ def api_series():
     perso = _read_json(RESUMES, {}).get(name)
     if perso:
         st = dict(st, resume=perso, resume_langue="perso")
+    elif st.get("resume_langue") != "fr" and name != "(Sans série)":
+        synopsis_nfo = (_infos_serie(name).get("nfo_infos") or {}).get("synopsis")
+        if synopsis_nfo:                                         # synopsis français du NFO du torrent, faute d'un résumé français trouvé
+            st = dict(st, resume=synopsis_nfo, resume_langue="fr")
     a_ranger = name != "(Sans série)" and any(not c["groupe"] and c["num"] is not None for c in chapters)
     rep = {"id": name, "title": name, "chapters": chapters,
                     "current": p.get("current", ""), "page": p.get("page", 0),

@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 📄 Le NFO du torrent est lu (20 octobre 2026)
+- L'appli lit maintenant le NFO d'un torrent ou d'une archive : titre original et français, auteur, éditeur, synopsis et l'ISBN de chaque tome (« Tome 01 -- ISBN : 978-… »). Seuls les ISBN à la somme de contrôle juste sont gardés, et un ISBN déjà noté (à la main ou lu dans les pages) n'est jamais remplacé.
+- Le synopsis français du NFO sert de résumé quand aucun résumé français n'a été trouvé sur Internet.
+
 ## 📚 Résumé en français et titre complet d'une série (20 octobre 2026)
 - Le résumé Wikipédia en français est retrouvé même quand l'article s'écrit autrement que le dossier (« Ken-ichi » pour « Kenichi »). Avant, la série retombait sur un résumé en anglais.
 - Un torrent dont le nom est le titre français complet d'une série déjà présente (« Kenichi Le Disciple Ultime Matsuena ») n'est plus pris pour une suite rangée à part : il va dans la série existante, où l'appli demande de remplacer ou d'ajouter les manquants. L'article Wikipédia en français confirme que le sous-titre est bien celui de la même série ; le nom de l'auteur en fin de titre est ignoré. Les vraies suites (« Kurokos Basket Extra Game ») restent rangées à part.
