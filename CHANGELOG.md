@@ -5,7 +5,7 @@
 - Ouvrir la fiche d'un tome, ou cliquer sur « 🔍 Lire le sommaire », lance la lecture **tout de suite**, sans faire la queue derrière les lectures de fond (avant, elle pouvait attendre une place sans le dire).
 - La fiche du tome affiche l'avancement : « en attente d'une place », ou « N page(s) examinée(s) depuis X s » (le nombre monte tant que ça travaille), et l'état de la préparation de fond de la série (en cours, ou numéro dans la file).
 - Une relecture automatique d'un sommaire ne remplace plus une lecture qui avait plus de titres ou de pages trouvées (Air Gear tome 29 avait perdu les siennes).
-- Une ligne de bord qui n'est pas un chapitre du tome (Air Gear tome 29 : « Design de l'insigne : Trick:267 · Kei Machida », un bonus du tome précédent) n'est plus prise pour un chapitre. Elle empêchait de retrouver la page de chaque chapitre.
+- Une ligne de sommaire où la page vient avant une mention posée à côté de la pastille (Air Gear tome 29 : « TRICK:267   7   KEI MACHIDA », le nom est celui du créateur du logo) est lue comme le chapitre 267, page 7, sans titre inventé. Avant, la page était estimée et la mention prise pour un titre, ce qui désactivait la recherche des pages d'ouverture « Trick N » : aucun chapitre n'avait de page de lecture.
 - Le compteur de la fiche indique les pages **différentes** lues (une page relue par l'autre lecteur n'est plus comptée deux fois).
 - Lecteur de sommaires allégé : une page de récit évidente n'essaie plus les lectures d'image coûteuses, et chaque lecture n'utilise qu'un fil de calcul (un tome par cœur). Résultat identique sur 45 tomes comparés à l'ancienne version.
 

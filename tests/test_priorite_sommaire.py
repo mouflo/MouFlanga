@@ -53,15 +53,11 @@ class Richesse(unittest.TestCase):
         self.assertGreater(app._richesse(dix_avec_pages), app._richesse(onze_sans_pages))
 
 
-class HorsTome(unittest.TestCase):
-    def _rangees(self, nums):
-        return [{"num": float(n), "titre": "", "page": 10 + 16 * i} for i, n in enumerate(nums)]
-
-    def test_ligne_de_bord_hors_liste_ecartee(self):
-        lignes = self._rangees(range(267, 278))                    # 267 : design de l'insigne, pas un chapitre du tome
-        r = sommaire._ecarter_hors_tome(lignes, [float(n) for n in range(268, 278)])
-        self.assertEqual([c["num"] for c in r], [float(n) for n in range(268, 278)])
-
-    def test_rien_ecarte_si_le_reste_ne_colle_pas(self):
-        lignes = self._rangees([267, 270, 271, 272, 273])           # liste du tome incomplète : on ne devine pas
-        self.assertEqual(sommaire._ecarter_hors_tome(lignes, [268.0, 269.0, 270.0, 271.0, 272.0, 273.0]), lignes)
+class MentionACoteDeLaPastille(unittest.TestCase):
+    def test_page_avant_la_mention_du_createur_du_logo(self):
+        """Air Gear tome 29 : « TRICK:267   7   KEI MACHIDA » est bien le chapitre 267, page 7 ; Kei Machida signe le logo."""
+        texte = "SOMMAIRE\nDESIGN DE L'INSIGNE :\nTRICK:267 7 KEI MACHIDA\n" + "\n".join(
+            f"TRICK:{n} {p}" for n, p in zip(range(268, 278), (31, 47, 65, 83, 99, 113, 127, 143, 157, 171)))
+        r = sommaire._reparer_lignes(texte)
+        self.assertEqual([c["num"] for c in r], [float(n) for n in range(267, 278)])
+        self.assertEqual((r[0]["titre"], r[0]["page"], r[0].get("estimee")), ("", 7, None))

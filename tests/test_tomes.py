@@ -515,6 +515,7 @@ class OrganiserTest(BibliothequeTest):
         with mock.patch.object(tomes, "chercher", return_value=None):
             self.client.post("/api/organiser", json={"series": self.vrac.name, "nom": "Gintama"})
         with mock.patch.object(tomes, "_charger", return_value={"tomes": {1.0: 1, 2.0: 1, 3.0: 2, 9.0: 5}}):
+            self.A._MEMO_ENTREES.clear()                    # la mémoire des chapitres ne connaît pas la fiche simulée
             s = self.client.get("/api/series?id=Gintama").json
             self.assertEqual((s["chapters"][0]["title"], s["chapters"][0]["sous"]), ("Tome 01", "Chapitres 1 à 2"))
             marques = self.A._marquer_deja([{"chapter_id": "2"}, {"chapter_id": "9"}], "Gintama")
