@@ -2014,6 +2014,25 @@ def _renumeroter_du_tome(lignes, numeros):
     return lignes
 
 
+def _ecarter_hors_tome(chapitres, numeros):
+    """Première ou dernière ligne lue qui n'est pas un chapitre du tome : Air Gear tome 29 range « Design de l'insigne :
+    Trick:267 … Kei Machida » (un hors-série du tome précédent) au-dessus de ses 10 chapitres, et cette ligne en trop
+    faussait la recherche des pages de tous les chapitres. N'est écartée qu'une ligne du bord dont le numéro n'est pas dans
+    la liste du tome, quand toutes les autres lignes y sont et que cette liste est complète."""
+    if not numeros or len(chapitres) < 4:
+        return chapitres
+    connus = set(float(n) for n in numeros)
+    sortie = list(chapitres)
+    for bord in (0, -1):
+        reste = sortie[1:] if bord == 0 else sortie[:-1]
+        c = sortie[bord]
+        if (c.get("num") is not None and float(c["num"]) not in connus
+                and all(x.get("num") is not None and float(x["num"]) in connus for x in reste)
+                and len(reste) >= len(connus) - 1):
+            sortie = reste
+    return sortie
+
+
 def _completer_bords(chapitres, numeros, nb_pages):
     """Première ou dernière ligne du sommaire perdue (sur le dessin, en haut de page) : si la liste des chapitres du tome
     annonce le chapitre juste avant le premier lu (ou juste après le dernier) et qu'il y a la place, il est ajouté avec
@@ -2289,6 +2308,7 @@ def _lire_avec(mode, vision, chemin, lire_page, nb_pages, noms=None, numeros=Non
                 logger.info("Sommaire par Claude impossible pour %s : %s", chemin, e)
         return {"chapitres": [], "page_sommaire": None, "decalage": None, **({"isbn": isbn} if isbn else {})}
     _renumeroter_du_tome(trouve, numeros)
+    trouve = _ecarter_hors_tome(trouve, numeros)
     _completer_ordinaux(trouve)
     trouve = _completer_bords(trouve, numeros, nb_pages)
     par_noms = chapitres_par_noms(noms, numeros)

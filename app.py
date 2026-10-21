@@ -5089,7 +5089,9 @@ def _richesse(lecture):
     """Ce qu'une lecture de sommaire apporte : chapitres, titres lus, pages de lecture trouvées (pour ne jamais remplacer
     une lecture par une plus pauvre)."""
     ch = lecture.get("chapitres") or []
-    return (len(ch), sum(1 for c in ch if (c.get("titre") or "").strip()) + sum(1 for c in ch if c.get("image") is not None))
+    titres = sum(1 for c in ch if (c.get("titre") or "").strip())
+    pages = sum(1 for c in ch if c.get("image") is not None)          # une page de lecture trouvée vaut plus qu'un titre
+    return (titres + 2 * pages, len(ch))
 
 
 def _avancement_fond(name):

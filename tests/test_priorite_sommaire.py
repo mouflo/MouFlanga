@@ -48,3 +48,20 @@ class Richesse(unittest.TestCase):
         riche = {"chapitres": [{"num": 1, "titre": "Trick 1", "image": 8}, {"num": 2, "titre": "Trick 2", "image": 26}]}
         pauvre = {"chapitres": [{"num": 1, "titre": "", "image": None}, {"num": 2, "titre": "", "image": None}]}
         self.assertGreater(app._richesse(riche), app._richesse(pauvre))
+        onze_sans_pages = {"chapitres": [{"num": n, "titre": "Trick %d" % n, "image": None} for n in range(11)]}
+        dix_avec_pages = {"chapitres": [{"num": n, "titre": "", "image": 30 + n} for n in range(10)]}
+        self.assertGreater(app._richesse(dix_avec_pages), app._richesse(onze_sans_pages))
+
+
+class HorsTome(unittest.TestCase):
+    def _rangees(self, nums):
+        return [{"num": float(n), "titre": "", "page": 10 + 16 * i} for i, n in enumerate(nums)]
+
+    def test_ligne_de_bord_hors_liste_ecartee(self):
+        lignes = self._rangees(range(267, 278))                    # 267 : design de l'insigne, pas un chapitre du tome
+        r = sommaire._ecarter_hors_tome(lignes, [float(n) for n in range(268, 278)])
+        self.assertEqual([c["num"] for c in r], [float(n) for n in range(268, 278)])
+
+    def test_rien_ecarte_si_le_reste_ne_colle_pas(self):
+        lignes = self._rangees([267, 270, 271, 272, 273])           # liste du tome incomplète : on ne devine pas
+        self.assertEqual(sommaire._ecarter_hors_tome(lignes, [268.0, 269.0, 270.0, 271.0, 272.0, 273.0]), lignes)
