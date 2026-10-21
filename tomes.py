@@ -783,7 +783,7 @@ def _google_books(titre: str) -> dict | None:
     tomes, editeur, auteurs = [], "", []
     for it in items:
         v = it.get("volumeInfo") or {}
-        if _simple(titre) not in _simple(v.get("title") or ""):
+        if _simple(titre) not in _simple(v.get("title") or "") or _autre_serie(v.get("title") or "", titre):
             continue
         m = re.search(r"\b(?:tome|t|vol\.?|band)\s*0*(\d{1,3})\b", v.get("title") or "", re.I)
         if m:
@@ -1060,6 +1060,17 @@ def resume_tome_memoire(serie: str, tome) -> str:
     return _resume_de_serie(garde.get("texte", ""), brut, int(tome)) if garde else ""
 
 
+_MARQUEURS_DERIVES = {"zero", "gaiden", "spin", "off", "spinoff", "prequel", "prequelle", "sequel", "suite", "side", "story", "extra",
+                      "artbook", "fanbook", "databook", "guide", "anthologie", "novel", "roman", "light", "memories", "origins"}
+
+
+def _autre_serie(nom: str, titre: str) -> bool:
+    """Le titre Google contient, en plus de celui de la série, un mot de série dérivée (« Akame ga Kill ! Zero, tome 10 » pour
+    « Akame ga Kill ! ») : c'est un autre livre, sa notice ne vaut pas pour ce tome."""
+    en_plus = set(_simple(nom).split()) - set(_simple(titre).split())
+    return bool(en_plus & _MARQUEURS_DERIVES)
+
+
 def resume_tome_google(serie: str, tome, reseau: bool = True):
     """Résumé en français d'un tome d'après Google Books (clé requise) : la notice de « <série> tome N » en français.
     Gardé 30 jours dans data/tomes/<série>.json (« resumes_tomes »), y compris « rien trouvé ».
@@ -1099,7 +1110,7 @@ def resume_tome_google(serie: str, tome, reseau: bool = True):
         for it in items:
             v = it.get("volumeInfo") or {}
             nom = " ".join(x for x in (v.get("title"), v.get("subtitle")) if x)
-            if _simple(titre) not in _simple(nom) or _tome_du_titre(nom) != n or (v.get("language") or "fr") != "fr":
+            if _simple(titre) not in _simple(nom) or _tome_du_titre(nom) != n or (v.get("language") or "fr") != "fr" or _autre_serie(nom, titre):
                 continue
             desc = _texte_propre(v.get("description") or "")
             if len(desc) > 60:
@@ -1294,6 +1305,34 @@ def details_tome(serie: str, tome) -> dict:
     return d
 
 
+def _section_de_serie(wikitexte: str, serie: str) -> str:
+    """Une page Wikipédia qui liste les volumes de plusieurs séries (« Red Eyes Sword: Akame ga Kill! », « … Zero », « Blue Eyes
+    Sword: Hinowa ga Crush! », chacune sous son titre ====) : ne garde que la section de CETTE série. Le titre de la section
+    doit contenir tous les mots du nom de la série ; à égalité, celui qui a le moins de mots en plus (la série principale ne
+    prend pas la section « Zero »). Une page à une seule liste, ou sans correspondance, reste telle quelle."""
+    coupes = [m.start() for m in re.finditer(r"\{\{\s*TomeBD/Entête", wikitexte)]
+    if len(coupes) < 2:
+        return wikitexte
+    mots = set(_simple(serie).split())
+    if not mots:
+        return wikitexte
+    candidats = []
+    for k, debut in enumerate(coupes):
+        fin = coupes[k + 1] if k + 1 < len(coupes) else len(wikitexte)
+        titres = [m for m in re.finditer(r"^={3,4}\s*(.+?)\s*={3,4}\s*$", wikitexte[:debut], re.M)]
+        titre = _simple(titres[-1].group(1)) if titres else ""
+        # fin = la section suivante OU le prochain titre de même niveau (la page continue avec « Anime »…)
+        suite = re.search(r"^={2,4}[^=\n]+={2,4}\s*$", wikitexte[debut:fin], re.M)
+        if suite:
+            fin = debut + suite.start()
+        mots_titre = set(titre.split())
+        if mots and mots <= mots_titre:
+            candidats.append((len(mots_titre - mots), wikitexte[debut:fin]))
+    if not candidats:
+        return wikitexte
+    return min(candidats, key=lambda c: c[0])[1]
+
+
 def titres_tomes(serie: str, forcer=False, tome_max=None) -> dict:
     """{numéro de tome (texte): titre} : Wikipédia français (TomeBD, titre_2 = titre français) en priorité,
     sinon Wikipédia anglais (Graphic novel list : LicensedTitle, sinon TranslitTitle). Gardés pour de bon une fois
@@ -1342,7 +1381,7 @@ def titres_tomes(serie: str, forcer=False, tome_max=None) -> dict:
         for page in pages[:12]:
             r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "parse", "page": page, "prop": "wikitext",
                                                                              "format": "json", "redirects": 1}, timeout=15).json()
-            w = r.get("parse", {}).get("wikitext", {}).get("*", "")
+            w = _section_de_serie(r.get("parse", {}).get("wikitext", {}).get("*", ""), serie)
             langue_fr = "2"                               # quel champ « titre_N » est en français (d'après TomeBD/Entête)
             for bloc in re.split(r"\{\{\s*TomeBD", w)[1:]:
                 if bloc.startswith("/Entête"):

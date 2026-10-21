@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 🧭 Akame ga Kill Zero : chapitres français, et plus de notice d'une autre série (21 octobre 2026)
+- Quand une page Wikipédia française liste les volumes de plusieurs séries (« Red Eyes Sword: Akame ga Kill! », « … Zero », « Blue Eyes Sword: Hinowa ga Crush! »), l'appli ne prend plus que la section de la série concernée. Avant, la série principale prenait les volumes 1 à 10 et Zero n'avait rien : ses chapitres et titres français sont maintenant trouvés.
+- Google Books : une notice dont le titre contient un mot de série dérivée en plus (« Akame ga Kill ! Zero, tome 10 » pour « Akame ga Kill ! ») est refusée. Le tome 10 de la série principale avait reçu le résumé de la préquelle.
+
 ## 📖 Résumés des tomes : la présentation générale de la série retirée partout (21 octobre 2026)
 - La présentation de la série répétée au début des résumés (« Tatsumi quitte son village natal pour la Cité impériale… ») est retirée même quand une notice a une virgule, une apostrophe ou une espace de plus ou de moins qu'une autre.
 - Le résumé écrit dans le fichier d'un tome est nettoyé de la même façon : la partie générale est enlevée et seule celle qui suit « >Tome 9< » est gardée. Les résumés des autres tomes servent de comparaison.

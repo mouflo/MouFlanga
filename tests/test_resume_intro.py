@@ -21,3 +21,10 @@ class ResumeSansIntro(unittest.TestCase):
         propre = "Mine commence à prendre conscience de ses sentiments pour Tatsumi, tandis que Najenda se prépare."
         r = tomes.resume_propre_du_fichier("Série inconnue", 9, f"{generale}\n\n>Tome 9< \n{propre}", {})
         self.assertEqual(r, propre)
+
+
+class AutreSerie(unittest.TestCase):
+    def test_notice_d_une_serie_derivee_refusee(self):
+        self.assertTrue(tomes._autre_serie("Akame ga Kill ! Zero - Tome 10", "Akame ga Kill !"))
+        self.assertFalse(tomes._autre_serie("Akame ga Kill ! - Tome 10", "Akame ga Kill !"))
+        self.assertFalse(tomes._autre_serie("Akame ga Kill ! Zero - Tome 10", "Akame ga Kill ! Zero"))
