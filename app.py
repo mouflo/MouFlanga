@@ -5191,10 +5191,10 @@ def api_titres_chapitres():
     infos = edition.lire(dossier)
     sommaires = infos.get("sommaires") or {}
     if request.method == "GET":
-        return jsonify({"ok": True, **titres_chapitres.proposer(sommaires)})
+        return jsonify({"ok": True, **titres_chapitres.proposer(sommaires, str(donnees.get("prefixe", "")))})
     if not donnees.get("confirmer"):
         return jsonify({"ok": False, "error": "Confirme l'écriture pour appliquer les titres."}), 400
-    ecrits = titres_chapitres.appliquer(sommaires, titres_chapitres.proposer(sommaires)["changements"])
+    ecrits = titres_chapitres.appliquer(sommaires, titres_chapitres.proposer(sommaires, str(donnees.get("prefixe", "")))["changements"])
     infos["sommaires"] = sommaires
     edition.ecrire(dossier, infos)
     logger.info("Titres des chapitres de « %s » : %d écrit(s)", name, ecrits)

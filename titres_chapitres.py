@@ -41,10 +41,31 @@ def _titre(mot: str, n: int) -> str:
     return f"{mot} {n}" if mot else str(n)
 
 
-def proposer(infos_sommaires: dict) -> dict:
-    """Aperçu : le modèle appris et la liste des changements (tome, numéro, titre actuel, titre proposé).
+def _avec_prefixe(prefixe: str, n: int, actuel: str) -> str:
+    """« Kill 12 : La nuit des assassins » : le mot choisi, le numéro, puis le vrai titre s'il y en a un. Le début déjà
+    écrit (« Chapitre 12 », « Kill:12 », « 12. ») est remplacé, pas doublé."""
+    reste = re.sub(r"^\s*(?:[^\W\d_]{1,15}\s*[:.\-–—]?\s*)?0*%d\b(?:\s*[:.\-–—]\s*|\s*$)" % n, "", actuel or "", count=1).strip()
+    return f"{prefixe} {n} : {reste}" if reste else f"{prefixe} {n}"
+
+
+def proposer(infos_sommaires: dict, prefixe: str = "") -> dict:
+    """Avec un préfixe choisi par la personne (« Kill ») : TOUS les chapitres numérotés le reçoivent, vrais titres compris.
+    Sans préfixe, aperçu : le modèle appris et la liste des changements (tome, numéro, titre actuel, titre proposé).
     infos_sommaires = le dictionnaire « sommaires » du fichier .mouflanga-infos.json de la série."""
     chapitres_par_tome = {str(t): (s or {}).get("chapitres") or [] for t, s in (infos_sommaires or {}).items()}
+    prefixe = (prefixe or "").strip()
+    if prefixe:
+        changements = []
+        for tome in sorted(chapitres_par_tome, key=lambda t: float(t) if re.fullmatch(r"[\d.]+", t) else 0):
+            for c in chapitres_par_tome[tome]:
+                n = _entier(c.get("num"))
+                if n is None:
+                    continue
+                actuel = (c.get("titre") or "").strip()
+                cible = _avec_prefixe(prefixe, n, actuel)
+                if cible != actuel:
+                    changements.append({"tome": tome, "num": n, "avant": actuel, "apres": cible})
+        return {"modele": f"{prefixe} N : titre", "nb_appris": 0, "choisi": True, "changements": changements}
     mot, nb = apprendre(chapitres_par_tome)
     if nb == 0:
         return {"modele": None, "nb_appris": 0, "changements": []}

@@ -1880,12 +1880,15 @@
     });
     $('sTitres').addEventListener('click', async function () {
       // Aperçu d'abord : le nom appris sur les tomes bien nommés, puis confirmation avant d'écrire
-      var a = await api('/api/titres-chapitres?series=' + encodeURIComponent(current.id));
+      var prefixe = await MouPrompt('Mot à mettre devant le numéro de CHAQUE chapitre (ex. « Kill » donne « Kill 12 : La nuit… »).\n\nLaisse vide pour que l\'appli reprenne le nom le plus courant de la série.', '');
+      if (prefixe === null || prefixe === undefined) return;
+      prefixe = String(prefixe).trim();
+      var a = await api('/api/titres-chapitres?series=' + encodeURIComponent(current.id) + (prefixe ? '&prefixe=' + encodeURIComponent(prefixe) : ''));
       if (!a.ok) { note('sMsg', a.error); return; }
       if (!a.changements.length) { note('sMsg', 'Tous les titres de chapitres suivent déjà le modèle « ' + a.modele + ' ».', 'ok'); return; }
       var exemples = a.changements.slice(0, 5).map(function (c) { return 'Tome ' + c.tome + ' : « ' + (c.avant || '(vide)') + ' » → « ' + c.apres + ' »'; }).join('\n');
-      if (!await MouConfirm('Modèle appris : « ' + a.modele + ' » (d\'après ' + a.nb_appris + ' chapitres bien nommés).\n\n' + a.changements.length + ' titre(s) à écrire, par exemple :\n' + exemples + '\n\nLes vrais titres ne sont pas touchés. Appliquer ?')) return;
-      var r = await post('/api/titres-chapitres', {series: current.id, confirmer: true});
+      if (!await MouConfirm((a.choisi ? 'Modèle choisi : « ' + a.modele + ' ».' : 'Modèle appris : « ' + a.modele + ' » (d\'après ' + a.nb_appris + ' chapitres bien nommés).') + '\n\n' + a.changements.length + ' titre(s) à écrire, par exemple :\n' + exemples + (a.choisi ? '\n\nLe vrai titre de chaque chapitre est gardé après le numéro. Appliquer ?' : '\n\nLes vrais titres ne sont pas touchés. Appliquer ?'))) return;
+      var r = await post('/api/titres-chapitres', {series: current.id, confirmer: true, prefixe: prefixe});
       if (!r.ok) { note('sMsg', r.error); return; }
       note('sMsg', r.ecrits + ' titre(s) de chapitres écrit(s).', 'ok');
     });

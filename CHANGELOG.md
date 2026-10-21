@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 🏷 Titres des chapitres : le mot devant le numéro au choix (21 octobre 2026)
+- Le bouton « Titres des chapitres » demande maintenant le mot à mettre devant le numéro (« Kill » pour Akame ga Kill). Tous les chapitres numérotés le reçoivent : « Kill 12 : La nuit des assassins », ou « Kill 12 » sans titre. Le vrai titre est gardé, un début déjà écrit (« Chapitre 12 », « Kill:12 ») est remplacé et non doublé, et rejouer ne change plus rien.
+- Laissé vide, il reprend le nom le plus courant de la série comme avant. Un aperçu avec des exemples est toujours montré avant d'écrire.
+
 ## 🔍 Sommaires : séries neuves en premier, lectures demandées prioritaires, avancement visible (21 octobre 2026)
 - Une série qui vient d'être importée (ou dont les fichiers changent) passe maintenant **devant** les séries à simplement refaire parce que la préparation s'est enrichie. Avant, Kenichi attendait derrière une soixantaine de séries.
 - Ouvrir la fiche d'un tome, ou cliquer sur « 🔍 Lire le sommaire », lance la lecture **tout de suite**, sans faire la queue derrière les lectures de fond (avant, elle pouvait attendre une place sans le dire).

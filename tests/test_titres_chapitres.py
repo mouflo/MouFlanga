@@ -57,3 +57,16 @@ class AppliquerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PrefixeChoisi(unittest.TestCase):
+    def test_prefixe_devant_tous_les_chapitres(self):
+        infos = {"1": {"chapitres": [{"num": 1, "titre": "Chapitre 1"}, {"num": 2, "titre": "La nuit des assassins"},
+                                     {"num": 3, "titre": "Kill:3 : Déjà là"}, {"num": 4, "titre": "Retour 4 ans plus tard"},
+                                     {"num": 5, "titre": ""}, {"num": 5.5, "titre": "Bonus"}]}}
+        r = tc.proposer(infos, "Kill")
+        apres = {c["num"]: c["apres"] for c in r["changements"]}
+        self.assertEqual(apres, {1: "Kill 1", 2: "Kill 2 : La nuit des assassins", 3: "Kill 3 : Déjà là",
+                                 4: "Kill 4 : Retour 4 ans plus tard", 5: "Kill 5"})
+        tc.appliquer(infos, r["changements"])
+        self.assertEqual(tc.proposer(infos, "Kill")["changements"], [])          # rejouer ne change plus rien
