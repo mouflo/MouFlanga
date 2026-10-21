@@ -304,6 +304,41 @@ def oublier(serie: str):
 _CACHE_FICHES = {}              # série → ((date, taille du fichier), contenu) : relu seulement si le fichier a changé
 
 
+def _carte_francaise(d: dict):
+    """{n° de chapitre: tome} d'après la page Wikipédia française (chapitres de chaque tome), ou None. Les tomes français ne
+    regroupent pas toujours les chapitres comme la liste anglaise (Akame ga Kill : le tome 10 français contient les chapitres
+    44 à 48, la liste anglaise y met les 55 à 59). Utilisée seulement si elle forme une vraie suite (numéros qui montent d'un
+    tome à l'autre) et couvre presque tous les chapitres entiers connus de la série."""
+    details = ((d.get("titres_tomes") or {}).get("details")) or {}
+    fr = {}
+    for tome, det in details.items():
+        for ligne in det.get("chapitres") or []:
+            m = re.match(r"^(\d+(?:\.\d+)?)\.", ligne)
+            if m and str(tome).isdigit():
+                fr.setdefault(float(m.group(1)), int(tome))
+    if len({t for t in fr.values()}) < 3:
+        return None
+    par_tome = {}
+    for n, t in fr.items():
+        par_tome.setdefault(t, []).append(n)
+    ordre = sorted(par_tome)
+    if any(max(par_tome[a]) >= min(par_tome[b]) for a, b in zip(ordre, ordre[1:])):
+        return None                                       # numérotation qui repart à chaque tome, ou mélangée
+    entiers = [n for n in d.get("tomes", {}) if float(n).is_integer()]
+    if not entiers or sum(1 for n in entiers if n in fr) < 0.9 * len(entiers):
+        return None
+    return fr
+
+
+def numeros_du_tome(serie: str, tome) -> list:
+    """Numéros des chapitres annoncés pour ce tome : la liste française de Wikipédia si elle est fiable, sinon la fiche."""
+    d = _charger(serie) or {}
+    carte = _carte_francaise(d) or {}
+    if carte:
+        return sorted(n for n, t in carte.items() if int(t) == int(tome))
+    return sorted(n for n, t in (d.get("tomes") or {}).items() if t is not None and int(t) == int(tome))
+
+
 def _charger(serie: str) -> dict | None:
     """Contenu de data/tomes/<série>.json. Gardé en mémoire tant que le fichier ne change pas : la liste de la
     bibliothèque le demande des milliers de fois. Le résultat est une copie de premier niveau (on peut y ajouter des clés)."""

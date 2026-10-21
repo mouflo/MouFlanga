@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 🇫🇷 Titres français des chapitres : Wikipédia français avant le sommaire scanné (21 octobre 2026)
+- Un sommaire scanné qui ne donne qu'un mot et un numéro (« Kill 5 ») ne remplace plus le vrai titre français de Wikipédia (« Le coupeur de têtes »).
+- Le bouton « Titres des chapitres » avec un mot choisi complète les chapitres sans vrai titre avec celui de la fiche : « Kill 5 : Le coupeur de têtes ».
+- Le lecteur de sommaires part maintenant des chapitres de chaque tome d'après la page Wikipédia **française** quand elle est fiable (numéros qui montent d'un tome à l'autre, presque tous les chapitres couverts), plutôt que de la liste anglaise : Akame ga Kill tome 10 = chapitres 44 à 48 (la liste anglaise y mettait 55 à 59, ce qui faussait la lecture).
+
 ## 🏷 Titres des chapitres : le mot devant le numéro au choix (21 octobre 2026)
 - Le bouton « Titres des chapitres » demande maintenant le mot à mettre devant le numéro (« Kill » pour Akame ga Kill). Tous les chapitres numérotés le reçoivent : « Kill 12 : La nuit des assassins », ou « Kill 12 » sans titre. Le vrai titre est gardé, un début déjà écrit (« Chapitre 12 », « Kill:12 ») est remplacé et non doublé, et rejouer ne change plus rien.
 - Laissé vide, il reprend le nom le plus courant de la série comme avant. Un aperçu avec des exemples est toujours montré avant d'écrire.

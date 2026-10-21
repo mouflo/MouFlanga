@@ -41,14 +41,15 @@ def _titre(mot: str, n: int) -> str:
     return f"{mot} {n}" if mot else str(n)
 
 
-def _avec_prefixe(prefixe: str, n: int, actuel: str) -> str:
+def _avec_prefixe(prefixe: str, n: int, actuel: str, officiel: str = "") -> str:
     """« Kill 12 : La nuit des assassins » : le mot choisi, le numéro, puis le vrai titre s'il y en a un. Le début déjà
     écrit (« Chapitre 12 », « Kill:12 », « 12. ») est remplacé, pas doublé."""
     reste = re.sub(r"^\s*(?:[^\W\d_]{1,15}\s*[:.\-–—]?\s*)?0*%d\b(?:\s*[:.\-–—]\s*|\s*$)" % n, "", actuel or "", count=1).strip()
+    reste = reste or (officiel or "").strip()                  # pas de vrai titre lu dans le tome : celui de la fiche (Wikipédia français)
     return f"{prefixe} {n} : {reste}" if reste else f"{prefixe} {n}"
 
 
-def proposer(infos_sommaires: dict, prefixe: str = "") -> dict:
+def proposer(infos_sommaires: dict, prefixe: str = "", officiels: dict | None = None) -> dict:
     """Avec un préfixe choisi par la personne (« Kill ») : TOUS les chapitres numérotés le reçoivent, vrais titres compris.
     Sans préfixe, aperçu : le modèle appris et la liste des changements (tome, numéro, titre actuel, titre proposé).
     infos_sommaires = le dictionnaire « sommaires » du fichier .mouflanga-infos.json de la série."""
@@ -62,7 +63,7 @@ def proposer(infos_sommaires: dict, prefixe: str = "") -> dict:
                 if n is None:
                     continue
                 actuel = (c.get("titre") or "").strip()
-                cible = _avec_prefixe(prefixe, n, actuel)
+                cible = _avec_prefixe(prefixe, n, actuel, (officiels or {}).get(n, ""))
                 if cible != actuel:
                     changements.append({"tome": tome, "num": n, "avant": actuel, "apres": cible})
         return {"modele": f"{prefixe} N : titre", "nb_appris": 0, "choisi": True, "changements": changements}

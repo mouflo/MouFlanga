@@ -70,3 +70,12 @@ class PrefixeChoisi(unittest.TestCase):
                                  4: "Kill 4 : Retour 4 ans plus tard", 5: "Kill 5"})
         tc.appliquer(infos, r["changements"])
         self.assertEqual(tc.proposer(infos, "Kill")["changements"], [])          # rejouer ne change plus rien
+
+
+class TitresOfficiels(unittest.TestCase):
+    def test_titre_de_la_fiche_quand_le_tome_n_en_donne_pas(self):
+        infos = {"2": {"chapitres": [{"num": 5, "titre": "Kill 5"}, {"num": 6, "titre": ""}, {"num": 7, "titre": "Rêves lus"}]}}
+        r = tc.proposer(infos, "Kill", {5: "Le coupeur de têtes", 6: "L'utilisateur d'arme impériale", 7: "Rêves"})
+        apres = {c["num"]: c["apres"] for c in r["changements"]}
+        self.assertEqual(apres, {5: "Kill 5 : Le coupeur de têtes", 6: "Kill 6 : L'utilisateur d'arme impériale",
+                                 7: "Kill 7 : Rêves lus"})              # le titre lu dans le tome passe avant celui de la fiche

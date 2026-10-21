@@ -5062,7 +5062,8 @@ def _sommaire_du_tome(name, tome, d, fond=False):
             if c is not None:
                 ok += 1
                 ocr = (c.get("titre") or "").strip()
-                if len(ocr) >= 3:                            # le sommaire imprimé de SON édition fait foi
+                generique = bool(re.fullmatch(r"[^\W\d_]{1,15}\s*[:.\-–—]?\s*\d+(?:[.,]\d)?", ocr))   # « Kill 5 » : un mot et un numéro, pas un titre
+                if len(ocr) >= 3 and not (generique and m.group(2).strip()):      # le sommaire imprimé de SON édition fait foi
                     ligne = f"{m.group(1)}. {ocr}"
             titres.append(ligne)
             pages.append(c.get("image") if c is not None else None)
@@ -5144,8 +5145,7 @@ def _lire_sommaire(name, tome, e, forcer=False, urgent=True):
         infos.setdefault("sommaires", {})[str(tome)] = r
         edition.ecrire(MANGA_DIR / name, infos)
     try:                                                 # chapitres connus du tome (Wikipédia) : numéros du sommaire illisible
-        fiche = tomes._charger(name) or {}
-        numeros = sorted(n for n, t in (fiche.get("tomes") or {}).items() if t is not None and int(t) == int(tome))
+        numeros = tomes.numeros_du_tome(name, tome)
     except Exception:
         numeros = []
     return sommaire.lancer(name, tome, chemin, lambda i: archives.read_page(chemin, i)[0], len(archives.pages(chemin)), enregistrer,
@@ -5177,6 +5177,18 @@ def api_tome_sommaire():
     return jsonify({"ok": True, "message": "Lecture du sommaire en cours (environ une minute)…"})
 
 
+def _titres_officiels(name):
+    """{numéro entier de chapitre: titre français} d'après la fiche de la série (Wikipédia français, liste des volumes)."""
+    out = {}
+    details = (((tomes._charger(name) or {}).get("titres_tomes") or {}).get("details")) or {}
+    for det in details.values():
+        for ligne in det.get("chapitres") or []:
+            m = re.match(r"^(\d+)\.\s*(\S.*)$", ligne)
+            if m:
+                out.setdefault(int(m.group(1)), m.group(2).strip())
+    return out
+
+
 @app.route("/api/titres-chapitres", methods=["GET", "POST"])
 def api_titres_chapitres():
     """🏷 Titres des chapitres sur le modèle régulier de la série (« Trick 12 »). GET : aperçu seul.
@@ -5191,10 +5203,10 @@ def api_titres_chapitres():
     infos = edition.lire(dossier)
     sommaires = infos.get("sommaires") or {}
     if request.method == "GET":
-        return jsonify({"ok": True, **titres_chapitres.proposer(sommaires, str(donnees.get("prefixe", "")))})
+        return jsonify({"ok": True, **titres_chapitres.proposer(sommaires, str(donnees.get("prefixe", "")), _titres_officiels(name))})
     if not donnees.get("confirmer"):
         return jsonify({"ok": False, "error": "Confirme l'écriture pour appliquer les titres."}), 400
-    ecrits = titres_chapitres.appliquer(sommaires, titres_chapitres.proposer(sommaires, str(donnees.get("prefixe", "")))["changements"])
+    ecrits = titres_chapitres.appliquer(sommaires, titres_chapitres.proposer(sommaires, str(donnees.get("prefixe", "")), _titres_officiels(name))["changements"])
     infos["sommaires"] = sommaires
     edition.ecrire(dossier, infos)
     logger.info("Titres des chapitres de « %s » : %d écrit(s)", name, ecrits)
