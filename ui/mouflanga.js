@@ -1594,7 +1594,7 @@
         '<button type="button" class="mou-btn ghost" id="tomeResumeAuto" data-tome="' + n + '"' + (d.resume_manuel ? '' : ' hidden') + '>↩️ Remettre le résumé automatique</button>' +
         '<button type="button" class="mou-btn ghost" id="tomeResumeCancel">Annuler</button></div></div>' +
         (som.en_cours ? '<div class="dem-sous">🔍 ' + (som.attente ? 'En attente d\'une place : d\'autres lectures de fond sont en cours, la tienne démarre dès qu\'une se termine.'
-            : 'Lecture du sommaire en cours — ' + (som.pages || 0) + ' page(s) examinée(s) depuis ' + (som.secondes || 0) + ' s. ' +
+            : 'Lecture du sommaire en cours — ' + (som.pages || 0) + ' page(s) différente(s) lue(s) depuis ' + (som.secondes || 0) + ' s. ' +
               ((som.secondes || 0) > 240 ? 'C\'est long mais ça avance tant que ce nombre monte.' : 'Compte une à cinq minutes ; ça avance tant que ce nombre monte.')) + '</div>'
           : (som.message && !chap.length ? '<div class="dem-sous">' + esc(som.message) + '</div>' : '')) +
         (som.fond ? '<div class="dem-sous">⚙️ ' + esc(som.fond) + '</div>' : '') +

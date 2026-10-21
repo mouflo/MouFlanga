@@ -30,8 +30,9 @@ class PrioriteSommaire(unittest.TestCase):
         sommaire._ETAT[("T-pages", 1)] = {"en_cours": True, "message": "", "pages": 0}
         sommaire._LOCAL.cle = ("T-pages", 1)
         try:
-            sommaire._avancer()
-            sommaire._avancer()
+            sommaire._avancer(b"a")
+            sommaire._avancer(b"b")
+            sommaire._avancer(b"a")                              # même page relue : comptée une fois
         finally:
             sommaire._LOCAL.cle = None
         self.assertEqual(sommaire.etat("T-pages", 1)["pages"], 2)

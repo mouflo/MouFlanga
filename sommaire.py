@@ -7,6 +7,7 @@ Le résultat est gardé dans <série>/.mouflanga-infos.json (« sommaires ») : 
 """
 import difflib
 from collections import Counter
+import hashlib
 import io
 import json
 import logging
@@ -118,15 +119,17 @@ def _simple(t):
     return re.sub(r"[^a-z0-9]+", " ", t).strip()
 
 
-def _avancer():
-    """Une page lue de plus pour le tome en cours de lecture dans ce fil (sert à l'affichage de l'avancement)."""
+def _avancer(image_octets=b""):
+    """Page lue pour le tome en cours de lecture dans ce fil (sert à l'affichage de l'avancement) : une même page relue
+    (autre lecteur, texte clair) n'est comptée qu'une fois."""
     cle = getattr(_LOCAL, "cle", None)
     if cle:
         with _VERROU:
             e = _ETAT.get(cle)
             if e and e.get("en_cours"):
-                e["pages"] = e.get("pages", 0) + 1
-                e["message"] = f"Lecture du sommaire… {e['pages']} page(s) examinée(s)"
+                e.setdefault("_vus", set()).add(hashlib.md5(image_octets).digest() if image_octets else len(e.get("_vus", ())))
+                e["pages"] = len(e["_vus"])
+                e["message"] = f"Lecture du sommaire… {e['pages']} page(s) différente(s) lue(s)"
 
 
 def ocr(image_octets: bytes, clair: bool = False) -> str:
@@ -134,7 +137,7 @@ def ocr(image_octets: bytes, clair: bool = False) -> str:
     clair=True : texte blanc sur fond coloré (sommaire d'un tome sur orange, sur rose) : on ne garde que ce qui est clair
     dans les trois canaux (le plus sombre des trois > 180) : le blanc ressort, un fond coloré non."""
     from PIL import Image, ImageChops, ImageOps
-    _avancer()
+    _avancer(image_octets)
     im = Image.open(io.BytesIO(image_octets))
     if clair and im.mode in ("RGB", "RGBA"):
         r, g, b = im.convert("RGB").split()
@@ -2576,6 +2579,7 @@ def _decalage_par_nom(page, noms, page_sommaire):
 def etat(serie, tome):
     with _VERROU:
         e = dict(_ETAT.get((serie, int(tome))) or {})
+    e.pop("_vus", None)
     if e.get("debut") and e.get("en_cours"):
         e["secondes"] = int(time.time() - e["debut"])
     return e
