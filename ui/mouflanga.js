@@ -565,12 +565,17 @@
   }
   document.addEventListener('click', function (e) { if (e.target.closest('[data-legende]')) { e.stopPropagation(); legendeSources(); } });
 
+  function sansDoublon(ligne) {                    // « 1. Kill 1 : Les ténèbres » → « Kill 1 : Les ténèbres » (le numéro est déjà dans le mot)
+    var m = /^(\d+)\.\s*(.*)$/.exec(String(ligne));
+    if (m && new RegExp('^[A-Za-zÀ-ÿ]{1,15}\\s*[:.\\-–—]?\\s*0*' + parseInt(m[1], 10) + '(?!\\d)').test(m[2])) return m[2];
+    return String(ligne);
+  }
   function lienChapitre(texte, tome) {
     var propre = String(texte).replace(/[{}]+/g, '');
     var m = /^([\d.]+)\./.exec(propre);
     var groupe = 'Tome ' + String(tome).padStart(2, '0');
     var e = m ? (current.chapters || []).find(function (x) { return Math.abs(x.num - parseFloat(m[1])) < 1e-6 && (x.groupe === groupe || String(x.tome) === String(Number(tome))); }) : null;
-    return e ? '<a href="#" class="tchap-lien" data-cle="' + esc(e.key) + '">' + esc(propre) + '</a>' : esc(propre);
+    return e ? '<a href="#" class="tchap-lien" data-cle="' + esc(e.key) + '">' + esc(sansDoublon(propre)) + '</a>' : esc(sansDoublon(propre));
   }
 
   function readChapter(path) {
@@ -1581,7 +1586,7 @@
       var champs = [['Titre', d.titre], ['Infos', d.infos_hs], ['Sortie en France', d.sortie], ['ISBN', d.isbn], ['Provenance', provTexte.trim() ? provTexte : '']].filter(function (x) { return x[1]; });
       var chap = d.chapitres || [], pagesCh = d.chapitres_pages || [];
       var lien = function (c, i) {                    // chapitre lu dans le sommaire d'un tome complet : ouvert à sa page
-        if (d.fichier && pagesCh[i] != null) return '<a href="/lire?s=' + encodeURIComponent(current.id) + '&c=' + encodeURIComponent(d.fichier) + '&p=' + pagesCh[i] + '">' + esc(c) + '</a>';
+        if (d.fichier && pagesCh[i] != null) return '<a href="/lire?s=' + encodeURIComponent(current.id) + '&c=' + encodeURIComponent(d.fichier) + '&p=' + pagesCh[i] + '">' + esc(sansDoublon(c)) + '</a>';
         return lienChapitre(c, n);
       };
       $('infosCorps').innerHTML = '<div class="tome-fiche"><img class="tome-couv" src="' + cov + '" alt="" data-grand="' + cov + '&grand=1">' +
@@ -1624,7 +1629,7 @@
         (d.ecriture_possible ? '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEcrire" data-tome="' + n + '" title="Résumé, chapitres, provenance… suivent le fichier quand tu le partages">📝 Écrire les infos dans le fichier</button></div>' : '') +
         '<div id="chapEcrireMsg" class="dem-sous"></div>' ;
       var zone = $('chapTexte');
-      if (zone) zone.value = chap.map(function (c, i) { return c + (d.fichier && pagesCh[i] != null ? ' @' + (pagesCh[i] + 1) : ' @'); }).join('\n');
+      if (zone) zone.value = chap.map(function (c, i) { return sansDoublon(c) + (d.fichier && pagesCh[i] != null ? ' @' + (pagesCh[i] + 1) : ' @'); }).join('\n');
       var im = $('infosCorps').querySelector('.tome-couv');
       if (im) im.addEventListener('error', function () { im.style.display = 'none'; });
       if (som.en_cours || som.fond) suiviSommaire = setTimeout(function () { afficherTome(n, false); }, som.en_cours ? 4000 : 10000);
@@ -1880,15 +1885,17 @@
     });
     $('sTitres').addEventListener('click', async function () {
       // Aperçu d'abord : le nom appris sur les tomes bien nommés, puis confirmation avant d'écrire
-      var prefixe = await MouPrompt('Mot à mettre devant le numéro de CHAQUE chapitre (ex. « Kill » donne « Kill 12 : La nuit… »).\n\nLaisse vide pour que l\'appli reprenne le nom le plus courant de la série.', '');
+      var prefixe = await MouPrompt('Mot à mettre devant le numéro de CHAQUE chapitre (ex. « Kill » donne « Kill 12 : La nuit… »).\n\nLaisse vide pour que l\'appli reprenne le nom le plus courant de la série.\n\nPour TOUT RETIRER (revenir aux vrais titres), tape un tiret : -', '');
       if (prefixe === null || prefixe === undefined) return;
       prefixe = String(prefixe).trim();
-      var a = await api('/api/titres-chapitres?series=' + encodeURIComponent(current.id) + (prefixe ? '&prefixe=' + encodeURIComponent(prefixe) : ''));
+      var retirer = (prefixe === '-' || prefixe === '–');
+      if (retirer) prefixe = '';
+      var a = await api('/api/titres-chapitres?series=' + encodeURIComponent(current.id) + (prefixe ? '&prefixe=' + encodeURIComponent(prefixe) : '') + (retirer ? '&retirer=1' : ''));
       if (!a.ok) { note('sMsg', a.error); return; }
-      if (!a.changements.length) { note('sMsg', 'Tous les titres de chapitres suivent déjà le modèle « ' + a.modele + ' ».', 'ok'); return; }
+      if (!a.changements.length) { note('sMsg', a.retrait ? 'Aucun chapitre n\'a de mot devant son numéro : rien à retirer.' : 'Tous les titres de chapitres suivent déjà le modèle « ' + a.modele + ' ».', 'ok'); return; }
       var exemples = a.changements.slice(0, 5).map(function (c) { return 'Tome ' + c.tome + ' : « ' + (c.avant || '(vide)') + ' » → « ' + c.apres + ' »'; }).join('\n');
-      if (!await MouConfirm((a.choisi ? 'Modèle choisi : « ' + a.modele + ' ».' : 'Modèle appris : « ' + a.modele + ' » (d\'après ' + a.nb_appris + ' chapitres bien nommés).') + '\n\n' + a.changements.length + ' titre(s) à écrire, par exemple :\n' + exemples + (a.choisi ? '\n\nLe vrai titre de chaque chapitre est gardé après le numéro. Appliquer ?' : '\n\nLes vrais titres ne sont pas touchés. Appliquer ?'))) return;
-      var r = await post('/api/titres-chapitres', {series: current.id, confirmer: true, prefixe: prefixe});
+      if (!await MouConfirm((a.retrait ? 'Retrait des mots devant les numéros.' : a.choisi ? 'Modèle choisi : « ' + a.modele + ' ».' : 'Modèle appris : « ' + a.modele + ' » (d\'après ' + a.nb_appris + ' chapitres bien nommés).') + '\n\n' + a.changements.length + ' titre(s) à écrire, par exemple :\n' + exemples + (a.retrait ? '\n\nSeul le mot devant le numéro disparaît ; les vrais titres sont gardés. Appliquer ?' : a.choisi ? '\n\nLe vrai titre de chaque chapitre est gardé après le numéro. Appliquer ?' : '\n\nLes vrais titres ne sont pas touchés. Appliquer ?'))) return;
+      var r = await post('/api/titres-chapitres', {series: current.id, confirmer: true, prefixe: prefixe, retirer: retirer});
       if (!r.ok) { note('sMsg', r.error); return; }
       note('sMsg', r.ecrits + ' titre(s) de chapitres écrit(s).', 'ok');
     });

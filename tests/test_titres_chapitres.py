@@ -79,3 +79,13 @@ class TitresOfficiels(unittest.TestCase):
         apres = {c["num"]: c["apres"] for c in r["changements"]}
         self.assertEqual(apres, {5: "Kill 5 : Le coupeur de têtes", 6: "Kill 6 : L'utilisateur d'arme impériale",
                                  7: "Kill 7 : Rêves lus"})              # le titre lu dans le tome passe avant celui de la fiche
+
+
+class Retrait(unittest.TestCase):
+    def test_retire_le_mot_devant_le_numero_sans_toucher_aux_vrais_titres(self):
+        infos = {"1": {"chapitres": [{"num": 5, "titre": "Kill 5 : Le coupeur de têtes"}, {"num": 6, "titre": "Kill 6"},
+                                     {"num": 7, "titre": "Rêves"}, {"num": 8, "titre": "Retour 8 ans plus tard"},
+                                     {"num": 9, "titre": "Trick 9"}]}}
+        r = tc.proposer(infos, retirer=True, officiels={6: "L'utilisateur"})
+        apres = {c["num"]: c["apres"] for c in r["changements"]}
+        self.assertEqual(apres, {5: "Le coupeur de têtes", 6: "L'utilisateur", 9: ""})

@@ -5203,10 +5203,10 @@ def api_titres_chapitres():
     infos = edition.lire(dossier)
     sommaires = infos.get("sommaires") or {}
     if request.method == "GET":
-        return jsonify({"ok": True, **titres_chapitres.proposer(sommaires, str(donnees.get("prefixe", "")), _titres_officiels(name))})
+        return jsonify({"ok": True, **titres_chapitres.proposer(sommaires, str(donnees.get("prefixe", "")), _titres_officiels(name), bool(donnees.get("retirer")))})
     if not donnees.get("confirmer"):
         return jsonify({"ok": False, "error": "Confirme l'écriture pour appliquer les titres."}), 400
-    ecrits = titres_chapitres.appliquer(sommaires, titres_chapitres.proposer(sommaires, str(donnees.get("prefixe", "")), _titres_officiels(name))["changements"])
+    ecrits = titres_chapitres.appliquer(sommaires, titres_chapitres.proposer(sommaires, str(donnees.get("prefixe", "")), _titres_officiels(name), bool(donnees.get("retirer")))["changements"])
     infos["sommaires"] = sommaires
     edition.ecrire(dossier, infos)
     logger.info("Titres des chapitres de « %s » : %d écrit(s)", name, ecrits)
@@ -5239,13 +5239,18 @@ def api_tome_chapitres():
         if page_lecteur:
             ligne = ligne[:page_lecteur.start()].strip()
         m = re.match(r"^(\d{1,4}(?:[.,]\d)?)\s*[.)\-:–]*\s*(.*)$", ligne)
-        if not m:
-            return jsonify({"ok": False, "error": f"Ligne {i} : elle doit commencer par le numéro du chapitre (ex. « 2. La valeur de la vie »)."}), 400
-        num = float(m.group(1).replace(",", "."))
+        if m:
+            texte_num, texte_titre = m.group(1), m.group(2)
+        else:                                                             # « Kill 12 : La nuit » : le numéro est dans le mot du début
+            mm = re.match(r"^[^\W\d_]{1,15}\s*[:.\-–—]?\s*0*(\d{1,4}(?:[.,]\d)?)\b", ligne)
+            if not mm:
+                return jsonify({"ok": False, "error": f"Ligne {i} : elle doit commencer par le numéro du chapitre (ex. « 2. La valeur de la vie » ou « Kill 2 : La valeur de la vie »)."}), 400
+            texte_num, texte_titre = mm.group(1), ligne                   # le titre garde son mot devant le numéro
+        num = float(texte_num.replace(",", "."))
         if num in vus:
             return jsonify({"ok": False, "error": f"Ligne {i} : le chapitre {num:g} est écrit deux fois."}), 400
         vus.add(num)
-        titre = re.sub(r"\s+", " ", m.group(2)).strip()[:120]
+        titre = re.sub(r"\s+", " ", texte_titre).strip()[:120]
         c = {"num": num, "titre": titre}
         if num in pages:
             c.update({k: pages[num][k] for k in ("page", "image") if k in pages[num]})

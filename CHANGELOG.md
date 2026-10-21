@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 🧹 Titres « Kill 1 », « Trick 1 » : plus de numéro en double, et retour en arrière (21 octobre 2026)
+- Quand le titre commence déjà par le mot et le numéro (« Kill 1 : Les ténèbres »), la liste des chapitres d'un tome n'écrit plus « 1. » devant : « Kill 1 : Les ténèbres ». Même chose dans la zone de correction des chapitres, qui accepte aussi ces lignes sans numéro devant.
+- Le bouton « Titres des chapitres » sait tout retirer : taper un tiret (-) à la place du mot enlève le mot devant les numéros, garde les vrais titres, et remet le titre de la fiche (Wikipédia français) quand il n'y en a pas. Un aperçu est montré avant d'écrire.
+
 ## 🇫🇷 Titres français des chapitres : Wikipédia français avant le sommaire scanné (21 octobre 2026)
 - Un sommaire scanné qui ne donne qu'un mot et un numéro (« Kill 5 ») ne remplace plus le vrai titre français de Wikipédia (« Le coupeur de têtes »).
 - Le bouton « Titres des chapitres » avec un mot choisi complète les chapitres sans vrai titre avec celui de la fiche : « Kill 5 : Le coupeur de têtes ».

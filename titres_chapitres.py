@@ -49,12 +49,30 @@ def _avec_prefixe(prefixe: str, n: int, actuel: str, officiel: str = "") -> str:
     return f"{prefixe} {n} : {reste}" if reste else f"{prefixe} {n}"
 
 
-def proposer(infos_sommaires: dict, prefixe: str = "", officiels: dict | None = None) -> dict:
+def _debut_numerote(n: int) -> "re.Pattern":
+    """Début de titre « Kill 12 : », « Chapitre 12 », « Trick:12 » (un mot, le numéro du chapitre, puis un séparateur ou rien)."""
+    return re.compile(r"^\s*[^\W\d_]{1,15}\s*[:.\-–—]?\s*0*%d\b(?:\s*[:.\-–—]\s*|\s*$)" % n)
+
+
+def proposer(infos_sommaires: dict, prefixe: str = "", officiels: dict | None = None, retirer: bool = False) -> dict:
     """Avec un préfixe choisi par la personne (« Kill ») : TOUS les chapitres numérotés le reçoivent, vrais titres compris.
     Sans préfixe, aperçu : le modèle appris et la liste des changements (tome, numéro, titre actuel, titre proposé).
     infos_sommaires = le dictionnaire « sommaires » du fichier .mouflanga-infos.json de la série."""
     chapitres_par_tome = {str(t): (s or {}).get("chapitres") or [] for t, s in (infos_sommaires or {}).items()}
     prefixe = (prefixe or "").strip()
+    if retirer:                                              # « tout supprimer » : les mots devant les numéros disparaissent
+        changements = []
+        for tome in sorted(chapitres_par_tome, key=lambda t: float(t) if re.fullmatch(r"[\d.]+", t) else 0):
+            for c in chapitres_par_tome[tome]:
+                n = _entier(c.get("num"))
+                actuel = (c.get("titre") or "").strip()
+                if n is None or not actuel or not _debut_numerote(n).match(actuel):
+                    continue                                 # les vrais titres ne sont pas touchés
+                reste = _debut_numerote(n).sub("", actuel, count=1).strip()
+                cible = reste or (officiels or {}).get(n, "")          # sans vrai titre : celui de la fiche, sinon rien
+                if cible != actuel:
+                    changements.append({"tome": tome, "num": n, "avant": actuel, "apres": cible})
+        return {"modele": "sans mot devant le numéro", "nb_appris": 0, "choisi": True, "retrait": True, "changements": changements}
     if prefixe:
         changements = []
         for tome in sorted(chapitres_par_tome, key=lambda t: float(t) if re.fullmatch(r"[\d.]+", t) else 0):
