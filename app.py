@@ -5027,7 +5027,7 @@ def _numeros_manquants(nums):
     return trous
 
 
-def _sommaire_du_tome(name, tome, d):
+def _sommaire_du_tome(name, tome, d, fond=False):
     """Chapitres lus dans le sommaire imprimé du tome (OCR). Pas encore lu : lecture lancée toute seule en arrière-plan
     quand aucune source n'a les chapitres en français."""
     import sommaire
@@ -5073,10 +5073,11 @@ def _sommaire_du_tome(name, tome, d):
                   and not (lu.get("saisie") or lu.get("manuel") or lu.get("valide_le")))
     # liste venue d'Internet avec des titres mais sans pages : le sommaire imprimé sert à relever les numéros de page
     if e and sommaire.disponible() and (not lu or ancien) and (besoin or ancien or d.get("chapitres")) and auth.role() != "lecteur":
-        _lire_sommaire(name, tome, e)
+        _lire_sommaire(name, tome, e, urgent=not fond)
     et = sommaire.etat(name, tome)
     d["sommaire"] = {"possible": bool(e) and sommaire.disponible(), "en_cours": bool(et.get("en_cours")),
-                     "message": et.get("message", ""), "lu": bool(lu), "manuel": bool(lu and lu.get("manuel")),
+                     "message": et.get("message", ""), "secondes": et.get("secondes", 0), "pages": et.get("pages", 0),
+                     "attente": str(et.get("message", "")).startswith("En attente"), "fond": _avancement_fond(name), "lu": bool(lu), "manuel": bool(lu and lu.get("manuel")),
                      "valide_le": (lu or {}).get("valide_le", ""), "saisie": bool(lu and lu.get("saisie")), "fichier": bool(lu and lu.get("fichier")),
                      "manquants": _numeros_manquants([c.get("num") for c in (lu or {}).get("chapitres", [])])}
 
@@ -5084,7 +5085,17 @@ def _sommaire_du_tome(name, tome, d):
 _VERROU_SOMMAIRES = threading.Lock()
 
 
-def _lire_sommaire(name, tome, e, forcer=False):
+def _avancement_fond(name):
+    """Où en est la préparation en arrière-plan pour cette série : texte court, ou '' si elle n'est ni en cours ni en file."""
+    with prechauffage._VERROU:
+        if prechauffage._ETAT["serie"] == name:
+            return "Préparation de cette série en cours : " + (prechauffage._ETAT["detail"] or "démarrage…")
+        if name in prechauffage._FILE:
+            return f"Cette série attend son tour dans la préparation de fond (n° {prechauffage._FILE.index(name) + 1} sur {len(prechauffage._FILE)})."
+    return ""
+
+
+def _lire_sommaire(name, tome, e, forcer=False, urgent=True):
     """forcer : relecture demandée par la personne (bouton) ; sinon une liste saisie à la main n'est jamais remplacée."""
     import sommaire
     import edition
@@ -5125,7 +5136,7 @@ def _lire_sommaire(name, tome, e, forcer=False):
     except Exception:
         numeros = []
     return sommaire.lancer(name, tome, chemin, lambda i: archives.read_page(chemin, i)[0], len(archives.pages(chemin)), enregistrer,
-                         noms=archives.pages(chemin), numeros=numeros)
+                         noms=archives.pages(chemin), numeros=numeros, urgent=urgent)
 
 
 @app.route("/api/tome/sommaire", methods=["POST"])
@@ -6309,7 +6320,7 @@ def _preparer_serie(nom, progression):
                 if not d.get("resume") and not differente:
                     tomes.resume_tome_google(nom, t)       # Internet, une seule fois (gardé 30 jours)
                     d = tomes.details_tome(nom, t)
-                _sommaire_du_tome(nom, t, d)               # lance la lecture du sommaire si elle est utile
+                _sommaire_du_tome(nom, t, d, fond=True)    # lance la lecture du sommaire si elle est utile
                 if sommaire.etat(nom, t).get("en_cours"):
                     en_lecture.append(t)
                 _attendre_lectures(sommaire, nom, en_lecture, sommaire.SIMULTANES - 1)   # un tome par cœur libre

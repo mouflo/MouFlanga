@@ -80,6 +80,13 @@ def a_preparer(forcer=False) -> list:
     return out
 
 
+def sont_neuves(noms) -> list:
+    """Parmi ces séries, celles jamais préparées ou dont les fichiers ont changé : elles passent avant celles qui sont
+    seulement à refaire parce que la préparation s'est enrichie (VERSION)."""
+    deja = _lire()
+    return [n for n in noms if (deja.get(n) or {}).get("signature") != _CFG["signature"](n)]
+
+
 def demander(noms, manuel=False, devant=False) -> int:
     """Ajoute des séries à la file et démarre le travailleur. Renvoie le nombre ajouté."""
     n = 0
@@ -170,7 +177,9 @@ def surveiller(intervalle=60, delai_depart=90):
                         changees.append(nom)
                     vu[nom] = sig
                 if changees:
-                    demander(changees)
+                    neuves = sont_neuves(changees)
+                    demander(neuves, devant=True)            # une série qui vient d'arriver ne fait pas la queue derrière les autres
+                    demander([n for n in changees if n not in neuves])
             except Exception as e:
                 logger.info("Surveillance de la préparation : %s", e.__class__.__name__)
             time.sleep(intervalle)

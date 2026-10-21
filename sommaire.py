@@ -72,7 +72,7 @@ def _moteur():
             from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
             m = RapidOCR(params={"Rec.lang_type": LangRec.LATIN, "Rec.ocr_version": OCRVersion.PPOCRV5,
                                  "Rec.model_type": ModelType.MOBILE,
-                                 "EngineConfig.onnxruntime.intra_op_num_threads": 2,    # 2 cœurs par lecture : plusieurs tomes en même temps
+                                 "EngineConfig.onnxruntime.intra_op_num_threads": 1,    # 1 fil par lecture : un tome par cœur, sans se gêner entre tomes
                                  "EngineConfig.onnxruntime.inter_op_num_threads": 1})
         except Exception as e:
             logger.info("Lecteur de texte moderne indisponible (%s) : tesseract seul", e.__class__.__name__)
@@ -118,11 +118,23 @@ def _simple(t):
     return re.sub(r"[^a-z0-9]+", " ", t).strip()
 
 
+def _avancer():
+    """Une page lue de plus pour le tome en cours de lecture dans ce fil (sert à l'affichage de l'avancement)."""
+    cle = getattr(_LOCAL, "cle", None)
+    if cle:
+        with _VERROU:
+            e = _ETAT.get(cle)
+            if e and e.get("en_cours"):
+                e["pages"] = e.get("pages", 0) + 1
+                e["message"] = f"Lecture du sommaire… {e['pages']} page(s) examinée(s)"
+
+
 def ocr(image_octets: bytes, clair: bool = False) -> str:
     """Texte d'une image (tesseract, français, une ligne par ligne de texte).
     clair=True : texte blanc sur fond coloré (sommaire d'un tome sur orange, sur rose) : on ne garde que ce qui est clair
     dans les trois canaux (le plus sombre des trois > 180) : le blanc ressort, un fond coloré non."""
     from PIL import Image, ImageChops, ImageOps
+    _avancer()
     im = Image.open(io.BytesIO(image_octets))
     if clair and im.mode in ("RGB", "RGBA"):
         r, g, b = im.convert("RGB").split()
@@ -2041,6 +2053,18 @@ def chapitres_par_noms(noms, numeros=None) -> list[dict]:
 
 
 
+_MOTS_SOMMAIRE = re.compile(r"(?i)sommaire|chapitre|chapter|kapitel|table|[ée]pisode|dossier|trick|contents|index|sc[eè]ne|partie|acte|round|le[cç]on|lesson|histoire|#\s?\d")
+
+
+def _recit(texte: str) -> bool:
+    """Page d'histoire évidente : beaucoup de mots (bulles), aucun mot de sommaire et presque aucune ligne qui finit par un
+    numéro de page. Inutile d'essayer sur elle les lectures d'image coûteuses des sommaires stylisés."""
+    if _MOTS_SOMMAIRE.search(texte or ""):
+        return False
+    finissent = sum(1 for l in (texte or "").splitlines() if re.search(r"\b\d{1,3}\s*$", l.strip()))
+    return len(re.findall(r"[^\W\d_]{3,}", texte or "")) >= 25 and finissent < 3
+
+
 def _lire_avec(mode, vision, chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
     """{"chapitres": [{"num", "titre", "page" (imprimée), "image" (position dans le fichier ou None)}], "page_sommaire"}
     lire_page(i) → octets de l'image i. Sans sommaire trouvé : chapitres vide."""
@@ -2078,7 +2102,7 @@ def _lire_avec(mode, vision, chemin, lire_page, nb_pages, noms=None, numeros=Non
                     lignes = cols
             except Exception as e:
                 logger.info("Sommaire de %s, page %d (colonnes) : %s", chemin, i, e.__class__.__name__)
-        if not _vraisemblable(lignes):                       # titre en blanc sur couleur : seconde lecture (canal bleu)
+        if not _vraisemblable(lignes) and not _recit(textes[i]):      # titre en blanc sur couleur : seconde lecture (canal bleu)
             try:
                 clair = ocr(octets, clair=True)
                 if _vraisemblable(_numeros_suivis(analyser(clair))) or (analyser(clair) and not lignes):
@@ -2113,7 +2137,7 @@ def _lire_avec(mode, vision, chemin, lire_page, nb_pages, noms=None, numeros=Non
                     textes[i], lignes = clair, cols
             except Exception as e:
                 logger.info("Sommaire de %s, page %d (colonnes claires) : %s", chemin, i, e.__class__.__name__)
-        if not _vraisemblable(lignes) and not trouve:
+        if not _vraisemblable(lignes) and not trouve and not _recit(textes[i]):
             try:                                             # numéros de page en grand, en couleur, sur une illustration
                 rg = analyser_rouge(octets, numeros)
                 if rg:
@@ -2220,6 +2244,8 @@ def _lire_avec(mode, vision, chemin, lire_page, nb_pages, noms=None, numeros=Non
                 break
     if not trouve:                                           # pastilles empilées sans titre (« Trick:24 ..... 5 »)
         for i in sorted(textes):
+            if _recit(textes[i]):
+                continue
             try:
                 octets = lire_page(i)
                 past = _numeros_suivis(analyser_pastilles(octets))
@@ -2233,6 +2259,8 @@ def _lire_avec(mode, vision, chemin, lire_page, nb_pages, noms=None, numeros=Non
         # mot « sommaire » illisible (fond tramé) ou lecture incomplète : lecteurs d'image sur les premières pages
         pages_essai = [page_sommaire] if trouve else range(1, min(nb_pages, 9))
         for i in pages_essai:
+            if _recit(textes.get(i, "")):
+                continue
             try:
                 octets = lire_page(i)
                 for essai in (analyser_pages_dessous(octets, numeros), analyser_blocs(octets, numeros),
@@ -2547,19 +2575,37 @@ def _decalage_par_nom(page, noms, page_sommaire):
 
 def etat(serie, tome):
     with _VERROU:
-        return dict(_ETAT.get((serie, int(tome))) or {})
+        e = dict(_ETAT.get((serie, int(tome))) or {})
+    if e.get("debut") and e.get("en_cours"):
+        e["secondes"] = int(time.time() - e["debut"])
+    return e
 
 
-def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer, noms=None, numeros=None):
-    """Lit le sommaire en arrière-plan ; enregistrer(resultat) le garde. Renvoie False si déjà en cours."""
+def occupation():
+    """(lectures en cours, lectures en attente d'une place) : pour dire à la personne que ça travaille."""
+    with _VERROU:
+        v = list(_ETAT.values())
+    attente = sum(1 for e in v if e.get("en_cours") and e.get("message", "").startswith("En attente"))
+    return sum(1 for e in v if e.get("en_cours")) - attente, attente
+
+
+def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer, noms=None, numeros=None, urgent=False):
+    """Lit le sommaire en arrière-plan ; enregistrer(resultat) le garde. Renvoie False si déjà en cours.
+    urgent : demandé par la personne (fiche ouverte, bouton) : passe devant la file des lectures de fond."""
     cle = (serie, int(tome))
     with _VERROU:
         if (_ETAT.get(cle) or {}).get("en_cours"):
             return False
-        _ETAT[cle] = {"en_cours": True, "message": "Lecture du sommaire…"}
+        _ETAT[cle] = {"en_cours": True, "message": "Lecture du sommaire…" if urgent else "En attente d'une place (lectures de fond en cours)…",
+                      "debut": time.time(), "pages": 0, "urgent": urgent}
 
     def travail():
-        with _FILE:
+        if not urgent:
+            _FILE.acquire()
+        with _VERROU:
+            _ETAT[cle].update(message="Lecture du sommaire…", debut=time.time())
+        _LOCAL.cle = cle
+        try:
             try:
                 r = lire(chemin, lire_page, nb_pages, noms, numeros)
                 r["date"] = time.strftime("%Y-%m-%d")
@@ -2572,6 +2618,10 @@ def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer, noms=None, num
                 logger.warning("Sommaire de « %s » tome %s : %s", serie, tome, e)
             with _VERROU:
                 _ETAT[cle] = {"en_cours": False, "message": msg}
+        finally:
+            _LOCAL.cle = None
+            if not urgent:
+                _FILE.release()
     threading.Thread(target=travail, daemon=True).start()
     return True
 

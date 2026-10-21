@@ -1593,8 +1593,11 @@
         '<div class="ident-actions"><button type="button" class="mou-btn" id="tomeResumeSave" data-tome="' + n + '">💾 Enregistrer</button>' +
         '<button type="button" class="mou-btn ghost" id="tomeResumeAuto" data-tome="' + n + '"' + (d.resume_manuel ? '' : ' hidden') + '>↩️ Remettre le résumé automatique</button>' +
         '<button type="button" class="mou-btn ghost" id="tomeResumeCancel">Annuler</button></div></div>' +
-        (som.en_cours ? '<div class="dem-sous">🔍 Lecture du sommaire dans les premières pages… (environ une minute)</div>'
+        (som.en_cours ? '<div class="dem-sous">🔍 ' + (som.attente ? 'En attente d\'une place : d\'autres lectures de fond sont en cours, la tienne démarre dès qu\'une se termine.'
+            : 'Lecture du sommaire en cours — ' + (som.pages || 0) + ' page(s) examinée(s) depuis ' + (som.secondes || 0) + ' s. ' +
+              ((som.secondes || 0) > 240 ? 'C\'est long mais ça avance tant que ce nombre monte.' : 'Compte une à cinq minutes ; ça avance tant que ce nombre monte.')) + '</div>'
           : (som.message && !chap.length ? '<div class="dem-sous">' + esc(som.message) + '</div>' : '')) +
+        (som.fond ? '<div class="dem-sous">⚙️ ' + esc(som.fond) + '</div>' : '') +
         (som.manquants && som.manquants.length ? '<div class="tome-statut verif">⚠️ Il manque dans la liste le' + (som.manquants.length > 1 ? 's chapitres ' : ' chapitre ') +
           esc(som.manquants.join(', ')) + ' : le sommaire du tome les compte-t-il ? Corrige la liste (✏️) ou relis le sommaire.</div>' : '') +
         (som.lu ? '<div class="tome-statut ' + (som.valide_le || (som.fichier && !som.saisie) ? 'ok' : 'verif') + '">' +
@@ -1624,7 +1627,7 @@
       if (zone) zone.value = chap.map(function (c, i) { return c + (d.fichier && pagesCh[i] != null ? ' @' + (pagesCh[i] + 1) : ' @'); }).join('\n');
       var im = $('infosCorps').querySelector('.tome-couv');
       if (im) im.addEventListener('error', function () { im.style.display = 'none'; });
-      if (som.en_cours) suiviSommaire = setTimeout(function () { afficherTome(n, false); }, 4000);
+      if (som.en_cours || som.fond) suiviSommaire = setTimeout(function () { afficherTome(n, false); }, som.en_cours ? 4000 : 10000);
     }
     $('infosCorps').addEventListener('click', async function (e) {         // 📚 ISBN collés (Tome 01 : 978…, Tome 02 : 978…)
       var bi = e.target.closest('[data-isbn]'); if (!bi) return;
