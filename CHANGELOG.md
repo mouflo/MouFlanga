@@ -4,6 +4,7 @@
 - Une série qui vient d'être importée (ou dont les fichiers changent) passe maintenant **devant** les séries à simplement refaire parce que la préparation s'est enrichie. Avant, Kenichi attendait derrière une soixantaine de séries.
 - Ouvrir la fiche d'un tome, ou cliquer sur « 🔍 Lire le sommaire », lance la lecture **tout de suite**, sans faire la queue derrière les lectures de fond (avant, elle pouvait attendre une place sans le dire).
 - La fiche du tome affiche l'avancement : « en attente d'une place », ou « N page(s) examinée(s) depuis X s » (le nombre monte tant que ça travaille), et l'état de la préparation de fond de la série (en cours, ou numéro dans la file).
+- Une relecture automatique d'un sommaire ne remplace plus une lecture qui avait plus de titres ou de pages trouvées (Air Gear tome 29 avait perdu les siennes).
 - Le compteur de la fiche indique les pages **différentes** lues (une page relue par l'autre lecteur n'est plus comptée deux fois).
 - Lecteur de sommaires allégé : une page de récit évidente n'essaie plus les lectures d'image coûteuses, et chaque lecture n'utilise qu'un fil de calcul (un tome par cœur). Résultat identique sur 45 tomes comparés à l'ancienne version.
 

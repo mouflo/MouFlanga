@@ -40,3 +40,11 @@ class PrioriteSommaire(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Richesse(unittest.TestCase):
+    def test_lecture_plus_pauvre_moins_riche(self):
+        import app
+        riche = {"chapitres": [{"num": 1, "titre": "Trick 1", "image": 8}, {"num": 2, "titre": "Trick 2", "image": 26}]}
+        pauvre = {"chapitres": [{"num": 1, "titre": "", "image": None}, {"num": 2, "titre": "", "image": None}]}
+        self.assertGreater(app._richesse(riche), app._richesse(pauvre))

@@ -5085,6 +5085,13 @@ def _sommaire_du_tome(name, tome, d, fond=False):
 _VERROU_SOMMAIRES = threading.Lock()
 
 
+def _richesse(lecture):
+    """Ce qu'une lecture de sommaire apporte : chapitres, titres lus, pages de lecture trouvées (pour ne jamais remplacer
+    une lecture par une plus pauvre)."""
+    ch = lecture.get("chapitres") or []
+    return (len(ch), sum(1 for c in ch if (c.get("titre") or "").strip()) + sum(1 for c in ch if c.get("image") is not None))
+
+
 def _avancement_fond(name):
     """Où en est la préparation en arrière-plan pour cette série : texte court, ou '' si elle n'est ni en cours ni en file."""
     with prechauffage._VERROU:
@@ -5121,6 +5128,10 @@ def _lire_sommaire(name, tome, e, forcer=False, urgent=True):
             return                                       # tome validé ou saisi à la main : intouchable sans demande explicite
         if avant.get("source") == "pages d'équipe" and avant.get("chapitres") and not r.get("chapitres"):
             return                                       # rien de lisible dans le tome : les chapitres déduits restent
+        if not forcer and avant.get("chapitres") and _richesse(avant) > _richesse(r):
+            # relecture automatique moins bonne que ce qu'on avait (moins de titres, de pages de lecture) : on garde l'ancienne
+            logger.info("Sommaire de « %s » tome %s : la nouvelle lecture est moins complète, l'ancienne est gardée", name, tome)
+            r = dict(avant, version=r["version"])
         if avant.get("manuel") or avant.get("valide_le"):
             # fiche déjà validée avec des titres d'avant (souvent ceux de Wikipédia) : relue une fois avec le lecteur
             # amélioré ; les titres du sommaire imprimé la remplacent si ce sont les mêmes chapitres, sinon on la garde
