@@ -545,7 +545,46 @@ def _memo_fichier(genre, f, fonction):
     return r
 
 
+_MEMO_ENTREES = {}
+
+
+def _signature_entrees(files):
+    """Ce dont dépend la liste des chapitres d'une série : ses fichiers (taille, date), son fichier d'infos et sa fiche
+    de tomes. None si la liste mélange plusieurs séries (fichiers à la racine) : on ne la garde pas."""
+    if not files:
+        return None
+    try:
+        serie = files[0].relative_to(MANGA_DIR).parts[0]
+        if any(f.relative_to(MANGA_DIR).parts[0] != serie for f in files):
+            return None
+        sig = []
+        for p in (MANGA_DIR / serie / ".mouflanga-infos.json", tomes._fichier(serie)):
+            try:
+                st = p.stat()
+                sig.append((st.st_mtime_ns, st.st_size))
+            except OSError:
+                sig.append(None)
+        return serie, (tuple((str(f), _stat_index(f)) for f in files), tuple(sig))
+    except (ValueError, IndexError):
+        return None
+
+
 def _entrees(files):
+    """Chapitres d'une série (gardés en mémoire tant que ses fichiers, ses infos et sa fiche ne changent pas : la liste
+    de la bibliothèque les demandait plusieurs fois par série à chaque ouverture)."""
+    cle = _signature_entrees(files)
+    if cle is None:
+        return _entrees_calculees(files)
+    serie, sig = cle
+    c = _MEMO_ENTREES.get(serie)
+    if not c or c[0] != sig:
+        if len(_MEMO_ENTREES) > 1000:
+            _MEMO_ENTREES.clear()
+        c = _MEMO_ENTREES[serie] = (sig, _entrees_calculees(files))
+    return [dict(e) for e in c[1]]
+
+
+def _entrees_calculees(files):
     """Chapitres d'une série, dans l'ordre de lecture.
     Fichier ordinaire = un chapitre (clé : son chemin). Fichier de tome = plusieurs chapitres (clé : « #12 »),
     repérés par leur première page et leur nombre de pages dans le fichier."""
@@ -800,15 +839,16 @@ TRAVAIL = [("resumes", "Résumé des tomes"), ("titres", "Titres des chapitres")
            ("allegement", "Allègement"), ("couvertures", "Couverture des tomes"), ("reecriture", "Réécriture des fichiers")]
 
 
-def _travail_de(name):
-    """Pense-bête de ce qui est déjà fait à la main sur une série (cases cochées, gardées dans ses infos)."""
+def _travail_de(name, entrees=None):
+    """Pense-bête de ce qui est déjà fait à la main sur une série (cases cochées, gardées dans ses infos).
+    « entrees » : les chapitres de la série, si l'appelant les a déjà (évite de les recalculer)."""
     if name == "(Sans série)":
         return {"fait": [], "total": len(TRAVAIL), "complet": False}
     infos = _edition_vue(name)
     fait = [k for k, _ in TRAVAIL if (infos.get("travail") or {}).get(k)]
     suggere = [k for k in ("allegement",) if infos.get("allegement") and k not in fait]
     connus = _isbn_connus(infos)
-    numeros = _tomes_de(name) if connus else set()
+    numeros = _tomes_de(name, entrees) if connus else set()
     if "isbn" not in fait and numeros and all(str(t) in connus for t in numeros):
         suggere.append("isbn")                               # tous les tomes ont leur ISBN : la case peut être cochée
     return {"fait": fait, "total": len(TRAVAIL), "complet": len(fait) == len(TRAVAIL), "suggere": suggere}
@@ -971,7 +1011,7 @@ def api_library():
             "last_read": p.get("last", ""), "added": newest, "favori": bool(p.get("favori")),
             "cover": f"/api/cover?id={_q(name)}&v={int(max(newest, _couverture_mtime(name)))}",
             **_auteur_editeur(name), **_univers_de(name), **_note_de(name),
-            "travail_complet": admin and _travail_de(name)["complet"],      # pense-bête : l'administrateur seul
+            "travail_complet": admin and _travail_de(name, entrees)["complet"],      # pense-bête : l'administrateur seul
         })
     presentes = {x["id"] for x in out}
     for nom, x in suivi.lire()["series"].items():          # ➕ séries ajoutées mais encore vides : grisées
@@ -3786,9 +3826,11 @@ import torrents
 torrents._ETAT["fichier"] = DATA_DIR / "torrents.json"
 
 
-def _tomes_de(nom):
+def _tomes_de(nom, entrees=None):
     """Numéros des tomes présents d'une série."""
-    return {e["tome"] for e in _entrees(_scan().get(nom) or []) if e.get("tome") is not None}
+    if entrees is None:
+        entrees = _entrees(_scan().get(nom) or [])
+    return {e["tome"] for e in entrees if e.get("tome") is not None}
 
 
 def _remplacer_tomes(nom, numeros):
@@ -6414,6 +6456,13 @@ if __name__ == "__main__":
     threading.Thread(target=torrents.surveiller, args=(_importer_torrent, lambda t: notifier.envoyer(t), MANGA_DIR), daemon=True).start()
     threading.Thread(target=demandes._boucle_rappels, args=(lambda t: notifier.envoyer(t), lambda: os.getenv("APP_URL", "").strip()),
                      daemon=True).start()
+    def _chauffer_liste():                         # la 1re ouverture de la liste ne recalcule plus tout : chapitres préparés au démarrage
+        try:
+            for _nom, _fichiers in _scan().items():
+                _entrees(_fichiers)
+        except Exception as e:
+            logger.info("Préparation de la liste : %s", e)
+    threading.Thread(target=_chauffer_liste, daemon=True).start()
     prechauffage.surveiller()                      # séries nouvelles ou modifiées : préparées toutes seules
     import notes
     threading.Thread(target=notes.boucle, args=(lambda: [s for s in _scan() if s != "(Sans série)"], _identifiants_note),
