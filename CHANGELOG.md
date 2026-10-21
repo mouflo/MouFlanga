@@ -1,5 +1,9 @@
 # Historique des versions
 
+## ⚡ Ouverture de la liste des séries : de 3 s à 0,3 s (21 octobre 2026)
+- La base SQLite accélérait seulement la liste des fichiers. Mais à chaque ouverture, l'appli recalculait aussi les chapitres de chacune des 107 séries, plusieurs fois (≈ 6 000 appels pour savoir si l'édition est standard, plus une relecture complète de la bibliothèque par série pour le pense-bête). C'était ça, les plusieurs secondes.
+- Les chapitres d'une série sont maintenant gardés en mémoire tant que ses fichiers, son fichier d'infos et sa fiche de tomes ne changent pas (toute modification se voit tout de suite), et ils sont préparés au démarrage : la première ouverture après un redémarrage est rapide aussi.
+
 ## ✂️ Fichiers « deux tomes en un » coupés en deux tomes (20 octobre 2026)
 - Un fichier comme « Kenichi T45-46 » (deux tomes dans un seul .cbz) restait à la racine de la série sans être rangé : seuls les tomes simples comptaient (Kenichi : 45 tomes sur 61). Il est maintenant coupé en deux fichiers « Tome 45 » et « Tome 46 », puis l'original va à la corbeille 30 jours.
 - Le début du second tome est trouvé d'après son premier chapitre (connu par la fiche de la série : « BATAILLE 448 »), lu avec le lecteur moderne qui déchiffre les titres posés sur un dessin. La page de titre et le sommaire du tome, s'ils existent, partent avec lui. Sur les 8 fichiers de Kenichi (T45-46 à T59-60), la coupure tombe à chaque fois sur le titre du bon chapitre.
