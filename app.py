@@ -4997,7 +4997,9 @@ def api_tome():
         if d.get("resume"):
             d["resume_source"] = "Google Books"
     if not d.get("resume") and du_fichier.get("resume"):          # rien sur Internet : celui écrit dans le fichier du tome
-        d["resume"], d["resume_source"] = du_fichier["resume"], "écrit dans le fichier"
+        propre = tomes.resume_propre_du_fichier(name, tome, du_fichier["resume"], _resumes_des_fichiers(name, int(tome)))
+        if propre:                                       # la présentation générale de la série, la même partout, ne sert à rien ici
+            d["resume"], d["resume_source"] = propre, "écrit dans le fichier"
     _sommaire_du_tome(name, int(tome), d)
     if d.get("chapitres_langue") == "en" or not d.get("chapitres"):      # Wikipédia FR n'a rien : titres FR du tome local avant l'anglais
         groupe = tomes_cbz.dossier_tome(int(tome))
@@ -5025,6 +5027,36 @@ def _numeros_manquants(nums):
         if 1 < b - a <= 6:
             trous += range(a + 1, b)
     return trous
+
+
+_RESUMES_FICHIERS = {}
+
+
+def _resumes_des_fichiers(name, sauf):
+    """{tome: résumé écrit dans le fichier} des autres tomes complets de la série (lu une fois par fichier, gardé en mémoire)."""
+    import signets
+    out = {}
+    for t in _tomes_de(name):
+        if int(t) == sauf:
+            continue
+        e = _tome_complet(name, int(t))
+        if not e:
+            continue
+        chemin = MANGA_DIR / e["path"]
+        try:
+            cle = (str(chemin), chemin.stat().st_mtime_ns)
+        except OSError:
+            continue
+        if cle not in _RESUMES_FICHIERS:
+            if len(_RESUMES_FICHIERS) > 3000:
+                _RESUMES_FICHIERS.clear()
+            try:
+                _RESUMES_FICHIERS[cle] = (signets.lire_infos(chemin) or {}).get("resume") or ""
+            except Exception:
+                _RESUMES_FICHIERS[cle] = ""
+        if _RESUMES_FICHIERS[cle]:
+            out[t] = _RESUMES_FICHIERS[cle]
+    return out
 
 
 def _sommaire_du_tome(name, tome, d, fond=False):

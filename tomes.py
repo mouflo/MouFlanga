@@ -958,13 +958,31 @@ def _fin_de_phrase(texte: str, commun: str) -> int:
 
 
 def _espacer(texte: str) -> str:
-    """« abattre !Découvrez » -> « abattre ! Découvrez » : certaines notices perdent l'espace après la ponctuation."""
-    return re.sub(r"([.!?…])(?=[A-ZÀ-ÝŒ«])", r"\1 ", texte or "")
+    """« abattre !Découvrez » -> « abattre ! Découvrez » : certaines notices perdent l'espace après la ponctuation.
+    Les variantes typographiques d'une même phrase sont ramenées à une seule (apostrophe droite, pas d'espace avant « : »),
+    pour reconnaître la présentation de la série d'une notice à l'autre (« jamais : le Night Raid » / « jamais: le Night Raid »)."""
+    texte = (texte or "").replace("’", "'").replace("\u00a0", " ")
+    texte = re.sub(r"\s+:", ":", texte)
+    return re.sub(r"([.!?…])(?=[A-ZÀ-ÝŒ«])", r"\1 ", texte)
 
 
 def _cle_doublon(texte: str) -> str:
     """Le texte réduit à ses lettres et chiffres : « d’un » (apostrophe typographique) et « d'un » comptent pour le même."""
     return re.sub(r"[^a-z0-9]+", "", _simple((texte or "").replace("’", "").replace("'", "")))
+
+
+def _apres_intro(texte: str, intro: str):
+    """Ce qui suit « intro » au début de « texte », ou None. La comparaison ne regarde que les lettres et les chiffres : une
+    virgule, un espace ou une apostrophe de plus ou de moins entre deux notices ne cache pas la même présentation."""
+    cible = _cle_doublon(intro)
+    if not cible or not intro.strip():
+        return None
+    vu = ""
+    for i, c in enumerate(texte):
+        vu += _cle_doublon(c)
+        if len(vu) >= len(cible):
+            return re.sub(r"^[\s.!?…:;,]+", "", texte[i + 1:]) if vu == cible else None
+    return None
 
 
 def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
@@ -974,11 +992,13 @@ def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
     de propre à ce tome, on ne met rien."""
     texte = _espacer(texte or "")
     cle = _cle_doublon(texte)
-    if cle and any(k != str(n) and _cle_doublon(v.get("texte") or "") == cle
-                   for k, v in (brut.get("resumes_tomes") or {}).items()):
-        # Google a renvoyé la même notice pour plusieurs tomes : c'est la présentation de la série, pas ce tome-ci.
-        # Elle ne vaut que pour le tome 1 ; ailleurs mieux vaut rien qu'un résumé faux.
-        return texte if n == 1 and len(texte) >= 40 else ""
+    identiques = [int(re.search(r"\d+", k).group()) for k, v in (brut.get("resumes_tomes") or {}).items()
+                  if cle and k != str(n) and re.search(r"\d+", k) and _cle_doublon(v.get("texte") or "") == cle]
+    if identiques:
+        # La même notice sur plusieurs tomes : c'est la présentation de la série, ou une notice recopiée d'un tome à l'autre.
+        # Elle ne vaut que pour le plus petit de ces tomes ; ailleurs mieux vaut rien qu'un résumé faux.
+        if not (n < min(identiques) and len(texte) >= 40):
+            return ""
     for k, v in (brut.get("resumes_tomes") or {}).items():   # fin commune (liste de prix de la série, etc.) : coupée aussi
         autre = _espacer(v.get("texte") or "")
         if k == str(n) or not autre or not texte:
@@ -990,8 +1010,9 @@ def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
             texte = texte[:len(texte) - j].rstrip(" -–—\n")
     intros = brut.setdefault("intros", [])
     for intro in intros:                               # début déjà reconnu comme parasite sur d'autres tomes
-        if intro and texte.startswith(intro) and _debut_de_phrase(texte[len(intro):]):   # une coupe au milieu d'une phrase est ignorée
-            texte = texte[len(intro):].lstrip()
+        reste = _apres_intro(texte, intro)
+        if reste is not None and _debut_de_phrase(reste):   # une coupe au milieu d'une phrase est ignorée
+            texte = reste.lstrip()
     for k, v in (brut.get("resumes_tomes") or {}).items():
         autre = _espacer(v.get("texte") or "")
         if k == str(n) or not autre or not texte:
@@ -1001,6 +1022,8 @@ def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
             i += 1
         commun = texte[:i]
         if i == len(texte) == len(autre):
+            if re.search(r"\d+", k) and int(re.search(r"\d+", k).group()) > n:
+                continue                               # recopié plus loin : il reste au plus petit tome (décidé plus haut)
             return ""                                  # exactement le même texte : présentation de la série
         coupe = _fin_de_phrase(texte, commun)
         if coupe >= 40:
@@ -1012,6 +1035,22 @@ def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
     if texte and st.get("resume") and _simple(texte)[:160] == _simple(st["resume"])[:160]:
         return ""
     return texte if len(texte) >= 40 else ""
+
+
+def resume_propre_du_fichier(serie: str, tome, texte: str, autres: dict) -> str:
+    """Résumé écrit dans le fichier du tome, sans la présentation de la série : « autres » = {tome: résumé écrit dans le fichier
+    des autres tomes}. Un texte identique ailleurs est la présentation de la série (rien ici) ; un début commun est coupé."""
+    def specifique(t):                                    # « Présentation de la série… >Tome 9< Mine commence… » : la partie du tome
+        morceaux = re.split(r"\n\s*>?\s*(?:Volume|Tome|Vol\.?)\s*\d+\s*<?[ \t]*\n", t or "")
+        return morceaux[-1].strip() if len(morceaux) > 1 and len(morceaux[-1].strip()) >= 40 else (t or "")
+    texte = specifique(texte)
+    brut = dict(_charger(serie) or {})
+    pool = dict(brut.get("resumes_tomes") or {})
+    for k, v in (autres or {}).items():
+        pool[f"fichier-{k}"] = {"texte": specifique(v)}
+    brut["resumes_tomes"] = pool
+    brut["intros"] = list(brut.get("intros") or [])
+    return _resume_de_serie(texte, brut, int(tome))
 
 
 def resume_tome_memoire(serie: str, tome) -> str:

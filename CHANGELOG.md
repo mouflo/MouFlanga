@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 📖 Résumés des tomes : la présentation générale de la série retirée partout (21 octobre 2026)
+- La présentation de la série répétée au début des résumés (« Tatsumi quitte son village natal pour la Cité impériale… ») est retirée même quand une notice a une virgule, une apostrophe ou une espace de plus ou de moins qu'une autre.
+- Le résumé écrit dans le fichier d'un tome est nettoyé de la même façon : la partie générale est enlevée et seule celle qui suit « >Tome 9< » est gardée. Les résumés des autres tomes servent de comparaison.
+- Une même notice recopiée sur plusieurs tomes n'est gardée que sur le plus petit d'entre eux ; les autres n'affichent rien plutôt qu'un résumé faux.
+
 ## 🧹 Titres « Kill 1 », « Trick 1 » : plus de numéro en double, et retour en arrière (21 octobre 2026)
 - Quand le titre commence déjà par le mot et le numéro (« Kill 1 : Les ténèbres »), la liste des chapitres d'un tome n'écrit plus « 1. » devant : « Kill 1 : Les ténèbres ». Même chose dans la zone de correction des chapitres, qui accepte aussi ces lignes sans numéro devant.
 - Le bouton « Titres des chapitres » sait tout retirer : taper un tiret (-) à la place du mot enlève le mot devant les numéros, garde les vrais titres, et remet le titre de la fiche (Wikipédia français) quand il n'y en a pas. Un aperçu est montré avant d'écrire.
