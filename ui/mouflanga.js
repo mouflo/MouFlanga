@@ -899,7 +899,7 @@
         '<div id="dblPlanche"></div></div>' +
         '<div class="dbl"><div class="dem-titre">🔗 Deux pages simples en une double page</div>' +
         '<div class="dem-sous">L\'inverse : pour un scan où une double page a été coupée en deux. Choisis un tome, touche la <b>première</b> page de chaque paire à coller ' +
-        '(elle est collée à la suivante), puis assemble. Le sens ci-dessus décide de la page qui va à droite.</div>' +
+        '(elle est collée à la suivante) : la double page s\'assemble aussitôt sous tes yeux. Le sens ci-dessus décide de l\'ordre (manga : les pages vont de droite à gauche).</div>' +
         '<div class="ident-actions"><button type="button" class="mou-btn" id="asmVoir">🔍 Choisir un tome</button></div>' +
         '<div id="asmPlanche"></div></div>' +
         '<div class="dbl"><div class="dem-titre">Tomes à traiter</div><div id="allTomes" class="dem-sous">…</div></div>' +
@@ -1163,6 +1163,7 @@
         '<button type="button" class="mou-btn" id="dblCouper">✂️ Découper ce tome en simples pages</button>';
     }
     $('infosCorps').addEventListener('change', function (e) {
+      if (e.target.id === 'dblSens') { asmGrille(); return; }
       if (e.target.id !== 'dblCols') return;
       dblCol = parseInt(e.target.value, 10) || 2;
       try { localStorage.setItem('mfDblCol', String(dblCol)); } catch (x) {}
@@ -1202,17 +1203,26 @@
     }
     function asmGrille() {
       var t = asmTome(); if (!t || !$('asmGrille')) return;
-      var w = {1: 700, 2: 450, 3: 300}[dblCol], h = '';
+      var manga = $('dblSens').value === 'manga', w = {1: 700, 2: 450, 3: 300}[dblCol], h = '';
+      var img = function (n, w2) {
+        return '<img loading="lazy" alt="" src="/api/doubles/image?series=' + dblSerie() + '&fichier=' + encodeURIComponent(t.fichier) + '&n=' + n + '&w=' + w2 + '">';
+      };
       for (var i = 0; i < t.pages; i++) {
-        var lie = asmPaires[i - 1];                                   // cette page est la 2e d'une paire
-        h += '<button type="button" class="dbl-tuile' + (asmPaires[i] || lie ? ' garde' : '') + '" data-asm-tuile="' + i + '">' +
-          '<img loading="lazy" alt="" src="/api/doubles/image?series=' + dblSerie() + '&fichier=' + encodeURIComponent(t.fichier) + '&n=' + i + '&w=' + w + '">' +
-          '<span>' + (i + 1) + (asmPaires[i] ? ' ➕' : lie ? ' 🔗' : '') + '</span></button>';
+        if (asmPaires[i]) {                                           // paire : les deux pages déjà collées, comme elles seront
+          var ordre = manga ? [i + 1, i] : [i, i + 1];
+          h += '<button type="button" class="dbl-tuile garde asm-paire" style="grid-column:span ' + Math.min(2, dblCol) + '" data-asm-tuile="' + i + '" title="Touche pour défaire">' +
+            '<span class="asm-duo">' + img(ordre[0], w) + img(ordre[1], w) + '</span><span>' + (i + 1) + '–' + (i + 2) + ' 🔗 (touche pour défaire)</span></button>';
+          i++;
+        } else {
+          h += '<button type="button" class="dbl-tuile" data-asm-tuile="' + i + '">' + img(i, w) + '<span>' + (i + 1) + '</span></button>';
+        }
       }
+      $('asmGrille').style.direction = manga ? 'rtl' : 'ltr';        // manga : la page 1 est à droite, comme dans le livre
       $('asmGrille').style.gridTemplateColumns = 'repeat(' + dblCol + ', 1fr)';
       $('asmGrille').innerHTML = h;
       var n = Object.keys(asmPaires).length;
-      $('asmBilan').innerHTML = '<div class="dem-sous">' + n + ' paire(s) à coller.</div>' + (n ? '<button type="button" class="mou-btn" id="asmGo">🔗 Assembler ces pages</button>' : '');
+      $('asmBilan').innerHTML = '<div class="dem-sous">Touche une page pour la coller à la suivante : elles s\'assemblent tout de suite. ' + n + ' paire(s).</div>' +
+        (n ? '<button type="button" class="mou-btn" id="asmGo">🔗 Assembler ces pages</button>' : '');
     }
     async function suivreAssemblage() {
       var r = await api('/api/doubles/etat?series=' + dblSerie());
@@ -1243,7 +1253,7 @@
         var i = parseInt(t.dataset.asmTuile, 10), tome = asmTome();
         if (asmPaires[i]) delete asmPaires[i];
         else if (i >= tome.pages - 1) { MouAlert('La dernière page n\'a pas de suivante à coller.'); return; }
-        else if (asmPaires[i - 1] || asmPaires[i + 1]) { MouAlert('Cette page est déjà dans une paire.'); return; }
+        else if (asmPaires[i + 1]) { MouAlert('La page suivante est déjà dans une paire : défais-la d\'abord.'); return; }
         else asmPaires[i] = true;
         asmGrille(); return;
       }

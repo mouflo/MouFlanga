@@ -407,3 +407,7 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .par-texte { margin-top:6px; font-size:14px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
 .par-etat { margin-left:auto; padding:2px 8px; border-radius:6px; background:#333; font-weight:600; }
 .par-groupe.coche .par-etat { background:#c0392b; color:#fff; }
+.asm-paire { border-color:var(--accent, #52b54b); }
+.dbl-tuile .asm-duo { position:static; display:flex; direction:ltr; width:100%; padding:0; border-radius:0; background:none; font-size:inherit; }
+.asm-duo img { width:50%; height:auto; display:block; }
+.dbl-tuile > span:not(.asm-duo) { direction:ltr; unicode-bidi:isolate; }
