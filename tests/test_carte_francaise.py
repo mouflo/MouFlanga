@@ -23,3 +23,16 @@ class CarteFrancaise(unittest.TestCase):
              "titres_tomes": {"details": {"1": {"chapitres": ["1. A", "2. B"]}, "2": {"chapitres": ["1. C", "2. D"]},
                                           "3": {"chapitres": ["1. E", "2. F"]}}}}
         self.assertIsNone(tomes._carte_francaise(d))
+
+
+class WikiFrReessais(unittest.TestCase):
+    def test_panne_de_wikipedia_n_est_pas_memorisee(self):
+        import tomes
+        from unittest import mock
+        with mock.patch.object(tomes, "_wiki_fr", side_effect=RuntimeError("HTTP 429")), \
+             mock.patch.object(tomes, "_pages_wiki", return_value=[]), \
+             mock.patch.object(tomes, "_page_wikipedia", return_value="X"), \
+             mock.patch.object(tomes, "_charger", return_value={}), \
+             mock.patch.object(tomes, "_fichier") as f:
+            self.assertEqual(tomes.titres_tomes("Serie test", forcer=True), {})
+            f.assert_not_called()

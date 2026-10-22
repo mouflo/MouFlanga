@@ -4496,9 +4496,16 @@ def _relancer_identification(serie, relire_fichiers=True):
         elif _etapes_etat(serie, 2) != "echec":
             _etape(serie, 2, "ok", "pas trouvé sur AniList" + resume_txt)
         tome_info = lancer(1, lambda: tomes.chercher(serie, forcer=True))
+        try:                                         # titres et chapitres français de chaque tome (Wikipédia), refaits ici aussi
+            tomes.titres_tomes(serie, forcer=True)
+        except Exception as e:
+            logger.info("Titres des tomes de « %s » : %s", serie, e.__class__.__name__)
+        fr = ((tomes._charger(serie) or {}).get("titres_tomes") or {}).get("details") or {}
+        texte_fr = (f" · Wikipédia français : {len(fr)} tome(s), {sum(len(v.get('chapitres') or []) for v in fr.values())} titre(s) de chapitres"
+                    if fr else " · Wikipédia français : rien trouvé (ou pas de réponse, réessayé à la prochaine ouverture)")
         if tome_info:
             _etape(serie, 1, "ok", f"{len({t for t in (tome_info.get('tomes') or {}).values() if t is not None})} tome(s), "
-                                   f"{len(tome_info.get('tomes') or {})} chapitre(s) répartis · source : {tome_info.get('source') or '?'}")
+                                   f"{len(tome_info.get('tomes') or {})} chapitre(s) répartis · source : {tome_info.get('source') or '?'}" + texte_fr)
         elif _etapes_etat(serie, 1) != "echec":
             _etape(serie, 1, "ok", "aucune liste de tomes trouvée (les tomes locaux restent affichés)")
         fi = lancer(3, lambda: tomes.fiche(serie, forcer=True))

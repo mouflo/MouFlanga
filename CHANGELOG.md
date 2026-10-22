@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 🔁 Réidentification : titres français des tomes refaits et plus d'échec silencieux (22 octobre 2026)
+- La réidentification d'une série refait maintenant aussi les titres et chapitres français de chaque tome (Wikipédia), et l'écran l'indique (« Wikipédia français : 10 tome(s), 60 titre(s) de chapitres »). Avant, cette recherche n'était pas dans les étapes : elle se faisait plus tard, toute seule.
+- Quand Wikipédia ne répond pas (trop de requêtes d'un coup), l'appli réessaie trois fois et ne note plus « rien trouvé » : avant, un refus passager était mémorisé comme une absence et bloquait la recherche pendant un jour.
+
 ## 🧭 Akame ga Kill Zero : chapitres français, et plus de notice d'une autre série (21 octobre 2026)
 - Quand une page Wikipédia française liste les volumes de plusieurs séries (« Red Eyes Sword: Akame ga Kill! », « … Zero », « Blue Eyes Sword: Hinowa ga Crush! »), l'appli ne prend plus que la section de la série concernée. Avant, la série principale prenait les volumes 1 à 10 et Zero n'avait rien : ses chapitres et titres français sont maintenant trouvés.
 - Google Books : une notice dont le titre contient un mot de série dérivée en plus (« Akame ga Kill ! Zero, tome 10 » pour « Akame ga Kill ! ») est refusée. Le tome 10 de la série principale avait reçu le résumé de la préquelle.

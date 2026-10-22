@@ -1333,6 +1333,27 @@ def _section_de_serie(wikitexte: str, serie: str) -> str:
     return min(candidats, key=lambda c: c[0])[1]
 
 
+def _wiki_fr(params: dict) -> dict:
+    """Une requête à fr.wikipedia.org ; trois essais espacés si Wikipédia refuse ou répond de travers (le cas arrive juste
+    après d'autres requêtes de l'appli). Lève une erreur si rien d'exploitable n'arrive : l'appelant ne doit jamais prendre
+    cet échec pour « la page n'existe pas »."""
+    derniere = None
+    for essai in range(3):
+        try:
+            r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={**params, "format": "json"}, timeout=20)
+            if r.status_code == 200:
+                j = r.json()
+                if "error" not in j:
+                    return j
+                derniere = RuntimeError(str(j["error"].get("code")))
+            else:
+                derniere = RuntimeError(f"HTTP {r.status_code}")
+        except (requests.RequestException, ValueError) as e:
+            derniere = e
+        time.sleep(3 * (essai + 1))
+    raise derniere
+
+
 def titres_tomes(serie: str, forcer=False, tome_max=None) -> dict:
     """{numéro de tome (texte): titre} : Wikipédia français (TomeBD, titre_2 = titre français) en priorité,
     sinon Wikipédia anglais (Graphic novel list : LicensedTitle, sinon TranslitTitle). Gardés pour de bon une fois
@@ -1362,12 +1383,11 @@ def titres_tomes(serie: str, forcer=False, tome_max=None) -> dict:
                     titres[vol.group(1)] = _wiki_propre(tit.group(1))
     except Exception as e:
         logger.info("Titres des tomes (anglais) de %s : %s", serie, e.__class__.__name__)
-    fr, details = {}, {}
+    fr, details, panne = {}, {}, False
     try:                                                  # français, prioritaire
         pages = []
         for nom in noms[:3]:
-            r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "query", "list": "search", "format": "json",
-                                                                             "srsearch": f'intitle:"Liste des chapitres" {nom}', "srlimit": 8}, timeout=15).json()
+            r = _wiki_fr({"action": "query", "list": "search", "srsearch": f'intitle:"Liste des chapitres" {nom}', "srlimit": 8})
             for x in r.get("query", {}).get("search", []):     # « Liste des chapitres de Dragon Ball (…) », pas « … Dragon Ball Super »
                 reste = re.sub(r"^Liste des (?:chapitres|volumes) de\s+", "", x["title"])
                 if _simple(re.sub(r"\s*\(.*\)$", "", reste)) == _simple(nom):
@@ -1379,8 +1399,7 @@ def titres_tomes(serie: str, forcer=False, tome_max=None) -> dict:
         pages = list(dict.fromkeys(pages + _liens_listes([principale] if principale else []) + _liens_listes(pages)
                                    + ([principale] if principale else [])))      # la fiche elle-même : TomeBD dans « Liste des volumes »
         for page in pages[:12]:
-            r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "parse", "page": page, "prop": "wikitext",
-                                                                             "format": "json", "redirects": 1}, timeout=15).json()
+            r = _wiki_fr({"action": "parse", "page": page, "prop": "wikitext", "redirects": 1})
             w = _section_de_serie(r.get("parse", {}).get("wikitext", {}).get("*", ""), serie)
             langue_fr = "2"                               # quel champ « titre_N » est en français (d'après TomeBD/Entête)
             for bloc in re.split(r"\{\{\s*TomeBD", w)[1:]:
@@ -1418,8 +1437,11 @@ def titres_tomes(serie: str, forcer=False, tome_max=None) -> dict:
                     fr[vol.group(1)] = titre
             time.sleep(0.3)
     except Exception as e:
+        panne = True                                      # Wikipédia n'a pas répondu : on ne le prend pas pour « rien trouvé »
         logger.info("Titres des tomes (français) de %s : %s", serie, e.__class__.__name__)
     titres.update(fr)
+    if panne and not details:
+        return titres                                     # rien écrit : la prochaine consultation réessaie tout de suite
     try:
         brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
     except (OSError, ValueError):
