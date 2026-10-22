@@ -1132,7 +1132,7 @@
       $('dblPlanche').innerHTML = '<div class="dem-sous">Choisis un tome :</div><div class="dbl-liste">' + dblTomes.map(function (t) {
         return '<button type="button" class="mou-btn ghost" data-dbl-tome="' + esc(t.fichier) + '">' + (t.fait ? '<span class="dbl-point" title="Déjà découpé"></span>' : '') +
           esc(t.fichier.replace(/\.(cbz|zip)$/i, '')) + ' · ' + (t.fait ? 'déjà découpé' + (t.date ? ' le ' + esc(t.date) : '') + (t.pages.length ? ' · ' + t.pages.length + ' double(s) gardée(s)' : '') : t.pages.length + ' double(s)') + '</button>';
-      }).join('') + '</div><div id="dblTome"></div><div id="dblEtat">' + ancien + '</div>';
+      }).join('') + '<div id="dblTome"></div></div><div id="dblEtat">' + ancien + '</div>';
     }
     function grilleDoubles() {
       var t = dblTome(); if (!t || !$('dblGrille')) return;
@@ -1147,7 +1147,10 @@
     }
     function planchesDoubles(fichier) {
       dblCourant = fichier; dblGardees = {};
-      document.querySelectorAll('[data-dbl-tome]').forEach(function (b) { b.classList.toggle('ghost', b.dataset.dblTome !== fichier); });
+      document.querySelectorAll('[data-dbl-tome]').forEach(function (b) {
+        b.classList.toggle('ghost', b.dataset.dblTome !== fichier);
+        if (b.dataset.dblTome === fichier) { b.insertAdjacentElement('afterend', $('dblTome')); setTimeout(function () { b.scrollIntoView({block: 'start', behavior: 'smooth'}); }, 50); }   // les vignettes s'ouvrent sous le tome, la suite des tomes en dessous
+      });
       var deja = dblTome();
       if (deja && deja.fait && !deja.pages.length) { $('dblTome').innerHTML = '<div class="dem-sous">🟢 Ce tome est déjà découpé : plus aucune double page.</div>'; return; }
       $('dblTome').innerHTML = (deja && deja.fait ? '<div class="dem-sous">🟢 Ce tome est déjà découpé : les doubles ci-dessous sont celles que tu avais gardées entières.</div>' : '') +
@@ -1199,7 +1202,7 @@
       asmTomes = r.tomes || []; asmCourant = ''; asmPaires = {};
       $('asmPlanche').innerHTML = asmTomes.length ? '<div class="dbl-liste">' + asmTomes.map(function (t) {
         return '<button type="button" class="mou-btn ghost" data-asm-tome="' + esc(t.fichier) + '">' + esc(t.fichier.replace(/\.(cbz|zip)$/i, '')) + ' · ' + t.pages + ' pages</button>';
-      }).join('') + '</div><div id="asmTome"></div><div id="asmEtat"></div>' : '<div class="dem-sous">Aucun tome utilisable.</div>';
+      }).join('') + '<div id="asmTome"></div></div><div id="asmEtat"></div>' : '<div class="dem-sous">Aucun tome utilisable.</div>';
     }
     function asmGrille() {
       var t = asmTome(); if (!t || !$('asmGrille')) return;
@@ -1224,6 +1227,17 @@
       $('asmBilan').innerHTML = '<div class="dem-sous">Touche une page pour la coller à la suivante : elles s\'assemblent tout de suite. ' + n + ' paire(s).</div>' +
         (n ? '<button type="button" class="mou-btn" id="asmGo">🔗 Assembler ces pages</button>' : '');
     }
+    function asmOuvrir(fichier) {
+      asmCourant = fichier; asmPaires = {};
+      document.querySelectorAll('[data-asm-tome]').forEach(function (b) {
+        b.classList.toggle('ghost', b.dataset.asmTome !== fichier);
+        if (b.dataset.asmTome === fichier) { b.insertAdjacentElement('afterend', $('asmTome')); setTimeout(function () { b.scrollIntoView({block: 'start', behavior: 'smooth'}); }, 50); }
+      });
+      $('asmTome').innerHTML = '<div class="ident-actions"><label>Vignettes par ligne : <select id="dblCols">' +
+        [1, 2, 3].map(function (n) { return '<option value="' + n + '"' + (n === dblCol ? ' selected' : '') + '>' + n + '</option>'; }).join('') +
+        '</select></label></div><div class="dbl-grille" id="asmGrille"></div><div class="ident-actions" id="asmBilan"></div>';
+      asmGrille();
+    }
     async function suivreAssemblage() {
       var r = await api('/api/doubles/etat?series=' + dblSerie());
       if (!$('asmEtat')) return;
@@ -1233,21 +1247,18 @@
           return '<div class="dem-sous">' + esc(x.fichier) + (x.pages ? ' : ' + x.pages_avant + ' → ' + x.pages + ' pages' : '') + (x.note ? ' (' + esc(x.note) + ')' : '') + '</div>';
         }).join('');
         window.MouToast && window.MouToast('🔗 ' + r.message, 'ok');
-        rafraichirSerie(current.id); asmPaires = {};
-        var t = asmTome(); if (t) { api('/api/doubles/tomes?series=' + dblSerie()).then(function (n) { asmTomes = n.tomes || []; if (asmTome()) asmGrille(); }); }
+        rafraichirSerie(current.id);
+        var fini = asmCourant, i = asmTomes.map(function (t) { return t.fichier; }).indexOf(fini), suiv = asmTomes[i + 1];
+        var btn = document.querySelector('[data-asm-tome="' + (window.CSS && CSS.escape ? CSS.escape(fini) : fini) + '"]');
+        if (btn) btn.innerHTML = '✅ ' + esc(fini.replace(/\.(cbz|zip)$/i, '')) + ' · assemblé';
+        if (suiv) asmOuvrir(suiv.fichier);                           // on enchaîne sur le tome suivant, sans quitter la liste
+        else { asmPaires = {}; $('asmTome').innerHTML = '<div class="dem-sous">🎉 Dernier tome traité.</div>'; }
       }
     }
     $('infosCorps').addEventListener('click', async function (e) {
       if (e.target.closest('#asmVoir')) { asmListe(); return; }
       var tm = e.target.closest('[data-asm-tome]');
-      if (tm) {
-        asmCourant = tm.dataset.asmTome; asmPaires = {};
-        document.querySelectorAll('[data-asm-tome]').forEach(function (b) { b.classList.toggle('ghost', b.dataset.asmTome !== asmCourant); });
-        $('asmTome').innerHTML = '<div class="ident-actions"><label>Vignettes par ligne : <select id="dblCols">' +
-          [1, 2, 3].map(function (n) { return '<option value="' + n + '"' + (n === dblCol ? ' selected' : '') + '>' + n + '</option>'; }).join('') +
-          '</select></label></div><div class="dbl-grille" id="asmGrille"></div><div class="ident-actions" id="asmBilan"></div>';
-        asmGrille(); return;
-      }
+      if (tm) { asmOuvrir(tm.dataset.asmTome); return; }
       var t = e.target.closest('[data-asm-tuile]');
       if (t) {
         var i = parseInt(t.dataset.asmTuile, 10), tome = asmTome();
@@ -1279,7 +1290,13 @@
         }).join('');
         window.MouToast && window.MouToast('📖 ' + r.message, 'ok');
         rafraichirSerie(current.id);
-        voirDoubles();                                               // la liste des tomes se met à jour (nombre de doubles restantes)
+        var fini = dblCourant, apres = dblTomes.filter(function (t) { return !t.fait && t.fichier !== fini; });
+        var suiv = dblTomes.slice(dblTomes.map(function (t) { return t.fichier; }).indexOf(fini) + 1).filter(function (t) { return !t.fait && t.pages.length; })[0] || apres[0];
+        var btn = document.querySelector('[data-dbl-tome="' + (window.CSS && CSS.escape ? CSS.escape(fini) : fini) + '"]');
+        var cur = dblTome(); if (cur) cur.fait = true;
+        if (btn) btn.innerHTML = '<span class="dbl-point" title="Déjà découpé"></span>' + esc(fini.replace(/\.(cbz|zip)$/i, '')) + ' · découpé ✓';
+        if (suiv) planchesDoubles(suiv.fichier);                       // on enchaîne sur le tome suivant, sans quitter la liste
+        else { $('dblTome').innerHTML = '<div class="dem-sous">🎉 Dernier tome traité.</div>'; }
       }
     }
     $('infosCorps').addEventListener('click', function (e) {          // cocher / décocher tous les tomes à alléger

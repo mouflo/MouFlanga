@@ -845,7 +845,7 @@ def _index_apres_ecriture(reponse):
 
 TRAVAIL = [("resumes", "Résumé des tomes"), ("titres", "Titres des chapitres"), ("liens", "Liens des chapitres"),
            ("isbn", "ISBN des tomes"),
-           ("allegement", "Allègement"), ("couvertures", "Couverture des tomes"), ("reecriture", "Réécriture des fichiers")]
+           ("doubles", "Pages simples et doubles"), ("allegement", "Allègement"), ("couvertures", "Couverture des tomes"), ("reecriture", "Réécriture des fichiers")]
 
 
 def _travail_de(name, entrees=None):

@@ -1,6 +1,8 @@
 # Historique des versions
 
 ## 🔗 Assembler deux pages simples en une vraie double page (22 octobre 2026)
+**Mise à jour du soir.** Les vignettes d'un tome s'ouvrent juste sous ce tome (la suite des tomes reste en dessous) ; la planche suit le sens de lecture (manga : de droite à gauche) et la paire s'assemble aussitôt à l'écran ; une fois un tome validé, le suivant s'ouvre tout seul (même chose pour la découpe des doubles pages), avec ✅ sur les tomes faits. Le pense-bête « Où j'en suis » a une case de plus : « Pages simples et doubles ».
+
 L'inverse de la découpe : ℹ️ → 🪶 Alléger → « Deux pages simples en une double page ». Choisis un tome, touche la **première** page de chaque paire (elle est collée à la suivante), puis « Assembler ». Le sens choisi (manga ou occidental) décide de la page qui va à droite ; si les deux pages n'ont pas la même hauteur, la plus petite est agrandie. L'ancien fichier part à la corbeille (30 jours), la position de lecture et les signets suivent, les fichiers partagés par qBittorrent ne sont pas touchés (version à part). Couper puis assembler redonne la page d'origine.
 
 ## 🧲 Propositions de torrents : lien vers la page du tracker et lecture automatique de sa présentation et de son NFO (22 octobre 2026)
