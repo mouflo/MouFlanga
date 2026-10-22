@@ -150,6 +150,26 @@ class JointureTest(unittest.TestCase):
         self.assertEqual([c["image"] for c in lu["chapitres"]], [1, 3])
         self.assertEqual(lu["page_sommaire"], 0)
 
+    def test_carte_retrouvee_apres_coup(self):
+        import io, tempfile, zipfile
+        from PIL import Image
+        base = self._fond()
+        with tempfile.TemporaryDirectory() as d:
+            avant, apres = Path(d) / "a.cbz", Path(d) / "b.cbz"
+
+            def png(arr):
+                b = io.BytesIO()
+                Image.fromarray(arr).save(b, "PNG")
+                return b.getvalue()
+            pages = [png(base[:, i * 100:(i + 1) * 100]) for i in range(6)]
+            with zipfile.ZipFile(avant, "w") as z:
+                for i, p in enumerate(pages):
+                    z.writestr("%03d.png" % i, p)
+            with zipfile.ZipFile(apres, "w") as z:                       # pages 1 et 2 collées, 4 et 5 aussi
+                for i, p in enumerate([pages[0], png(base[:, 100:300]), pages[3], png(base[:, 400:600])]):
+                    z.writestr("%03d.png" % i, p)
+            self.assertEqual(optimiser.carte_assemblage(avant, apres), {0: 0, 1: 1, 2: 1, 3: 2, 4: 3, 5: 3})
+
     def test_decalage_vertical_retrouve(self):
         import numpy as np
         from PIL import Image

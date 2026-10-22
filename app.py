@@ -2055,24 +2055,13 @@ def _chapitres_par_parasites(name, chemin, reperes):
 
 
 def _suivre_sommaire(infos, chemin, carte):
-    """Les chapitres lus d'un tome (première page de chacun, page du sommaire) suivent le changement de numérotation des pages :
-    crédits retirés, double page découpée ou assemblée. `infos` est modifié sur place."""
+    """Les chapitres lus d'un tome suivent le changement de numérotation des pages (voir `edition.suivre_pages`)."""
+    import edition
     tome = _numero_tome(chemin.name)
     if tome is None:
         tome = _numero_tome(chemin.parent.name)
-    lu = (infos.get("sommaires") or {}).get(str(int(tome))) if tome is not None else None
-    if not lu:
-        return
-    def suivre(i):
-        if not isinstance(i, int):
-            return i
-        k = min((x for x in carte if x >= i), default=None)
-        return carte[k] if k is not None else i
-    for c in lu.get("chapitres") or []:
-        c["image"] = suivre(c.get("image"))
-        if lu.get("source") == "pages d'équipe" and isinstance(c["image"], int):
-            c["page"] = c["image"] + 1                   # pas de numéro imprimé : la place dans le fichier
-    lu["page_sommaire"] = suivre(lu.get("page_sommaire"))
+    if tome is not None:
+        edition.suivre_pages(infos, int(tome), carte)
 
 
 def _apres_nettoyage(name, chemin, carte):

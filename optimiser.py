@@ -662,6 +662,31 @@ def _decalage_vertical(gauche, droite, maxi=40):
     return meilleur if correlation(meilleur) >= 0.2 and correlation(meilleur) - correlation(0) >= 0.08 else 0
 
 
+def carte_assemblage(avant: Path, apres: Path) -> dict:
+    """Retrouve, en comparant l'archive d'origine et l'archive assemblée, où est passée chaque page : {ancien numéro: nouveau}.
+    Les pages non collées sont reprises telles quelles (même somme de contrôle) ; une page qui ne retrouve pas la sienne est une double
+    page née de deux pages d'origine. Sert à recaler après coup ce qui a été enregistré avant l'assemblage. Lève RuntimeError si les deux
+    archives ne se correspondent pas."""
+    def sommes(chemin):
+        chemin = Path(chemin)
+        with zipfile.ZipFile(chemin) as z:
+            return [z.getinfo(n).CRC for n in archives.pages(chemin)]
+    anciennes, nouvelles = sommes(avant), sommes(apres)
+    carte, i = {}, 0
+    for j, crc in enumerate(nouvelles):
+        if i < len(anciennes) and anciennes[i] == crc:
+            carte[i] = j
+            i += 1
+        elif i + 1 < len(anciennes):
+            carte[i] = carte[i + 1] = j
+            i += 2
+        else:
+            raise RuntimeError("les pages ne se correspondent pas")
+    if i != len(anciennes):
+        raise RuntimeError("les pages ne se correspondent pas")
+    return carte
+
+
 def assembler(chemin: Path, indices, sens_manga=True, destination=None) -> dict:
     """Inverse de `couper` : chaque page « i » des `indices` (numéros du lecteur) est collée à la page suivante pour faire une vraie
     double page. Même principe que `couper` (version à côté, relue, puis remplacée ; l'ancien part dans « avant »).

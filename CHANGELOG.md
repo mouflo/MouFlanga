@@ -1,7 +1,7 @@
 # Historique des versions
 
 ## 🔗 Chapitres et sommaire suivent les pages assemblées ou découpées (22 octobre 2026)
-Quand on assemble deux pages simples (ou qu'on découpe une double), la première page de chaque chapitre lu et la page du sommaire enregistrés sur le tome sont recalées sur la nouvelle numérotation : plus besoin de refaire les liens un par un. Les signets du fichier (ComicInfo) et la position de lecture étaient déjà recalés.
+Quand on assemble deux pages simples (ou qu'on découpe une double), la première page de chaque chapitre lu et la page du sommaire enregistrés sur le tome sont recalées sur la nouvelle numérotation : plus besoin de refaire les liens un par un. Les signets du fichier (ComicInfo) et la position de lecture étaient déjà recalés. Les 17 tomes de 07-ghost, assemblés avant ce correctif, ont été recalés après coup en comparant chaque tome à sa copie d'origine de la corbeille (`optimiser.carte_assemblage`).
 
 ## 🪡 Doubles pages assemblées sans raie blanche (22 octobre 2026)
 Quand on assemble deux pages simples, l'appli enlève maintenant les colonnes de bord du scan (liseré blanc ou noir, même en dégradé) qui tranchent sur le dessin voisin et touchent la jointure, jamais plus de 4 % de la largeur et jamais du dessin, puis recale la page d'en face en hauteur (jusqu'à 40 pixels) en comparant les contours des traits de part et d'autre de la jointure ; sans décalage net, rien n'est bougé. La raie de largeur variable vue sur Air Gear disparaît ; les doubles déjà assemblées ne sont pas retouchées (couper puis assembler de nouveau). **La prévisualisation montre maintenant la vraie double page corrigée**, calculée par le serveur (environ 0,3 s par paire), telle qu'elle sera écrite dans le tome.

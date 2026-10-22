@@ -258,3 +258,22 @@ def infos(dossier: Path, fichiers: list[Path], lancer=True) -> dict:
                 _en_cours.discard(cle)
         threading.Thread(target=travail, daemon=True).start()
     return d
+
+
+def suivre_pages(infos: dict, tome: int, carte: dict):
+    """Les chapitres lus d'un tome (première page de chacun, page du sommaire) suivent un changement de numérotation des pages :
+    crédits retirés, double page découpée ou assemblée. `carte` : {ancien numéro de page: nouveau}. `infos` est modifié sur place."""
+    lu = (infos.get("sommaires") or {}).get(str(tome))
+    if not lu:
+        return
+
+    def suivre(i):
+        if not isinstance(i, int):
+            return i
+        k = min((x for x in carte if x >= i), default=None)
+        return carte[k] if k is not None else i
+    for c in lu.get("chapitres") or []:
+        c["image"] = suivre(c.get("image"))
+        if lu.get("source") == "pages d'équipe" and isinstance(c["image"], int):
+            c["page"] = c["image"] + 1                   # pas de numéro imprimé : la place dans le fichier
+    lu["page_sommaire"] = suivre(lu.get("page_sommaire"))
