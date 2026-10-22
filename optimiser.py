@@ -492,7 +492,7 @@ def apercu_page(chemin: Path, index: int, largeur=300) -> bytes:
     return _jpeg(im, 85)
 
 
-def apercu_paire(chemin: Path, index: int, sens_manga=True, largeur=900) -> bytes:
+def apercu_paire(chemin: Path, index: int, sens_manga=True, largeur=900, ajust=0) -> bytes:
     """La double page que donnerait l'assemblage des pages `index` et `index + 1`, calculée comme à l'assemblage (marges rognées,
     recalage), en JPEG réduit : c'est ce que montre la prévisualisation."""
     pages = []
@@ -501,7 +501,7 @@ def apercu_paire(chemin: Path, index: int, sens_manga=True, largeur=900) -> byte
         im = Image.open(io.BytesIO(data))
         im.load()
         pages.append(im)
-    im = _coller(pages[0], pages[1], sens_manga)
+    im = _coller(pages[0], pages[1], sens_manga, ajust)
     im.thumbnail((largeur, largeur))
     return _jpeg(im, 85)
 
@@ -606,7 +606,7 @@ def couper(chemin: Path, indices, sens_manga=True, destination=None) -> dict:
     return res
 
 
-def _coller(premiere, seconde, sens_manga):
+def _coller(premiere, seconde, sens_manga, ajust=0):
     """Deux pages simples côte à côte en une double page. Manga : la première page à lire est à droite. Hauteurs différentes :
     la plus petite est agrandie à la hauteur de l'autre (proportions gardées)."""
     for im in (premiere, seconde):
@@ -616,10 +616,15 @@ def _coller(premiere, seconde, sens_manga):
             for im in (premiere, seconde)]
     gauche, droite = (q, p) if sens_manga else (p, q)
     gauche, droite = _rogner_bord(gauche, "droite"), _rogner_bord(droite, "gauche")
-    decalage = _decalage_vertical(gauche, droite)
+    decalage = _decalage_vertical(gauche, droite) + int(ajust or 0)         # `ajust` : retouche à la main, en pixels
+    if decalage:                                  # la page descend ou monte : la bande libérée prolonge le bord de la page (pas de bande blanche)
+        a = np.asarray(droite)
+        d = max(-h + 1, min(h - 1, decalage))
+        a = np.concatenate([np.repeat(a[:1], d, axis=0), a[:h - d]]) if d > 0 else np.concatenate([a[-d:], np.repeat(a[-1:], -d, axis=0)])
+        droite = Image.fromarray(a)
     out = Image.new("RGB", (gauche.width + droite.width, h), (255, 255, 255))
     out.paste(gauche, (0, 0))
-    out.paste(droite, (gauche.width, decalage))
+    out.paste(droite, (gauche.width, 0))
     return out
 
 
@@ -630,17 +635,43 @@ def _rogner_bord(im, cote, maxi=0.04):
     ordre = moyennes[::-1] if cote == "droite" else moyennes
     limite = int(im.width * maxi)
     ref = float(np.median(ordre[8:40])) if len(ordre) > 40 else float(np.median(ordre))     # le dessin juste derrière le liseré
-    n = 0
-    while n < limite and n < len(ordre) and abs(ordre[n] - ref) > 12 and (ordre[n] > 170 or ordre[n] < 40):
-        n += 1
+    stable = float(np.median(ordre[30:70])) if len(ordre) > 70 else ref
+    zone = [j for j in range(min(24, len(ordre))) if abs(ordre[j] - stable) > 20]            # ombre ou halo de la reliure : tout ce qui dévie
+    proche = float(np.median(ordre[8:16])) if len(ordre) > 16 else ref
+    fins = [j for j in range(min(8, len(ordre))) if abs(ordre[j] - proche) > 7]                # raie fine : même peu marquée, elle court sur toute la hauteur
+    base = max(zone[-1] + 1 if zone else 0, fins[-1] + 1 if fins else 0)
+    franches = [j for j in range(min(8, len(ordre) - 3)) if abs(ordre[j] - ref) > 40 and abs(ordre[j + 3] - ref) <= 25]    # trait étroit
+    n = max(base, franches[-1] + 1 if franches else 0)         # un liseré peut avoir un trou : blanc, trait noir, blanc
+    while n < limite and n < len(ordre) and abs(ordre[n] - ref) > 12 and (ordre[n] > 170 or ordre[n] < 40 or (n < 8 and abs(ordre[n] - ref) > 40)):
+        n += 1                                   # liseré clair ou sombre ; sur les 8 premières colonnes, tout ce qui tranche franchement
     encre = (np.asarray(im.convert("L")) < 215).sum(axis=0)                  # traits par colonne
     encre = encre[::-1] if cote == "droite" else encre
     blanc_max = int(im.width * 0.08)
     while n < blanc_max and n < len(encre) and encre[n] <= max(2, im.height // 120) and (ordre[n] > 200 or ordre[n] < 40):   # marge blanche coupée par le scan
         n += 1
+    gris = np.asarray(im.convert("L"), dtype=np.int16)
+    gris = gris[:, ::-1] if cote == "droite" else gris
+    n += _raie_dans_le_noir_ou_le_blanc(gris[:, n:])
     if not n:
         return im
     return im.crop((0, 0, im.width - n, im.height)) if cote == "droite" else im.crop((n, 0, im.width, im.height))
+
+
+def _raie_dans_le_noir_ou_le_blanc(gris, largeur=12):
+    """Raie fine du bord que les moyennes de colonnes ne voient pas : un fil clair dans une zone noire, ou un fil sombre dans une zone
+    blanche (le dessin voisin décide). Rend le nombre de colonnes à retirer (0 s'il n'y en a pas)."""
+    if gris.shape[1] < largeur + 12:
+        return 0
+    voisin = np.median(gris[:, largeur:largeur + 8], axis=1)                  # ce que devrait être la ligne, d'après le dessin d'à côté
+    noir, blanc = voisin < 70, voisin > 205
+    dernier = -1
+    for j in range(largeur):
+        ecart = gris[:, j] - voisin
+        if noir.sum() > gris.shape[0] // 20 and ecart[noir].mean() > 45:        # fil clair dans le noir
+            dernier = j
+        elif blanc.sum() > gris.shape[0] // 20 and ecart[blanc].mean() < -45:   # fil sombre dans le blanc
+            dernier = j
+    return dernier + 1
 
 
 def _decalage_vertical(gauche, droite, maxi=40):
@@ -664,7 +695,7 @@ def _decalage_vertical(gauche, droite, maxi=40):
         x, y = g[lo:hi] - g[lo:hi].mean(), d[lo - dy:hi - dy] - d[lo - dy:hi - dy].mean()
         return float((x * y).sum() / (np.sqrt((x * x).sum() * (y * y).sum()) + 1e-9))
     meilleur = max(range(-maxi, maxi + 1), key=lambda dy: (round(correlation(dy), 3), -abs(dy)))
-    return meilleur if correlation(meilleur) >= 0.2 and correlation(meilleur) - correlation(0) >= 0.08 else 0
+    return meilleur if correlation(meilleur) >= 0.15 and correlation(meilleur) - correlation(0) >= 0.05 else 0
 
 
 def carte_assemblage(avant: Path, apres: Path) -> dict:
@@ -692,7 +723,7 @@ def carte_assemblage(avant: Path, apres: Path) -> dict:
     return carte
 
 
-def assembler(chemin: Path, indices, sens_manga=True, destination=None) -> dict:
+def assembler(chemin: Path, indices, sens_manga=True, destination=None, ajust=None) -> dict:
     """Inverse de `couper` : chaque page « i » des `indices` (numéros du lecteur) est collée à la page suivante pour faire une vraie
     double page. Même principe que `couper` (version à côté, relue, puis remplacée ; l'ancien part dans « avant »).
     Renvoie {"carte": {ancien numéro: nouveau}, "pages_avant", "pages", "avant"}."""
@@ -720,7 +751,7 @@ def assembler(chemin: Path, indices, sens_manga=True, destination=None) -> dict:
             num = tomes_cbz.num_page(nom)
             if nom in premieres:
                 seconde = ordre[ordre.index(nom) + 1]
-                data = _octets_page(_coller(pages_lues[nom], pages_lues[seconde], sens_manga), nom)
+                data = _octets_page(_coller(pages_lues[nom], pages_lues[seconde], sens_manga, (ajust or {}).get(ordre.index(nom), 0)), nom)
             entrees.append([nom, data, ordre.index(nom) if nom in ordre else None, num, info.date_time])
     touches = {tomes_cbz.num_page(n) for n in premieres} - {None}        # chapitres où des pages ont été collées : renumérotés
     compte = {}
@@ -773,7 +804,8 @@ def lancer_coupes(serie, travaux, sens_manga, vers_corbeille, apres=None, operat
     def travail():
         rapport, pages_coupees = [], 0
         try:
-            for chemin, indices in travaux:
+            for chemin, indices, *reste in travaux:
+                reglage = {"ajust": reste[0]} if reste and operation else {}
                 chemin = Path(chemin)
                 ligne = {"fichier": chemin.name}
                 try:
@@ -783,12 +815,12 @@ def lancer_coupes(serie, travaux, sens_manga, vers_corbeille, apres=None, operat
                         res = {}
 
                         def ecrire(dest):
-                            res.update((operation or couper)(chemin, indices, sens_manga, destination=dest))
+                            res.update((operation or couper)(chemin, indices, sens_manga, destination=dest, **reglage))
                             return True
                         echanger_dossier(chemin, ecrire, vers_corbeille)
                         ligne["note"] = "partagé par qBittorrent : nouvelle version à part, le torrent n'est pas touché"
                     else:
-                        res = (operation or couper)(chemin, indices, sens_manga)
+                        res = (operation or couper)(chemin, indices, sens_manga, **reglage)
                         vers_corbeille(res.pop("avant"))
                     if res:
                         ligne.update(pages_avant=res["pages_avant"], pages=res["pages"])

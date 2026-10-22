@@ -411,3 +411,6 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .dbl-tuile .asm-duo { position:static; display:flex; direction:ltr; width:100%; padding:0; border-radius:0; background:none; font-size:inherit; }
 .asm-duo img { width:100%; height:auto; display:block; }
 .dbl-tuile > span:not(.asm-duo) { direction:ltr; unicode-bidi:isolate; }
+.dbl-tuile .asm-aj { position:absolute; top:6px; right:6px; display:flex; align-items:center; gap:6px; background:rgba(0,0,0,.65); color:#fff; border-radius:16px; padding:2px 6px; font-size:13px; direction:ltr; }
+.dbl-tuile .asm-aj i { font-style:normal; cursor:pointer; padding:6px 10px; font-size:16px; }
+.dbl-tuile .asm-aj b { min-width:48px; text-align:center; font-weight:600; }

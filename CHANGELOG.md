@@ -1,5 +1,12 @@
 # Historique des versions
 
+## 🧵 Assemblage des doubles pages : raccord automatique bien meilleur (22 octobre 2026)
+Réglé en examinant les 163 paires que tu avais assemblées dans Air Gear (tomes 1, 3 à 8), retrouvées en comparant chaque tome à sa copie d'origine.
+- **Bords des scans** : l'appli enlève maintenant l'ombre ou le halo de la reliure (jusqu'à 24 colonnes), les raies fines (blanche dans une zone noire, noire dans une zone blanche, même sur 2 colonnes) et les grandes marges blanches vides. Les « petites lignes noires verticales » viennent de là.
+- **Décalage en hauteur** : estimé sur les contours qui traversent la jointure (jusqu'à 40 pixels), avec un seuil moins prudent : sur Air Gear, plus de la moitié des paires sont décalées de 4 à 40 pixels. La bande libérée par le décalage prolonge le bord de la page au lieu de rester blanche.
+- **Retouche à la main si besoin** : chaque paire de la prévisualisation a ▲ ▼ (3 pixels par appui) ; le réglage est envoyé à l'assemblage.
+- **Limite connue** : quand le scan a perdu quelques pixels au milieu et que le dessin y est en biais, aucun décalage ne raccorde tous les traits à la fois ; l'appli choisit le meilleur compromis.
+
 ## 🔗 Chapitres et sommaire suivent les pages assemblées ou découpées (22 octobre 2026)
 Quand on assemble deux pages simples (ou qu'on découpe une double), la première page de chaque chapitre lu et la page du sommaire enregistrés sur le tome sont recalées sur la nouvelle numérotation : plus besoin de refaire les liens un par un. Les signets du fichier (ComicInfo) et la position de lecture étaient déjà recalés. Les 17 tomes de 07-ghost, assemblés avant ce correctif, ont été recalés après coup en comparant chaque tome à sa copie d'origine de la corbeille (`optimiser.carte_assemblage`).
 

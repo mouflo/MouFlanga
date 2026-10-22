@@ -1228,7 +1228,7 @@
       $('asmPlanche').innerHTML = '<div class="dem-sous">Recherche des tomes…</div>';
       var r = await api('/api/doubles/tomes?series=' + dblSerie());
       if (r.error) { $('asmPlanche').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
-      asmTomes = r.tomes || []; asmCourant = ''; asmPaires = {};
+      asmTomes = r.tomes || []; asmCourant = ''; asmPaires = {}; asmAjust = {};
       $('asmPlanche').innerHTML = asmTomes.length ? '<div class="dbl-liste">' + asmTomes.map(function (t) {
         return '<button type="button" class="mou-btn ghost" data-asm-tome="' + esc(t.fichier) + '">' + esc(t.fichier.replace(/\.(cbz|zip)$/i, '')) + ' · ' + t.pages + ' pages</button>';
       }).join('') + '<div id="asmTome"></div></div><div id="asmEtat"></div>' : '<div class="dem-sous">Aucun tome utilisable.</div>';
@@ -1242,7 +1242,8 @@
       for (var i = 0; i < t.pages; i++) {
         if (asmPaires[i]) {                                           // paire : les deux pages déjà collées, comme elles seront
           h += '<button type="button" class="dbl-tuile garde asm-paire" style="grid-column:span ' + Math.min(2, dblCol) + '" data-asm-tuile="' + i + '" title="Touche pour défaire">' +
-            '<span class="asm-duo"><img alt="" src="/api/doubles/paire?series=' + dblSerie() + '&fichier=' + encodeURIComponent(t.fichier) + '&n=' + i + '&sens=' + (manga ? 'manga' : 'occidental') + '&w=' + (w * 2) + '"></span><span>' + (i + 1) + '–' + (i + 2) + ' 🔗 (touche pour défaire)</span></button>';
+            '<span class="asm-duo"><img alt="" src="/api/doubles/paire?series=' + dblSerie() + '&fichier=' + encodeURIComponent(t.fichier) + '&n=' + i + '&sens=' + (manga ? 'manga' : 'occidental') + '&a=' + (asmAjust[i] || 0) + '&w=' + (w * 2) + '"></span><span>' + (i + 1) + '–' + (i + 2) + ' 🔗 (touche pour défaire)</span>' +
+            '<span class="asm-aj"><i data-asm-aj="' + i + '" data-pas="-3">▲</i><b>' + ((asmAjust[i] || 0) > 0 ? '+' : '') + (asmAjust[i] || 0) + ' px</b><i data-asm-aj="' + i + '" data-pas="3">▼</i></span></button>';
           i++;
         } else {
           h += '<button type="button" class="dbl-tuile" data-asm-tuile="' + i + '">' + img(i, w) + '<span>' + (i + 1) + '</span></button>';
@@ -1256,7 +1257,7 @@
         (n ? '<button type="button" class="mou-btn" id="asmGo">🔗 Assembler ces pages</button>' : '');
     }
     function asmOuvrir(fichier) {
-      asmCourant = fichier; asmPaires = {};
+      asmCourant = fichier; asmPaires = {}; asmAjust = {};
       document.querySelectorAll('[data-asm-tome]').forEach(function (b) {
         b.classList.toggle('ghost', b.dataset.asmTome !== fichier);
         if (b.dataset.asmTome === fichier) { b.insertAdjacentElement('afterend', $('asmTome')); setTimeout(function () { b.scrollIntoView({block: 'start', behavior: 'smooth'}); }, 50); }
@@ -1287,6 +1288,12 @@
       if (e.target.closest('#asmVoir')) { asmListe(); return; }
       var tm = e.target.closest('[data-asm-tome]');
       if (tm) { asmOuvrir(tm.dataset.asmTome); return; }
+      var aj = e.target.closest('[data-asm-aj]');
+      if (aj) {                                                      // retouche à la main : la page de droite monte ou descend de 3 px
+        var k = parseInt(aj.dataset.asmAj, 10);
+        asmAjust[k] = Math.max(-80, Math.min(80, (asmAjust[k] || 0) + parseInt(aj.dataset.pas, 10)));
+        asmGrille(); return;
+      }
       var t = e.target.closest('[data-asm-tuile]');
       if (t) {
         var i = parseInt(t.dataset.asmTuile, 10), tome = asmTome();
@@ -1301,7 +1308,7 @@
         if (!tm2 || !indices.length) return;
         enquete = true;
         if (!await MouConfirm('Coller ' + indices.length + ' paire(s) de pages en doubles pages dans « ' + tm2.fichier + ' » ? L\'ancien fichier va à la corbeille (30 jours).')) { enquete = false; return; }
-        var r = await post('/api/doubles/assembler', {series: current.id, sens: $('dblSens').value, plan: [{fichier: tm2.fichier, indices: indices}]});
+        var r = await post('/api/doubles/assembler', {series: current.id, sens: $('dblSens').value, plan: [{fichier: tm2.fichier, indices: indices, ajust: asmAjust}]});
         if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
         enquete = true; suivreAssemblage();
       }

@@ -1916,7 +1916,8 @@ def api_doubles_paire():
         return Response("Introuvable", status=404)
     try:
         largeur = max(300, min(1400, int(request.args.get("w", "900"))))
-        jpeg = optimiser.apercu_paire(f, int(request.args.get("n", "0")), request.args.get("sens", "manga") != "occidental", largeur)
+        jpeg = optimiser.apercu_paire(f, int(request.args.get("n", "0")), request.args.get("sens", "manga") != "occidental", largeur,
+                                     max(-80, min(80, int(request.args.get("a", "0")))))
     except (ValueError, archives.ArchiveError) as e:
         return Response(str(e), status=404)
     return Response(jpeg, mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
@@ -1995,7 +1996,8 @@ def api_doubles_assembler():
         if f and indices:
             if any(b - a < 2 for a, b in zip(indices, indices[1:])):
                 return jsonify({"ok": False, "error": "Une page ne peut être que dans une seule paire."}), 400
-            travaux.append((f, set(indices)))
+            ajust = {int(k): max(-80, min(80, int(v))) for k, v in (t.get("ajust") or {}).items() if str(k).isdigit() and isinstance(v, (int, float))}
+            travaux.append((f, set(indices), ajust))
     if not travaux:
         return jsonify({"ok": False, "error": "Aucune paire de pages à assembler."}), 400
     sens = str(body.get("sens", "manga")) != "occidental"

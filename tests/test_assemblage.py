@@ -116,7 +116,7 @@ class JointureTest(unittest.TestCase):
 
     def _fond(self):
         import numpy as np
-        return np.add.outer(np.sin(np.arange(400) / 7) * 60 + 120, np.sin(np.arange(600) / 5) * 60 + np.arange(600) / 10).clip(0, 255).astype("uint8")
+        return np.add.outer(np.sin(np.arange(400) / 7) * 60 + 120, np.arange(600) / 30).clip(0, 255).astype("uint8")
 
     def test_marges_unies_du_milieu_enlevees(self):
         from PIL import Image
@@ -180,6 +180,35 @@ class JointureTest(unittest.TestCase):
         d.paste(Image.fromarray(base[:, 300:]), (20, 0))
         out = optimiser._coller(g.convert("RGB"), d.convert("RGB"), False)
         self.assertEqual(out.size[0], 600)
+
+    def test_raie_noire_fine_du_bord_enlevee(self):
+        import numpy as np
+        from PIL import Image
+        a = np.full((300, 120), 215, "uint8")
+        a[:, :3] = 254                                                  # liseré blanc
+        a[:, 3:5] = 80                                                  # raie noire de 2 colonnes, puis du blanc
+        a[:, 5:7] = 240
+        out = optimiser._rogner_bord(Image.fromarray(a), "gauche")
+        self.assertGreaterEqual(14, 120 - out.width)
+        self.assertGreaterEqual(120 - out.width, 6)
+
+    def test_fil_clair_dans_une_zone_noire_enleve(self):
+        import numpy as np
+        from PIL import Image
+        a = np.full((300, 120), 10, "uint8")
+        a[:, 10:12] = 200                                               # fil clair qui court dans le noir
+        out = optimiser._rogner_bord(Image.fromarray(a), "gauche")
+        self.assertLessEqual(out.width, 108)
+
+    def test_bande_liberee_prolonge_le_bord(self):
+        import numpy as np
+        from PIL import Image
+        base = self._fond()
+        g = Image.fromarray(base[:, :300]).convert("RGB")
+        d = Image.fromarray(np.roll(base[:, 300:], 5, 0)).convert("RGB")
+        out = np.asarray(optimiser._coller(g, d, False))
+        self.assertGreater(out[:5, 300:].mean(), 30)                     # pas de bande blanche (255) ni noire : le bord est prolongé
+        self.assertLess(out[:5, 300:].mean(), 250)
 
     def test_decalage_vertical_retrouve(self):
         import numpy as np
