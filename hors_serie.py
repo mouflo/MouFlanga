@@ -11,9 +11,10 @@ from urllib.parse import urlparse
 
 import requests
 
+import reseau
+
 logger = logging.getLogger(__name__)
-_SESSION = requests.Session()
-_SESSION.headers["User-Agent"] = "MouFlanga/2.0 (bibliotheque de mangas personnelle)"
+_SESSION = reseau.SESSION           # une seule session pour tout Internet (voir reseau.py : rythme, pauses, quota de Google Books)
 STATUT_ANILIST = {"FINISHED": "terminé", "RELEASING": "en cours"}
 
 
@@ -31,10 +32,8 @@ def lire(infos: dict) -> dict:
 def _chercher_anilist(requete: str) -> list[dict]:
     q = ("query($s:String){Page(perPage:6){media(search:$s,type:MANGA,sort:SEARCH_MATCH){id title{romaji english native} "
          "startDate{year} status staff(perPage:2){edges{role node{name{full}}}}}}}")
-    r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": requete}}, timeout=15)
-    r.raise_for_status()
     out = []
-    for m in ((r.json().get("data") or {}).get("Page") or {}).get("media") or []:
+    for m in ((reseau.anilist(q, {"s": requete}) or {}).get("Page") or {}).get("media") or []:
         t = m.get("title") or {}
         auteurs = [e["node"]["name"]["full"] for e in (m.get("staff") or {}).get("edges") or [] if e.get("node")]
         out.append({"titre": t.get("english") or t.get("romaji") or t.get("native") or "?",
@@ -45,8 +44,7 @@ def _chercher_anilist(requete: str) -> list[dict]:
 
 
 def _chercher_mangadex(requete: str) -> list[dict]:
-    r = _SESSION.get("https://api.mangadex.org/manga", params={"title": requete, "limit": 6}, timeout=15)
-    r.raise_for_status()
+    r = reseau.get("https://api.mangadex.org/manga", params={"title": requete, "limit": 6}, memo=300)
     out = []
     for m in r.json().get("data") or []:
         a = m.get("attributes") or {}
@@ -62,8 +60,7 @@ def _chercher_google(requete: str) -> list[dict]:
     cle = tomes.cle_google_books()
     if not cle:
         return []
-    r = _SESSION.get(tomes.GOOGLE_BOOKS, params={"q": requete, "maxResults": 8, "key": cle}, timeout=15)
-    r.raise_for_status()
+    r = reseau.get(tomes.GOOGLE_BOOKS, params={"q": requete, "maxResults": 8, "key": cle})
     out = []
     for it in r.json().get("items") or []:
         v = it.get("volumeInfo") or {}
@@ -105,20 +102,20 @@ def fandom(serie: str, titre: str) -> dict | None:
     titre complet, type, sortie en France, éditeur, pages, petit descriptif et « à lire après le tome N »."""
     for api in _wikis_fandom(serie):
         try:
-            r = _SESSION.get(api, params={"action": "query", "list": "search", "srsearch": f"{serie} {titre}", "srlimit": 5,
-                                          "format": "json"}, timeout=12)
-            if r.status_code != 200 or "json" not in r.headers.get("content-type", ""):
+            r = reseau.get(api, params={"action": "query", "list": "search", "srsearch": f"{serie} {titre}", "srlimit": 5,
+                                        "format": "json"}, timeout=12, essais=1)
+            if r.statut != 200:
                 continue
             pages = [x["title"] for x in (r.json().get("query") or {}).get("search") or []]
-        except (requests.RequestException, ValueError):
-            continue
+        except (reseau.Panne, requests.RequestException, ValueError):
+            continue                                            # ce wiki n'existe pas (ou ne répond pas) : on essaie le suivant
         mots = [m for m in re.findall(r"\w{3,}", titre.lower())]
         w, page = "", None
         for p in [p for p in pages if all(m in p.lower() for m in mots)][:4]:
             try:
-                texte_page = _SESSION.get(api, params={"action": "parse", "page": p, "prop": "wikitext", "format": "json"},
-                                          timeout=12).json()["parse"]["wikitext"]["*"]
-            except (requests.RequestException, ValueError, KeyError):
+                texte_page = reseau.get(api, params={"action": "parse", "page": p, "prop": "wikitext", "format": "json"},
+                                        timeout=12, essais=1).json()["parse"]["wikitext"]["*"]
+            except (reseau.Panne, requests.RequestException, ValueError, KeyError):
                 continue
             # un LIVRE (fiche avec ISBN, pages ou date de parution), pas un lieu ou un film du même nom
             if re.search(r"^\|\s*(isbnf?|pages|parutionf?)\s*=", texte_page, re.M | re.I):

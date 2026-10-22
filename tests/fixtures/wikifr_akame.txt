@@ -1,0 +1,128 @@
+== Manga ==
+=== Liste des volumes ===
+==== ''Red Eyes Sword: Akame ga Kill!'' ====
+{{TomeBD/Entête
+ | langage_unique = non
+ | langue_1       = Japonais 
+ | langue_2       = Français
+}}
+{{TomeBD
+ | couleur_ligne  = FF0000 
+ | langage_unique = non
+ | volume         = 1
+ | sortie_1       = {{Date|21|août|2010}}<ref group="ja" name="ja_vol01" />
+ | isbn_1         = 978-4-7575-2980-9 | isbn_1_note = <ref group="ja" name="ja_vol01" />
+ | sortie_2       = {{Date|11|septembre|2014}}<ref group="fr" name="fr_vol01" />
+ | isbn_2         = 978-2-368-52044-4 | isbn_2_note = <ref group="fr" name="fr_vol01" />
+ | chapitre       = <div>
+* '''Kill 1 -''' {{japonais|Les ténèbres|闇を斬る|Yami o Kiru}}
+* '''Kill 2 -''' {{japonais|Le pays|国を斬る|Kuni o Kiru}}
+* '''Kill 3 -''' {{japonais|Le pouvoir|権力を斬る|Kenryoku o Kiru}}
+* '''Kill 4 -''' {{japonais|La rancœur|蟠りを斬る|Wadakamari o Kiru}}
+</div>
+ | extra          = '''Personnages en couverture :''' Akame.
+}}
+{{TomeBD
+ | couleur_ligne  = FF1493
+ | langage_unique = non
+ | volume         = 2
+ | sortie_1       = {{Date|22|janvier|2011}}<ref group="ja" name="ja_vol02" />
+ | isbn_1         = 978-4-7575-3129-1 | isbn_1_note = <ref group="ja" name="ja_vol02" />
+ | sortie_2       = {{Date|13|novembre|2014}}<ref group="fr" name="fr_vol02" /> 
+ | isbn_2         = 978-2-368-52051-2 | isbn_2_note = <ref group="fr" name="fr_vol02" /> 
+ | chapitre       = <div>
+* '''Kill 5 -''' {{japonais|Le coupeur de têtes|辻斬りを斬る|Tsujigiri o Kiru}}
+* '''Kill 6 -''' {{japonais|L'utilisateur d'arme impériale|帝具使いを斬る|Teigu tsukai o Kiru}}
+* '''Kill 7 -''' {{japonais|Rêves|夢物語を斬る|Yume Monogatari o Kiru}}
+* '''Kill 8 -''' {{japonais|Les trafiquants|溝鼠を斬る|Dobunezumi o Kiru}}
+* '''Kill 9 -''' {{japonais|La justice|絶対正義を斬る|Zettai Seigi o Kiru}}
+</div>
+ | extra          =  '''Personnages en couverture :''' Mine.
+}}
+==== ''Red Eyes Sword: Akame ga Kill! Zero'' ====
+{{TomeBD/Entête
+ | langage_unique = non
+ | langue_1       = Japonais 
+ | langue_2       = Français
+}}
+{{TomeBD
+ | couleur_ligne  = FFFFFF 
+ | langage_unique = non
+ | volume         = 1
+ | sortie_1       = {{Date|21|juin|2014}}<ref group="ja2" name="ja2_vol01" />
+ | isbn_1         = 978-4-7575-4339-3 | isbn_1_note = <ref group="ja2" name="ja2_vol01" />
+ | sortie_2       = {{Date|12|mai|2016}}<ref group="fr2" name="fr2_vol01" />
+ | isbn_2         = 978-2-368-52213-4 | isbn_2_note = <ref group="fr2" name="fr2_vol01" />
+ | chapitre       = <div>
+* '''Kill 1 -''' {{japonais|Les deux petites filles|二人の少女|Futari no Shōjo}}
+* '''Kill 2 -''' {{japonais|Le jour où tout a commencé|はじまりの日|Hajimari no Hi}}
+* '''Kill 3 -''' {{japonais|Première mission (1)|初任務（前編）|Hatsu Ninmu (Zenpen)}}
+* '''Kill 4 -''' {{japonais|Première mission (2)|初任務（後編）|Hatsu Ninmu (Kōhen)}}
+* '''Kill 5 -''' {{japonais|Élevés dans l'ombre|闇に育つ|Yami ni Sodatsu}}
+* '''Kill 6 -''' {{japonais||難関！ 太守殺し|Nankan! Taishu Goroshi}}
+</div>
+ | extra          = '''Personnages en couverture :''' Akame.
+}}
+{{TomeBD
+ | couleur_ligne  = 000000
+ | langage_unique = non
+ | volume         = 2
+ | sortie_1       = {{Date|22|décembre|2014}}<ref group="ja2" name="ja2_vol02" />
+ | isbn_1         = 978-4-7575-4506-9 | isbn_1_note = <ref group="ja2" name="ja2_vol02" />
+ | sortie_2       = {{Date|13|octobre|2016}}<ref group="fr2" name="fr2_vol02" /> 
+ | isbn_2         = 978-2-368-52214-1 | isbn_2_note = <ref group="fr2" name="fr2_vol02" /> 
+ | chapitre       = <div>
+* '''Kill 7 -''' {{japonais|Bataille sur le fleuve Hakurô|白狼河の戦い|Hakuro Kawa no Tatakai}}
+* '''Kill 8 -''' {{japonais|Rencontre|巡り会い|Meguriai}}
+* '''Kill 9 -''' {{japonais|Les assassins|殺し屋たち|Koroshiya-tachi}}
+* '''Kill 10 -''' {{japonais||死戦（前編）|Shitō (Zenpen)}}
+* '''Kill 11 -''' {{japonais||死戦（後編）|Shitō (Kōhen)}}
+* '''Kill 12 -''' {{japonais|Lamentations|慟哭|Dōkoku}}
+* '''Kill 13 -''' {{japonais|Duel au sommet|頂上対決|Chōjō Taiketsu}}
+</div>
+ | extra          =  '''Personnages en couverture :''' Cornelia.
+}}
+==== ''Blue Eyes Sword: Hinowa ga Crush!'' ====
+{{TomeBD/Entête
+ | langage_unique = non
+ | langue_1       = Japonais 
+ | langue_2       = Français
+}}
+{{TomeBD
+ | couleur_ligne  = 00D1C8 
+ | langage_unique = non
+ | volume         = 1
+ | sortie_1       = {{Date|25|décembre|2017}}<ref group="ja3" name="ja3_vol01" />
+ | isbn_1         = 978-4-7575-5565-5 | isbn_1_note = <ref group="ja3" name="ja3_vol01" />
+ | sortie_2       = {{Date|11|avril|2019}}<ref group="fr3" name="fr3_vol01" />
+ | isbn_2         = 978-2-368-52789-4 | isbn_2_note = <ref group="fr3" name="fr3_vol01" />
+ | chapitre       = <div>
+* '''Chapitre 1 -''' {{japonais|La bataille du château de Ryûmon|竜門城の戦い|Ryūmonjō no Tatakai}}
+* '''Chapitre 2 -''' {{japonais|Au village de Yaenami|八重波村にて|Yaenami-mura nite}}
+* '''Chapitre 3 -''' {{japonais|La classe et l'ermite|塾と仙人|Juku to Sennin}}
+* '''Chapitre 4 -''' {{japonais|Première campagne|初陣|Uijin}}
+* '''Chapitre 5 -''' {{japonais|Combat au mont Kagebôshi|影法師山の戦い|Kagebōshizan no Tatakai}}
+</div>
+ | extra          = '''Personnages en couverture :''' Hinowa, Akame.
+}}
+{{TomeBD
+ | couleur_ligne  = 00D1C8 
+ | langage_unique = non
+ | volume         = 2
+ | sortie_1       = {{Date|25|août|2018}}<ref group="ja3" name="ja3_vol02" />
+ | isbn_1         = 978-4-7575-5828-1 | isbn_1_note = <ref group="ja3" name="ja3_vol02" />
+ | sortie_2       = {{Date|4|juillet|2019}}<ref group="fr3" name="fr3_vol02" />
+ | isbn_2         = 978-2-368-52794-8 | isbn_2_note = <ref group="fr3" name="fr3_vol02" />
+ | chapitre       = <div>
+* '''Chapitre 6 -''' {{japonais|Larmes (1re partie)|涙（前編）|Namida (Zenpen)}}
+* '''Chapitre 7 -''' {{japonais|Larmes (2e partie)|涙（後編）|Namida (Kōhen)}}
+* '''Chapitre 8 -''' {{japonais|Trésors divins|冥宝|Meihō}}
+* '''Chapitre 9 -''' {{japonais|Une nouvelle bataille|新たなる戦|Aratanaru Ikusa}}
+* '''Chapitre 10 -''' {{japonais|La bataille du fort de Shiranui|不知火砦の戦い|Shiranui Toride no Tatakai}}
+* '''Chapitre 11 -''' {{japonais|Sentiments|想い|Omoi}}
+</div>
+ | extra          = '''Personnages en couverture :''' Hinowa, Akame, Tobari, Hisame, Suzumaru, Kumehachi.
+}}
+
+== Anime ==
+Suite.

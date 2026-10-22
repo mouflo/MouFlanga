@@ -19,6 +19,8 @@ from pathlib import Path
 
 import requests
 
+import reseau
+
 logger = logging.getLogger(__name__)
 
 DOSSIER_CACHE = Path(__file__).resolve().parent / "data" / "couvertures-trouvees"
@@ -26,8 +28,7 @@ DUREE_CACHE = 7 * 86400
 # À augmenter quand la logique de recherche change : les résultats anciens (possiblement faux) sont alors refaits seuls.
 VERSION_CACHE = 2
 PREFIXE_MANGADEX = "https://uploads.mangadex.org/covers/"
-_SESSION = requests.Session()
-_SESSION.headers["User-Agent"] = "MouFlanga/2.0 (bibliotheque de mangas personnelle)"
+_SESSION = reseau.SESSION           # une seule session pour tout Internet (voir reseau.py)
 
 
 def dossier_couvertures(dossier_serie: Path) -> Path:
@@ -161,12 +162,10 @@ def _variantes(titre: str) -> list[str]:
 
 
 def _mangadex_manga(titres: list[str]) -> str | None:
-    """Identifiant MangaDex de la série : seulement un titre identique (jamais une série au nom voisin)."""
+    """Identifiant MangaDex de la série : seulement un titre identique (jamais une série au nom voisin). None : MangaDex ne la
+    connaît pas. Lève reseau.Panne si MangaDex ne répond pas (« pas de couvertures » n'est alors pas à garder)."""
     for titre in dict.fromkeys(v for t in titres if t for v in _variantes(t)):
-        try:
-            r = _SESSION.get("https://api.mangadex.org/manga", params={"title": titre, "limit": 100}, timeout=15).json()
-        except Exception:
-            continue
+        r = reseau.get("https://api.mangadex.org/manga", params={"title": titre, "limit": 100}, memo=300).json()
         for m in r.get("data") or []:
             a = m.get("attributes") or {}
             noms = [*(a.get("title") or {}).values(), *(v for x in a.get("altTitles") or [] for v in x.values())]
@@ -176,40 +175,43 @@ def _mangadex_manga(titres: list[str]) -> str | None:
 
 
 def couvertures_en_ligne(serie: str, titres: list[str], forcer: bool = False) -> dict:
-    """{numéro de tome: [{"url", "vignette", "langue"}]} : couvertures trouvées sur MangaDex (gardées 7 jours)."""
+    """{numéro de tome: [{"url", "vignette", "langue"}]} : couvertures trouvées sur MangaDex (gardées 7 jours). Quand MangaDex ne
+    répond pas, rien n'est gardé comme « aucune couverture » : l'ancien résultat est rendu et on réessaiera."""
     DOSSIER_CACHE.mkdir(parents=True, exist_ok=True)
     # Le nom du fichier garde un empreinte : « + Again » et « Again » ne doivent pas partager le même cache.
     empreinte = hashlib.sha1(serie.encode("utf-8")).hexdigest()[:8]
     f = DOSSIER_CACHE / (re.sub(r"[^A-Za-z0-9]+", "_", serie).strip("_") + "_" + empreinte + ".json")
-    if f.is_file() and not forcer:
+    ancien = {}
+    if f.is_file():
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
-            if d.get("version") == VERSION_CACHE and time.time() - d.get("date", 0) < DUREE_CACHE:
-                return {int(k): v for k, v in d.get("tomes", {}).items()}
+            ancien = {int(k): v for k, v in d.get("tomes", {}).items()} if d.get("version") == VERSION_CACHE else {}
+            if not forcer and d.get("version") == VERSION_CACHE and time.time() - d.get("date", 0) < DUREE_CACHE:
+                return ancien
         except (OSError, ValueError):
             pass
     tomes = {}
-    manga = _mangadex_manga(titres)
-    if manga:
-        offset = 0
-        while True:
-            try:
-                r = _SESSION.get("https://api.mangadex.org/cover", params={"manga[]": manga, "limit": 100, "offset": offset,
+    try:
+        manga = _mangadex_manga(titres)
+        if manga:
+            offset = 0
+            while True:
+                r = reseau.get("https://api.mangadex.org/cover", params={"manga[]": manga, "limit": 100, "offset": offset,
                                                                          "order[volume]": "asc"}, timeout=20).json()
-            except Exception as e:
-                logger.info("Couvertures MangaDex de %s : %s", serie, e.__class__.__name__)
-                break
-            for c in r.get("data") or []:
-                a = c.get("attributes") or {}
-                try:
-                    num = int(float(a.get("volume")))
-                except (TypeError, ValueError):
-                    continue
-                url = f"{PREFIXE_MANGADEX}{manga}/{a.get('fileName')}"
-                tomes.setdefault(num, []).append({"url": url, "vignette": url + ".256.jpg", "langue": a.get("locale") or ""})
-            offset += 100
-            if offset >= (r.get("total") or 0) or not r.get("data"):
-                break
+                for c in r.get("data") or []:
+                    a = c.get("attributes") or {}
+                    try:
+                        num = int(float(a.get("volume")))
+                    except (TypeError, ValueError):
+                        continue
+                    url = f"{PREFIXE_MANGADEX}{manga}/{a.get('fileName')}"
+                    tomes.setdefault(num, []).append({"url": url, "vignette": url + ".256.jpg", "langue": a.get("locale") or ""})
+                offset += 100
+                if offset >= (r.get("total") or 0) or not r.get("data"):
+                    break
+    except reseau.Panne as e:
+        logger.info("Couvertures MangaDex de %s : %s (rien n'est gardé, on réessaiera)", serie, e)
+        return ancien or tomes
     f.write_text(json.dumps({"version": VERSION_CACHE, "date": time.time(), "manga": manga,
                              "tomes": {str(k): v for k, v in tomes.items()}},
                             ensure_ascii=False, indent=1), encoding="utf-8")

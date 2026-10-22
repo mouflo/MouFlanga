@@ -46,29 +46,15 @@ def _texte(octets: bytes) -> str:
     return octets.decode("utf-8", "replace")
 
 
-def _isbn13_valide(c: str) -> bool:
-    return len(c) == 13 and c.isdigit() and (10 - sum(int(x) * (1 if k % 2 == 0 else 3) for k, x in enumerate(c[:12])) % 10) % 10 == int(c[12])
-
-
 def analyser_nfo(texte: str) -> dict:
-    """Ce que dit un NFO de torrent : titres, auteur, éditeur, synopsis et l'ISBN de chaque tome (« Tome 01 -- ISBN : 978-… »).
+    """Ce que dit un NFO de torrent (lu par presentation.py, comme la page du tracker) : titres, auteur, éditeur, parution, genre, langue,
+    format, pages, résolution, source, synopsis (seulement s'il porte son intertitre) et l'ISBN de chaque tome (« Tome 01 -- ISBN : 978… »).
     Seuls les ISBN dont la somme de contrôle est juste sont gardés."""
-    out = {}
-    for cle, motif in (("titre_original", r"Titre Original\s*:\s*(.+)"), ("titre_fr", r"Titre Fran[cç]ais\s*:\s*(.+)"),
-                       ("auteur", r"Auteurs?\s*:\s*(.+)"), ("editeur", r"[ÉE]diteur\s*:\s*(.+)")):
-        m = re.search(motif, texte or "", re.I)
-        if m and m.group(1).strip():
-            out[cle] = m.group(1).strip()
-    isbn = {}
-    for m in re.finditer(r"Tome\s*0*(\d{1,3})\s*[-–—:]*\s*ISBN\s*:?\s*(97[89][\d\- ]{10,16})", texte or "", re.I):
-        c = re.sub(r"\D", "", m.group(2))[:13]
-        if _isbn13_valide(c):
-            isbn[str(int(m.group(1)))] = c
-    if isbn:
-        out["isbn"] = isbn
-    m = re.search(r"\bSynopsis\s*\n\s*-{5,}\s*\n(.*?)\n\s*-{5,}", texte or "", re.S | re.I)
-    if m and len(m.group(1).split()) >= 8:
-        out["synopsis"] = re.sub(r"\s+", " ", m.group(1)).strip()
+    import presentation
+    out = presentation.analyser(texte, deviner_resume=False)
+    out.pop("synopsis_langue", None)
+    if out.get("isbn_unique") and not out.get("isbn"):
+        out.pop("isbn_unique")                         # un ISBN sans numéro de tome : on ne sait pas à quel tome il va
     return out
 
 

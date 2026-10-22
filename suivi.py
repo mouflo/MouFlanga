@@ -126,10 +126,11 @@ def _sans_point(titre):
     return titre.replace(".", " ")
 
 
-def verifier(nom, chercher, infos_serie, lancer=None, envoyer=None):
+def verifier(nom, chercher, infos_serie, lancer=None, envoyer=None, apres=None):
     """Cherche dans Prowlarr pour une série suivie et garde les nouvelles propositions. Renvoie celles-ci.
     lancer(lien, titre, nom) : une version de la MÊME ÉQUIPE pour 1 à 3 tomes déjà là d'une autre équipe est téléchargée
-    et remplace ces tomes toute seule (ancien à la corbeille, lu gardé), avec un message."""
+    et remplace ces tomes toute seule (ancien à la corbeille, lu gardé), avec un message.
+    apres(nom, nouvelles) : appelé une fois les propositions gardées (lecture de leurs pages sur les trackers)."""
     d = lire()
     x = d["series"].get(nom)
     if not x:
@@ -157,6 +158,8 @@ def verifier(nom, chercher, infos_serie, lancer=None, envoyer=None):
                                 f"(téléchargement lancé, l'ancien ira à la corbeille)")
                 except Exception as e:
                     logger.warning("Remplacement automatique (même équipe) de %s : %s", nom, e)
+    for p in nouvelles:
+        p.pop("lien", None)           # le lien de Prowlarr contient sa clé API : jamais gardé (la page Télécharger en redemande un frais)
     with _verrou:
         d = lire()
         if nom in d["series"]:
@@ -164,14 +167,80 @@ def verifier(nom, chercher, infos_serie, lancer=None, envoyer=None):
             d["series"][nom]["propositions"] = d["series"][nom]["propositions"][-30:]
             d["series"][nom]["derniere_verif"] = datetime.now().strftime("%Y-%m-%d %H:%M")
             ecrire(d)
+    if apres and nouvelles:
+        try:
+            apres(nom, nouvelles)
+        except Exception as e:
+            logger.warning("Lecture des pages de %s : %s", nom, e)
     return nouvelles
+
+
+def proposition(nom, pid):
+    """La proposition `pid` de la série suivie `nom` (copie), ou None."""
+    x = lire()["series"].get(nom) or {}
+    return next((dict(p) for p in x.get("propositions", []) if p.get("id") == pid), None)
+
+
+def noter_lecture(nom, pid, lu):
+    """Garde sur la proposition ce que la lecture de sa page a donné (`lu`) ou pourquoi elle n'a pas pu être lue. Rien d'autre n'est touché."""
+    with _verrou:
+        d = lire()
+        for p in (d["series"].get(nom) or {}).get("propositions", []):
+            if p.get("id") == pid:
+                p["lu"] = lu
+                ecrire(d)
+                return True
+    return False
+
+
+CHAMPS_TRACKER = ("synopsis", "auteur", "editeur", "genre")       # pas la date : celle d'une page est la parution d'un tome, pas de la série
+
+
+def noter_tracker(nom, infos, page, tracker):
+    """Complète la fiche d'une série suivie avec ce que dit la page d'un torrent : seulement ce qui manque, rien n'est jamais remplacé.
+    Renvoie les champs ajoutés."""
+    with _verrou:
+        d = lire()
+        x = d["series"].get(nom)
+        if x is None:
+            return []
+        t = x.setdefault("tracker", {})
+        ajoutes = [c for c in CHAMPS_TRACKER if infos.get(c) and not t.get(c)]
+        for c in ajoutes:
+            t[c] = infos[c]
+        if "synopsis" in ajoutes:
+            t["synopsis_de"] = {"tracker": tracker, "page": page}
+        if ajoutes:
+            ecrire(d)
+        return ajoutes
+
+
+def nettoyer_liens():
+    """Retire des propositions déjà gardées le lien de Prowlarr (il contient sa clé API et ne sert qu'à la création). Renvoie le nombre retiré."""
+    n = 0
+    with _verrou:
+        d = lire()
+        for x in d["series"].values():
+            for p in x.get("propositions", []):
+                if p.pop("lien", None):
+                    n += 1
+        if n:
+            ecrire(d)
+    return n
+
+
+def sans_liens(x):
+    """Copie d'une entrée de série suivie sans aucun lien de téléchargement, pour ce qu'on envoie au navigateur."""
+    if not isinstance(x, dict):
+        return x
+    return {**x, "propositions": [{k: v for k, v in p.items() if k != "lien"} for p in x.get("propositions", [])]}
 
 
 def en_attente():
     return [(n, p) for n, x in lire()["series"].items() for p in x.get("propositions", []) if p["statut"] == "attente"]
 
 
-def boucle(chercher, infos_serie, envoyer, adresse, actif, lancer=None):
+def boucle(chercher, infos_serie, envoyer, adresse, actif, lancer=None, apres=None):
     """Chaque jour (vers 7 h) : vérifie les séries surveillées ; un message Telegram groupé si du nouveau."""
     while True:
         time.sleep(600)
@@ -184,7 +253,7 @@ def boucle(chercher, infos_serie, envoyer, adresse, actif, lancer=None):
                 if not x.get("surveiller") or (x.get("derniere_verif") or "")[:10] == jour:
                     continue
                 try:
-                    nouv = verifier(nom, chercher, infos_serie, lancer, envoyer)
+                    nouv = verifier(nom, chercher, infos_serie, lancer, envoyer, apres)
                 except Exception as e:
                     logger.warning("Surveillance de %s impossible : %s", nom, e)
                     continue

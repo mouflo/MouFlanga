@@ -1,17 +1,16 @@
 """
-Répartition des chapitres d'une série en tomes, cherchée automatiquement sur Internet.
+Ce qu'Internet sait d'une série : statut et résumé (AniList, MangaDex, Wikipédia), répartition des chapitres en tomes (Wikipédia en
+anglais, liste française de Wikipédia, MangaDex), titres et chapitres des tomes (Wikipédia en français), fiche (auteurs, éditeurs…).
 
-Sources, dans l'ordre :
-1. Wikipédia (en anglais) : les pages « List of <série> chapters » donnent, pour chaque tome, les numéros
-   de chapitres et leurs titres, et les chapitres « pas encore sortis en tome » ;
-2. MangaDex (API publique) : en secours, la répartition connue de sa communauté.
-Le nom anglais de la série est trouvé avec AniList quand le nom français ne suffit pas.
-
-Résultat gardé dans data/tomes/<série>.json (3 jours), pour ne pas interroger Internet à chaque fois.
+Tout est gardé dans data/tomes/<série>.json ; les écritures passent par `modifier` ; tout ce qui sort sur Internet passe par
+reseau.py. Les règles (trouvé / rien trouvé / panne, rien n'est jamais effacé) et le parcours complet : docs/identification.md et
+identification.py. Les ISBN et résumés des tomes : notices.py (Wikipédia, BnF, Google Books).
 """
 import json
 import logging
+import os
 import re
+import sys
 import threading
 import time
 import unicodedata
@@ -19,8 +18,20 @@ from pathlib import Path
 
 import requests
 
+import bnf
+import correspondance
+import googlebooks
+import reseau
+import wikifr
+
 logger = logging.getLogger(__name__)
 DOSSIER = Path(__file__).resolve().parent / "data" / "tomes"
+if reseau.EN_TEST:                              # tests automatiques : jamais les vrais caches de la bibliothèque (un test avait vidé celui d'une vraie série)
+    import atexit
+    import shutil
+    import tempfile
+    DOSSIER = Path(tempfile.mkdtemp(prefix="mouflanga-tests-tomes-"))
+    atexit.register(shutil.rmtree, DOSSIER, ignore_errors=True)
 DUREE = 7 * 86400                      # série en cours : répartition en tomes revue au plus une fois par semaine
 TERMINES = ("FINISHED", "CANCELLED")   # statuts qui ne bougent plus : ce qui est trouvé est gardé pour toujours
 ESSAIS_JOURS = (1, 3, 7, 30)           # réessais d'une recherche sans résultat : de plus en plus espacés
@@ -45,15 +56,14 @@ def garde_a_jour(entree, garde, duree_en_cours, trouve=True) -> bool:
     if not trouve:
         return age < attente_essai(entree.get("essais"))
     return serie_terminee(garde) or age < duree_en_cours
-_SESSION = requests.Session()
-# Wikipédia demande un nom d'outil et un moyen de le retrouver (règles d'usage de son API)
-_SESSION.headers["User-Agent"] = "MouFlanga/1.0 (https://github.com/mouflo/MouFlanga; bibliotheque de mangas personnelle)"
+_SESSION = reseau.SESSION             # une seule session pour tout Internet (voir reseau.py : rythme, pauses, pannes)
 WIKI = "https://en.wikipedia.org/w/api.php"
-VERSION_TITRES = 2          # monte quand la lecture des pages Wikipédia change : les séries déjà gardées sont relues
+WIKI_FR = "https://fr.wikipedia.org/w/api.php"
+VERSION_TITRES = 3          # monte quand la lecture des pages Wikipédia change : les séries déjà gardées sont relues
 
 
 def _simple(texte: str) -> str:
-    texte = unicodedata.normalize("NFKD", texte or "").encode("ascii", "ignore").decode().lower()
+    texte = unicodedata.normalize("NFKD", (texte or "").translate(correspondance._TRANSLITTERATION)).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9]+", " ", texte).strip()
 
 
@@ -79,8 +89,10 @@ def sans_edition(titre: str) -> str:
     return t if t and t != (titre or "").strip() else (titre or "").strip()
 
 
-def _variantes(titre: str) -> list[str]:
-    """Le nom tel quel, puis quelques écritures courantes (« N°8 » → « No. 8 »), puis sans la mention d'édition."""
+def _noms_series(titre: str):
+    """(noms du dossier, morceaux du nom) : « Gantz : Perfect » → (« Gantz : Perfect », « Gantz »), []. Un nom « Série : Suite » a
+    en plus ses morceaux (« Frieren », « Sousou no Frieren ») : noms faibles, sauf celui qui est une autre série de la
+    bibliothèque (« Kuroko's Basket » dans « Kurokos Basket : Extra Game » : la série mère n'est pas la suite)."""
     out = [titre.strip()]
     base = sans_edition(titre)
     if base != titre.strip():                   # « Gantz : Perfect » : on cherche « Gantz » (même si une autre édition est là)
@@ -88,27 +100,49 @@ def _variantes(titre: str) -> list[str]:
     v = re.sub(r"\s*n[°º]\s*", " No. ", titre, flags=re.I).strip()
     if v not in out:
         out.append(re.sub(r"\s+", " ", v))
+    parties = []
     if " : " in titre:                          # « Frieren : Sousou no Frieren » → chaque partie (la plus longue d'abord)
-        autres = {_simple(x) for x in SERIES_EXISTANTES() if x != titre}
+        autres = [correspondance.jetons(x) for x in SERIES_EXISTANTES() if x != titre]
         for part in sorted((x.strip() for x in titre.split(" : ")), key=len, reverse=True):
             if EDITION.sub("", part).strip(" -–:,") == "":       # « Perfect » seul : une édition, pas un titre à chercher
                 continue
-            if part and part not in out and _simple(part) not in autres and (len(part.split()) >= 2 or len(part) >= 6):   # « Frieren » oui, « Zero » tout seul non
-                out.append(part)
-    return out
+            if part and part not in out and not any(correspondance._meme_mots(correspondance.jetons(part), a) for a in autres) \
+                    and (len(part.split()) >= 2 or len(part) >= 6):   # « Frieren » oui, « Zero » tout seul non
+                parties.append(part)
+    return out, parties
+
+
+def _parties_meres(titre: str) -> list[str]:
+    """Morceaux d'un nom « Série : Suite » qui peuvent être la série mère (« Akame ga Kill ! » pour « Akame ga Kill ! : Zero »), même
+    quand la bibliothèque a aussi la série mère : sa page Wikipédia contient souvent la section de la suite."""
+    if " : " not in titre:
+        return []
+    return [p.strip() for p in titre.split(" : ")[:1] if EDITION.sub("", p).strip(" -–:,") and (len(p.split()) >= 2 or len(p.strip()) >= 6)]
+
+
+def _variantes(titre: str) -> list[str]:
+    """Le nom tel quel, puis quelques écritures courantes (« N°8 » → « No. 8 »), puis sans la mention d'édition, puis ses morceaux."""
+    noms, parties = _noms_series(titre)
+    return noms + parties
+
+
+def noms_de_recherche(serie: str, st: dict = None):
+    """(noms sûrs, noms faibles, autres séries de la bibliothèque) pour reconnaître la série sur Internet. Sûrs : le nom du dossier et
+    ce qu'AniList en dit (titre, titre anglais, synonymes : le titre français y est souvent). Faibles : les morceaux d'un nom
+    « Série : Suite », qui ne comptent que si le titre est exactement l'un d'eux."""
+    st = st if st is not None else ((_charger(serie) or {}).get("statut_officiel") or {})
+    noms, parties = _noms_series(serie)
+    fortes = list(dict.fromkeys(n for n in noms + [st.get("titre"), st.get("titre_en"), *(st.get("synonymes") or [])]
+                                if n and correspondance.jetons(n)))
+    return fortes, parties, [x for x in SERIES_EXISTANTES() if x != serie]
 
 
 def _noms_anglais(titre: str) -> list[str]:
-    """Noms anglais / romaji de la série d'après AniList."""
+    """Noms anglais / romaji de la série d'après AniList. Lève reseau.Panne si AniList ne répond pas."""
     q = "query($s:String){Page(perPage:3){media(search:$s,type:MANGA,format_not:NOVEL){title{romaji english} synonyms}}}"
     noms = []
     for v in _variantes(titre):
-        try:
-            r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": v}}, timeout=15)
-            medias = r.json()["data"]["Page"]["media"]
-        except Exception as e:
-            logger.info("AniList injoignable (%s)", e.__class__.__name__)
-            return noms
+        medias = ((reseau.anilist(q, {"s": v}) or {}).get("Page") or {}).get("media") or []
         if medias:
             t = medias[0]["title"]
             for n in (t.get("english"), t.get("romaji")):
@@ -120,27 +154,27 @@ def _noms_anglais(titre: str) -> list[str]:
 
 # ---------------------------------------------------------------- Wikipédia
 
-class TropDeRequetes(Exception):
-    pass
+TropDeRequetes = reseau.Panne            # ancien nom
 
 
 def _wiki(params: dict) -> dict:
-    """Une requête à Wikipédia ; si elle demande de ralentir (429), on attend une fois puis on abandonne."""
-    for essai in range(2):
-        r = _SESSION.get(WIKI, params={**params, "format": "json", "formatversion": 2, "maxlag": 5}, timeout=20)
-        if r.status_code == 429 or "maxlag" in r.text[:200]:
-            if essai == 0:
-                try:
-                    attente = min(30, int(r.headers.get("Retry-After", "10")))
-                except ValueError:
-                    attente = 10
-                time.sleep(attente)
-                continue
-            raise TropDeRequetes("Wikipédia demande de patienter")
-        r.raise_for_status()
-        time.sleep(0.5)                   # requêtes espacées, comme le demande Wikipédia
-        return r.json()
-    return {}
+    """Une requête à Wikipédia en anglais. Lève reseau.Panne si elle ne répond pas (jamais un résultat vide à la place)."""
+    return reseau.get(WIKI, params={**params, "format": "json", "formatversion": 2, "maxlag": 5}, memo=600).json()
+
+
+def _wiki_fr(params: dict) -> dict:
+    """Une requête à Wikipédia en français. Lève reseau.Panne si elle ne répond pas ; une page qui n'existe pas rend le JSON
+    avec sa clé « error » (l'appelant lit « parse » ou « query » : vide)."""
+    return reseau.get(WIKI_FR, params={**params, "format": "json"}, memo=600).json()
+
+
+def _wikitexte(page: str, fr: bool = False) -> str:
+    """Wikitexte d'une page (redirections suivies), "" si la page n'existe pas. Lève reseau.Panne si Wikipédia ne répond pas."""
+    if fr:
+        r = _wiki_fr({"action": "parse", "page": page, "prop": "wikitext", "redirects": 1})
+        return (r.get("parse") or {}).get("wikitext", {}).get("*", "") or ""
+    r = _wiki({"action": "parse", "page": page, "prop": "wikitext", "redirects": 1})
+    return (r.get("parse") or {}).get("wikitext", "") or ""
 
 
 def _pages_wiki(noms: list[str]) -> list[str]:
@@ -234,23 +268,25 @@ def _wikipedia(noms: list[str]) -> dict | None:
 # ---------------------------------------------------------------- MangaDex
 
 def _mangadex(noms: list[str]) -> dict | None:
+    """Répartition en tomes d'après MangaDex (fiche au titre identique : jamais une autre série). None : MangaDex ne la connaît
+    pas. Lève reseau.Panne s'il ne répond pas."""
     for nom in noms:
-        try:
-            r = _SESSION.get("https://api.mangadex.org/manga", params={"title": nom, "limit": 50}, timeout=15).json()
-            if not r.get("data"):
-                continue
-            def titres_md(d):                       # titre principal et autres titres de la fiche MangaDex
-                a = d.get("attributes") or {}
-                return [*(a.get("title") or {}).values(), *(v for x in a.get("altTitles") or [] for v in x.values())]
-            # « Akame ga Kill! Zero » : la fiche au titre identique, pas la série principale renvoyée en premier ;
-            # « The Breaker » est loin dans la liste (après « … Rule Breaker ») : on en demande 50 et on ne prend jamais une autre série
-            ident = next((d["id"] for d in r["data"] if any(_simple(t) == _simple(nom) for t in titres_md(d))), None)
-            if ident is None:
-                continue
-            ag = _SESSION.get(f"https://api.mangadex.org/manga/{ident}/aggregate", timeout=20).json()
-        except Exception as e:
-            logger.info("MangaDex injoignable (%s)", e.__class__.__name__)
-            return None
+        r = reseau.get("https://api.mangadex.org/manga", params={"title": nom, "limit": 50}, memo=300).json()
+        if not r.get("data"):
+            continue
+
+        def titres_md(d):                           # titre principal et autres titres de la fiche MangaDex
+            a = d.get("attributes") or {}
+            return [*(a.get("title") or {}).values(), *(v for x in a.get("altTitles") or [] for v in x.values())]
+        # « Akame ga Kill! Zero » : la fiche au titre identique, pas la série principale renvoyée en premier ;
+        # « The Breaker » est loin dans la liste (après « … Rule Breaker ») : on en demande 50 et on ne prend jamais une autre série
+        ident = next((d["id"] for d in r["data"] if any(_simple(t) == _simple(nom) for t in titres_md(d))), None)
+        if ident is None:
+            continue
+        rep = reseau.get(f"https://api.mangadex.org/manga/{ident}/aggregate", memo=300, timeout=20)
+        if rep.statut == 404:
+            continue
+        ag = rep.json()
         tomes = {}
         vols = ag.get("volumes") or {}
         # MangaDex renvoie un objet {"1": {...}} ou, parfois, une liste [{"volume": "1", "chapters": ...}]
@@ -276,29 +312,73 @@ def _fichier(serie: str) -> Path:
     return DOSSIER / (re.sub(r"[^\w.-]+", "_", serie).strip("_")[:100] + ".json")
 
 
+_VERROUS = {}
+_VERROUS_VERROU = threading.Lock()
+
+
+def _verrou(serie: str):
+    with _VERROUS_VERROU:
+        return _VERROUS.setdefault(serie, threading.RLock())
+
+
+def modifier(serie: str, fonction):
+    """Relit le fichier de la série, applique `fonction(brut)` (elle modifie le dictionnaire en place ; rendre False pour ne rien
+    écrire), puis réécrit tout d'un coup. Un seul fil à la fois par série : deux recherches qui finissent ensemble (le statut
+    et les titres des tomes) ne s'écrasent plus l'une l'autre, ce qui perdait des données sans rien dire."""
+    with _verrou(serie):
+        f = _fichier(serie)
+        try:
+            brut = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            brut = {}
+        if not isinstance(brut, dict):
+            brut = {}
+        if fonction(brut) is False:
+            return brut
+        DOSSIER.mkdir(parents=True, exist_ok=True)
+        tmp = f.with_name(f"{f.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+        tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(f)
+        _CACHE_FICHES.pop(serie, None)
+        return brut
+
+
 def _enregistrer(serie: str, info: dict):
-    DOSSIER.mkdir(parents=True, exist_ok=True)
-    donnees = {"date": time.time(), "source": info.get("source"),
-               "tomes": {str(k): v for k, v in info.get("tomes", {}).items()},
-               "titres": {str(k): v for k, v in info.get("titres", {}).items()}}
-    try:                                                   # tout le reste est gardé tel quel : statut, fiche, titres et résumés des tomes…
-        ancien = json.loads(_fichier(serie).read_text(encoding="utf-8"))
-        for k, v in ancien.items():
-            if k not in donnees and v:
-                donnees[k] = v
-        if not donnees["tomes"]:
-            donnees["essais"] = int(ancien.get("essais") or 0) + 1       # rien trouvé : prochain essai plus tard
-    except (OSError, ValueError):
-        if not donnees["tomes"]:
-            donnees["essais"] = 1
-    tmp = _fichier(serie).with_suffix(".tmp")
-    tmp.write_text(json.dumps(donnees, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(_fichier(serie))
+    """Garde la répartition en tomes trouvée. Rien trouvé : l'ancienne répartition reste (un échec ou une source qui ne connaît
+    pas la série n'efface jamais ce qu'on savait), et le prochain essai est repoussé."""
+    def appliquer(brut):
+        if info.get("tomes"):
+            brut.update(date=time.time(), source=info.get("source"),
+                        tomes={str(k): v for k, v in info["tomes"].items()}, titres={str(k): v for k, v in (info.get("titres") or {}).items()})
+            brut.pop("essais", None)
+        else:
+            brut["date"] = time.time()
+            brut["essais"] = int(brut.get("essais") or 0) + 1
+            brut.setdefault("tomes", {})
+            brut.setdefault("titres", {})
+            brut.setdefault("source", info.get("source"))
+    modifier(serie, appliquer)
 
 
 def oublier(serie: str):
-    """Efface le cache d'identification d'une série : la prochaine consultation refait la recherche."""
-    _fichier(serie).unlink(missing_ok=True)
+    """Efface le cache d'une série : seulement quand la série n'existe plus ou change d'identité (renommée, autre fiche choisie).
+    Une simple réidentification n'efface rien : elle complète et corrige."""
+    with _verrou(serie):
+        _fichier(serie).unlink(missing_ok=True)
+        _CACHE_FICHES.pop(serie, None)
+
+
+def deplacer(ancien: str, nouveau: str):
+    """Série renommée : son cache la suit (ce qu'on a appris ne se perd pas) ; s'il y en a déjà un au nouveau nom, il reste."""
+    with _verrou(ancien):
+        src, dst = _fichier(ancien), _fichier(nouveau)
+        if src.exists() and not dst.exists():
+            DOSSIER.mkdir(parents=True, exist_ok=True)
+            src.replace(dst)
+        else:
+            src.unlink(missing_ok=True)
+        _CACHE_FICHES.pop(ancien, None)
+        _CACHE_FICHES.pop(nouveau, None)
 
 
 _CACHE_FICHES = {}              # série → ((date, taille du fichier), contenu) : relu seulement si le fichier a changé
@@ -312,10 +392,11 @@ def _carte_francaise(d: dict):
     details = ((d.get("titres_tomes") or {}).get("details")) or {}
     fr = {}
     for tome, det in details.items():
-        for ligne in det.get("chapitres") or []:
-            m = re.match(r"^(\d+(?:\.\d+)?)\.", ligne)
-            if m and str(tome).isdigit():
-                fr.setdefault(float(m.group(1)), int(tome))
+        nums = det.get("numeros") or [float(m.group(1)) for ligne in det.get("chapitres") or []
+                                      for m in [re.match(r"^(\d+(?:\.\d+)?)\.", ligne)] if m]
+        for n in nums:
+            if str(tome).isdigit():
+                fr.setdefault(float(n), int(tome))
     if len({t for t in fr.values()}) < 3:
         return None
     par_tome = {}
@@ -364,37 +445,125 @@ def _charger(serie: str) -> dict | None:
     return dict(d)
 
 
+def _carte_liste_francaise(serie: str):
+    """Répartition d'après la liste française de Wikipédia (chapitres de chaque tome de la série) : {"source", "tomes", "titres"},
+    ou None si elle manque ou ne forme pas une vraie suite : numéros qui repartent de 1 à chaque tome, ou mélangés, ou un tome dont
+    aucun chapitre n'est numéroté. Les chapitres qu'elle ne cite pas (bonus) manquent, c'est tout."""
+    details = ((_charger(serie) or {}).get("titres_tomes") or {}).get("details") or {}
+    fr, titres = {}, {}
+    for tome, det in details.items():
+        if not str(tome).isdigit():
+            continue
+        numeros = [float(n) for n in det.get("numeros") or []]
+        for ligne in det.get("chapitres") or []:
+            m = re.match(r"^(\d+(?:\.\d+)?)\.\s*(.*)$", ligne)
+            if m:
+                numeros.append(float(m.group(1)))
+                if m.group(2):
+                    titres.setdefault(float(m.group(1)), m.group(2))
+        for n in set(numeros):
+            if n in fr and fr[n] != int(tome):
+                return None                                   # le même numéro dans deux tomes : la numérotation repart à chaque tome
+            fr[n] = int(tome)
+    if len(set(fr.values())) < 3:
+        return None
+    par_tome = {}
+    for n, t in fr.items():
+        par_tome.setdefault(t, []).append(n)
+    ordre = sorted(par_tome)
+    if any(max(par_tome[a]) >= min(par_tome[b]) for a, b in zip(ordre, ordre[1:])):
+        return None                                           # numéros mélangés d'un tome à l'autre
+    return {"source": "Wikipédia (liste française)", "tomes": fr, "titres": titres}
+
+
 def chercher(serie: str, forcer: bool = False) -> dict | None:
     """Répartition des tomes de la série : {"source", "tomes": {n° chapitre: tome ou None}, "titres": {n°: titre}}.
-    None si aucune source ne la connaît (les chapitres restent alors un fichier chacun)."""
+    None si aucune source ne la connaît (les chapitres restent alors un fichier chacun).
+    Sources : Wikipédia en anglais, puis la liste française de Wikipédia, puis MangaDex (qui complète aussi la première).
+    Une source qui ne répond pas n'est jamais prise pour « elle ne connaît pas » : on garde l'ancienne répartition, et si seule
+    MangaDex a répondu, sa répartition est provisoire (refaite dans l'heure)."""
+    return chercher_bilan(serie, forcer)[0]
+
+
+def _nb_tomes(info) -> int:
+    return len({t for t in ((info or {}).get("tomes") or {}).values() if t is not None})
+
+
+def _repartition_pauvre(garde) -> bool:
+    """La répartition gardée n'a que quelques tomes alors qu'AniList en annonce bien plus (une page Wikipédia mal lue, MangaDex incomplet) :
+    on la refait, avec des essais de plus en plus espacés si les sources ne font pas mieux."""
+    vol = ((garde or {}).get("statut_officiel") or {}).get("volumes")
+    return bool(garde and garde.get("tomes") and vol and _nb_tomes(garde) < 0.6 * int(vol))
+
+
+def chercher_bilan(serie: str, forcer: bool = False):
+    """(répartition ou None, état, pannes) ; état : « deja », « ok », « partiel » (provisoire : Wikipédia n'a pas répondu), « vide »
+    (aucune source ne connaît la série) ou « panne » (aucune source n'a répondu : l'ancienne répartition reste)."""
     garde = _charger(serie)
-    if garde and not forcer and garde_a_jour(garde, garde, DUREE, trouve=bool(garde.get("tomes"))):
-        return garde if garde.get("tomes") else None
-    st = (_charger(serie) or {}).get("statut_officiel") or {}
+    if garde and not forcer:
+        recent = garde_a_jour(garde, garde, DUREE, trouve=bool(garde.get("tomes")))
+        provisoire_perime = garde.get("provisoire") and time.time() - garde.get("date", 0) > 3600
+        pauvre_a_refaire = _repartition_pauvre(garde) and time.time() - garde.get("date", 0) > attente_essai(garde.get("pauvre_essais"))
+        if recent and not provisoire_perime and not pauvre_a_refaire:
+            return (garde if garde.get("tomes") else None), "deja", []
+    st = (garde or {}).get("statut_officiel") or {}
     noms = list(dict.fromkeys([x for x in (st.get("titre"), st.get("titre_en")) if x] + _variantes(serie)))   # titre AniList d'abord
+    pannes, en, wiki_a_repondu = [], None, False
     try:
-        info = _wikipedia(noms)
-        if info is None:
+        en = _wikipedia(noms)
+        if en is None:
             anglais = [n for n in _noms_anglais(serie) if n not in noms]
-            info = _wikipedia(anglais) if anglais else None
+            en = _wikipedia(anglais) if anglais else None
             noms += anglais
+        wiki_a_repondu = True
+    except reseau.Panne as e:
+        pannes.append(e)
+    dex = None
+    try:
         dex = _mangadex(noms)
-    except Exception as e:
-        logger.warning("Recherche des tomes impossible pour %s : %s", serie, e)
-        return garde if garde and garde.get("tomes") else None
-    if info is None:
-        info = dex
-    elif dex:
-        # MangaDex complète les chapitres que Wikipédia ne range pas (bonus, chapitres « .5 »)
+    except reseau.Panne as e:
+        pannes.append(e)
+    fr = None
+    try:
+        titres_tomes(serie)                                         # la liste française de Wikipédia, si on ne l'a pas encore
+        fr = _carte_liste_francaise(serie)
+    except reseau.Panne as e:
+        pannes.append(e)
+    # La meilleure des répartitions : Wikipédia anglais d'abord, sauf s'il en donne bien moins que la liste française ou MangaDex
+    # (page mal lue, liste en cours de rédaction) ; la liste française dit comment l'édition française range les chapitres.
+    candidats = [c for c in (fr, dex) if c]
+    meilleur_autre = max(candidats, key=_nb_tomes) if candidats else None
+    if en and meilleur_autre and _nb_tomes(en) < 0.8 * _nb_tomes(meilleur_autre):
+        info = meilleur_autre
+    else:
+        info = en or (fr if fr else dex)
+    provisoire = bool(info) and info is dex and not wiki_a_repondu         # Wikipédia n'a pas répondu : à refaire bientôt
+    if info is not None and dex and info is not dex:
+        # MangaDex complète les chapitres que la liste ne range pas (bonus, chapitres « .5 »)
         for n, t in dex["tomes"].items():
             info["tomes"].setdefault(n, t)
+    if info is None and pannes:
+        logger.info("Tomes de %s : recherche impossible pour l'instant (%s), l'ancienne répartition reste", serie,
+                    "; ".join(str(p) for p in pannes))
+        return (garde if garde and garde.get("tomes") else None), "panne", pannes
     _enregistrer(serie, info or {"source": None})
     if info:
-        logger.info("Tomes de %s : %d tome(s), %d chapitre(s) rangés (%s)", serie,
-                    len({t for t in info["tomes"].values() if t is not None}), len(info["tomes"]), info["source"])
+        def noter(brut):
+            if provisoire:
+                brut["provisoire"] = True
+            else:
+                brut.pop("provisoire", None)
+            if _repartition_pauvre({**brut, "tomes": info["tomes"]}):          # toujours pauvre : prochain essai plus tard
+                brut["pauvre_essais"] = int(brut.get("pauvre_essais") or 0) + 1
+            else:
+                brut.pop("pauvre_essais", None)
+        modifier(serie, noter)
+    if info:
+        logger.info("Tomes de %s : %d tome(s), %d chapitre(s) rangés (%s)%s", serie, _nb_tomes(info), len(info["tomes"]), info["source"],
+                    " — provisoire" if provisoire else "")
     else:
         logger.info("Tomes de %s : aucune source ne les connaît", serie)
-    return info
+    return info, ("partiel" if provisoire else ("ok" if info else "vide")), pannes
 
 
 def tome_de(num: float, info: dict | None):
@@ -417,18 +586,24 @@ STATUT_DUREE = 7 * 86400
 
 
 def statut_a_jour(st) -> bool:
-    """Le statut gardé est-il encore bon ? Série terminée ou abandonnée : pour toujours. En cours : 7 jours.
-    Série introuvable ou sans résumé : réessais espacés (1, 3, 7 puis 30 jours)."""
+    """Le statut gardé est-il encore bon ? Série terminée ou abandonnée avec son résumé en français : pour toujours. En cours :
+    7 jours. Résumé seulement en anglais (ou pris au tome 1) : un vrai résumé français est recherché de nouveau chaque mois. Une source qui n'avait pas répondu
+    pendant la recherche : refait dans l'heure. Série introuvable ou sans résumé : réessais espacés (1, 3, 7 puis 30 jours)."""
     if not st or "resume" not in st:
         return False
     if st.get("resume_v", 1) < RESUME_VERSION and st.get("resume"):    # gardé par l'ancien code (dernier mot coupé) : refait
         return False
+    if st.get("statut") and "synonymes" not in st:                     # gardée avant qu'on retienne les autres noms (le titre français) : refaite une fois
+        return False
+    age = time.time() - st.get("date", 0)
+    if st.get("resume_incomplet"):                                     # une source n'a pas répondu : on réessaie bientôt
+        return age < 3600
     complet = bool(st.get("statut")) and len(st.get("resume") or "") >= 40       # un mot seul : refait
     if complet and st.get("statut") in TERMINES:
-        return True
+        return True if st.get("resume_langue") in ("fr", None) and st.get("resume_source") != "Tome 1" else age < 30 * 86400
     if complet:
-        return time.time() - st.get("date", 0) < STATUT_DUREE
-    return time.time() - st.get("date", 0) < attente_essai(st.get("essais"))
+        return age < STATUT_DUREE
+    return age < attente_essai(st.get("essais"))
 
 
 def _choisir(medias, serie, tome_max):
@@ -456,25 +631,31 @@ def _texte_propre(t):
 
 
 def _resume(m, serie=""):
-    """Résumé de la série : en français d'après MangaDex (même série, reconnue par l'identifiant AniList),
-    sinon en anglais d'après AniList. → (texte, langue « fr » ou « en »)."""
+    """Résumé de la série : en français d'après MangaDex (même série, reconnue par l'identifiant AniList), puis Wikipédia en
+    français, sinon en anglais d'après AniList. → (texte, langue « fr » ou « en », services qui n'ont pas répondu, source). Quand
+    un service n'a pas répondu, le français a peut-être été manqué : l'appelant refera la recherche bientôt."""
     titre = m["title"].get("romaji") or m["title"].get("english") or ""
+    pannes = []
     try:
-        r = _SESSION.get("https://api.mangadex.org/manga", params={"title": titre, "limit": 10}, timeout=15).json()
+        r = reseau.get("https://api.mangadex.org/manga", params={"title": titre, "limit": 10}, memo=300).json()
         for d in r.get("data", []):
             a = d.get("attributes", {})
             if str((a.get("links") or {}).get("al", "")) == str(m.get("id")):
                 desc = a.get("description") or {}
                 fr = _sans_suites(_texte_propre(desc.get("fr") or ""))
                 if len(fr) >= 60:                       # « [Wikipedia](lien) » devient « Wikipedia » : pas un résumé
-                    return fr, "fr"
+                    return fr, "fr", pannes, "MangaDex"
                 break
-    except Exception:
-        pass
-    fr = _wikipedia_fr(m, serie)
+    except reseau.Panne as e:
+        pannes.append(e.service)
+    try:
+        fr = _wikipedia_fr(m, serie)
+    except reseau.Panne as e:
+        pannes.append(e.service)
+        fr = ""
     if fr:
-        return fr, "fr"
-    return _texte_propre(m.get("description") or ""), ("en" if m.get("description") else "")
+        return fr, "fr", pannes, "Wikipédia"
+    return _texte_propre(m.get("description") or ""), ("en" if m.get("description") else ""), pannes, "AniList"
 
 
 def _sans_suites(texte: str) -> str:
@@ -490,74 +671,73 @@ def _sans_suites(texte: str) -> str:
 
 
 def _titres_mangaupdates(serie: str) -> list[str]:
-    """Noms d'origine d'une série que MangaUpdates connaît sous ce nom (« Prisonnier Riku » → « Shuujin Riku »)."""
-    try:
-        r = _SESSION.post("https://api.mangaupdates.com/v1/series/search", json={"search": serie, "perpage": 10}, timeout=15).json()
-    except Exception as e:
-        logger.info("MangaUpdates pour %s : %s", serie, e.__class__.__name__)
-        return []
+    """Noms d'origine d'une série que MangaUpdates connaît sous ce nom (« Prisonnier Riku » → « Shuujin Riku »). Lève
+    reseau.Panne si MangaUpdates ne répond pas."""
+    r = reseau.post("https://api.mangaupdates.com/v1/series/search", json={"search": serie, "perpage": 10}).json()
     return list(dict.fromkeys(x["record"]["title"] for x in r.get("results") or []
                               if x.get("record", {}).get("title") and _simple(x.get("hit_title") or "") == _simple(serie)
                               and _simple(x["record"]["title"]) != _simple(serie)))
 
 
 def _resume_sans_anilist(serie: str):
-    """Série absente d'AniList : résumé de Wikipédia en français, sinon celui de MangaUpdates (anglais)."""
-    fr = _wikipedia_fr({"title": {}}, serie)
+    """Série absente d'AniList : résumé de Wikipédia en français, sinon celui de MangaUpdates (anglais).
+    → (texte, langue, services qui n'ont pas répondu, source)."""
+    pannes = []
+    try:
+        fr = _wikipedia_fr({"title": {}}, serie)
+    except reseau.Panne as e:
+        pannes.append(e.service)
+        fr = ""
     if fr:
-        return fr, "fr"
-    for titre in [serie, *_titres_mangaupdates(serie)]:
-        mu = _mangaupdates([titre])
-        if mu and mu.get("description"):
-            return mu["description"], "en"
-    return "", ""
+        return fr, "fr", pannes, "Wikipédia"
+    try:
+        for titre in [serie, *_titres_mangaupdates(serie)]:
+            mu = _mangaupdates([titre])
+            if mu and mu.get("description"):
+                return mu["description"], "en", pannes, "MangaUpdates"
+    except reseau.Panne as e:
+        pannes.append(e.service)
+    return "", "", pannes, ""
 
 
 def page_correspond(page: str, noms) -> bool:
-    """La page Wikipédia est-elle bien celle de la série ? Tous les mots d'un des noms doivent figurer dans son titre
-    (« Arago » → « Arago (manga) » oui ; « Akame ga Kill! Zero » → « Red Eyes Sword: Akame ga Kill! » non : c'est la
-    série principale). Les parties d'un nom « Série : Suite » comptent, sauf celle qui est une autre série de la bibliothèque."""
-    jetons = _simple(page).split()
-    mots_page = set(jetons) | {a + b for a, b in zip(jetons, jetons[1:])}     # « Ken-ichi » correspond à « Kenichi »
-    autres = {_simple(x) for x in SERIES_EXISTANTES()}
-    candidats = []
-    for n in [x for x in noms if x]:
-        candidats.append(n)
+    """La page Wikipédia est-elle bien celle de la série ? (« Arago » → « Arago (manga) » oui ; « Akame ga Kill! Zero » →
+    « Red Eyes Sword: Akame ga Kill! » non : c'est la série principale ; « Golden Kamuy » → « Golden Kamui » oui.) Les morceaux d'un
+    nom « Série : Suite » comptent seulement si le titre est exactement l'un d'eux, sauf celui qui est une autre série de la
+    bibliothèque. Voir correspondance.titre_de_la_serie."""
+    noms = [n for n in noms if n]
+    autres = [x for x in SERIES_EXISTANTES()]
+    faibles = []
+    for n in noms:
         if " : " in n:
-            candidats += [x for x in n.split(" : ") if _simple(x) and _simple(x) not in autres]
-    return any(_simple(c).split() and set(_simple(c).split()) <= mots_page for c in candidats)
+            faibles += [x.strip() for x in n.split(" : ")
+                        if correspondance.jetons(x) and not any(correspondance._meme_mots(correspondance.jetons(x), correspondance.jetons(a)) for a in autres)]
+    return wikifr.page_de_la_serie(page, noms, faibles, [a for a in autres if a not in noms])
 
 
 def _wikipedia_fr(m, serie=""):
-    """Introduction de l'article Wikipédia en français sur la série (si c'est bien un article de manga). Le nom du dossier
-    (souvent le titre français : « Arago ») passe avant les titres d'AniList (« AR∀GO »)."""
-    for titre in list(dict.fromkeys(t for t in (serie, m["title"].get("romaji"), m["title"].get("english")) if t and _simple(t))):
-        try:
-            r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={
-                "action": "query", "list": "search", "srsearch": f"{titre} manga", "srlimit": 3,
-                "format": "json", "formatversion": 2}, timeout=15).json()
-            for res in r.get("query", {}).get("search", []):
-                if not page_correspond(res["title"], [titre, serie]):
-                    continue
-                d = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={
-                    "action": "query", "prop": "extracts", "explaintext": 1, "titles": res["title"],
-                    "format": "json", "formatversion": 2}, timeout=15).json()
-                texte = ((d.get("query", {}).get("pages") or [{}])[0].get("extract") or "")
-                if "manga" not in texte[:1500].lower():
-                    continue
-                # La section « Synopsis » (l'histoire) plutôt que l'introduction (auteur, magazine…)
-                m_syn = re.search(r"\n==+\s*(Synopsis|Histoire|Résumé|Intrigue|Scénario|Univers et synopsis)\s*==+\n(.*?)(?=\n==[^=]|\Z)",
-                                  texte, re.S | re.I)
-                if m_syn:
-                    corps = re.sub(r"\n===+[^=]+===+\n", "\n", m_syn.group(2)).strip()
-                    if len(corps) > 80:
-                        return corps if len(corps) <= 1500 else corps[:1500].rsplit(" ", 1)[0] + "…"
-                intro = texte.split("\n==", 1)[0].strip()
-                if len(intro) > 80:
-                    return intro
-            time.sleep(0.5)
-        except Exception:
+    """Synopsis (ou introduction) de l'article Wikipédia en français sur la série, si c'est bien un article de manga ; "" s'il n'y
+    en a pas. Le nom du dossier (souvent le titre français : « Arago ») passe avant les titres d'AniList (« AR∀GO »).
+    Lève reseau.Panne si Wikipédia ne répond pas : « il n'y a pas d'article » est une autre réponse."""
+    titres = m.get("title") or {}
+    fortes, faibles, autres = noms_de_recherche(serie or titres.get("romaji") or "", {
+        "titre": titres.get("romaji"), "titre_en": titres.get("english"), "synonymes": m.get("synonyms") or []})
+    if not fortes:
+        return ""
+    for page in wikifr.trouver_pages(fortes, faibles, autres)[:3]:
+        texte = wikifr.extrait(page)
+        if "manga" not in texte[:1500].lower():
             continue
+        # La section « Synopsis » (l'histoire) plutôt que l'introduction (auteur, magazine…)
+        m_syn = re.search(r"\n==+\s*(Synopsis|Histoire|Résumé|Intrigue|Scénario|Univers et synopsis)\s*==+\n(.*?)(?=\n==[^=]|\Z)",
+                          texte, re.S | re.I)
+        if m_syn:
+            corps = re.sub(r"\n===+[^=]+===+\n", "\n", m_syn.group(2)).strip()
+            if len(corps) > 80:
+                return corps if len(corps) <= 1500 else corps[:1500].rsplit(" ", 1)[0] + "…"
+        intro = texte.split("\n==", 1)[0].strip()
+        if len(intro) > 80:
+            return intro
     return ""
 
 
@@ -565,26 +745,20 @@ _INTRO_FR = {}
 
 
 def introduction_fr(serie: str) -> str:
-    """Introduction de l'article Wikipédia en français sur la série (« » si introuvable). Gardée en mémoire."""
+    """Introduction de l'article Wikipédia en français sur la série (« » si introuvable). Gardée en mémoire, sauf si Wikipédia
+    n'a pas répondu (alors on réessaiera)."""
     if serie in _INTRO_FR:
         return _INTRO_FR[serie]
     try:
-        r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={
-            "action": "query", "list": "search", "srsearch": f"{serie} manga", "srlimit": 3,
-            "format": "json", "formatversion": 2}, timeout=15).json()
-        for res in r.get("query", {}).get("search", []):
-            if not page_correspond(res["title"], [serie]):
-                continue
-            d = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={
-                "action": "query", "prop": "extracts", "explaintext": 1, "exintro": 1, "titles": res["title"],
-                "format": "json", "formatversion": 2}, timeout=15).json()
-            texte = ((d.get("query", {}).get("pages") or [{}])[0].get("extract") or "")
+        fortes, faibles, autres = noms_de_recherche(serie)
+        for page in wikifr.trouver_pages(fortes, faibles, autres)[:3]:
+            texte = wikifr.extrait(page, intro=True)
             if "manga" in texte[:1500].lower():
                 _INTRO_FR[serie] = texte
                 return texte
         _INTRO_FR[serie] = ""
-    except Exception:
-        pass
+    except reseau.Panne:
+        return ""
     return _INTRO_FR.get(serie, "")
 
 
@@ -604,15 +778,16 @@ TITRES_FICHIERS = lambda serie: []      # remplacé par l'appli : nom de la sér
 ID_INDICE = lambda serie: None          # remplacé par l'appli : identifiant AniList noté dans les fichiers des tomes (série reçue)
 
 
+_REQ_FICHE = ("{id title{romaji english native} synonyms status volumes chapters format description(asHtml:false)}")
+
+
 def chercher_anilist(texte: str) -> list[dict]:
-    """Recherche AniList pour « 🔎 Choisir la fiche » : 12 résultats avec couverture, titres, année, statut, tomes."""
+    """Recherche AniList pour « 🔎 Choisir la fiche » : 12 résultats avec couverture, titres, année, statut, tomes.
+    Lève reseau.Panne si AniList ne répond pas."""
     q = ("query($s:String){Page(perPage:12){media(search:$s,type:MANGA){id title{romaji english native} synonyms status "
          "volumes chapters format startDate{year} coverImage{medium} siteUrl}}}")
-    r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": texte}}, timeout=15)
-    if r.status_code == 429:
-        raise RuntimeError("AniList demande de patienter une minute")
     out = []
-    for m in (r.json().get("data") or {}).get("Page", {}).get("media") or []:
+    for m in ((reseau.anilist(q, {"s": texte}) or {}).get("Page") or {}).get("media") or []:
         t = m.get("title") or {}
         out.append({"id": m["id"], "titre": t.get("romaji") or t.get("english") or "", "anglais": t.get("english") or "",
                     "natif": t.get("native") or "", "annee": (m.get("startDate") or {}).get("year"), "statut": m.get("status"),
@@ -621,78 +796,104 @@ def chercher_anilist(texte: str) -> list[dict]:
     return out
 
 
-def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
-    """{"statut": FINISHED | RELEASING | HIATUS | CANCELLED | NOT_YET_RELEASED, "volumes", "chapitres", "titre"}
-    d'après AniList, gardé 7 jours dans data/tomes/<série>.json ; None si inconnu."""
-    garde = _charger(serie) or {}
-    st = garde.get("statut_officiel")
-    if not forcer and statut_a_jour(st):
-        return st if st.get("statut") else None
-    q = ("query($s:String){Page(perPage:6){media(search:$s,type:MANGA,format_not:NOVEL)"
-         "{id title{romaji english} synonyms status volumes chapters format description(asHtml:false)}}}")
-    medias = []
+def _media_anilist(serie: str, tome_max=None):
+    """La fiche AniList de la série (dictionnaire), ou None si AniList ne la connaît pas. Lève reseau.Panne si AniList (ou
+    MangaUpdates, consulté pour trouver le nom d'origine) ne répond pas : « inconnue » n'est jamais dit à tort."""
     choisi = ID_CHOISI(serie) or ID_INDICE(serie)
     if choisi:                                         # fiche choisie à la main (🔎 Choisir la fiche) ou notée dans les fichiers : jamais de recherche
-        try:
-            r = _SESSION.post("https://graphql.anilist.co", json={"query": "query($i:Int){Media(id:$i,type:MANGA)"
-                              "{id title{romaji english} synonyms status volumes chapters format description(asHtml:false)}}",
-                              "variables": {"i": int(choisi)}}, timeout=15)
-            if r.status_code == 429:
-                return None
-            m = r.json()["data"]["Media"]
-        except Exception as e:
-            logger.info("AniList injoignable (%s)", e.__class__.__name__)
-            return None
-        return _garder_statut(serie, m)
+        return (reseau.anilist("query($i:Int){Media(id:$i,type:MANGA)" + _REQ_FICHE + "}", {"i": int(choisi)}) or {}).get("Media")
+    q = "query($s:String){Page(perPage:6){media(search:$s,type:MANGA,format_not:NOVEL)" + _REQ_FICHE + "}}"
+    medias = []
     essais = _variantes(serie) + [t for t in (TITRES_FICHIERS(serie) or []) if t not in _variantes(serie)]
     for v in essais:
-        try:
-            r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": v}}, timeout=15)
-            if r.status_code == 429:
-                return None                                    # trop de demandes : on réessaiera plus tard
-            medias = r.json()["data"]["Page"]["media"]
-        except Exception as e:
-            logger.info("AniList injoignable (%s)", e.__class__.__name__)
-            return None
+        medias = ((reseau.anilist(q, {"s": v}) or {}).get("Page") or {}).get("media") or []
         if medias:
             break
     m = _choisir(medias, serie, tome_max)
     if not m:                                          # titre français inconnu d'AniList (« Prisonnier Riku ») : nom d'origine d'après MangaUpdates
         for titre_mu in _titres_mangaupdates(serie):
-            try:
-                r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": titre_mu}}, timeout=15)
-                if r.status_code == 429:
-                    return None
-                m = _choisir(r.json()["data"]["Page"]["media"], titre_mu, tome_max)
-            except Exception as e:
-                logger.info("AniList injoignable (%s)", e.__class__.__name__)
-                return None
+            medias = ((reseau.anilist(q, {"s": titre_mu}) or {}).get("Page") or {}).get("media") or []
+            m = _choisir(medias, titre_mu, tome_max)
             if m:
                 break
-    return _garder_statut(serie, m)
+    return m
+
+
+def statut_officiel(serie: str, tome_max=None, forcer=False) -> dict | None:
+    """{"statut": FINISHED | RELEASING | HIATUS | CANCELLED | NOT_YET_RELEASED, "volumes", "chapitres", "titre"}
+    d'après AniList, gardé 7 jours dans data/tomes/<série>.json ; None si inconnu. Quand AniList ne répond pas, l'ancienne fiche
+    est rendue telle quelle (jamais effacée, jamais remplacée par « inconnu »)."""
+    return statut_officiel_bilan(serie, tome_max, forcer)[0]
+
+
+def statut_officiel_bilan(serie: str, tome_max=None, forcer=False):
+    """(statut ou None, état, pannes) ; état : « deja », « ok », « partiel » (une source du résumé n'a pas répondu), « vide » (AniList
+    ne connaît pas la série) ou « panne » (AniList n'a pas répondu : l'ancienne fiche reste)."""
+    garde = _charger(serie) or {}
+    st = garde.get("statut_officiel")
+    if not forcer and statut_a_jour(st):
+        return (st if st.get("statut") else None), "deja", []
+    ancien = st if st and st.get("statut") else None
+    try:
+        m = _media_anilist(serie, tome_max)
+    except reseau.Panne as e:
+        logger.info("Statut de %s : %s (l'ancienne fiche reste)", serie, e)
+        return ancien, "panne", [e]
+    nouveau = _garder_statut(serie, m) or ancien                      # « inconnue » ne retire pas une fiche déjà trouvée
+    resultat = (_charger(serie) or {}).get("statut_officiel") or {}
+    if resultat.get("resume_incomplet"):
+        return nouveau, "partiel", []
+    return nouveau, ("ok" if m else "vide"), []
+
+
+def resume_de_serie_depuis_le_tome(serie: str, texte: str, source: str = "Tome 1") -> bool:
+    """Une série dont le résumé n'existe qu'en anglais prend en français celui de son tome 1 (BnF, Google Books), qui présente la
+    série : mieux vaut du français que de l'anglais. Jamais à la place d'un résumé français de MangaDex ou de Wikipédia. → True si posé."""
+    if len(texte or "") < 60:
+        return False
+    fait = []
+
+    def appliquer(brut):
+        st = brut.get("statut_officiel")
+        if not st or st.get("resume_langue") == "fr":
+            return False
+        st["resume"], st["resume_langue"], st["resume_source"] = texte, "fr", source
+        fait.append(True)
+    modifier(serie, appliquer)
+    return bool(fait)
 
 
 def _garder_statut(serie, m):
+    """Enregistre la fiche AniList et le résumé (à côté de la répartition en tomes, même fichier). Le résumé trouvé n'en remplace
+    jamais un meilleur : un résumé en français reste si la recherche de cette fois n'a trouvé que l'anglais ou rien."""
+    resume, langue, pannes, source = _resume(m, serie) if m else _resume_sans_anilist(serie)
     st = {"date": time.time(), "statut": m["status"] if m else None, "volumes": m.get("volumes") if m else None,
           "chapitres": m.get("chapters") if m else None,
           "titre": (m["title"].get("romaji") or m["title"].get("english")) if m else None,
           "titre_en": m["title"].get("english") if m else None, "anilist": m.get("id") if m else None,
-          "choisi": bool(m and ID_CHOISI(serie))}
-    st["resume"], st["resume_langue"] = _resume(m, serie) if m else _resume_sans_anilist(serie)
-    st["resume_v"] = RESUME_VERSION
-    # enregistrement à côté de la répartition des tomes (même fichier)
-    DOSSIER.mkdir(parents=True, exist_ok=True)
-    try:
-        brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        brut = {}
-    if not (st["statut"] and len(st["resume"] or "") >= 40):          # incomplet : on compte les échecs pour espacer les essais
-        st["essais"] = int((brut.get("statut_officiel") or {}).get("essais") or 0) + 1
-    brut["statut_officiel"] = st
-    tmp = _fichier(serie).with_suffix(".tmp")
-    tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(_fichier(serie))
-    return st if st["statut"] else None
+          "synonymes": [x for x in (m.get("synonyms") or []) if x][:30] if m else [],
+          "natif": m["title"].get("native") if m else None,
+          "choisi": bool(m and ID_CHOISI(serie)), "resume": resume, "resume_langue": langue, "resume_source": source, "resume_v": RESUME_VERSION}
+    if pannes:
+        st["resume_incomplet"] = sorted(set(pannes))
+    rang_source = {"MangaDex": 5, "Wikipédia": 4, "Tome 1": 3, "MangaUpdates": 2, "AniList": 1, "": 0}
+
+    def rang(langue_, source_):
+        return rang_source.get(source_ or ("MangaDex" if langue_ == "fr" else "AniList" if langue_ == "en" else ""), 0)
+
+    def appliquer(brut):
+        ancien = brut.get("statut_officiel") or {}
+        # le résumé trouvé n'en remplace jamais un meilleur : MangaDex (français) > Wikipédia (français) > le tome 1 (français) > MangaUpdates > AniList (anglais)
+        if ancien.get("resume") and ancien.get("anilist") == st["anilist"] \
+                and rang(ancien.get("resume_langue"), ancien.get("resume_source")) > rang(st["resume_langue"], st["resume_source"]):
+            st["resume"], st["resume_langue"], st["resume_source"] = ancien["resume"], ancien["resume_langue"], ancien.get("resume_source", "")
+        if not (st["statut"] and len(st["resume"] or "") >= 40):          # incomplet : on compte les échecs pour espacer les essais
+            st["essais"] = int(ancien.get("essais") or 0) + 1
+        if not st["statut"] and ancien.get("statut") and m is None:
+            return False                                                 # « inconnue » ne remplace pas une fiche trouvée
+        brut["statut_officiel"] = st
+    modifier(serie, appliquer)
+    return (_charger(serie) or {}).get("statut_officiel") if st["statut"] else None
 
 
 # ---------------------------------------------------------------- Fiche détaillée (bouton ℹ️)
@@ -706,10 +907,8 @@ _GENRES = {"Action": "action", "Adventure": "aventure", "Comedy": "comédie", "D
 
 
 def _infobox(titre_page: str) -> dict:
-    """Champs utiles de l'infobox Wikipédia (première occurrence = partie manga)."""
-    r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "parse", "page": titre_page, "prop": "wikitext",
-                                                                     "format": "json", "redirects": 1}, timeout=15).json()
-    w = r.get("parse", {}).get("wikitext", {}).get("*", "")
+    """Champs utiles de l'infobox Wikipédia (première occurrence = partie manga). Lève reseau.Panne si Wikipédia ne répond pas."""
+    w = wikifr.wikitexte(titre_page)
     out = {}
     for cle in ("auteur", "scénariste", "dessinateur", "genre", "éditeur", "éditeur_francophone", "prépublication"):
         m = re.search(r"^[ \t]*\|[ \t]*" + cle + r"[ \t]*=[ \t]*(.+)$", w, re.M)      # jamais la ligne suivante
@@ -721,44 +920,39 @@ def _infobox(titre_page: str) -> dict:
     return out
 
 
-def _page_wikipedia(titres) -> str:
-    for titre in [t for t in titres if t]:
-        try:
-            r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "query", "list": "search", "srsearch": f"{titre} manga",
-                                                                             "srlimit": 3, "format": "json", "formatversion": 2}, timeout=15).json()
-            for res in r.get("query", {}).get("search", []):
-                if page_correspond(res["title"], titres):
-                    return res["title"]
-        except Exception:
-            continue
-    return ""
+def _page_wikipedia(serie: str, st: dict = None) -> str:
+    """Titre de l'article Wikipédia en français de la série, "" s'il n'y en a pas. Lève reseau.Panne si Wikipédia ne répond pas."""
+    fortes, faibles, autres = noms_de_recherche(serie, st)
+    pages = wikifr.trouver_pages(fortes, faibles, autres)
+    return pages[0] if pages else ""
 
 
 # ---------------------------------------------------------------- Sources complémentaires (ré-identification)
 
-GOOGLE_BOOKS = "https://www.googleapis.com/books/v1/volumes"
+GOOGLE_BOOKS = googlebooks.URL
 
 
-def cle_google_books() -> str:
-    """Clé API Google Books (Réglages → 📏 Règles de recherche), lue à chaque appel."""
-    import os
-    return os.getenv("GOOGLE_BOOKS_API_KEY", "").strip()
+cle_google_books = googlebooks.cle                    # clé API Google Books (Réglages → 📏 Règles de recherche)
+verifier_cle_google = googlebooks.verifier_cle
+_tome_du_titre = googlebooks.tome_du_titre
 
 
 def _mangaupdates(titres: list[str]) -> dict | None:
-    """MangaUpdates (sans clé) : éditeurs (originaux, anglais…), auteurs et nombre de volumes d'après sa fiche."""
+    """MangaUpdates (sans clé) : éditeurs (originaux, anglais…), auteurs et nombre de volumes d'après sa fiche. Une fiche qui n'a
+    pas le même titre n'est jamais prise (le premier résultat n'est pas forcément la bonne série). None : MangaUpdates ne la connaît
+    pas. Lève reseau.Panne s'il ne répond pas."""
     for titre in dict.fromkeys(t for t in titres if t):
-        try:
-            r = _SESSION.post("https://api.mangaupdates.com/v1/series/search", json={"search": titre, "perpage": 5}, timeout=15).json()
-            trouves = r.get("results") or []
-            if not trouves:
-                continue
-            ident = next((x["record"]["series_id"] for x in trouves if _simple(x["record"].get("title") or "") == _simple(titre)),
-                         trouves[0]["record"]["series_id"])
-            d = _SESSION.get(f"https://api.mangaupdates.com/v1/series/{ident}", timeout=15).json()
-        except Exception as e:
-            logger.info("MangaUpdates pour %s : %s", titre, e.__class__.__name__)
+        r = reseau.post("https://api.mangaupdates.com/v1/series/search", json={"search": titre, "perpage": 5}).json()
+        trouves = r.get("results") or []
+        ident = next((x["record"]["series_id"] for x in trouves
+                      if correspondance.titre_de_la_serie(x["record"].get("title") or "", [titre])
+                      or correspondance.titre_de_la_serie(x.get("hit_title") or "", [titre])), None)
+        if ident is None:
             continue
+        rep = reseau.get(f"https://api.mangaupdates.com/v1/series/{ident}")
+        if rep.statut == 404:
+            continue
+        d = rep.json()
         vol = re.search(r"(\d+)\s*Volumes?", d.get("status") or "", re.I)
         return {"id": ident, "description": _texte_propre(d.get("description") or ""), "editeurs": [p.get("publisher_name") for p in d.get("publishers") or [] if p.get("publisher_name")],
                 "auteurs": list(dict.fromkeys(a.get("name") for a in (d.get("authors") or []) if a.get("name"))),
@@ -767,161 +961,20 @@ def _mangaupdates(titres: list[str]) -> dict | None:
 
 
 def _google_books(titre: str) -> dict | None:
-    """Google Books (clé requise) : éditeur et auteur d'une édition française, et le plus grand numéro de tome trouvé."""
-    cle = cle_google_books()
-    if not cle or not titre:
-        return None
-    try:
-        r = _SESSION.get(GOOGLE_BOOKS, params={"q": f"{titre} tome", "langRestrict": "fr", "maxResults": 40, "key": cle}, timeout=15)
-        if r.status_code != 200:
-            logger.info("Google Books : réponse %s", r.status_code)
-            return None
-        items = r.json().get("items") or []
-    except Exception as e:
-        logger.info("Google Books pour %s : %s", titre, e.__class__.__name__)
-        return None
-    tomes, editeur, auteurs = [], "", []
-    for it in items:
-        v = it.get("volumeInfo") or {}
-        if _simple(titre) not in _simple(v.get("title") or "") or _autre_serie(v.get("title") or "", titre):
-            continue
-        m = re.search(r"\b(?:tome|t|vol\.?|band)\s*0*(\d{1,3})\b", v.get("title") or "", re.I)
-        if m:
-            tomes.append(int(m.group(1)))
-        editeur = editeur or v.get("publisher") or ""
-        auteurs = auteurs or v.get("authors") or []
-    return {"editeur": editeur, "auteurs": ", ".join(auteurs), "tomes": max(tomes) if tomes else None}
-
-
-RESUME_TOME_DUREE = 30 * 86400
-_GOOGLE_PAUSE = {"jusqua": 0.0}          # quota Google Books atteint : plus aucun appel avant cette heure
-GOOGLE_PAUSE_DUREE = 3 * 3600
-
-
-_MOTS_TITRE_TOME = {"edition", "originale", "tome", "t", "vol", "volume", "de", "la", "l", "le", "manga"}
+    """Google Books : éditeur et auteur d'une édition française, et le plus grand numéro de tome trouvé (None : pas de clé).
+    Lève reseau.Panne / reseau.Quota si Google n'a pas répondu."""
+    return googlebooks.infos_serie(titre)
 
 
 def _isbn13_valide(c: str) -> bool:
-    if not re.fullmatch(r"97[89]\d{10}", c or ""):
-        return False
-    somme = sum(int(d) * (1 if i % 2 == 0 else 3) for i, d in enumerate(c[:12]))
-    return (10 - somme % 10) % 10 == int(c[12])
+    return bool(c) and bnf.isbn13(c) == re.sub(r"\D", "", c)
 
 
 def _isbn_de_notice(v: dict, titres: list[str], edition: str = ""):
-    """(tome, ISBN-13 français) d'une notice Google Books « <série> - Tome 12 » ou « <série> - Édition originale - T12 »,
-    ou None : un autre mot dans le titre (« Doors », « Édition limitée », « fanbook ») veut dire un autre livre."""
-    ids = {x.get("type"): x.get("identifier", "") for x in v.get("industryIdentifiers") or []}
-    isbn = ids.get("ISBN_13", "")
-    if not _isbn13_valide(isbn) or not isbn.startswith(("9782", "97910")):      # éditeur français seulement
-        return None
-    nom = _simple(v.get("title") or "")
-    n = _tome_du_titre(v.get("title") or "")
-    if n is None:
-        return None
-    serie = next((t for t in (_simple(x) for x in titres if x) if t and nom.startswith(t)), None)
-    if not serie:
-        return None
-    permis = _MOTS_TITRE_TOME | set(_simple(edition).split())
-    reste = [m for m in nom[len(serie):].split() if not m.isdigit() and not re.fullmatch(r"t\d+", m)]
-    if any(m not in permis for m in reste) or (edition and not set(_simple(edition).split()) - {"edition"} <= set(reste)):
-        return None
-    return n, isbn
-
-
-# Google Books limite à 1 000 requêtes par jour : les ISBN n'en prennent qu'une partie, le reste garde de la place pour
-# les résumés des tomes. Compteur du jour gardé dans data/ (il survit aux redémarrages).
-ISBN_REQUETES_PAR_JOUR = 400
-_BUDGET_FICHIER = Path(__file__).resolve().parent / "data" / "google-isbn-budget.json"
-_BUDGET_VERROU = threading.Lock()
-
-
-def _prendre_requete_isbn() -> bool:
-    """Compte une requête Google Books pour les ISBN ; False si le plafond du jour est atteint."""
-    jour = time.strftime("%Y-%m-%d")
-    with _BUDGET_VERROU:
-        try:
-            b = json.loads(_BUDGET_FICHIER.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            b = {}
-        if b.get("jour") != jour:
-            b = {"jour": jour, "n": 0}
-        if b["n"] >= ISBN_REQUETES_PAR_JOUR:
-            return False
-        b["n"] += 1
-        try:
-            _BUDGET_FICHIER.parent.mkdir(parents=True, exist_ok=True)
-            _BUDGET_FICHIER.write_text(json.dumps(b), encoding="utf-8")
-        except OSError:
-            pass
-        return True
-
-
-def isbn_google(titres: list[str], numeros, edition: str = "", par_tome_max: int = 10):
-    """({tome: ISBN}, complet) des tomes d'une série d'après Google Books (clé requise) : d'abord quelques pages de
-    résultats pour toute la série (20 notices par requête), puis une requête par tome encore manquant (au plus
-    par_tome_max). complet=False : arrêté par le plafond du jour ou le quota (à refaire plus tard).
-    None si Google n'est pas utilisable du tout (pas de clé, quota ou plafond déjà atteint)."""
-    cle = cle_google_books()
-    if not cle or time.time() < _GOOGLE_PAUSE["jusqua"]:
-        return None
-    voulus = {int(n) for n in numeros}
-    trouves = {}
-    faites = [0]
-
-    def chercher(q, debut=0):
-        if not _prendre_requete_isbn():
-            logger.info("Google Books : plafond de %d requêtes d'ISBN atteint pour aujourd'hui", ISBN_REQUETES_PAR_JOUR)
-            raise PermissionError
-        faites[0] += 1
-        for _ in range(3):                                   # Google répond parfois 503 : on réessaie
-            r = _SESSION.get(GOOGLE_BOOKS, params={"q": q, "langRestrict": "fr", "maxResults": 40, "startIndex": debut,
-                                                   "printType": "books", "key": cle}, timeout=15)
-            if r.status_code < 500:
-                break
-            time.sleep(1.5)
-        if r.status_code in (429, 403):
-            _GOOGLE_PAUSE["jusqua"] = time.time() + GOOGLE_PAUSE_DUREE
-            logger.info("Google Books : réponse %s (quota ou clé) : pause de %d h", r.status_code, GOOGLE_PAUSE_DUREE // 3600)
-            raise PermissionError
-        if r.status_code != 200:
-            return []
-        out = []
-        for it in r.json().get("items") or []:
-            x = _isbn_de_notice(it.get("volumeInfo") or {}, titres, edition)
-            if x and x[0] in voulus:
-                out.append(x)
-        return out if r.json().get("items") else None
-
-    titre = next((t for t in titres if t), "")
-    try:
-        sans_neuf = 0
-        for page in range(8):                                # toute la série d'un coup, 20 par 20
-            r = chercher(f"{titre} {edition} tome".replace("  ", " "), page * 20)
-            if r is None:
-                break
-            neufs = [x for x in r if x[0] not in trouves]
-            for n, isbn in neufs:
-                trouves.setdefault(n, isbn)                  # même tome deux fois (papier / numérique) : le mieux classé
-            sans_neuf = 0 if neufs else sans_neuf + 1
-            if voulus <= set(trouves) or sans_neuf >= 2:
-                break
-        for n in sorted(voulus - set(trouves))[:par_tome_max]:
-            for t, isbn in chercher(f"{titre} {edition} tome {n}".replace("  ", " ")) or []:
-                if t == n:
-                    trouves[n] = isbn
-                    break
-    except PermissionError:
-        return (trouves, False) if faites[0] or trouves else None
-    except Exception as e:
-        logger.info("ISBN Google Books de %s : %s", titre, e.__class__.__name__)
-        return trouves, False
-    return trouves, True
-
-
-def _tome_du_titre(titre: str):
-    m = re.search(r"\b(?:tome|t|vol\.?|volume|band)\s*0*(\d{1,3})\b", titre or "", re.I)
-    return int(m.group(1)) if m else None
+    """(tome, ISBN-13 français) d'une notice Google Books « <série> - Tome 12 » ou « <série> - Édition originale - T12 », ou None :
+    un autre mot dans le titre (« Doors », « Édition limitée », « fanbook ») veut dire un autre livre."""
+    n = googlebooks.notice({"volumeInfo": v}, titres, edition)
+    return (n["tome"], n["isbn"]) if n and n["isbn"] else None
 
 
 def _cle_texte(t: str) -> str:
@@ -1054,104 +1107,24 @@ def resume_propre_du_fichier(serie: str, tome, texte: str, autres: dict) -> str:
 
 
 def resume_tome_memoire(serie: str, tome) -> str:
-    """Résumé Google Books déjà gardé en mémoire pour ce tome (aucun appel Internet), sans la présentation de la série."""
-    brut = _charger(serie) or {}
-    garde = (brut.get("resumes_tomes") or {}).get(str(int(tome)))
-    return _resume_de_serie(garde.get("texte", ""), brut, int(tome)) if garde else ""
+    """Résumé du tome déjà gardé (Wikipédia, BnF ou Google Books ; aucun appel Internet), sans la présentation de la série."""
+    import notices
+    return notices.resume_du_tome(serie, tome)[0]
 
 
-_MARQUEURS_DERIVES = {"zero", "gaiden", "spin", "off", "spinoff", "prequel", "prequelle", "sequel", "suite", "side", "story", "extra",
-                      "artbook", "fanbook", "databook", "guide", "anthologie", "novel", "roman", "light", "memories", "origins"}
+_MARQUEURS_DERIVES = correspondance.MARQUEURS_DERIVES            # (ancien nom)
 
 
 def _autre_serie(nom: str, titre: str) -> bool:
     """Le titre Google contient, en plus de celui de la série, un mot de série dérivée (« Akame ga Kill ! Zero, tome 10 » pour
     « Akame ga Kill ! ») : c'est un autre livre, sa notice ne vaut pas pour ce tome."""
-    en_plus = set(_simple(nom).split()) - set(_simple(titre).split())
-    return bool(en_plus & _MARQUEURS_DERIVES)
+    return correspondance.est_derive(nom, [titre])
 
 
-def resume_tome_google(serie: str, tome, reseau: bool = True):
-    """Résumé en français d'un tome d'après Google Books (clé requise) : la notice de « <série> tome N » en français.
-    Gardé 30 jours dans data/tomes/<série>.json (« resumes_tomes »), y compris « rien trouvé ».
-    reseau=False : jamais d'appel Internet, la valeur gardée (même ancienne) ou None si rien n'a été cherché."""
-    n = int(tome)
-    brut = _charger(serie) or {}
-    garde = (brut.get("resumes_tomes") or {}).get(str(n))
-    if garde and (not reseau or (garde.get("v", 1) >= RESUME_VERSION
-                                  and (garde.get("texte") or time.time() - garde.get("date", 0) < RESUME_TOME_DUREE))):
-        return _resume_de_serie(garde.get("texte", ""), brut, n)
-    if not reseau:
-        return None                                    # pas encore cherché : l'appelant le fait faire en arrière-plan
-    cle = cle_google_books()
-    if not cle:
-        return ""
-    if time.time() < _GOOGLE_PAUSE["jusqua"]:
-        return ""                                      # quota atteint il y a peu : on ne frappe pas à la porte pour chaque tome
-    st = brut.get("statut_officiel") or {}
-    texte = ""
-    for titre in list(dict.fromkeys(x for x in (serie, st.get("titre")) if x)):
-        try:
-            for essai in range(3):                         # Google répond parfois 503 : on réessaie avant d'abandonner
-                r = _SESSION.get(GOOGLE_BOOKS, params={"q": f"{titre} tome {n}", "langRestrict": "fr", "maxResults": 20, "key": cle}, timeout=15)
-                if r.status_code < 500:
-                    break
-                time.sleep(1.5)
-            if r.status_code in (429, 403):
-                _GOOGLE_PAUSE["jusqua"] = time.time() + GOOGLE_PAUSE_DUREE
-                logger.info("Google Books : réponse %s (quota ou clé) : pause de %d h avant de réessayer", r.status_code, GOOGLE_PAUSE_DUREE // 3600)
-                return ""
-            if r.status_code != 200:
-                return ""                                  # indisponible : on réessaiera, rien n'est gardé
-            items = r.json().get("items") or []
-        except Exception as e:
-            logger.info("Résumé Google Books de %s tome %s : %s", serie, n, e.__class__.__name__)
-            return ""
-        for it in items:
-            v = it.get("volumeInfo") or {}
-            nom = " ".join(x for x in (v.get("title"), v.get("subtitle")) if x)
-            if _simple(titre) not in _simple(nom) or _tome_du_titre(nom) != n or (v.get("language") or "fr") != "fr" or _autre_serie(nom, titre):
-                continue
-            desc = _texte_propre(v.get("description") or "")
-            if len(desc) > 60:
-                texte = desc if len(desc) <= 1500 else desc[:1500].rsplit(" ", 1)[0] + "…"
-                break
-        if texte:
-            break
-    try:
-        brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        brut = {}
-    brut.setdefault("resumes_tomes", {})[str(n)] = {"date": time.time(), "texte": texte, "v": RESUME_VERSION}
-    texte = _resume_de_serie(texte, brut, n)             # sans la présentation de la série, répétée sur chaque tome
-    DOSSIER.mkdir(parents=True, exist_ok=True)
-    tmp = _fichier(serie).with_suffix(".tmp")
-    tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(_fichier(serie))
-    return texte
 
 
-def verifier_cle_google(cle: str) -> tuple[bool, str]:
-    """(ok, message) : Google accepte-t-il la clé pour l'API Books ? Ne renvoie jamais la clé."""
-    try:
-        r = _SESSION.get(GOOGLE_BOOKS, params={"q": "one piece", "maxResults": 1, "key": cle}, timeout=10)
-    except requests.exceptions.RequestException:
-        return False, "Google Books injoignable depuis le serveur"
-    if r.status_code == 200:
-        return True, "Clé acceptée par Google Books"
-    raison = ""
-    try:
-        erreurs = (r.json().get("error") or {}).get("errors") or []
-        raison = erreurs[0].get("reason", "") if erreurs else ""
-    except ValueError:
-        pass
-    if r.status_code == 429:
-        return False, "Quota dépassé pour cette clé : réessaie plus tard"
-    if raison == "accessNotConfigured":
-        return False, "L'API Books n'est pas activée dans le projet Google (Google Cloud → Bibliothèque d'API → Books API)"
-    if r.status_code in (400, 403):
-        return False, "Google refuse cette clé (vérifie qu'elle est complète et sans espace)"
-    return False, f"Google Books a répondu {r.status_code}"
+
+
 
 
 def _editeurs_propres(v: str) -> str:
@@ -1161,26 +1134,34 @@ def _editeurs_propres(v: str) -> str:
 
 
 def fiche(serie: str, forcer=False) -> dict:
-    """Dates de parution, auteurs, genres, éditeurs (AniList + Wikipédia FR) ; gardée pour de bon une fois trouvée
-    (data/tomes/<série>.json) : seul « 🔄 Relancer l'identification » la refait. Sans résultat : réessais espacés."""
+    """Dates de parution, auteurs, genres, éditeurs (AniList + Wikipédia FR + MangaUpdates + Google Books) ; gardée pour de bon
+    une fois trouvée (data/tomes/<série>.json) : seul « 🔄 Relancer l'identification » la refait. Sans résultat : réessais
+    espacés. Une source qui ne répond pas ne fait rien perdre : ses champs restent comme avant."""
+    return fiche_bilan(serie, forcer)[0]
+
+
+def fiche_bilan(serie: str, forcer=False):
+    """(fiche, état, pannes) ; état : « deja », « ok », « partiel » (une source n'a pas répondu : refaite dans l'heure) ou « vide »."""
     garde = _charger(serie) or {}
     f = garde.get("fiche")
     trouvee = f and any(f.get(k) for k in ("genres", "editeur_fr", "editeur_jp", "debut"))
     st_actuel = (garde.get("statut_officiel") or {}).get("statut")
     fin_annoncee = trouvee and st_actuel in TERMINES and not f.get("fin")   # la série vient de se terminer : date de fin à prendre
-    if f and not forcer and ((trouvee and not fin_annoncee) or (not trouvee and garde_a_jour(f, garde, FICHE_DUREE, trouve=False))):
-        return f
+    partielle_a_refaire = bool(f and f.get("partielle")) and time.time() - f.get("date", 0) > 3600          # un service n'avait pas répondu : dans l'heure
+    if f and not forcer and not partielle_a_refaire and ((trouvee and not fin_annoncee) or (not trouvee and garde_a_jour(f, garde, FICHE_DUREE, trouve=False))):
+        return f, "deja", []
     st = garde.get("statut_officiel") or {}
     if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans identifiant) : on la refait une fois
         st = statut_officiel(serie, forcer=True) or st
     out = {k: v for k, v in (f or {}).items()}              # un échec (AniList qui demande de ralentir…) garde l'ancien
-    roles = {}
+    out.pop("partielle", None)
+    roles, pannes, ont_repondu = {}, [], set()
     out["date"] = time.time()
     if st.get("anilist"):
         q = ("query($i:Int){Media(id:$i){startDate{year month} endDate{year month} status genres title{native romaji english} "
              "staff(perPage:8){edges{role node{name{full}}}}}}")
         try:
-            m = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"i": st["anilist"]}}, timeout=15).json()["data"]["Media"]
+            m = (reseau.anilist(q, {"i": st["anilist"]}) or {}).get("Media") or {}
             date = lambda d: (f"{_MOIS[d['month'] - 1]} " if d.get("month") else "") + str(d["year"]) if d and d.get("year") else ""
             out.update(debut=date(m.get("startDate")), fin=date(m.get("endDate")), statut=m.get("status"),
                        titre_original=(m.get("title") or {}).get("native") or "", romaji=(m.get("title") or {}).get("romaji") or "",
@@ -1191,34 +1172,49 @@ def fiche(serie: str, forcer=False) -> dict:
                     if mot in role and "Assist" not in role:
                         roles.setdefault(cle, []).append(e["node"]["name"]["full"])
             out.update({k: ", ".join(dict.fromkeys(v)) for k, v in roles.items()})
-        except Exception as e:
-            logger.info("Fiche AniList de %s : %s", serie, e.__class__.__name__)
-    for k in ("wikipedia", "editeur_jp", "editeur_fr", "magazine"):   # refaits d'après la bonne page (ou vides)
-        out.pop(k, None)
+            ont_repondu.add("AniList")
+        except reseau.Panne as e:
+            pannes.append(e)
     try:
-        page = _page_wikipedia([serie, st.get("titre"), st.get("titre_en")])
+        page = _page_wikipedia(serie, st)
+        ont_repondu.add("Wikipédia")
         if page:
             ib = _infobox(page)
+            if out.get("wikipedia") and out["wikipedia"] != page:          # une autre page qu'avant : ce qu'on tenait de l'ancienne ne vaut plus
+                for k in ("editeur_jp", "editeur_fr", "magazine"):
+                    out.pop(k, None)
             out["wikipedia"] = page
             # AniList connaît les auteurs de CETTE série (une suite peut avoir un autre dessinateur que l'article Wikipédia)
             out["scenario"] = (", ".join(dict.fromkeys(roles.get("scenario", []))) if roles.get("scenario") else "") or ib.get("auteur") or ib.get("scénariste") or out.get("scenario", "")
             out["dessin"] = (", ".join(dict.fromkeys(roles.get("dessin", []))) if roles.get("dessin") else "") or ib.get("dessinateur") or out.get("dessin", "")
             out["genres"] = ib.get("genre") or out.get("genres", "")
-            out["editeur_jp"] = _editeurs_propres(ib.get("éditeur", ""))
-            out["editeur_fr"] = _editeurs_propres(ib.get("éditeur_francophone", ""))
-            out["magazine"] = ib.get("prépublication", "")
-    except Exception as e:
-        logger.info("Fiche Wikipédia de %s : %s", serie, e.__class__.__name__)
+            for cle, valeur in (("editeur_jp", _editeurs_propres(ib.get("éditeur", ""))), ("editeur_fr", _editeurs_propres(ib.get("éditeur_francophone", ""))),
+                                ("magazine", ib.get("prépublication", ""))):
+                if valeur:                                                 # jamais remplacé par du vide (l'éditeur peut venir de Google Books)
+                    out[cle] = valeur
+    except reseau.Panne as e:
+        pannes.append(e)
+        ont_repondu.discard("Wikipédia")
     # Sources complémentaires : MangaUpdates (éditeurs, auteurs, volumes) et Google Books (si une clé est réglée)
     titres = [serie, st.get("titre"), st.get("titre_en"), out.get("romaji")]
-    mu = _mangaupdates(titres)
+    mu = gb = None
+    try:
+        mu = _mangaupdates(titres)
+        ont_repondu.add("MangaUpdates")
+    except reseau.Panne as e:
+        pannes.append(e)
     if mu:
         out["editeurs_mu"] = ", ".join(mu["editeurs"])
         out["volumes_mu"] = mu["volumes"]
         out["mangaupdates"] = mu["id"]
         if not out.get("scenario") and mu["auteurs"]:
             out["scenario"] = ", ".join(mu["auteurs"][:3])
-    gb = _google_books(next((x for x in titres if x), ""))
+    try:
+        gb = _google_books(next((x for x in titres if x), ""))
+        if gb is not None:
+            ont_repondu.add("Google Books")
+    except reseau.Panne as e:
+        pannes.append(e)
     if gb:
         if not out.get("editeur_fr") and gb["editeur"]:
             out["editeur_fr"] = gb["editeur"]
@@ -1226,69 +1222,42 @@ def fiche(serie: str, forcer=False) -> dict:
             out["scenario"] = gb["auteurs"]
         if gb["tomes"]:
             out["tomes_google"] = gb["tomes"]
-    out["sources"] = [s for s, ok in (("AniList", bool(st.get("anilist"))), ("Wikipédia", bool(out.get("wikipedia"))),
-                                     ("MangaUpdates", bool(mu)), ("Google Books", bool(gb))) if ok]
-    try:
-        brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        brut = {}
-    brut["fiche"] = out
-    DOSSIER.mkdir(parents=True, exist_ok=True)
-    tmp = _fichier(serie).with_suffix(".tmp")
-    tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(_fichier(serie))
-    return out
+    trouvees = {"AniList": bool(st.get("anilist")), "Wikipédia": bool(out.get("wikipedia")), "MangaUpdates": bool(mu), "Google Books": bool(gb)}
+    anciennes = set((f or {}).get("sources") or [])
+    manquantes = {s for s in ("AniList", "Wikipédia", "MangaUpdates", "Google Books") if s not in ont_repondu and s in anciennes}
+    out["sources"] = [s for s in ("AniList", "Wikipédia", "MangaUpdates", "Google Books") if trouvees[s] or s in manquantes]
+    if pannes:
+        out["partielle"] = True
+    modifier(serie, lambda brut: brut.__setitem__("fiche", out))
+    return out, ("partiel" if pannes else ("ok" if any(trouvees.values()) else "vide")), pannes
 
 
 # ---------------------------------------------------------------- Titres des tomes (« Romance Dawn »)
 
-def _wiki_propre(v: str) -> str:
-    v = re.sub(r"\{\{\s*(\d+)\s*(?:e|er|re|ème)\s*\|\s*([^}|]*)\}\}", lambda m: m.group(1) + "e " + m.group(2), v or "")   # {{7e|district}}
-    v = re.sub(r"\{\{\s*(1e|1re|1er|e|er|re)\s*\|([^}]*)\}\}", lambda m: ("1re " if m.group(1).startswith("1") else "e ") + m.group(2), v or "")
-    v = re.sub(r"<ref.*?(</ref>|/>)|<[^>]+>", "", v or "", flags=re.S)
-    v = re.sub(r"\{\{\s*(?:nowrap|lang|nihongo|japonais)\s*\|(?:[a-z]{2}\|)?([^|}]*)[^}]*\}\}", r"\1", v, flags=re.I)
-    v = re.sub(r"\{\{[^}]*\}\}", "", v)
-    v = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", r"\1", v).replace("\'\'", "").replace("\'\'\'", "")
-    v = v.replace("''", "")
-    return re.sub(r"\s+", " ", v).strip(" .,-–—")
+_wiki_propre = wikifr.propre
+_champs_tomebd = wikifr.champs
+_section_de_serie = wikifr.section_de_serie
+_dates = wikifr._dates
+_puces = wikifr._puces
 
 
-def _champs_tomebd(bloc: str) -> dict:
-    """Paramètres d'un modèle TomeBD (valeurs sur plusieurs lignes comprises)."""
-    out = {}
-    for m in re.finditer(r"\n\s*\|\s*([\wé]+)\s*=(.*?)(?=\n\s*\|\s*[\wé]+\s*=|\n\}\}|\Z)", "\n" + bloc, re.S):
-        out.setdefault(m.group(1), m.group(2).strip())
-    return out
 
 
-def _dates(v: str) -> str:
-    return re.sub(r"\{\{\s*date\s*\|([^|}]*)\|([^|}]*)\|([^|}]*)[^}]*\}\}", r"\1 \2 \3", v or "", flags=re.I)
 
 
-def _puces(v: str) -> str:
-    return re.sub(r"^\*\s*", " • ", v or "", flags=re.M)
 
 
-def _liens_listes(pages: list) -> list:
-    """Pages « Liste des chapitres / volumes / tomes de … » liées depuis ces pages Wikipédia (en français)."""
-    out = []
-    for page in [p for p in pages if p][:4]:
-        try:
-            r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={"action": "query", "prop": "links", "titles": page, "pllimit": 500,
-                                                                             "plnamespace": 0, "format": "json", "redirects": 1}, timeout=15).json()
-            for pg in (r.get("query", {}).get("pages") or {}).values():
-                out += [l["title"] for l in pg.get("links", []) if re.match(r"Liste des (chapitres|volumes|tomes) d", l["title"])
-                        and "dérivé" not in l["title"] and "hors-série" not in l["title"].lower()]
-        except Exception:
-            continue
-    return list(dict.fromkeys(out))
+
+
+
+_liens_listes = wikifr.liens_listes
 
 
 def details_tome(serie: str, tome) -> dict:
     """Infos d'un tome (titre, sortie en France, résumé, chapitres) d'après la mémoire de titres_tomes.
     Les chapitres n'apparaissent que s'ils ont un titre."""
     t = ((_charger(serie) or {}).get("titres_tomes") or {})
-    d = {k: v for k, v in (t.get("details") or {}).get(str(int(tome)), {}).items() if k != "couverture"}
+    d = {k: v for k, v in (t.get("details") or {}).get(str(int(tome)), {}).items() if k not in ("couverture", "isbn", "numeros")}
     if d.get("resume"):
         d["resume_source"] = "Wikipédia"
     if not d.get("chapitres"):                       # pas de liste en français : titres anglais connus pour ce tome
@@ -1305,157 +1274,106 @@ def details_tome(serie: str, tome) -> dict:
     return d
 
 
-def _section_de_serie(wikitexte: str, serie: str) -> str:
-    """Une page Wikipédia qui liste les volumes de plusieurs séries (« Red Eyes Sword: Akame ga Kill! », « … Zero », « Blue Eyes
-    Sword: Hinowa ga Crush! », chacune sous son titre ====) : ne garde que la section de CETTE série. Le titre de la section
-    doit contenir tous les mots du nom de la série ; à égalité, celui qui a le moins de mots en plus (la série principale ne
-    prend pas la section « Zero »). Une page à une seule liste, ou sans correspondance, reste telle quelle."""
-    coupes = [m.start() for m in re.finditer(r"\{\{\s*TomeBD/Entête", wikitexte)]
-    if len(coupes) < 2:
-        return wikitexte
-    mots = set(_simple(serie).split())
-    if not mots:
-        return wikitexte
-    candidats = []
-    for k, debut in enumerate(coupes):
-        fin = coupes[k + 1] if k + 1 < len(coupes) else len(wikitexte)
-        titres = [m for m in re.finditer(r"^={3,4}\s*(.+?)\s*={3,4}\s*$", wikitexte[:debut], re.M)]
-        titre = _simple(titres[-1].group(1)) if titres else ""
-        # fin = la section suivante OU le prochain titre de même niveau (la page continue avec « Anime »…)
-        suite = re.search(r"^={2,4}[^=\n]+={2,4}\s*$", wikitexte[debut:fin], re.M)
-        if suite:
-            fin = debut + suite.start()
-        mots_titre = set(titre.split())
-        if mots and mots <= mots_titre:
-            candidats.append((len(mots_titre - mots), wikitexte[debut:fin]))
-    if not candidats:
-        return wikitexte
-    return min(candidats, key=lambda c: c[0])[1]
 
 
-def _wiki_fr(params: dict) -> dict:
-    """Une requête à fr.wikipedia.org ; trois essais espacés si Wikipédia refuse ou répond de travers (le cas arrive juste
-    après d'autres requêtes de l'appli). Lève une erreur si rien d'exploitable n'arrive : l'appelant ne doit jamais prendre
-    cet échec pour « la page n'existe pas »."""
-    derniere = None
-    for essai in range(3):
-        try:
-            r = _SESSION.get("https://fr.wikipedia.org/w/api.php", params={**params, "format": "json"}, timeout=20)
-            if r.status_code == 200:
-                j = r.json()
-                if "error" not in j:
-                    return j
-                derniere = RuntimeError(str(j["error"].get("code")))
-            else:
-                derniere = RuntimeError(f"HTTP {r.status_code}")
-        except (requests.RequestException, ValueError) as e:
-            derniere = e
-        time.sleep(3 * (essai + 1))
-    raise derniere
+
+def titres_tomes_bilan(serie: str, forcer=False, tome_max=None):
+    """(titres, état, pannes) : l'état dit ce qui s'est passé — « deja » (déjà gardé et à jour), « ok » (trouvé), « partiel » (trouvé mais
+    Wikipédia n'a pas répondu partout : refait dans l'heure), « vide » (Wikipédia ne connaît pas la série : réessais espacés) ou
+    « panne » (Wikipédia n'a pas répondu : l'ancien contenu reste, rien n'est noté)."""
+    garde = _charger(serie) or {}
+    t = garde.get("titres_tomes") or {}
+    anciens_titres, anciens_details = t.get("titres") or {}, t.get("details") or {}
+    trouve = bool(anciens_titres or anciens_details)
+    partiel_a_refaire = bool(t.get("partiel")) and time.time() - t.get("date", 0) > 3600
+    if t and "details" in t and t.get("v") == VERSION_TITRES and not forcer and not partiel_a_refaire:
+        manque = bool(tome_max) and trouve and any(str(n) not in (anciens_details or anciens_titres) for n in range(1, int(tome_max) + 1))
+        if trouve and not (manque and time.time() - t.get("date", 0) > 7 * 86400):
+            return anciens_titres, "deja", []
+        if not trouve and garde_a_jour(t, garde, FICHE_DUREE, trouve=False):
+            return anciens_titres, "deja", []
+    st = garde.get("statut_officiel") or {}
+    if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans titre anglais) : refaite une fois
+        st = statut_officiel(serie, forcer=True) or st
+    fortes, faibles, autres = noms_de_recherche(serie, st)
+    pannes, titres, details, pages_lues = [], {}, {}, []
+    try:                                                  # anglais
+        for page in (_pages_wiki(fortes[:6]) or [])[:8]:
+            texte = _wikitexte(page)
+            for bloc in re.split(r"\{\{\s*Graphic novel list", re.sub(r"<!--.*?-->", "", texte, flags=re.S))[1:]:
+                vol = re.search(r"\|\s*VolumeNumber\s*=\s*(\d+)", bloc)
+                tit = re.search(r"\|\s*LicensedTitle\s*=\s*([^\n|]+)", bloc) or re.search(r"\|\s*TranslitTitle\s*=\s*([^\n|]+)", bloc)
+                if vol and tit and wikifr.propre(tit.group(1)):
+                    titres[vol.group(1)] = wikifr.propre(tit.group(1))
+    except reseau.Panne as e:
+        pannes.append(e)
+    fr = {}
+    try:                                                  # français, prioritaire
+        principale = wikifr.trouver_pages(fortes, faibles, autres)[:1]
+        listes = wikifr.trouver_pages(fortes, faibles, autres, liste=True)
+        # Liens de l'article et des pages « Liste… » qui renvoient vers leurs parties (One Piece : 6 parties)
+        liens = [p for p in wikifr.liens_listes(principale) + wikifr.liens_listes(listes)
+                 if wikifr.page_de_la_serie(p, fortes, faibles, autres)]       # seulement les listes de CETTE série (l'article de Boruto cite celles de Naruto)
+        pages = list(dict.fromkeys(listes + liens + principale))
+        for page in pages[:12]:
+            avant = len(details)
+            wikifr.lire_volumes(wikifr.section_de_serie(wikifr.wikitexte(page), serie), details)
+            if len(details) > avant:
+                pages_lues.append(page)
+        meres = _parties_meres(serie)
+        if meres and not details:                       # « Akame ga Kill ! : Zero » : sa liste est une section de la page de la série mère
+            for page in wikifr.trouver_pages([], (), autres, liste=True, meres=meres)[:4]:
+                if page not in pages:
+                    section = wikifr.section_stricte(wikifr.wikitexte(page), serie)
+                    if section:
+                        wikifr.lire_volumes(section, details)
+                        pages_lues.append(page + " (section)")
+    except reseau.Panne as e:
+        pannes.append(e)
+    for vol, d in details.items():
+        if d.get("titre"):
+            fr[vol] = d["titre"]
+    titres.update(fr)
+    if not (titres or details):
+        if pannes:
+            logger.info("Titres des tomes de %s : Wikipédia n'a pas répondu (%s), l'ancien contenu reste", serie, pannes[0])
+            return anciens_titres, "panne", pannes
+
+        def vide(brut):                                   # Wikipédia a répondu : elle ne connaît pas la série
+            ancien = brut.get("titres_tomes") or {}
+            ancien.update(date=time.time(), v=VERSION_TITRES, essais=int(ancien.get("essais") or 0) + 1)
+            ancien.setdefault("titres", {})
+            ancien.setdefault("details", {})
+            ancien.pop("partiel", None)
+            brut["titres_tomes"] = ancien
+        modifier(serie, vide)
+        logger.info("Titres des tomes de %s : 0 trouvé(s)", serie)
+        return anciens_titres, "vide", []
+
+    def garder(brut):
+        ancien = brut.get("titres_tomes") or {}
+        memes_pages = bool(ancien.get("pages")) and sorted(ancien["pages"]) == sorted(pages_lues)
+        if pannes or memes_pages:                                          # même source (ou source qui n'a pas tout donné) : rien ne se perd
+            fusion = {}
+            for vol in set(ancien.get("details") or {}) | set(details):
+                fusion[vol] = {**((ancien.get("details") or {}).get(vol) or {}), **(details.get(vol) or {})}
+            anciens = ancien.get("titres") or {}
+        else:                                                              # d'autres pages, toutes lues : ce qu'on tenait d'ailleurs (un ancien mauvais
+            fusion, anciens = details, {}                                  # rapprochement, Boruto avec les tomes de Naruto) est remplacé
+        brut["titres_tomes"] = {"date": time.time(), "titres": {**anciens, **titres}, "details": fusion, "pages": pages_lues,
+                                "v": VERSION_TITRES, **({"partiel": True} if pannes else {})}
+    modifier(serie, garder)
+    logger.info("Titres des tomes de %s : %d titre(s), %d volume(s) détaillé(s)%s", serie, len(titres), len(details),
+                " (Wikipédia n'a pas répondu partout)" if pannes else "")
+    return _charger(serie)["titres_tomes"]["titres"], ("partiel" if pannes else "ok"), pannes
 
 
 def titres_tomes(serie: str, forcer=False, tome_max=None) -> dict:
     """{numéro de tome (texte): titre} : Wikipédia français (TomeBD, titre_2 = titre français) en priorité,
-    sinon Wikipédia anglais (Graphic novel list : LicensedTitle, sinon TranslitTitle). Gardés pour de bon une fois
-    trouvés ; redemandés seulement s'il manque le titre d'un tome qu'on a (tome_max : nouveau tome), au plus une fois
-    par semaine. Rien trouvé : réessais espacés."""
-    garde = _charger(serie) or {}
-    t = garde.get("titres_tomes")
-    if t and "details" in t and t.get("v") == VERSION_TITRES and not forcer:
-        connus = t.get("titres") or {}
-        manque = bool(tome_max) and connus and any(str(n) not in connus for n in range(1, int(tome_max) + 1))
-        if connus and not (manque and time.time() - t.get("date", 0) > 7 * 86400):
-            return connus
-        if not connus and garde_a_jour(t, garde, FICHE_DUREE, trouve=False):
-            return connus
-    st = garde.get("statut_officiel") or {}
-    if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans titre anglais) : refaite une fois
-        st = statut_officiel(serie, forcer=True) or st
-    noms = list(dict.fromkeys(x for x in [*_variantes(serie), st.get("titre"), st.get("titre_en")] if x))
-    titres = {}
-    try:                                                  # anglais
-        for page in (_pages_wiki(noms) or [])[:8]:
-            texte = _wiki({"action": "parse", "page": page, "prop": "wikitext", "redirects": 1}).get("parse", {}).get("wikitext", "")
-            for bloc in re.split(r"\{\{\s*Graphic novel list", re.sub(r"<!--.*?-->", "", texte, flags=re.S))[1:]:
-                vol = re.search(r"\|\s*VolumeNumber\s*=\s*(\d+)", bloc)
-                tit = re.search(r"\|\s*LicensedTitle\s*=\s*([^\n|]+)", bloc) or re.search(r"\|\s*TranslitTitle\s*=\s*([^\n|]+)", bloc)
-                if vol and tit and _wiki_propre(tit.group(1)):
-                    titres[vol.group(1)] = _wiki_propre(tit.group(1))
-    except Exception as e:
-        logger.info("Titres des tomes (anglais) de %s : %s", serie, e.__class__.__name__)
-    fr, details, panne = {}, {}, False
-    try:                                                  # français, prioritaire
-        pages = []
-        for nom in noms[:3]:
-            r = _wiki_fr({"action": "query", "list": "search", "srsearch": f'intitle:"Liste des chapitres" {nom}', "srlimit": 8})
-            for x in r.get("query", {}).get("search", []):     # « Liste des chapitres de Dragon Ball (…) », pas « … Dragon Ball Super »
-                reste = re.sub(r"^Liste des (?:chapitres|volumes) de\s+", "", x["title"])
-                if _simple(re.sub(r"\s*\(.*\)$", "", reste)) == _simple(nom):
-                    pages.append(x["title"])
-            if pages:
-                break
-        # Liens de la fiche Wikipédia de la série et des pages « Liste… » qui renvoient vers leurs parties (One Piece : 6 parties)
-        principale = _page_wikipedia([serie, st.get("titre"), st.get("titre_en")])
-        pages = list(dict.fromkeys(pages + _liens_listes([principale] if principale else []) + _liens_listes(pages)
-                                   + ([principale] if principale else [])))      # la fiche elle-même : TomeBD dans « Liste des volumes »
-        for page in pages[:12]:
-            r = _wiki_fr({"action": "parse", "page": page, "prop": "wikitext", "redirects": 1})
-            w = _section_de_serie(r.get("parse", {}).get("wikitext", {}).get("*", ""), serie)
-            langue_fr = "2"                               # quel champ « titre_N » est en français (d'après TomeBD/Entête)
-            for bloc in re.split(r"\{\{\s*TomeBD", w)[1:]:
-                if bloc.startswith("/Entête"):
-                    m = re.search(r"\|\s*langue_(\d)\s*=\s*Fran", bloc)
-                    langue_fr = m.group(1) if m else "1"
-                    continue
-                vol = re.search(r"\|\s*volume\s*=\s*(\d+)", bloc)
-                if not vol or vol.group(1) in details:
-                    continue                                  # 1re édition de la page (pas la « double », la « perfect »)
-                champs = _champs_tomebd(bloc)
-                titre = _wiki_propre(champs.get("titre_" + langue_fr, ""))
-                extra = champs.get("extra", "")
-                m_t = re.search(r"Titre du volume\s*:?\s*'*\s*(?:<br\s*/?>)?(.+?)(?:<br|$)", extra, re.S | re.I)
-                if not titre and m_t:
-                    titre = _wiki_propre(m_t.group(1))
-                m_c = re.search(r"Personnages en couverture\s*:?\s*'*\s*(?:<br\s*/?>)?(.+?)(?:<br|$)", extra, re.S | re.I)
-                # « * Ch.1 : … », « * [gras]Plat 1 :[/gras] … », « * Chapitre 12 : … » (le mot avant le numéro varie)
-                brut = champs.get("chapitre", "").replace("'" * 3, "")
-                brut = re.sub(r"\{\{\s*(\d+)\s*(?:er|re|e|ème|è|nd|nde)\s*\}\}", r"\1", brut)     # « {{1er}} Quart-temps : … » (Kuroko's Basket)
-                chap = [(float(n), _wiki_propre(t)) for n, t in re.findall(
-                    r"^\*\s*[^\d:\n]{0,15}?(\d+(?:\.\d+)?)\s*(?:[^\W\d_][\w'’-]*(?:\s[\w'’-]+)?)?\s*:\s*(.+)$", brut, re.M)]
-                if not chap:                              # « Kapitel.1 {{japonais|La fuite|…}}<br />Kapitel.2 … »
-                    for morceau in re.split(r"<br\s*/?>|\n", brut):
-                        mc = re.match(r"^\W*[^\W\d_]{2,15}[.\s·:]*(\d+(?:\.\d+)?)\s*[:.\-–]?\s*(.+)$", morceau.strip())
-                        if mc and _wiki_propre(mc.group(2)):
-                            chap.append((float(mc.group(1)), _wiki_propre(mc.group(2))))
-                resume = re.sub(r"'{3}\s*Résumé\s*:?\s*'{3}", "", champs.get("résumé", ""), flags=re.I)
-                d = {"titre": titre, "sortie": _wiki_propre(_dates(champs.get("sortie_" + langue_fr, ""))),
-                     "couverture": _wiki_propre(m_c.group(1)) if m_c else "",
-                     "resume": _wiki_propre(_puces(resume)),
-                     "chapitres": [f"{n:g}. {t}" for n, t in chap if t][:40]}
-                details[vol.group(1)] = {k: v for k, v in d.items() if v}
-                if titre:
-                    fr[vol.group(1)] = titre
-            time.sleep(0.3)
-    except Exception as e:
-        panne = True                                      # Wikipédia n'a pas répondu : on ne le prend pas pour « rien trouvé »
-        logger.info("Titres des tomes (français) de %s : %s", serie, e.__class__.__name__)
-    titres.update(fr)
-    if panne and not details:
-        return titres                                     # rien écrit : la prochaine consultation réessaie tout de suite
-    try:
-        brut = json.loads(_fichier(serie).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        brut = {}
-    precedent = int((brut.get("titres_tomes") or {}).get("essais") or 0)
-    brut["titres_tomes"] = {"date": time.time(), "titres": titres, "details": details, "v": VERSION_TITRES}
-    if not titres:                                        # rien trouvé : réessais espacés (1, 3, 7, 30 jours)
-        brut["titres_tomes"]["essais"] = precedent + 1
-    DOSSIER.mkdir(parents=True, exist_ok=True)
-    tmp = _fichier(serie).with_suffix(".tmp")
-    tmp.write_text(json.dumps(brut, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(_fichier(serie))
-    logger.info("Titres des tomes de %s : %d trouvé(s)", serie, len(titres))
-    return titres
+    sinon Wikipédia anglais (Graphic novel list : LicensedTitle, sinon TranslitTitle). La liste des volumes (dates, ISBN, résumés,
+    chapitres) est gardée à côté dans « details ». Gardés pour de bon une fois trouvés ; redemandés seulement s'il manque un tome
+    qu'on a (tome_max : nouveau tome), au plus une fois par semaine. Rien trouvé : réessais espacés."""
+    return titres_tomes_bilan(serie, forcer, tome_max)[0]
 
 
 # ---------------------------------------------------------------- Œuvres liées (hors-série, spin-off, gaiden…)
@@ -1497,11 +1415,8 @@ def relations(serie: str, forcer=False) -> list[dict]:
     q = ("query($i:Int){Media(id:$i,type:MANGA){relations{edges{relationType node{id type format volumes "
          "title{romaji english native} synonyms startDate{year month day}}}}}}")
     try:
-        r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"i": ident}}, timeout=15)
-        if r.status_code != 200:
-            return garde or []
-        aretes = r.json()["data"]["Media"]["relations"]["edges"]
-    except Exception as e:
+        aretes = ((reseau.anilist(q, {"i": ident}) or {}).get("Media") or {})["relations"]["edges"]
+    except (reseau.Panne, KeyError, TypeError) as e:
         logger.info("Œuvres liées de %s : %s", serie, e.__class__.__name__)
         return garde or []
     liste = []
@@ -1546,7 +1461,7 @@ def _relations_mangaupdates(serie: str, liste: list[dict]) -> list[dict]:
     mu = ((_charger(serie) or {}).get("fiche") or {}).get("mangaupdates")
     if not mu:
         return []
-    d = _SESSION.get(f"https://api.mangaupdates.com/v1/series/{mu}", timeout=15).json()
+    d = reseau.get(f"https://api.mangaupdates.com/v1/series/{mu}").json()
     out = []
     for z in d.get("related_series") or []:
         rel = _RELATIONS_MU.get((z.get("relation_type") or "").lower())
@@ -1554,8 +1469,8 @@ def _relations_mangaupdates(serie: str, liste: list[dict]) -> list[dict]:
         if not rel or re.search(r"\((?:novel|light novel)\)|\bdj\b", nom, re.I) or _deja_connue([nom], liste):
             continue
         try:
-            x = _SESSION.get(f"https://api.mangaupdates.com/v1/series/{z['related_series_id']}", timeout=15).json()
-        except Exception:
+            x = reseau.get(f"https://api.mangaupdates.com/v1/series/{z['related_series_id']}").json()
+        except reseau.Panne:
             continue
         if (x.get("type") or "").lower() not in ("manga", "manhwa", "manhua"):
             continue
@@ -1629,9 +1544,8 @@ def chercher_oeuvre(serie: str, nom: str):
     q = ("query($s:String){Page(perPage:8){media(search:$s,type:MANGA,format_not:NOVEL){id format volumes "
          "title{romaji english} synonyms startDate{year month day}}}}")
     try:
-        r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": f"{serie} {' '.join(reste)}"}}, timeout=15)
-        medias = r.json()["data"]["Page"]["media"] if r.status_code == 200 else None
-    except Exception:
+        medias = ((reseau.anilist(q, {"s": f"{serie} {' '.join(reste)}"}) or {}).get("Page") or {}).get("media")
+    except reseau.Panne:
         medias = None
     if medias is None:
         return None

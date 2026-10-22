@@ -28,19 +28,28 @@ from flask import Flask, Response, jsonify, redirect, render_template, request, 
 from urllib.parse import quote
 
 BASE_DIR = Path(__file__).parent
-DATA_DIR = BASE_DIR / "data"
+import reseau                                   # sait si on est dans les tests automatiques (reseau.EN_TEST)
+if reseau.EN_TEST:
+    # Les tests ne touchent JAMAIS aux vraies données : dossier jetable pour tout ce que app.py range dans data/, et les réglages du serveur
+    # (secrets.env : clés, dossier de la bibliothèque…) ne sont pas chargés.
+    import tempfile
+    DATA_DIR = Path(tempfile.mkdtemp(prefix="mouflanga-test-"))
+    os.environ.setdefault("MANGA_DIR", str(DATA_DIR / "mangas"))
+else:
+    DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 _SECRETS_FILE = DATA_DIR / "secrets.env"
 
 try:
     from dotenv import load_dotenv
-    for _f in (BASE_DIR / ".env", _SECRETS_FILE):
+    for _f in (() if reseau.EN_TEST else (BASE_DIR / ".env", _SECRETS_FILE)):
         if _f.exists():
             load_dotenv(_f, override=True)
 except ImportError:
     pass  # python-dotenv absent : variables d'environnement du système seulement
 
 import archives
+import reseau
 import tomes
 import tomes_cbz
 import importer
@@ -365,7 +374,7 @@ def _infos_tome(name, tome):
              "equipe": prov.get("equipe", ""), "origine": prov.get("origine", ""), "provenance_manuelle": bool(prov.get("manuel")),
              "sommaire": "manuel" if lu.get("manuel") else ("lu" if lu.get("chapitres") else ""), "valide_le": lu.get("valide_le", ""),
              "sortie": det.get("sortie", "")}
-    isbn = _isbn_connus(ed).get(str(tome), "")
+    isbn = _isbn_connus(ed, serie=name).get(str(tome), "")
     if ed.get("edition"):
         notes["edition"] = ed["edition"]
     if ed.get("volumes_attendus"):
@@ -847,16 +856,17 @@ def _travail_de(name, entrees=None):
     infos = _edition_vue(name)
     fait = [k for k, _ in TRAVAIL if (infos.get("travail") or {}).get(k)]
     suggere = [k for k in ("allegement",) if infos.get("allegement") and k not in fait]
-    connus = _isbn_connus(infos)
+    connus = _isbn_connus(infos, serie=name)
     numeros = _tomes_de(name, entrees) if connus else set()
     if "isbn" not in fait and numeros and all(str(t) in connus for t in numeros):
         suggere.append("isbn")                               # tous les tomes ont leur ISBN : la case peut être cochée
     return {"fait": fait, "total": len(TRAVAIL), "complet": len(fait) == len(TRAVAIL), "suggere": suggere}
 
 
-def _isbn_connus(infos, google=True):
-    """{numéro de tome (texte): ISBN} déjà notés pour une série : collés à la main ou lus dans les pages d'abord,
-    puis (google=True) ceux trouvés sur Google Books, moins sûrs (l'édition du fichier peut être une autre)."""
+def _isbn_connus(infos, google=True, serie=None):
+    """{numéro de tome (texte): ISBN} déjà notés pour une série : collés à la main ou lus dans les pages d'abord, puis (google=True)
+    ceux trouvés sur Internet (Wikipédia, BnF, Google Books : « serie » = le nom de la série dont on lit la mémoire), moins sûrs
+    (l'édition du fichier peut être une autre)."""
     out = {str(t): c for t, c in (infos.get("isbn") or {}).items() if c}
     lus = {str(t): v["isbn"] for t, v in (infos.get("sommaires") or {}).items() if isinstance(v, dict) and v.get("isbn")}
     for t, c in lus.items():
@@ -866,46 +876,34 @@ def _isbn_connus(infos, google=True):
             out[t] = c
         out.setdefault(t, c)
     if google:
+        if serie:
+            import notices
+            for t, c in notices.isbn_web(serie).items():
+                out.setdefault(str(t), c)
         for t, c in (infos.get("isbn_google") or {}).items():
             if c:
                 out.setdefault(str(t), c)
     return out
 
 
-def _isbn_google_serie(nom, forcer=False):
-    """ISBN des tomes encore sans ISBN, cherchés sur Google Books pour toute la série d'un coup (bien plus rapide que
-    de lire les pages). Gardés à part (« isbn_google ») : un ISBN lu dans le tome ou collé à la main passe devant.
-    Une série déjà cherchée ne l'est plus pendant 30 jours (sauf forcer, bouton 🔍) : Google limite les requêtes par jour.
-    Renvoie le nombre trouvé, ou None si Google n'est pas utilisable."""
+def _contexte_identification(nom):
+    """Ce que l'identification doit savoir de la série : ses tomes présents, et si ses tomes sont d'une édition particulière
+    (Perfect, Deluxe… : les ISBN et résumés de l'édition standard ne valent pas, on ne cherche que cette édition)."""
     import edition
-    dossier = MANGA_DIR / nom
-    infos = edition.lire(dossier)
-    connus = _isbn_connus(infos)
-    numeros = sorted(t for t in _tomes_de(nom) if str(t) not in connus)
-    if not numeros:
-        return 0
-    if not forcer and time.time() - float(infos.get("isbn_google_le") or 0) < 30 * 86400:
-        return 0
-    nom_edition = ""
-    if _edition_differente(nom):                         # Perfect, Deluxe… : seulement les notices de CETTE édition
-        nom_edition = infos.get("edition") or ""
-        if not nom_edition:
-            return 0
-    cache = tomes._charger(nom) or {}
-    st, fi = cache.get("statut_officiel") or {}, cache.get("fiche") or {}
-    r = tomes.isbn_google([nom, fi.get("titre_fr"), st.get("titre")], numeros, nom_edition)
-    if r is None:
-        return None
-    trouves, complet = r
-    if trouves or complet:
-        infos = edition.lire(dossier)                    # relu : rien d'écrit entre-temps n'est perdu
-        infos.setdefault("isbn_google", {}).update({str(t): c for t, c in trouves.items()})
-        if complet:                                      # arrêtée par le plafond du jour : refaite au prochain passage
-            infos["isbn_google_le"] = time.time()
-        edition.ecrire(dossier, infos)
-    logger.info("ISBN Google Books de « %s » : %d trouvé(s) sur %d tome(s)%s", nom, len(trouves), len(numeros),
-                "" if complet else " (arrêté par le plafond du jour, à reprendre)")
-    return len(trouves) if complet else None
+    differente = _edition_differente(nom)
+    return {"tomes": _tomes_de(nom), "edition_differente": differente,
+            "edition": (edition.lire(MANGA_DIR / nom).get("edition") or "") if differente else ""}
+
+
+import identification
+identification.CONTEXTE = _contexte_identification
+
+
+def _isbn_internet_serie(nom, forcer=False):
+    """ISBN et résumés des tomes cherchés sur Internet pour toute la série d'un coup (Wikipédia, BnF, puis Google Books pour ce qui
+    manque encore) : bien plus rapide et léger que de lire les pages. Gardés dans la mémoire de la série (data/tomes), jamais dans
+    ses fichiers : un ISBN noté à la main ou lu dans le tome passe devant. Renvoie le bilan de l'étape."""
+    return identification.identifier(nom, forcer=forcer, etapes=("notices",))["notices"]
 
 
 def _isbn_en_double(infos):
@@ -918,16 +916,18 @@ def _isbn_en_double(infos):
     return {t for t, c in lus.items() if notes.get(t) == c and nb[c] > 1}
 
 
-def _tomes_sans_isbn(nom, tout=False):
+def _tomes_sans_isbn(nom, tout=False, auto=False):
     """[(tome, fichier)] des tomes complets dont l'ISBN n'est pas connu (tout=True : tous), pour les lire dans les pages.
-    Un ISBN partagé par deux tomes de la série compte comme inconnu : ces tomes sont relus."""
+    Un ISBN partagé par deux tomes de la série compte comme inconnu : ces tomes sont relus. auto=True (préparation de fond,
+    identification) : sans les tomes dont la lecture a déjà échoué depuis moins de 90 jours (on ne relit pas pour rien)."""
     import edition
     infos = edition.lire(MANGA_DIR / nom)
-    connus = {t: c for t, c in _isbn_connus(infos).items() if t not in _isbn_en_double(infos)}
+    connus = {t: c for t, c in _isbn_connus(infos, serie=nom).items() if t not in _isbn_en_double(infos)}
+    essais = infos.get("isbn_pages_essai") or {}
     return [(e["tome"], MANGA_DIR / e["path"])
             for e in sorted((x for x in _entrees(_scan().get(nom) or []) if x.get("tome") is not None and x.get("key") == x.get("path")
                              and not x.get("a_importer")), key=lambda x: x["tome"])
-            if tout or str(e["tome"]) not in connus]
+            if tout or (str(e["tome"]) not in connus and not (auto and time.time() - float(essais.get(str(e["tome"])) or 0) < 90 * 86400))]
 
 
 def _lire_isbn_pages(name, a_lire):
@@ -951,6 +951,9 @@ def _lire_isbn_pages(name, a_lire):
                 trouves += 1
             else:
                 rates.append(tome)
+                infos = edition.lire(MANGA_DIR / name)
+                infos.setdefault("isbn_pages_essai", {})[str(tome)] = time.time()      # lu pour rien : pas relu avant 90 jours (hors bouton 🔍)
+                edition.ecrire(MANGA_DIR / name, infos)
             _ISBN_SERIE[name]["fait"] += 1
         edition.invalider(MANGA_DIR / name)
         msg = f"{trouves} ISBN lu(s) sur {len(a_lire)} tome(s)." + (
@@ -1260,8 +1263,13 @@ def api_series():
         st = dict(st, resume=perso, resume_langue="perso")
     elif st.get("resume_langue") != "fr" and name != "(Sans série)":
         synopsis_nfo = (_infos_serie(name).get("nfo_infos") or {}).get("synopsis")
+        suivie = suivi.lire()["series"].get(name) or {}
+        du_tracker = (suivie.get("tracker") or {}).get("synopsis")
         if synopsis_nfo:                                         # synopsis français du NFO du torrent, faute d'un résumé français trouvé
             st = dict(st, resume=synopsis_nfo, resume_langue="fr")
+        elif du_tracker:                                         # sinon celui de la présentation du torrent sur son tracker
+            st = dict(st, resume=du_tracker, resume_langue="fr",
+                      resume_source="présentation du torrent sur " + ((suivie["tracker"].get("synopsis_de") or {}).get("tracker") or "son tracker"))
     a_ranger = name != "(Sans série)" and any(not c["groupe"] and c["num"] is not None for c in chapters)
     rep = {"id": name, "title": name, "chapters": chapters,
                     "current": p.get("current", ""), "page": p.get("page", 0),
@@ -1269,6 +1277,7 @@ def api_series():
                     "en_tomes": en_tomes, "a_ranger": a_ranger, "rangement": _etat_rangement(name),
                     "etat": etat, "etat_texte": etat_texte, "etat_source": st.get("titre"),
                     "compte": _compte(chapters), "resume": st.get("resume") or "", "resume_langue": st.get("resume_langue") or "",
+                    "resume_source": st.get("resume_source") if st.get("resume_langue") == "fr" and st.get("resume_source", "").startswith("présentation") else "",
                     "anilist": st.get("anilist"), "anilist_choisi": _anilist_choisi(name), "rattacher_a": _serie_mere(name),
                     "manquants": trous, "premier": premier, "dernier": dernier, "type_manquants": type_manquants,
                     "organiser": _plan_organiser(name, files) if name != "(Sans série)" else None,
@@ -1279,10 +1288,10 @@ def api_series():
                     **_infos_anime(name), "edition": _infos_edition(name, files), "_t": _titres_tomes_en_fond(name, chapters),
                     **({"travail": _travail_de(name), "travail_liste": [{"cle": k, "nom": n} for k, n in TRAVAIL]}
                        if auth.role() != "lecteur" else {}),
-                    "suivi": suivi.lire()["series"].get(name),
+                    "suivi": suivi.sans_liens(suivi.lire()["series"].get(name)),
                     **({"recherchee": True, "cover_externe": vide.get("couverture") or "",
-                        "compte": " · ".join(str(x) for x in ("📥 Pas encore de tomes", vide.get("annee"), vide.get("auteur"),
-                                                              vide.get("editeur"), vide.get("source")) if x),
+                        "compte": " · ".join(str(x) for x in ("📥 Pas encore de tomes", vide.get("annee"), vide.get("auteur") or (vide.get("tracker") or {}).get("auteur"),
+                                                              vide.get("editeur") or (vide.get("tracker") or {}).get("editeur"), vide.get("source")) if x),
                         "lien": vide.get("lien") or ""} if vide is not None else {})}
     if auth.role() == "lecteur":                         # adresses des autres applis et chemins du NAS : pas pour un lecteur
         for k in ("moufloster", "moufloster_externe", "mouflopening", "mouflopening_externe"):
@@ -1466,14 +1475,12 @@ def api_series_travail_comptes():
     manuels = infos.get("resumes_tomes") or {}
     sommaires = infos.get("sommaires") or {}
     comptes = {}
-    comptes["resumes"] = sum(1 for t in numeros if manuels.get(str(t)) or (details.get(str(t)) or {}).get("resume")
-                             or tomes.resume_tome_memoire(name, t))
     chap = lambda t: (sommaires.get(str(t)) or {}).get("chapitres") or []
     # « fait » = sommaire VALIDÉ (bouton ✅), pas seulement lu automatiquement ni enregistré en cours de saisie
     valide = lambda t: bool((sommaires.get(str(t)) or {}).get("valide_le"))
     comptes["titres"] = sum(1 for t in numeros if chap(t) and valide(t))
     comptes["liens"] = sum(1 for t in numeros if chap(t) and valide(t) and signets.nb_signets(chap(t)) == len(chap(t)))
-    comptes["isbn"] = sum(1 for t in numeros if str(t) in _isbn_connus(infos))
+    comptes["isbn"] = sum(1 for t in numeros if str(t) in _isbn_connus(infos, serie=name))
     comptes["couvertures"] = sum(1 for t in numeros if couvertures_tomes.remplacement(MANGA_DIR / name, t))
     ecrits = 0
     resume_fichier = set()                                # tomes dont le fichier porte un résumé (balise Summary)
@@ -1498,8 +1505,10 @@ def api_series_travail_comptes():
         if _CACHE_RESUME_FICHIER[cle]:
             resume_fichier.add(t)
     # un résumé écrit dans le fichier du tome compte comme un résumé trouvé (comme dans la fiche du tome)
+    import notices
+    memoire = notices.resumes_de(name, numeros)                # tous les tomes d'un coup (Wikipédia, BnF, Google Books déjà gardés)
     comptes["resumes"] = sum(1 for t in numeros if t in resume_fichier or manuels.get(str(t)) or (details.get(str(t)) or {}).get("resume")
-                             or tomes.resume_tome_memoire(name, t))
+                             or memoire.get(int(t), ("", ""))[0])
     comptes["reecriture"] = ecrits
     return jsonify({"total": len(numeros), "comptes": comptes})
 
@@ -1517,7 +1526,7 @@ def api_serie_isbn_lire():
     name = str(donnees.get("series", ""))
     if name not in _scan() or name == "(Sans série)":
         return jsonify({"ok": False, "error": "Série introuvable"}), 404
-    connus = _isbn_connus(edition.lire(MANGA_DIR / name))
+    connus = _isbn_connus(edition.lire(MANGA_DIR / name), serie=name)
     a_lire = _tomes_sans_isbn(name, tout=bool(donnees.get("tout")))
     if request.method == "GET":
         st = _ISBN_SERIE.get(name) or {}
@@ -1527,21 +1536,23 @@ def api_serie_isbn_lire():
         return jsonify({"ok": False, "error": "Lecture des ISBN déjà en cours pour cette série."}), 409
     if not a_lire:
         return jsonify({"ok": False, "error": "Tous les tomes ont déjà leur ISBN."}), 400
-    _ISBN_SERIE[name] = {"en_cours": True, "fait": 0, "message": "Recherche sur Google Books…"}
+    _ISBN_SERIE[name] = {"en_cours": True, "fait": 0, "message": "Recherche sur Internet (Wikipédia, BnF, Google Books)…"}
 
     def travail():
+        bilan = None
         try:
             if not donnees.get("tout"):
-                _isbn_google_serie(name, forcer=True)    # Google Books d'abord : bien plus rapide que les pages
+                bilan = _isbn_internet_serie(name, forcer=True)    # Internet d'abord : bien plus rapide et léger que les pages
         except Exception as ex:
-            logger.info("ISBN Google Books de %s : %s", name, ex.__class__.__name__)
+            logger.info("ISBN sur Internet de %s : %s", name, ex.__class__.__name__)
         reste = _tomes_sans_isbn(name, tout=bool(donnees.get("tout")))
-        if reste and sommaire.disponible():
-            _lire_isbn_pages(name, reste)                # les pages seulement pour ceux que Google n'a pas
+        attente = bool(bilan and bilan.extra.get("attente"))        # un service n'a pas répondu : le reste viendra tout seul
+        if reste and sommaire.disponible() and (donnees.get("tout") or not attente):
+            _lire_isbn_pages(name, reste)                # les pages seulement pour ceux qu'Internet n'a pas
         else:
             nb = len(a_lire) - len(reste)
-            _ISBN_SERIE[name] = {"en_cours": False, "fait": nb, "message": f"{nb} ISBN trouvé(s) sur Google Books."
-                                 + (f" {len(reste)} tome(s) sans ISBN (lecteur de texte absent du serveur)." if reste else "")}
+            _ISBN_SERIE[name] = {"en_cours": False, "fait": nb, "message": f"{nb} ISBN trouvé(s) sur Internet."
+                                 + (f" {len(reste)} tome(s) sans ISBN : " + (bilan.detail if attente and bilan else "lecteur de texte absent du serveur") + "." if reste else "")}
     threading.Thread(target=travail, daemon=True).start()
     return jsonify({"ok": True, "message": "Lecture des ISBN lancée…"})
 
@@ -3434,8 +3445,7 @@ def _titre_anilist(t):
     trouve = ""
     try:
         q = "query($s:String){Page(perPage:6){media(search:$s,type:MANGA){title{romaji english} synonyms}}}"
-        r = tomes._SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": t}}, timeout=10)
-        for m in (r.json().get("data") or {}).get("Page", {}).get("media") or []:
+        for m in ((reseau.anilist(q, {"s": t}) or {}).get("Page") or {}).get("media") or []:
             egaux = [c.rstrip(" .。") for c in (m["title"].get("english"), m["title"].get("romaji"), *(m.get("synonyms") or []))
                      if c and _latin(c) and _cle_nom(c.rstrip(" .!。")) == _cle_nom(t)]
             if egaux:                                        # « Akame ga Kill! Zero » plutôt que « Akame ga KILL! ZERO »
@@ -4140,6 +4150,10 @@ def _importer_torrent(nom, source, remplacer=False):
 # ---------------- ➕ Séries suivies (ajout comme Sonarr, surveillance, surclassement) : admin ----------------
 import suivi
 suivi._ETAT["fichier"] = DATA_DIR / "suivies.json"
+import lecture_pages
+import page_tracker
+page_tracker.FICHIER = DATA_DIR / "torrent-pages.json"
+lecture_pages.NOMS = lambda nom: tomes.noms_de_recherche(nom)[0]
 
 
 def _infos_suivi(nom):
@@ -4172,7 +4186,7 @@ def _accepter_demande(x):
 @app.route("/api/suivies", methods=["GET", "POST"])
 def api_suivies():
     if request.method == "GET":
-        return jsonify({"series": suivi.lire()["series"]})
+        return jsonify({"series": {n: suivi.sans_liens(x) for n, x in suivi.lire()["series"].items()}})
     body = request.get_json(silent=True) or {}
     action, nom = str(body.get("action", "")), _nom_serie(str(body.get("nom", "")).strip())
     if action == "ajouter":
@@ -4198,6 +4212,8 @@ def api_suivies():
     if action == "retirer":
         with suivi._verrou:
             d = suivi.lire(); d["series"].pop(nom, None); suivi.ecrire(d)
+        if not _scan().get(nom):                       # série sans fichier : ce qu'on avait appris sur elle part avec elle
+            tomes.oublier(nom)
         return jsonify({"ok": True, "message": f"« {nom} » n'est plus suivie."})
     if action == "ignorer":
         with suivi._verrou:
@@ -4211,7 +4227,7 @@ def api_suivies():
         if not torrents.configure():
             return jsonify({"ok": False, "error": "Prowlarr n'est pas réglé."}), 400
         try:
-            nouv = suivi.verifier(nom, torrents.chercher, _infos_suivi)
+            nouv = suivi.verifier(nom, torrents.chercher, _infos_suivi, apres=lecture_pages.lire_en_fond)
         except Exception as e:
             return jsonify({"ok": False, "error": f"Recherche impossible : {e}"}), 502
         return jsonify({"ok": True, "message": f"{len(nouv)} nouvelle(s) proposition(s)." if nouv else "Rien de nouveau pour l'instant."})
@@ -4354,10 +4370,25 @@ def api_torrents_chercher():
     if not torrents.configure():
         return jsonify({"error": "Prowlarr et qBittorrent ne sont pas encore réglés (⚙️ Réglages → Connexions)."}), 400
     try:
-        return jsonify({"resultats": torrents.chercher(q[:100], request.args.get("tout") == "1")})
+        return jsonify({"resultats": torrents.publier(torrents.chercher(q[:100], request.args.get("tout") == "1"))})
     except Exception as e:
         logger.warning("Recherche Prowlarr impossible : %s", e)
         return jsonify({"error": f"Recherche impossible : {e}"}), 502
+
+
+@app.route("/api/torrents/page", methods=["POST"])
+def api_torrents_page():
+    """Lit la page d'un torrent sur son tracker (présentation, NFO) et complète la fiche de la série suivie.
+    {serie, proposition} pour une proposition de la surveillance ; {page, titre[, serie]} pour un résultat de recherche."""
+    body = request.get_json(silent=True) or {}
+    serie, force = _nom_serie(str(body.get("serie", "")).strip(), ""), bool(body.get("force"))
+    if body.get("proposition"):
+        r = lecture_pages.lire_proposition(serie, str(body["proposition"]), force)
+    elif body.get("page"):
+        r = lecture_pages.lire_page(serie, str(body["page"]), str(body.get("titre", ""))[:250], None, force)
+    else:
+        return jsonify({"ok": False, "error": "Page manquante."}), 400
+    return jsonify(r)
 
 
 def _serie_proche(nom):
@@ -4381,15 +4412,18 @@ def api_torrents():
         return jsonify({"configure": torrents.configure(), "torrents": torrents.liste()[:30],
                         "series": [] if request.args.get("leger") else sorted(n for n in _scan() if n != "(Sans série)")})
     body = request.get_json(silent=True) or {}
-    lien, titre, serie = str(body.get("lien", "")), str(body.get("titre", ""))[:200], _nom_serie(str(body.get("serie", "")).strip())
+    titre, serie = str(body.get("titre", ""))[:200], _nom_serie(str(body.get("serie", "")).strip())
+    lien = torrents.lien_de(body.get("resultat")) or (str(body.get("lien", "")) if str(body.get("lien", "")).startswith("magnet:") else "")
     remplacer = body["remplacer"] if isinstance(body.get("remplacer"), bool) else None
-    if not lien.startswith(("http://", "https://", "magnet:")) or not serie or serie == "sans-titre":
+    if not serie or serie == "sans-titre":
         return jsonify({"ok": False, "error": "Choisis le nom de la série."}), 400
+    if not lien:
+        return jsonify({"ok": False, "error": "Ce résultat n'est plus disponible : relance la recherche."}), 400
     proche = _serie_proche(serie)
     if proche and not body.get("confirme"):       # « Breaker » alors que « CØDE BREAKER » existe : on demande
         return jsonify({"ok": False, "proche": proche, "error": f"Une série au nom proche existe déjà : « {proche} »."}), 409
     try:
-        torrents.lancer(lien, titre, serie, remplacer)
+        torrents.lancer(lien, titre, serie, remplacer, str(body.get("page", ""))[:600])
         if body.get("proposition"):               # proposition de la surveillance : marquée « vue »
             with suivi._verrou:
                 d = suivi.lire()
@@ -4452,17 +4486,17 @@ def _etape(serie, index, etat, detail=""):
         e["etat"], e["detail"] = etat, detail
 
 
-def _relancer_identification(serie, relire_fichiers=True):
-    """En arrière-plan : refait la recherche de la série, cache effacé avant. Chaque étape est notée
-    (en cours, réussie ou en échec, avec son résultat) pour être affichée à l'écran (/api/identifier/etat)."""
-    etapes = [
-        {"nom": "Effacement de l'ancien cache", "etat": "attente", "detail": ""},
-        {"nom": "Tomes : Wikipédia puis MangaDex", "etat": "attente", "detail": ""},
-        {"nom": "Statut et résumé : AniList (nom d'origine via MangaUpdates), Wikipédia", "etat": "attente", "detail": ""},
-        {"nom": "Fiche : AniList, Wikipédia, MangaUpdates, Google Books", "etat": "attente", "detail": ""},
+def _relancer_identification(serie, relire_fichiers=True, nouvelle_identite=False):
+    """En arrière-plan : refait toute la recherche de la série (identification.identifier). Rien n'est effacé : chaque source complète
+    ou corrige ce qu'on savait, et une source qui ne répond pas ne fait rien perdre (elle est reprise plus tard toute seule).
+    nouvelle_identite : une autre fiche AniList vient d'être choisie, ce qu'on savait de l'ancienne ne vaut plus : tout repart de zéro.
+    Chaque étape est notée (en cours, réussie, en attente d'un service, ou en échec, avec son résultat) pour l'écran
+    (/api/identifier/etat)."""
+    noms = [nom for _, nom in identification.ETAPES]
+    etapes = [{"nom": nom, "etat": "attente", "detail": ""} for nom in noms] + [
         {"nom": "Rangement des chapitres dans leurs tomes", "etat": "attente", "detail": ""},
-        {"nom": "ISBN des tomes : Google Books, puis lecture des pages pour ceux qui manquent", "etat": "attente", "detail": ""},
-    ]
+        {"nom": "ISBN imprimés dans les tomes (seulement ceux qu'Internet n'a pas)", "etat": "attente", "detail": ""}]
+    nb = len(noms)
     with _IDENT_VERROU:
         _IDENTIFICATIONS[serie] = {"etapes": etapes, "fini": False, "debut": time.time()}
 
@@ -4475,66 +4509,57 @@ def _relancer_identification(serie, relire_fichiers=True):
                 _relire_fichiers_serie(serie, infos)
             except Exception as e:
                 logger.info("Relecture des fichiers de « %s » : %s", serie, e.__class__.__name__)
+        if nouvelle_identite:
+            tomes.oublier(serie)
 
-        def lancer(i, fonction):
-            _etape(serie, i, "en_cours")
-            try:
-                return fonction()
-            except Exception as e:
-                logger.warning("Identification de « %s » (étape %d) : %s", serie, i + 1, e)
-                _etape(serie, i, "echec", f"erreur : {e.__class__.__name__}")
-                return None
+        indices = {cle: i for i, (cle, _) in enumerate(identification.ETAPES)}
 
-        lancer(0, lambda: (tomes.oublier(serie), _etape(serie, 0, "ok", "ancien cache effacé")))
-        # le statut d'abord : son titre AniList (« Shuujin Riku ») aide ensuite à trouver les tomes
-        st = lancer(2, lambda: tomes.statut_officiel(serie, forcer=True))
-        brut_st = (tomes._charger(serie) or {}).get("statut_officiel") or {}
-        resume_txt = " · résumé " + ({"fr": "en français", "en": "en anglais"}.get(brut_st.get("resume_langue"), "trouvé") if brut_st.get("resume") else "introuvable")
-        if st:
-            _etape(serie, 2, "ok", f"{ {'FINISHED': 'terminée', 'RELEASING': 'en cours', 'HIATUS': 'en pause', 'CANCELLED': 'arrêtée'}.get(st.get('statut'), st.get('statut') or '?') }"
-                                   + _texte_volumes(serie, st.get("volumes")) + resume_txt)
-        elif _etapes_etat(serie, 2) != "echec":
-            _etape(serie, 2, "ok", "pas trouvé sur AniList" + resume_txt)
-        tome_info = lancer(1, lambda: tomes.chercher(serie, forcer=True))
-        try:                                         # titres et chapitres français de chaque tome (Wikipédia), refaits ici aussi
-            tomes.titres_tomes(serie, forcer=True)
-        except Exception as e:
-            logger.info("Titres des tomes de « %s » : %s", serie, e.__class__.__name__)
-        fr = ((tomes._charger(serie) or {}).get("titres_tomes") or {}).get("details") or {}
-        texte_fr = (f" · Wikipédia français : {len(fr)} tome(s), {sum(len(v.get('chapitres') or []) for v in fr.values())} titre(s) de chapitres"
-                    if fr else " · Wikipédia français : rien trouvé (ou pas de réponse, réessayé à la prochaine ouverture)")
-        if tome_info:
-            _etape(serie, 1, "ok", f"{len({t for t in (tome_info.get('tomes') or {}).values() if t is not None})} tome(s), "
-                                   f"{len(tome_info.get('tomes') or {})} chapitre(s) répartis · source : {tome_info.get('source') or '?'}" + texte_fr)
-        elif _etapes_etat(serie, 1) != "echec":
-            _etape(serie, 1, "ok", "aucune liste de tomes trouvée (les tomes locaux restent affichés)")
-        fi = lancer(3, lambda: tomes.fiche(serie, forcer=True))
-        if fi is not None:
-            sources = ", ".join(fi.get("sources") or []) or "aucune"
-            detail = f"sources qui ont répondu : {sources}"
-            if fi.get("editeur_fr"):
-                detail += f" · éditeur : {fi['editeur_fr']}"
-            _etape(serie, 3, "ok", detail)
-        if not tome_info:
-            _etape(serie, 4, "ok", "rien à ranger (répartition inconnue)")
+        def rapport(cle, etat, detail):
+            _etape(serie, indices[cle], etat, detail)
+        bilans = identification.identifier(serie, forcer=True, rapport=rapport)
+        # Rangement des chapitres dans leurs tomes
+        info = tomes._charger(serie)
+        if not (info or {}).get("tomes"):
+            _etape(serie, nb, "ok", "rien à ranger (répartition inconnue)")
         elif _en_telechargement(serie):
-            _etape(serie, 4, "ok", "série en cours de téléchargement : rangée à la fin")
+            _etape(serie, nb, "ok", "série en cours de téléchargement : rangée à la fin")
         else:
-            _etape(serie, 4, "en_cours")
+            _etape(serie, nb, "en_cours")
             n = _rangement_complet(serie)
-            _etape(serie, 4, "echec" if n is None else "ok", (_RANGEMENTS.get(serie) or {}).get("message", ""))
-        nb = lancer(5, lambda: _isbn_google_serie(serie))
-        if _etapes_etat(serie, 5) != "echec":
-            reste = _tomes_sans_isbn(serie)
+            _etape(serie, nb, "echec" if n is None else "ok", (_RANGEMENTS.get(serie) or {}).get("message", ""))
+        # ISBN : dernier recours seulement, quand Internet a répondu partout et ne les a pas
+        _etape(serie, nb + 1, "en_cours")
+        try:
             import sommaire
-            if reste and sommaire.disponible() and not (_ISBN_SERIE.get(serie) or {}).get("en_cours"):
+            reste = _tomes_sans_isbn(serie, auto=True)
+            notices_bilan = bilans.get("notices")
+            attente = bool(notices_bilan and notices_bilan.extra.get("attente"))
+            if not reste:
+                _etape(serie, nb + 1, "ok", "tous les tomes ont leur ISBN")
+            elif attente:
+                _etape(serie, nb + 1, "reprise", f"{len(reste)} tome(s) sans ISBN : on attend qu'Internet réponde plutôt que de lire les pages")
+            elif not sommaire.disponible():
+                _etape(serie, nb + 1, "ok", f"{len(reste)} tome(s) sans ISBN (lecteur de texte absent du serveur)")
+            elif (_ISBN_SERIE.get(serie) or {}).get("en_cours"):
+                _etape(serie, nb + 1, "ok", "lecture déjà en cours")
+            else:
                 threading.Thread(target=_lire_isbn_pages, args=(serie, reste), daemon=True).start()
-            _etape(serie, 5, "ok", ("Google Books indisponible ou plafond du jour atteint (repris plus tard)" if nb is None else f"{nb} trouvé(s) sur Google Books")
-                   + (f" · {len(reste)} tome(s) lus dans les pages, en arrière-plan" if reste and sommaire.disponible() else ""))
+                _etape(serie, nb + 1, "ok", f"{len(reste)} tome(s) lus dans les pages, en arrière-plan (Internet ne les a pas)")
+        except Exception as e:
+            _etape(serie, nb + 1, "echec", f"erreur : {e.__class__.__name__}")
         with _IDENT_VERROU:
             _IDENTIFICATIONS[serie]["fini"] = True
         logger.info("Identification relancée : « %s »", serie)
     threading.Thread(target=travail, daemon=True).start()
+
+
+def _identifier_en_fond(serie, **kw):
+    """Lance l'identification d'une série en arrière-plan. Pendant les tests automatiques elle ne part pas toute seule : un fil oublié
+    d'un test précédent (qui lit les chapitres de la série) fausserait les tests suivants ; test_avancement_identification appelle
+    _relancer_identification directement."""
+    if reseau.EN_TEST:
+        return
+    _relancer_identification(serie, **kw)
 
 
 def _etapes_etat(serie, index):
@@ -4680,7 +4705,15 @@ def _anilist_infos(serie):
 
 
 def _anilist_choisi(serie):
-    return _anilist_infos(serie).get("anilist_choisi")
+    """Fiche AniList retenue pour la série : celle de « 🔎 Choisir la fiche » ; sinon, pour une série suivie, celle choisie en l'ajoutant
+    (une série suivie encore vide n'a pas de fichier d'où deviner la fiche)."""
+    choisi = _anilist_infos(serie).get("anilist_choisi")
+    if choisi:
+        return choisi
+    try:
+        return int((suivi.lire()["series"].get(serie) or {}).get("anilist") or 0) or None
+    except (TypeError, ValueError):
+        return None
 
 
 tomes.ID_CHOISI = _anilist_choisi
@@ -4736,17 +4769,17 @@ def api_identifier_choisir():
     infos.pop("anilist_indice", None)
     infos["fichiers_relus"] = True                    # ton choix l'emporte : les Notes des fichiers ne le remettent pas en cause
     edition.ecrire(MANGA_DIR / name, infos)
-    _relancer_identification(name, relire_fichiers=False)
+    _identifier_en_fond(name, relire_fichiers=False, nouvelle_identite=True)
     return jsonify({"ok": True, "message": "Fiche retenue : identification relancée." if ident else "Retour à la recherche automatique : identification relancée."})
 
 
 @app.route("/api/identifier", methods=["POST"])
 def api_identifier():
-    """« 🔄 Relancer l'identification » : efface le cache et refait la recherche avec le nom actuel."""
+    """« 🔄 Relancer l'identification » : refait la recherche avec le nom actuel (rien n'est effacé : on complète et on corrige)."""
     name = str((request.get_json(silent=True) or {}).get("series", ""))
     if name not in _scan() or name == "(Sans série)":
         return jsonify({"ok": False, "error": "Série introuvable"}), 404
-    _relancer_identification(name)
+    _identifier_en_fond(name)
     return jsonify({"ok": True, "message": "Identification relancée : les infos se mettent à jour dans quelques instants."})
 
 
@@ -4804,7 +4837,7 @@ def api_renommer():
         for f in ((MANGA_DIR / nouveau).rglob("*.cbz") if not partage else []):        # « Ancien nom - Tome 03.cbz » → « Nouveau nom - Tome 03.cbz »
             if f.name.startswith(name + " - ") and not f.with_name(nouveau + f.name[len(name):]).exists():
                 f.rename(f.with_name(nouveau + f.name[len(name):]))
-        tomes.oublier(name)
+        tomes.deplacer(name, nouveau)                  # ce qu'on a appris suit la série renommée (jamais perdu)
         doublons = 0
         if fusion and (MANGA_DIR / name).is_dir():     # restent les fichiers déjà présents dans l'autre série : corbeille
             doublons = sum(1 for f in (MANGA_DIR / name).rglob("*") if f.is_file())
@@ -4813,7 +4846,7 @@ def api_renommer():
         suivi.renommer(name, nouveau)
     except (OSError, ValueError) as e:
         return jsonify({"ok": False, "error": f"Renommage impossible : {e}"}), 500
-    _relancer_identification(nouveau)
+    _identifier_en_fond(nouveau)
     if fusion:
         logger.info("Série fusionnée (%s) : « %s » → « %s » (%d remplacé(s), %d doublon(s) à la corbeille)", mode, name, nouveau, remplaces, doublons)
         return jsonify({"ok": True, "id": nouveau, "message": f"Séries fusionnées dans « {nouveau} »."
@@ -4983,8 +5016,18 @@ def api_tome():
         prov = {"equipe": nf.get("equipe", ""), "origine": nf.get("origine", ""), "manuel": bool(nf.get("provenance_manuelle"))}
     d["provenance"] = prov
     isbn_infos = edition.lire(MANGA_DIR / name)
-    d["isbn"] = (_isbn_connus(isbn_infos, google=False).get(str(int(tome))) or du_fichier.get("isbn", "")   # puis celui écrit dans le fichier
-                 or (isbn_infos.get("isbn_google") or {}).get(str(int(tome)), ""))           # en dernier : Google Books
+    d["isbn"] = _isbn_connus(isbn_infos, google=False).get(str(int(tome))) or du_fichier.get("isbn", "")   # puis celui écrit dans le fichier
+    if d["isbn"]:
+        d["isbn_source"] = "saisi à la main ou lu dans le tome"
+    else:
+        import notices
+        web = notices.isbn_details(name, tome)             # en dernier : Internet (Wikipédia, BnF, Google Books : l'accord de deux sources compte)
+        if web:
+            d["isbn"], d["isbn_source"] = web["isbn"], " + ".join(web["sources"])
+            if web["autres"]:
+                d["isbn_autres"] = web["autres"]               # une réimpression, une autre édition ou une erreur d'une des sources
+        elif isbn_infos.get("isbn_google", {}).get(str(int(tome))):
+            d["isbn"], d["isbn_source"] = isbn_infos["isbn_google"][str(int(tome))], "Google Books"
     d["ecriture_possible"] = bool(_tome_complet(name, int(tome))) and not fic.lower().endswith(".cbr") and tomes_cbz.lire_info(MANGA_DIR / fic) is None
     perso = (edition.lire(MANGA_DIR / name).get("resumes_tomes") or {}).get(str(int(tome)))
     if perso:                                            # résumé écrit à la main : prioritaire sur Internet
@@ -4993,16 +5036,18 @@ def api_tome():
         d["resume"], d["resume_source"], d["resume_manuel"] = du_fichier["resume"], "écrit dans le fichier", True
     if not d.get("resume") and hs and hs.get("descriptif"):       # hors-série identifié : son petit descriptif
         d["resume"], d["resume_source"] = hs["descriptif"], "fiche du hors-série"
-    if not d.get("resume") and not differente and not hs:  # Wikipédia n'a pas de résumé de ce tome : notice Google Books en français
+    if not d.get("resume") and not differente and not hs:  # Wikipédia n'a pas de résumé de ce tome : la BnF, puis Google Books
+        import notices
         try:
-            d["resume"] = tomes.resume_tome_google(name, tome, reseau=False)      # jamais d'attente sur Internet ici
+            d["resume"], libelle = notices.resume_du_tome(name, tome)
+            if d["resume"]:
+                d["resume_source"] = libelle
         except Exception as e:
             logger.info("Résumé du tome %s de %s : %s", tome, name, e.__class__.__name__)
-        if d["resume"] is None:                          # pas encore cherché : la préparation s'en charge, devant les autres
-            d["resume"], d["en_preparation"] = "", True
+            d["resume"] = ""
+        if not d["resume"] and not ((tomes._charger(name) or {}).get("recherches") or {}).get("notices"):
+            d["en_preparation"] = True                        # pas encore cherché : la préparation s'en charge, devant les autres
             prechauffage.demander([name], devant=True)
-        if d.get("resume"):
-            d["resume_source"] = "Google Books"
     if not d.get("resume") and du_fichier.get("resume"):          # rien sur Internet : celui écrit dans le fichier du tome
         propre = tomes.resume_propre_du_fichier(name, tome, du_fichier["resume"], _resumes_des_fichiers(name, int(tome)))
         if propre:                                       # la présentation générale de la série, la même partout, ne sert à rien ici
@@ -6234,8 +6279,37 @@ def _diag_extra():
             lignes += ["", "--- Vérification Cloudflare (derniers événements) ---"] + ["  " + h for h in hist]
     except Exception as e:
         lignes.append(f"Telegram : diagnostic impossible ({e.__class__.__name__})")
+    lignes += ["", "--- Sources Internet de l'identification (état de chacune) ---"] + _diag_sources()
     lignes += ["", "--- Noms de domaine (DNS du serveur) ---"] + _diag_dns()
     lignes += ["", "--- Carte graphique (accès du serveur) ---"] + _diag_gpu()
+    return lignes
+
+
+def _diag_sources():
+    """Une ligne par service (AniList, Wikipédia, BnF, Google Books…) : répond-il ? en pause jusqu'à quand et pourquoi ? requêtes du jour
+    (Google Books : sur 1 000) ; ses dernières pannes ; puis les séries dont une recherche attend un service."""
+    lignes = []
+    for e in reseau.etat():
+        ligne = f"{e['libelle']} : "
+        if e["pause_jusqua"]:
+            ligne += f"EN PAUSE jusqu'à {identification.heure_fr(e['pause_jusqua'])} ({e['pause_raison']})"
+        else:
+            ligne += "répond normalement"
+        if e["quota_jour"]:
+            ligne += f" · {e['requetes_du_jour']} requête(s) aujourd'hui sur {e['quota_jour']}"
+        elif e["requetes_du_jour"]:
+            ligne += f" · {e['requetes_du_jour']} requête(s) aujourd'hui"
+        lignes.append(ligne)
+        for quand, texte in e["dernieres_pannes"][-2:]:
+            lignes.append(f"    dernière panne {time.strftime('%d/%m %H:%M', time.localtime(quand))} : {texte}")
+    try:
+        noms = [n for n in _scan() if n != "(Sans série)"]
+        attente = identification.a_reprendre(noms, maintenant=time.time() + 30 * 86400)
+        if attente:
+            lignes.append(f"Séries dont une recherche attend un service ou un nouvel essai : {len(attente)}"
+                          + " (" + ", ".join(attente[:8]) + ("…" if len(attente) > 8 else "") + ")")
+    except Exception as e:
+        lignes.append(f"Reprises : lecture impossible ({e.__class__.__name__})")
     return lignes
 
 
@@ -6337,8 +6411,18 @@ import prechauffage
 
 
 def _signature_serie(nom):
+    fichiers = _scan().get(nom) or []
+    if not fichiers:                       # série suivie encore vide : refaite si sa fiche ou ses titres changent
+        x = suivi.lire()["series"].get(nom) or {}
+        return prechauffage.signature_fichiers([(f"suivie|{x.get('anilist') or ''}|{'|'.join(x.get('titres', []))}", 0, 0)])
     return prechauffage.signature_fichiers([(str(p.relative_to(MANGA_DIR)) if MANGA_DIR in p.parents else str(p),
-                                             *(_stat_index(p) or (0, 0))) for p in (_scan().get(nom) or [])])
+                                             *(_stat_index(p) or (0, 0))) for p in fichiers])
+
+
+def _series_preparables():
+    """Séries à préparer en fond : celles de la bibliothèque, et les séries suivies encore vides (leur synopsis, leur fiche et leurs noms
+    français se cherchent aussi : sans eux, la fiche reste vide et les torrents proposés ne sont pas reconnus)."""
+    return {**{n: [] for n in suivi.lire()["series"]}, **_scan()}
 
 
 def _attendre_lectures(sommaire, nom, en_lecture, garder):
@@ -6351,44 +6435,52 @@ def _attendre_lectures(sommaire, nom, en_lecture, garder):
         time.sleep(2)
 
 
+def _preparer_serie_suivie(nom, progression):
+    """Série suivie encore sans fichier : statut, synopsis et fiche se cherchent quand même (ses synonymes, dont le titre français, servent
+    ensuite à reconnaître ses torrents). Rend l'heure de reprise d'une étape qui attend un service."""
+    if nom not in suivi.lire()["series"]:
+        return None
+    progression(f"{nom} : fiche de la série suivie")
+    try:
+        bilans = identification.identifier(nom, etapes=("statut", "fiche"))
+    except Exception as e:
+        logger.info("Préparation de la série suivie %s : %s", nom, e.__class__.__name__)
+        return None
+    reprises = [b.prochain for b in bilans.values() if b.prochain]
+    return min(reprises) if reprises else None
+
+
 def _preparer_serie(nom, progression):
-    """Tout ce que la fiche d'un tome irait chercher, fait d'avance : titres des tomes, résumés, analyse de l'édition,
-    sommaire imprimé des tomes (un par un, après les vrais travaux)."""
+    """Tout ce que la fiche d'un tome irait chercher, fait d'avance : identification (statut, liste des volumes de Wikipédia, répartition
+    en tomes, fiche, ISBN et résumés des tomes), analyse de l'édition, hors-série, sommaire imprimé des tomes (un par un, après les
+    vrais travaux). Ce qu'un service n'a pas pu donner (quota de Google Books, Wikipédia qui demande de patienter…) est refait plus tard
+    toute seule : la série revient dans la file à l'heure indiquée (valeur rendue)."""
     import sommaire
     fichiers = _scan().get(nom) or []
     if not fichiers:
-        return
-    progression(f"{nom} : titres des tomes")
+        return _preparer_serie_suivie(nom, progression)
+    progression(f"{nom} : identification")
+    bilans = {}
     try:
-        tomes.titres_tomes(nom, tome_max=max(_tomes_de(nom) or [0]))
+        def etape_en_cours(cle, etat, detail):
+            if etat == "en_cours":
+                progression(f"{nom} : " + dict(identification.ETAPES)[cle].split(" (")[0].lower())
+        bilans = identification.identifier(nom, rapport=etape_en_cours)
     except Exception as e:
-        logger.info("Préparation de %s, titres des tomes : %s", nom, e.__class__.__name__)
+        logger.info("Préparation de %s, identification : %s", nom, e.__class__.__name__)
     _infos_edition(nom, fichiers)                          # lance l'analyse des pages (en fond) si elle n'est pas faite
     progression(f"{nom} : hors-série et séries dérivées")
     try:
         _placer_hors_series(nom)
     except Exception as e:
         logger.info("Préparation de %s, hors-série : %s", nom, e.__class__.__name__)
-    progression(f"{nom} : ISBN (Google Books)")
-    google = 0
-    try:
-        google = _isbn_google_serie(nom)
-    except Exception as e:
-        logger.info("Préparation de %s, ISBN : %s", nom, e.__class__.__name__)
-    # Google a une clé mais n'a pas pu finir (plafond du jour, quota) : la série est reprise dans 6 h au lieu de lire
-    # tout de suite les pages de tomes que Google connaît peut-être
-    reprendre = google is None and bool(tomes.cle_google_books()) and bool(_tomes_sans_isbn(nom))
     numeros = sorted(_tomes_de(nom))
-    differente = _edition_differente(nom)
     en_lecture = []
     with app.test_request_context():                       # _sommaire_du_tome lit le rôle de la session
         for i, t in enumerate(numeros, 1):
             progression(f"{nom} : tome {t} ({i}/{len(numeros)})")
             try:
                 d = tomes.details_tome(nom, t)
-                if not d.get("resume") and not differente:
-                    tomes.resume_tome_google(nom, t)       # Internet, une seule fois (gardé 30 jours)
-                    d = tomes.details_tome(nom, t)
                 _sommaire_du_tome(nom, t, d, fond=True)    # lance la lecture du sommaire si elle est utile
                 if sommaire.etat(nom, t).get("en_cours"):
                     en_lecture.append(t)
@@ -6396,7 +6488,9 @@ def _preparer_serie(nom, progression):
             except Exception as e:
                 logger.info("Préparation de %s tome %s : %s", nom, t, e.__class__.__name__)
         _attendre_lectures(sommaire, nom, en_lecture, 0)
-    reste = [] if reprendre else _tomes_sans_isbn(nom)    # ni Google ni le sommaire : l'ISBN imprimé dans les pages
+    # Les ISBN imprimés dans les pages : dernier recours, seulement si Internet a répondu partout et ne les a pas
+    attente = bool(bilans.get("notices") and bilans["notices"].extra.get("attente"))
+    reste = [] if attente else _tomes_sans_isbn(nom, auto=True)
     if reste and sommaire.disponible() and not (_ISBN_SERIE.get(nom) or {}).get("en_cours"):
         progression(f"{nom} : ISBN lus dans les pages ({len(reste)} tome(s))")
         _lire_isbn_pages(nom, reste)
@@ -6404,7 +6498,8 @@ def _preparer_serie(nom, progression):
         _detecter_edition(nom)
     except Exception as e:
         logger.info("Détection de l'édition de %s : %s", nom, e.__class__.__name__)
-    return time.time() + 6 * 3600 if reprendre else None
+    reprises = [b.prochain for b in bilans.values() if b.prochain]            # un service à attendre, ou une recherche sans résultat à retenter
+    return min(reprises) if reprises else None
 
 
 def _edition_dans_les_fichiers(nom):
@@ -6506,7 +6601,9 @@ def api_edition_volumes():
     return jsonify({"ok": True, "message": msg})
 
 
-prechauffage.configurer(DATA_DIR / "prechauffage.json", lambda: _scan(), _signature_serie, _preparer_serie, lambda: _travaux_en_cours())
+# Pendant les tests, la préparation de fond ne fait rien : un fil lancé par un test écrirait dans le dossier du test suivant.
+prechauffage.configurer(DATA_DIR / "prechauffage.json", _series_preparables, _signature_serie,
+                        (lambda nom, progression: None) if reseau.EN_TEST else _preparer_serie, lambda: _travaux_en_cours())
 
 
 @app.route("/api/prechauffage", methods=["GET", "POST"])
@@ -6532,7 +6629,10 @@ if __name__ == "__main__":
     threading.Thread(target=_boucle_parasites, daemon=True).start()
     threading.Thread(target=suivi.boucle, args=(torrents.chercher, _infos_suivi, lambda t: notifier.envoyer(t),
                                                 lambda: os.getenv("APP_URL", "").strip(), torrents.configure,
-                                                lambda lien, titre, nom: torrents.lancer(lien, titre, nom, True)), daemon=True).start()
+                                                lambda lien, titre, nom: torrents.lancer(lien, titre, nom, True),
+                                                lecture_pages.lire_en_fond), daemon=True).start()
+    suivi.nettoyer_liens()                         # anciennes propositions : plus de lien de Prowlarr (il contient sa clé)
+    threading.Timer(90, lecture_pages.rattrapage).start()      # pages des propositions déjà gardées, lues sans bousculer le démarrage
     threading.Thread(target=torrents.surveiller, args=(_importer_torrent, lambda t: notifier.envoyer(t), MANGA_DIR), daemon=True).start()
     threading.Thread(target=demandes._boucle_rappels, args=(lambda t: notifier.envoyer(t), lambda: os.getenv("APP_URL", "").strip()),
                      daemon=True).start()

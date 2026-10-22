@@ -14,11 +14,11 @@ J = 86400
 
 class RegleTest(unittest.TestCase):
     def test_statut_serie_terminee_jamais_perime(self):
-        st = {"date": time.time() - 400 * J, "statut": "FINISHED", "resume": "x" * 60, "resume_v": tomes.RESUME_VERSION}
+        st = {"date": time.time() - 400 * J, "statut": "FINISHED", "resume": "x" * 60, "resume_v": tomes.RESUME_VERSION, "synonymes": []}
         self.assertTrue(tomes.statut_a_jour(st))
 
     def test_statut_serie_en_cours_une_semaine(self):
-        st = {"statut": "RELEASING", "resume": "x" * 60, "resume_v": tomes.RESUME_VERSION}
+        st = {"statut": "RELEASING", "resume": "x" * 60, "resume_v": tomes.RESUME_VERSION, "synonymes": []}
         self.assertTrue(tomes.statut_a_jour(dict(st, date=time.time() - 3 * J)))
         self.assertFalse(tomes.statut_a_jour(dict(st, date=time.time() - 8 * J)))
 

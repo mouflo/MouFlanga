@@ -1,0 +1,875 @@
+<?xml version="1.0" encoding="UTF-8"?><srw:searchRetrieveResponse xmlns:srw="http://www.loc.gov/zing/srw/" xmlns="http://catalogue.bnf.fr/namespaces/InterXMarc" xmlns:ixm="http://catalogue.bnf.fr/namespaces/InterXMarc" xmlns:mn="http://catalogue.bnf.fr/namespaces/motsnotices" xmlns:sd="http://www.loc.gov/zing/srw/diagnostic/">
+<srw:version>1.2</srw:version>
+<srw:echoedSearchRetrieveRequest>
+<srw:version>1.2</srw:version>
+<srw:query>bib.title all "air gear" and bib.doctype any "a"</srw:query>
+</srw:echoedSearchRetrieveRequest>
+<srw:numberOfRecords>56</srw:numberOfRecords>
+<srw:records>
+<srw:record>
+<srw:recordSchema>marcxchange</srw:recordSchema>
+<srw:recordPacking>xml</srw:recordPacking>
+<srw:recordData>
+<mxc:record xmlns:mxc="info:lc/xmlns/marcxchange-v2" format="UNIMARC" id="ark:/12148/cb40943671r" type="Bibliographic">
+<mxc:leader>     cam  22        450 </mxc:leader>
+<mxc:controlfield tag="001">FRBNF409436710000001</mxc:controlfield>
+<mxc:controlfield tag="003">http://catalogue.bnf.fr/ark:/12148/cb40943671r</mxc:controlfield>
+<mxc:datafield tag="010" ind1=" " ind2=" ">
+<mxc:subfield code="a">2-84599-668-3</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="010" ind1=" " ind2=" ">
+<mxc:subfield code="a">978-2-84599-668-7</mxc:subfield>
+<mxc:subfield code="b">br.</mxc:subfield>
+<mxc:subfield code="d">6,95 EUR</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="020" ind1=" " ind2=" ">
+<mxc:subfield code="a">FR</mxc:subfield>
+<mxc:subfield code="b">00660669</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="073" ind1=" " ind2="0">
+<mxc:subfield code="a">9782845996687</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="100" ind1=" " ind2=" ">
+<mxc:subfield code="a">20061121d2006    m  y0frey50      ba</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="101" ind1="1" ind2=" ">
+<mxc:subfield code="a">fre</mxc:subfield>
+<mxc:subfield code="c">jpn</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="102" ind1=" " ind2=" ">
+<mxc:subfield code="a">FR</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="105" ind1=" " ind2=" ">
+<mxc:subfield code="a">||||t   00|a|</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="106" ind1=" " ind2=" ">
+<mxc:subfield code="a">r</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="181" ind1=" " ind2="0">
+<mxc:subfield code="6">01</mxc:subfield>
+<mxc:subfield code="a">i </mxc:subfield>
+<mxc:subfield code="b">xxxe  </mxc:subfield>
+<mxc:subfield code="a">b </mxc:subfield>
+<mxc:subfield code="b">xb2e  </mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="181" ind1=" " ind2=" ">
+<mxc:subfield code="6">02</mxc:subfield>
+<mxc:subfield code="c">txt</mxc:subfield>
+<mxc:subfield code="c">sti</mxc:subfield>
+<mxc:subfield code="2">rdacontent</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="182" ind1=" " ind2="0">
+<mxc:subfield code="6">01</mxc:subfield>
+<mxc:subfield code="a">n</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="182" ind1=" " ind2=" ">
+<mxc:subfield code="6">02</mxc:subfield>
+<mxc:subfield code="c">n</mxc:subfield>
+<mxc:subfield code="2">rdamedia</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="200" ind1="1" ind2=" ">
+<mxc:subfield code="a">Air gear</mxc:subfield>
+<mxc:subfield code="h">1</mxc:subfield>
+<mxc:subfield code="b">Texte imprimé</mxc:subfield>
+<mxc:subfield code="f">Oh ! Great</mxc:subfield>
+<mxc:subfield code="g">[traduit et adapté du japonais par Anne Malevay]</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="210" ind1=" " ind2=" ">
+<mxc:subfield code="a">[Boulogne]</mxc:subfield>
+<mxc:subfield code="c">Pika éd.</mxc:subfield>
+<mxc:subfield code="d">DL 2006</mxc:subfield>
+<mxc:subfield code="e">impr. en Allemagne</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="215" ind1=" " ind2=" ">
+<mxc:subfield code="a">1 vol. (non paginé [ca 208] p.)</mxc:subfield>
+<mxc:subfield code="c">ill. en noir et en coul., couv. ill., jaquette ill. en coul.</mxc:subfield>
+<mxc:subfield code="d">18 cm</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="316" ind1=" " ind2=" ">
+<mxc:subfield code="5">FR-751131010:40943671002001</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="321" ind1=" " ind2=" ">
+<mxc:subfield code="a">La Revue des livres pour enfants</mxc:subfield>
+<mxc:subfield code="x">0398-8384</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="329" ind1=" " ind2=" ">
+<mxc:subfield code="c">Hélas !</mxc:subfield>
+<mxc:subfield code="d">20070124</mxc:subfield>
+<mxc:subfield code="f">OP</mxc:subfield>
+<mxc:subfield code="2">CNLJ</mxc:subfield>
+<mxc:subfield code="k">Avis critique donné par le Centre national de la littérature pour la jeunesse</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="330" ind1=" " ind2=" ">
+<mxc:subfield code="a">Dans un monde pas si lointain, un sport fait fureur, celui des Air Treck. Ce sont des rollers avec deux grosses roues et dont le système de propulsion permet de réaliser des figures incroyables. Ikki, un jeune garçon, est le chef d'un gang. Mais face à une défaite contre un autre gang qui utilise ces rollers, Ikki décide d'apprendre ce sport et découvre de nouvelles sensations...</mxc:subfield>
+<mxc:subfield code="2">Electre</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="461" ind1=" " ind2="0">
+<mxc:subfield code="0">40951856</mxc:subfield>
+<mxc:subfield code="t">Air gear</mxc:subfield>
+<mxc:subfield code="v">1</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="608" ind1=" " ind2=" ">
+<mxc:subfield code="a">Bandes dessinées</mxc:subfield>
+<mxc:subfield code="2">CNLJ</mxc:subfield>
+<mxc:subfield code="k">Avis critique donné par le Centre national de la littérature pour la jeunesse</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="676" ind1=" " ind2=" ">
+<mxc:subfield code="a">741.5</mxc:subfield>
+<mxc:subfield code="v">23</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="686" ind1=" " ind2=" ">
+<mxc:subfield code="a">803</mxc:subfield>
+<mxc:subfield code="2">Cadre de classement de la Bibliographie nationale française</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="700" ind1=" " ind2="|">
+<mxc:subfield code="3">13624631</mxc:subfield>
+<mxc:subfield code="o">ISNI0000000114916173</mxc:subfield>
+<mxc:subfield code="a">Ō</mxc:subfield>
+<mxc:subfield code="b">Gureito</mxc:subfield>
+<mxc:subfield code="f">1972-....</mxc:subfield>
+<mxc:subfield code="4">070</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="702" ind1=" " ind2="|">
+<mxc:subfield code="3">13523159</mxc:subfield>
+<mxc:subfield code="o">ISNI0000000001861671</mxc:subfield>
+<mxc:subfield code="a">Mallevay</mxc:subfield>
+<mxc:subfield code="b">Anne</mxc:subfield>
+<mxc:subfield code="4">730</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="801" ind1=" " ind2="0">
+<mxc:subfield code="a">FR</mxc:subfield>
+<mxc:subfield code="b">FR-751131015</mxc:subfield>
+<mxc:subfield code="c">20061121</mxc:subfield>
+<mxc:subfield code="g">AFNOR</mxc:subfield>
+<mxc:subfield code="h">FRBNF409436710000001</mxc:subfield>
+<mxc:subfield code="2">intermrc</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="930" ind1=" " ind2=" ">
+<mxc:subfield code="5">FR-751131010:40943671001001</mxc:subfield>
+<mxc:subfield code="a">2006-249762</mxc:subfield>
+<mxc:subfield code="b">759999999</mxc:subfield>
+<mxc:subfield code="c">Tolbiac - Rez de Jardin - Littérature et art - Magasin</mxc:subfield>
+<mxc:subfield code="d">O</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="930" ind1=" " ind2=" ">
+<mxc:subfield code="5">FR-751131010:40943671002001</mxc:subfield>
+<mxc:subfield code="a">8-CNLJB-2138</mxc:subfield>
+<mxc:subfield code="b">759999999</mxc:subfield>
+<mxc:subfield code="c">Tolbiac - Rez de Jardin - Littérature et art - Magasin</mxc:subfield>
+<mxc:subfield code="d">O</mxc:subfield>
+</mxc:datafield>
+</mxc:record>      </srw:recordData>
+<srw:recordIdentifier>ark:/12148/cb40943671r</srw:recordIdentifier>
+<srw:recordPosition>11</srw:recordPosition>
+<srw:extraRecordData>
+<ixm:attr name="CreationDate">20061121</ixm:attr>
+<ixm:attr name="LastModificationDate">20151020</ixm:attr>
+<mn:score>12.747205</mn:score>
+</srw:extraRecordData>
+</srw:record>
+<srw:record>
+<srw:recordSchema>marcxchange</srw:recordSchema>
+<srw:recordPacking>xml</srw:recordPacking>
+<srw:recordData>
+<mxc:record xmlns:mxc="info:lc/xmlns/marcxchange-v2" format="UNIMARC" id="ark:/12148/cb41014714d" type="Bibliographic">
+<mxc:leader>     cam  22        450 </mxc:leader>
+<mxc:controlfield tag="001">FRBNF410147140000001</mxc:controlfield>
+<mxc:controlfield tag="003">http://catalogue.bnf.fr/ark:/12148/cb41014714d</mxc:controlfield>
+<mxc:datafield tag="010" ind1=" " ind2=" ">
+<mxc:subfield code="a">978-2-84599-704-2</mxc:subfield>
+<mxc:subfield code="b">br.</mxc:subfield>
+<mxc:subfield code="d">6,95 EUR</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="020" ind1=" " ind2=" ">
+<mxc:subfield code="a">FR</mxc:subfield>
+<mxc:subfield code="b">00727647</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="073" ind1=" " ind2="0">
+<mxc:subfield code="a">9782845997042</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="100" ind1=" " ind2=" ">
+<mxc:subfield code="a">20070417d2007    m  y0frey50      ba</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="101" ind1="1" ind2=" ">
+<mxc:subfield code="a">fre</mxc:subfield>
+<mxc:subfield code="c">jpn</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="102" ind1=" " ind2=" ">
+<mxc:subfield code="a">FR</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="105" ind1=" " ind2=" ">
+<mxc:subfield code="a">||||t   00|a|</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="106" ind1=" " ind2=" ">
+<mxc:subfield code="a">r</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="181" ind1=" " ind2="0">
+<mxc:subfield code="6">01</mxc:subfield>
+<mxc:subfield code="a">i </mxc:subfield>
+<mxc:subfield code="b">xxxe  </mxc:subfield>
+<mxc:subfield code="a">b </mxc:subfield>
+<mxc:subfield code="b">xb2e  </mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="181" ind1=" " ind2=" ">
+<mxc:subfield code="6">02</mxc:subfield>
+<mxc:subfield code="c">txt</mxc:subfield>
+<mxc:subfield code="c">sti</mxc:subfield>
+<mxc:subfield code="2">rdacontent</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="182" ind1=" " ind2="0">
+<mxc:subfield code="6">01</mxc:subfield>
+<mxc:subfield code="a">n</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="182" ind1=" " ind2=" ">
+<mxc:subfield code="6">02</mxc:subfield>
+<mxc:subfield code="c">n</mxc:subfield>
+<mxc:subfield code="2">rdamedia</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="200" ind1="1" ind2=" ">
+<mxc:subfield code="a">Air gear</mxc:subfield>
+<mxc:subfield code="h">3</mxc:subfield>
+<mxc:subfield code="b">Texte imprimé</mxc:subfield>
+<mxc:subfield code="f">Oh ! Great</mxc:subfield>
+<mxc:subfield code="g">[traduit et adapté du japonais par Anne Mallevay]</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="210" ind1=" " ind2=" ">
+<mxc:subfield code="a">[Boulogne]</mxc:subfield>
+<mxc:subfield code="c">Pika éd.</mxc:subfield>
+<mxc:subfield code="d">DL 2007</mxc:subfield>
+<mxc:subfield code="e">impr. en Allemagne</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="215" ind1=" " ind2=" ">
+<mxc:subfield code="a">1 vol. (non paginé [ca 224] p.)</mxc:subfield>
+<mxc:subfield code="c">ill., couv. ill., jaquette ill. en coul.</mxc:subfield>
+<mxc:subfield code="d">18 cm</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="316" ind1=" " ind2=" ">
+<mxc:subfield code="5">FR-751131010:41014714002001</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="321" ind1=" " ind2=" ">
+<mxc:subfield code="a">La Revue des livres pour enfants</mxc:subfield>
+<mxc:subfield code="x">0398-8384</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="329" ind1=" " ind2=" ">
+<mxc:subfield code="c">Pourquoi pas ?</mxc:subfield>
+<mxc:subfield code="d">20070521</mxc:subfield>
+<mxc:subfield code="f">OP</mxc:subfield>
+<mxc:subfield code="2">CNLJ</mxc:subfield>
+<mxc:subfield code="k">Avis critique donné par le Centre national de la littérature pour la jeunesse</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="330" ind1=" " ind2=" ">
+<mxc:subfield code="a">Dans un monde pas si lointain, un sport fait fureur, celui des Air Treck. Ce sont des rollers avec deux grosses roues et dont le système de propulsion permet de réaliser des figures incroyables. Ikki, un jeune garçon, est le chef d'un nouveau gang. Mais suite à une défaite contre un autre gang qui utilise ces rollers, Ikki décide d'apprendre ce sport et découvre de nouvelles sensations...</mxc:subfield>
+<mxc:subfield code="2">Electre</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="454" ind1=" " ind2="1">
+<mxc:subfield code="t">Air gear</mxc:subfield>
+<mxc:subfield code="h">3</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="461" ind1=" " ind2="0">
+<mxc:subfield code="0">40951856</mxc:subfield>
+<mxc:subfield code="t">Air gear</mxc:subfield>
+<mxc:subfield code="v">3</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="608" ind1=" " ind2=" ">
+<mxc:subfield code="a">Bandes dessinées</mxc:subfield>
+<mxc:subfield code="2">CNLJ</mxc:subfield>
+<mxc:subfield code="k">Avis critique donné par le Centre national de la littérature pour la jeunesse</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="676" ind1=" " ind2=" ">
+<mxc:subfield code="a">741.5</mxc:subfield>
+<mxc:subfield code="v">23</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="686" ind1=" " ind2=" ">
+<mxc:subfield code="a">803</mxc:subfield>
+<mxc:subfield code="2">Cadre de classement de la Bibliographie nationale française</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="700" ind1=" " ind2="|">
+<mxc:subfield code="3">13624631</mxc:subfield>
+<mxc:subfield code="o">ISNI0000000114916173</mxc:subfield>
+<mxc:subfield code="a">Ō</mxc:subfield>
+<mxc:subfield code="b">Gureito</mxc:subfield>
+<mxc:subfield code="f">1972-....</mxc:subfield>
+<mxc:subfield code="4">070</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="702" ind1=" " ind2="|">
+<mxc:subfield code="3">13523159</mxc:subfield>
+<mxc:subfield code="o">ISNI0000000001861671</mxc:subfield>
+<mxc:subfield code="a">Mallevay</mxc:subfield>
+<mxc:subfield code="b">Anne</mxc:subfield>
+<mxc:subfield code="4">730</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="801" ind1=" " ind2="0">
+<mxc:subfield code="a">FR</mxc:subfield>
+<mxc:subfield code="b">FR-751131015</mxc:subfield>
+<mxc:subfield code="c">20070417</mxc:subfield>
+<mxc:subfield code="g">AFNOR</mxc:subfield>
+<mxc:subfield code="h">FRBNF410147140000001</mxc:subfield>
+<mxc:subfield code="2">intermrc</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="856" ind1=" " ind2="2">
+<mxc:subfield code="u">161058</mxc:subfield>
+<mxc:subfield code="b">Première de couverture</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="930" ind1=" " ind2=" ">
+<mxc:subfield code="5">FR-751131010:41014714001001</mxc:subfield>
+<mxc:subfield code="a">2007-77514</mxc:subfield>
+<mxc:subfield code="b">759999999</mxc:subfield>
+<mxc:subfield code="c">Tolbiac - Rez de Jardin - Littérature et art - Magasin</mxc:subfield>
+<mxc:subfield code="d">O</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="930" ind1=" " ind2=" ">
+<mxc:subfield code="5">FR-751131010:41014714002001</mxc:subfield>
+<mxc:subfield code="a">8-CNLJD-2255</mxc:subfield>
+<mxc:subfield code="b">759999999</mxc:subfield>
+<mxc:subfield code="c">Tolbiac - Rez de Jardin - Littérature et art - Magasin</mxc:subfield>
+<mxc:subfield code="d">O</mxc:subfield>
+</mxc:datafield>
+</mxc:record>      </srw:recordData>
+<srw:recordIdentifier>ark:/12148/cb41014714d</srw:recordIdentifier>
+<srw:recordPosition>4</srw:recordPosition>
+<srw:extraRecordData>
+<ixm:attr name="CreationDate">20070417</ixm:attr>
+<ixm:attr name="LastModificationDate">20151222</ixm:attr>
+<mn:score>13.168679</mn:score>
+</srw:extraRecordData>
+</srw:record>
+<srw:record>
+<srw:recordSchema>marcxchange</srw:recordSchema>
+<srw:recordPacking>xml</srw:recordPacking>
+<srw:recordData>
+<mxc:record xmlns:mxc="info:lc/xmlns/marcxchange-v2" format="UNIMARC" id="ark:/12148/cb42432930z" type="Bibliographic">
+<mxc:leader>     cam  22        450 </mxc:leader>
+<mxc:controlfield tag="001">FRBNF424329300000007</mxc:controlfield>
+<mxc:controlfield tag="003">http://catalogue.bnf.fr/ark:/12148/cb42432930z</mxc:controlfield>
+<mxc:datafield tag="010" ind1=" " ind2=" ">
+<mxc:subfield code="a">978-2-8116-0511-7</mxc:subfield>
+<mxc:subfield code="b">br.</mxc:subfield>
+<mxc:subfield code="d">2,99 EUR</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="020" ind1=" " ind2=" ">
+<mxc:subfield code="a">FR</mxc:subfield>
+<mxc:subfield code="b">01138640</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="073" ind1=" " ind2="0">
+<mxc:subfield code="a">9782811605117</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="100" ind1=" " ind2=" ">
+<mxc:subfield code="a">20110516d2011    m  y0frey50      ba</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="101" ind1="1" ind2=" ">
+<mxc:subfield code="a">fre</mxc:subfield>
+<mxc:subfield code="c">jpn</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="102" ind1=" " ind2=" ">
+<mxc:subfield code="a">FR</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="105" ind1=" " ind2=" ">
+<mxc:subfield code="a">||||t   00|a|</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="106" ind1=" " ind2=" ">
+<mxc:subfield code="a">r</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="181" ind1=" " ind2="0">
+<mxc:subfield code="6">01</mxc:subfield>
+<mxc:subfield code="a">i </mxc:subfield>
+<mxc:subfield code="b">xxxe  </mxc:subfield>
+<mxc:subfield code="a">b </mxc:subfield>
+<mxc:subfield code="b">xb2e  </mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="181" ind1=" " ind2=" ">
+<mxc:subfield code="6">02</mxc:subfield>
+<mxc:subfield code="c">txt</mxc:subfield>
+<mxc:subfield code="c">sti</mxc:subfield>
+<mxc:subfield code="2">rdacontent</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="182" ind1=" " ind2="0">
+<mxc:subfield code="6">01</mxc:subfield>
+<mxc:subfield code="a">n</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="182" ind1=" " ind2=" ">
+<mxc:subfield code="6">02</mxc:subfield>
+<mxc:subfield code="c">n</mxc:subfield>
+<mxc:subfield code="2">rdamedia</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="200" ind1="1" ind2=" ">
+<mxc:subfield code="a">Air gear</mxc:subfield>
+<mxc:subfield code="h">1</mxc:subfield>
+<mxc:subfield code="b">Texte imprimé</mxc:subfield>
+<mxc:subfield code="f">Oh ! Great</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="210" ind1=" " ind2=" ">
+<mxc:subfield code="a">[Boulogne]</mxc:subfield>
+<mxc:subfield code="c">Pika éd.</mxc:subfield>
+<mxc:subfield code="d">DL 2011</mxc:subfield>
+<mxc:subfield code="e">86-Ligugé</mxc:subfield>
+<mxc:subfield code="g">CPI Aubin impr.</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="215" ind1=" " ind2=" ">
+<mxc:subfield code="a">1 vol. (non paginé [ca 248] p.)</mxc:subfield>
+<mxc:subfield code="c">ill. en noir et en coul., couv. ill., jaquette ill. en coul.</mxc:subfield>
+<mxc:subfield code="d">18 cm</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="225" ind1="|" ind2=" ">
+<mxc:subfield code="a">Pika shônen</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="308" ind1=" " ind2=" ">
+<mxc:subfield code="a">Best seller Pika</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="410" ind1=" " ind2="0">
+<mxc:subfield code="0">41436495</mxc:subfield>
+<mxc:subfield code="t">Collection Pika shônen</mxc:subfield>
+<mxc:subfield code="x">2100-2932</mxc:subfield>
+<mxc:subfield code="d">2011</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="410" ind1=" " ind2="0">
+<mxc:subfield code="0">42454577</mxc:subfield>
+<mxc:subfield code="t">Best-seller Pika</mxc:subfield>
+<mxc:subfield code="d">2011</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="461" ind1=" " ind2="0">
+<mxc:subfield code="0">42469954</mxc:subfield>
+<mxc:subfield code="t">Air gear</mxc:subfield>
+<mxc:subfield code="v">1</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="686" ind1=" " ind2=" ">
+<mxc:subfield code="a">805</mxc:subfield>
+<mxc:subfield code="2">Cadre de classement de la Bibliographie nationale française</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="700" ind1=" " ind2="|">
+<mxc:subfield code="3">13624631</mxc:subfield>
+<mxc:subfield code="o">ISNI0000000114916173</mxc:subfield>
+<mxc:subfield code="a">Ō</mxc:subfield>
+<mxc:subfield code="b">Gureito</mxc:subfield>
+<mxc:subfield code="f">1972-....</mxc:subfield>
+<mxc:subfield code="4">070</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="801" ind1=" " ind2="0">
+<mxc:subfield code="a">FR</mxc:subfield>
+<mxc:subfield code="b">FR-751131015</mxc:subfield>
+<mxc:subfield code="c">20110516</mxc:subfield>
+<mxc:subfield code="g">AFNOR</mxc:subfield>
+<mxc:subfield code="h">FRBNF424329300000007</mxc:subfield>
+<mxc:subfield code="2">intermrc</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="930" ind1=" " ind2=" ">
+<mxc:subfield code="5">FR-751131010:42432930001001</mxc:subfield>
+<mxc:subfield code="a">2011-149548</mxc:subfield>
+<mxc:subfield code="b">759999999</mxc:subfield>
+<mxc:subfield code="c">Tolbiac - Rez de Jardin - Littérature et art - Magasin</mxc:subfield>
+<mxc:subfield code="d">O</mxc:subfield>
+</mxc:datafield>
+</mxc:record>      </srw:recordData>
+<srw:recordIdentifier>ark:/12148/cb42432930z</srw:recordIdentifier>
+<srw:recordPosition>43</srw:recordPosition>
+<srw:extraRecordData>
+<ixm:attr name="CreationDate">20110516</ixm:attr>
+<ixm:attr name="LastModificationDate">20110721</ixm:attr>
+<mn:score>10.737883</mn:score>
+</srw:extraRecordData>
+</srw:record>
+<srw:record>
+<srw:recordSchema>marcxchange</srw:recordSchema>
+<srw:recordPacking>xml</srw:recordPacking>
+<srw:recordData>
+<mxc:record xmlns:mxc="info:lc/xmlns/marcxchange-v2" format="UNIMARC" id="ark:/12148/cb487229303" type="Bibliographic">
+<mxc:leader>     nam  22        450 </mxc:leader>
+<mxc:controlfield tag="001">FRBNF487229300000002</mxc:controlfield>
+<mxc:controlfield tag="003">http://catalogue.bnf.fr/ark:/12148/cb487229303</mxc:controlfield>
+<mxc:datafield tag="010" ind1=" " ind2=" ">
+<mxc:subfield code="a">979-10-433-0104-9</mxc:subfield>
+<mxc:subfield code="b">br.</mxc:subfield>
+<mxc:subfield code="d">10,90 EUR</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="073" ind1=" " ind2="0">
+<mxc:subfield code="a">9791043301049</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="100" ind1=" " ind2=" ">
+<mxc:subfield code="a">20260306d        m  y0frey50      ba</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="101" ind1="0" ind2=" ">
+<mxc:subfield code="a">fre</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="102" ind1=" " ind2=" ">
+<mxc:subfield code="a">FR</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="105" ind1=" " ind2=" ">
+<mxc:subfield code="a">||||z   00|||</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="106" ind1=" " ind2=" ">
+<mxc:subfield code="a">r</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="181" ind1=" " ind2="0">
+<mxc:subfield code="6">01</mxc:subfield>
+<mxc:subfield code="a">i </mxc:subfield>
+<mxc:subfield code="b">xxxe  </mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="181" ind1=" " ind2=" ">
+<mxc:subfield code="6">02</mxc:subfield>
+<mxc:subfield code="c">txt</mxc:subfield>
+<mxc:subfield code="2">rdacontent</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="182" ind1=" " ind2="0">
+<mxc:subfield code="6">01</mxc:subfield>
+<mxc:subfield code="a">n</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="182" ind1=" " ind2=" ">
+<mxc:subfield code="6">02</mxc:subfield>
+<mxc:subfield code="c">n</mxc:subfield>
+<mxc:subfield code="2">rdamedia</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="200" ind1="1" ind2=" ">
+<mxc:subfield code="a">Air Gear unlimited</mxc:subfield>
+<mxc:subfield code="b">Texte imprimé</mxc:subfield>
+<mxc:subfield code="h">5</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="214" ind1=" " ind2="0">
+<mxc:subfield code="a">Vanves</mxc:subfield>
+<mxc:subfield code="c">Pika éditions</mxc:subfield>
+<mxc:subfield code="d">DL 2026</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="214" ind1=" " ind2="3">
+<mxc:subfield code="a">00-</mxc:subfield>
+<mxc:subfield code="c">Impr. DUPLI PRINT MAYENNE (JOUVE PRI)</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="215" ind1=" " ind2=" ">
+<mxc:subfield code="a">1 vol. (370 p.)</mxc:subfield>
+<mxc:subfield code="d">19 cm</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="225" ind1="1" ind2=" ">
+<mxc:subfield code="a">Pika Shônen</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="330" ind1=" " ind2=" ">
+<mxc:subfield code="a">Suite aux manigances d Agito, les Kogarasumaru se retrouvent à affronter le meilleur gang de rang D, les Behemoth. Entre rancune personnelle et désir de reconquête, le requin n a qu un objectif : récupérer le Regalia des Crocs. Alors que les défaites s accumulent, Ikki et Agito saisissent leur chance dans un combat en duo décisif contre les plus féroces adversaires du gang. Une dernière ligne droite qui pourrait tout faire basculer...</mxc:subfield>
+<mxc:subfield code="2">éditeur</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="454" ind1=" " ind2="1">
+<mxc:subfield code="t">Air Gear Unlimited</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="700" ind1=" " ind2="|">
+<mxc:subfield code="3">13624631</mxc:subfield>
+<mxc:subfield code="o">ISNI0000000114916173</mxc:subfield>
+<mxc:subfield code="a">Ō</mxc:subfield>
+<mxc:subfield code="b">Gureito</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="702" ind1=" " ind2="|">
+<mxc:subfield code="a">Vendries</mxc:subfield>
+<mxc:subfield code="b">Lola</mxc:subfield>
+<mxc:subfield code="c">Traducteur</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="702" ind1=" " ind2="|">
+<mxc:subfield code="3">13523159</mxc:subfield>
+<mxc:subfield code="o">ISNI0000000001861671</mxc:subfield>
+<mxc:subfield code="a">Mallevay</mxc:subfield>
+<mxc:subfield code="b">Anne</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="801" ind1=" " ind2="0">
+<mxc:subfield code="a">FR</mxc:subfield>
+<mxc:subfield code="b">FR-751131015</mxc:subfield>
+<mxc:subfield code="c">20260306</mxc:subfield>
+<mxc:subfield code="g">AFNOR</mxc:subfield>
+<mxc:subfield code="h">FRBNF487229300000002</mxc:subfield>
+<mxc:subfield code="2">intermrc</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="856" ind1=" " ind2="2">
+<mxc:subfield code="u">1188011</mxc:subfield>
+<mxc:subfield code="b">Première de couverture</mxc:subfield>
+</mxc:datafield>
+</mxc:record>      </srw:recordData>
+<srw:recordIdentifier>ark:/12148/cb487229303</srw:recordIdentifier>
+<srw:recordPosition>27</srw:recordPosition>
+<srw:extraRecordData>
+<ixm:attr name="CreationDate">20260306</ixm:attr>
+<ixm:attr name="LastModificationDate">20260306</ixm:attr>
+<mn:score>12.334041</mn:score>
+</srw:extraRecordData>
+</srw:record>
+<srw:record>
+<srw:recordSchema>marcxchange</srw:recordSchema>
+<srw:recordPacking>xml</srw:recordPacking>
+<srw:recordData>
+<mxc:record xmlns:mxc="info:lc/xmlns/marcxchange-v2" format="UNIMARC" id="ark:/12148/cb433906180" type="Bibliographic">
+<mxc:leader>     cam  22        450 </mxc:leader>
+<mxc:controlfield tag="001">FRBNF433906180000008</mxc:controlfield>
+<mxc:controlfield tag="003">http://catalogue.bnf.fr/ark:/12148/cb433906180</mxc:controlfield>
+<mxc:datafield tag="010" ind1=" " ind2=" ">
+<mxc:subfield code="a">2-84599-457-5</mxc:subfield>
+<mxc:subfield code="b">br.</mxc:subfield>
+<mxc:subfield code="d">6,95 EUR</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="039" ind1=" " ind2=" ">
+<mxc:subfield code="o">ALS</mxc:subfield>
+<mxc:subfield code="a">0475340</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="100" ind1=" " ind2=" ">
+<mxc:subfield code="a">20050616d2005    m  y0frey50      ba</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="101" ind1="0" ind2=" ">
+<mxc:subfield code="a">fre</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="102" ind1=" " ind2=" ">
+<mxc:subfield code="a">FR</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="105" ind1=" " ind2=" ">
+<mxc:subfield code="a">y   z   000||</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="106" ind1=" " ind2=" ">
+<mxc:subfield code="a">r</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="181" ind1=" " ind2="0">
+<mxc:subfield code="6">01</mxc:subfield>
+<mxc:subfield code="a">i </mxc:subfield>
+<mxc:subfield code="b">xxxe  </mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="181" ind1=" " ind2=" ">
+<mxc:subfield code="6">02</mxc:subfield>
+<mxc:subfield code="c">txt</mxc:subfield>
+<mxc:subfield code="2">rdacontent</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="182" ind1=" " ind2="0">
+<mxc:subfield code="6">01</mxc:subfield>
+<mxc:subfield code="a">n</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="182" ind1=" " ind2=" ">
+<mxc:subfield code="6">02</mxc:subfield>
+<mxc:subfield code="c">n</mxc:subfield>
+<mxc:subfield code="2">rdamedia</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="200" ind1=" " ind2=" ">
+<mxc:subfield code="a">Collection Shônen</mxc:subfield>
+<mxc:subfield code="h">2005, vol. 6</mxc:subfield>
+<mxc:subfield code="b">Texte imprimé</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="210" ind1=" " ind2=" ">
+<mxc:subfield code="a">Boulogne-Billancourt</mxc:subfield>
+<mxc:subfield code="c">Pika</mxc:subfield>
+<mxc:subfield code="d">2005</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="215" ind1=" " ind2=" ">
+<mxc:subfield code="a">289 p.</mxc:subfield>
+<mxc:subfield code="c">ill., couv. ill. en coul.</mxc:subfield>
+<mxc:subfield code="d">20 cm</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="300" ind1=" " ind2=" ">
+<mxc:subfield code="a">Sens de lecture japonais</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="305" ind1=" " ind2=" ">
+<mxc:subfield code="a">Numéro de : Collection Shônen = ISSN 1638-8232, 2005-6</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="316" ind1=" " ind2=" ">
+<mxc:subfield code="5">FR-751131010:43390618001001</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="321" ind1=" " ind2=" ">
+<mxc:subfield code="a">La Revue des livres pour enfants</mxc:subfield>
+<mxc:subfield code="x">0398-8384</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="329" ind1=" " ind2=" ">
+<mxc:subfield code="c">Hélas !</mxc:subfield>
+<mxc:subfield code="2">CNLJ</mxc:subfield>
+<mxc:subfield code="k">Avis critique donné par le Centre national de la littérature pour la jeunesse</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="461" ind1=" " ind2="0">
+<mxc:subfield code="0">38958664</mxc:subfield>
+<mxc:subfield code="t">Collection Shônen</mxc:subfield>
+<mxc:subfield code="x">1638-8232</mxc:subfield>
+<mxc:subfield code="v">2005-6</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="464" ind1=" " ind2="1">
+<mxc:subfield code="v">p. 6</mxc:subfield>
+<mxc:subfield code="t">Air Gear</mxc:subfield>
+<mxc:subfield code="f">Oh!Great (chap. 17-19)</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="464" ind1=" " ind2="1">
+<mxc:subfield code="v">p. 72</mxc:subfield>
+<mxc:subfield code="t">Shonan Junaï Gumi = Young GTO</mxc:subfield>
+<mxc:subfield code="f">Tôru Fujisawa (chap. 75-77)</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="464" ind1=" " ind2="1">
+<mxc:subfield code="v">p. 133</mxc:subfield>
+<mxc:subfield code="t">Magister Negi Magi = Negima !</mxc:subfield>
+<mxc:subfield code="f">Ken Akamatsu (chap. 33-34)</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="464" ind1=" " ind2="1">
+<mxc:subfield code="v">p. 174</mxc:subfield>
+<mxc:subfield code="t">Suzuka</mxc:subfield>
+<mxc:subfield code="f">Seo Kouji (vol. 2, chap. 5-7)</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="464" ind1=" " ind2="1">
+<mxc:subfield code="v">p. 238</mxc:subfield>
+<mxc:subfield code="t">DYS</mxc:subfield>
+<mxc:subfield code="f">Mookey (chap. 4-5)</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="608" ind1=" " ind2=" ">
+<mxc:subfield code="a">Bandes dessinées</mxc:subfield>
+<mxc:subfield code="2">CNLJ</mxc:subfield>
+<mxc:subfield code="k">Avis critique donné par le Centre national de la littérature pour la jeunesse</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="801" ind1=" " ind2="0">
+<mxc:subfield code="a">FR</mxc:subfield>
+<mxc:subfield code="b">FR-751131015</mxc:subfield>
+<mxc:subfield code="c">20050616</mxc:subfield>
+<mxc:subfield code="g">AFNOR</mxc:subfield>
+<mxc:subfield code="h">FRBNF433906180000008</mxc:subfield>
+<mxc:subfield code="2">intermrc</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="930" ind1=" " ind2=" ">
+<mxc:subfield code="5">FR-751131010:43390618001001</mxc:subfield>
+<mxc:subfield code="a">8-CNLJB-1683</mxc:subfield>
+<mxc:subfield code="b">759999999</mxc:subfield>
+<mxc:subfield code="c">Tolbiac - Rez de Jardin - Littérature et art - Magasin</mxc:subfield>
+<mxc:subfield code="d">O</mxc:subfield>
+</mxc:datafield>
+</mxc:record>      </srw:recordData>
+<srw:recordIdentifier>ark:/12148/cb433906180</srw:recordIdentifier>
+<srw:recordPosition>50</srw:recordPosition>
+<srw:extraRecordData>
+<ixm:attr name="CreationDate">20140818</ixm:attr>
+<ixm:attr name="LastModificationDate">20141203</ixm:attr>
+<mn:score>7.333162</mn:score>
+</srw:extraRecordData>
+</srw:record>
+<srw:record>
+<srw:recordSchema>marcxchange</srw:recordSchema>
+<srw:recordPacking>xml</srw:recordPacking>
+<srw:recordData>
+<mxc:record xmlns:mxc="info:lc/xmlns/marcxchange-v2" format="UNIMARC" id="ark:/12148/cb42236491d" type="Bibliographic">
+<mxc:leader>     cam  22        450 </mxc:leader>
+<mxc:controlfield tag="001">FRBNF422364910000008</mxc:controlfield>
+<mxc:controlfield tag="003">http://catalogue.bnf.fr/ark:/12148/cb42236491d</mxc:controlfield>
+<mxc:datafield tag="010" ind1=" " ind2=" ">
+<mxc:subfield code="a">978-2-8116-0303-8</mxc:subfield>
+<mxc:subfield code="b">br.</mxc:subfield>
+<mxc:subfield code="d">6,95 EUR</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="020" ind1=" " ind2=" ">
+<mxc:subfield code="a">FR</mxc:subfield>
+<mxc:subfield code="b">01042757</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="073" ind1=" " ind2="0">
+<mxc:subfield code="a">9782811603038</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="100" ind1=" " ind2=" ">
+<mxc:subfield code="a">20100709d2010    m  y0frey50      ba</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="101" ind1="1" ind2=" ">
+<mxc:subfield code="a">fre</mxc:subfield>
+<mxc:subfield code="c">jpn</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="102" ind1=" " ind2=" ">
+<mxc:subfield code="a">FR</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="105" ind1=" " ind2=" ">
+<mxc:subfield code="a">||||t   00|a|</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="106" ind1=" " ind2=" ">
+<mxc:subfield code="a">r</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="181" ind1=" " ind2="0">
+<mxc:subfield code="6">01</mxc:subfield>
+<mxc:subfield code="a">i </mxc:subfield>
+<mxc:subfield code="b">xxxe  </mxc:subfield>
+<mxc:subfield code="a">b </mxc:subfield>
+<mxc:subfield code="b">xb2e  </mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="181" ind1=" " ind2=" ">
+<mxc:subfield code="6">02</mxc:subfield>
+<mxc:subfield code="c">txt</mxc:subfield>
+<mxc:subfield code="c">sti</mxc:subfield>
+<mxc:subfield code="2">rdacontent</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="182" ind1=" " ind2="0">
+<mxc:subfield code="6">01</mxc:subfield>
+<mxc:subfield code="a">n</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="182" ind1=" " ind2=" ">
+<mxc:subfield code="6">02</mxc:subfield>
+<mxc:subfield code="c">n</mxc:subfield>
+<mxc:subfield code="2">rdamedia</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="200" ind1="1" ind2=" ">
+<mxc:subfield code="a">Air gear</mxc:subfield>
+<mxc:subfield code="h">22</mxc:subfield>
+<mxc:subfield code="b">Texte imprimé</mxc:subfield>
+<mxc:subfield code="f">Oh ! Great</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="210" ind1=" " ind2=" ">
+<mxc:subfield code="a">[Boulogne]</mxc:subfield>
+<mxc:subfield code="c">Pika éd.</mxc:subfield>
+<mxc:subfield code="d">DL 2010</mxc:subfield>
+<mxc:subfield code="e">86-Ligugé</mxc:subfield>
+<mxc:subfield code="g">Impr. CPI Aubin</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="215" ind1=" " ind2=" ">
+<mxc:subfield code="a">1 vol. (non paginé [ca 224] p.)</mxc:subfield>
+<mxc:subfield code="c">ill., couv. ill., jaquette ill. en coul.</mxc:subfield>
+<mxc:subfield code="d">18 cm</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="225" ind1="|" ind2=" ">
+<mxc:subfield code="a">Pika shônen</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="330" ind1=" " ind2=" ">
+<mxc:subfield code="a">Parmi les Kogarasu Maru, Kazu culpabilise d'avoir perdu les Regalia des Flammes que Spit Fire lui avait légués en sacrifiant sa vie.</mxc:subfield>
+<mxc:subfield code="2">Electre</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="410" ind1=" " ind2="0">
+<mxc:subfield code="0">41436495</mxc:subfield>
+<mxc:subfield code="t">Collection Pika shônen</mxc:subfield>
+<mxc:subfield code="x">2100-2932</mxc:subfield>
+<mxc:subfield code="d">2010</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="454" ind1=" " ind2="1">
+<mxc:subfield code="t">Air gear</mxc:subfield>
+<mxc:subfield code="h">Vol. 22</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="461" ind1=" " ind2="0">
+<mxc:subfield code="0">40951856</mxc:subfield>
+<mxc:subfield code="t">Air gear</mxc:subfield>
+<mxc:subfield code="v">22</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="608" ind1=" " ind2=" ">
+<mxc:subfield code="a">Bandes dessinées</mxc:subfield>
+<mxc:subfield code="2">CNLJ</mxc:subfield>
+<mxc:subfield code="k">Avis critique donné par le Centre national de la littérature pour la jeunesse</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="686" ind1=" " ind2=" ">
+<mxc:subfield code="a">805</mxc:subfield>
+<mxc:subfield code="2">Cadre de classement de la Bibliographie nationale française</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="700" ind1=" " ind2="|">
+<mxc:subfield code="3">13624631</mxc:subfield>
+<mxc:subfield code="o">ISNI0000000114916173</mxc:subfield>
+<mxc:subfield code="a">Ō</mxc:subfield>
+<mxc:subfield code="b">Gureito</mxc:subfield>
+<mxc:subfield code="f">1972-....</mxc:subfield>
+<mxc:subfield code="4">070</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="801" ind1=" " ind2="0">
+<mxc:subfield code="a">FR</mxc:subfield>
+<mxc:subfield code="b">FR-751131015</mxc:subfield>
+<mxc:subfield code="c">20100709</mxc:subfield>
+<mxc:subfield code="g">AFNOR</mxc:subfield>
+<mxc:subfield code="h">FRBNF422364910000008</mxc:subfield>
+<mxc:subfield code="2">intermrc</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="856" ind1=" " ind2="2">
+<mxc:subfield code="u">157316</mxc:subfield>
+<mxc:subfield code="b">Première de couverture</mxc:subfield>
+</mxc:datafield>
+<mxc:datafield tag="930" ind1=" " ind2=" ">
+<mxc:subfield code="5">FR-751131010:42236491001001</mxc:subfield>
+<mxc:subfield code="a">2010-162927</mxc:subfield>
+<mxc:subfield code="b">759999999</mxc:subfield>
+<mxc:subfield code="c">Tolbiac - Rez de Jardin - Littérature et art - Magasin</mxc:subfield>
+<mxc:subfield code="d">O</mxc:subfield>
+</mxc:datafield>
+</mxc:record>      </srw:recordData>
+<srw:recordIdentifier>ark:/12148/cb42236491d</srw:recordIdentifier>
+<srw:recordPosition>13</srw:recordPosition>
+<srw:extraRecordData>
+<ixm:attr name="CreationDate">20100709</ixm:attr>
+<ixm:attr name="LastModificationDate">20151222</ixm:attr>
+<mn:score>12.443349</mn:score>
+</srw:extraRecordData>
+</srw:record>
+</srw:records>
+<srw:nextRecordPosition>51</srw:nextRecordPosition>
+</srw:searchRetrieveResponse>

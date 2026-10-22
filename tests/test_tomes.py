@@ -934,7 +934,7 @@ class ResumesTest(unittest.TestCase):
         import time as t
         self.assertFalse(tomes.statut_a_jour(None))
         self.assertTrue(tomes.statut_a_jour({"date": t.time() - 3 * 86400, "statut": "FINISHED", "resume": "x" * 60,
-                                             "resume_v": tomes.RESUME_VERSION}))
+                                             "resume_v": tomes.RESUME_VERSION, "synonymes": []}))
         self.assertFalse(tomes.statut_a_jour({"date": t.time() - 2 * 86400, "statut": None, "resume": ""}))
         self.assertFalse(tomes.statut_a_jour({"date": t.time() - 2 * 86400, "statut": "FINISHED", "resume": ""}))
         self.assertTrue(tomes.statut_a_jour({"date": t.time() - 3600, "statut": None, "resume": ""}))
@@ -963,7 +963,7 @@ class ResumesTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, mock.patch.object(tomes, "DOSSIER", Path(d)), \
                 mock.patch.object(tomes._SESSION, "post", side_effect=post), \
                 mock.patch.object(tomes, "_titres_mangaupdates", return_value=["Shuujin Riku"]), \
-                mock.patch.object(tomes, "_resume", return_value=("Une météorite…", "fr")):
+                mock.patch.object(tomes, "_resume", return_value=("Une météorite…", "fr", [], "MangaDex")):
             st = tomes.statut_officiel("Prisonnier Riku", forcer=True)
         self.assertEqual((st["anilist"], st["resume"], st["resume_langue"]), (78257, "Une météorite…", "fr"))
 
@@ -972,7 +972,7 @@ class ResumesTest(unittest.TestCase):
         with mock.patch.object(tomes, "_wikipedia_fr", return_value=""), \
                 mock.patch.object(tomes, "_titres_mangaupdates", return_value=[]), \
                 mock.patch.object(tomes, "_mangaupdates", return_value={"description": "A story."}):
-            self.assertEqual(tomes._resume_sans_anilist("Inconnu"), ("A story.", "en"))
+            self.assertEqual(tomes._resume_sans_anilist("Inconnu"), ("A story.", "en", [], "MangaUpdates"))
 
 
 class NomSerieTest(unittest.TestCase):

@@ -20,7 +20,8 @@
         $("tor-series").innerHTML = series.map(s => `<option value="${esc(s)}">`).join("");
         const l = r.torrents || [];
         $("tor-liste").innerHTML = l.length ? l.map(j => `<div class="tor-ligne ${j.etat}"><div class="tor-info"><b>${esc(j.serie)}</b><small>${esc(j.titre)}</small>
-            <span>${ETATS[j.etat] || j.etat}${j.etat === "telechargement" ? " " + (j.progression || 0) + " %" : ""} · ${esc(j.message || "")}</span></div>${j.etat === "a_valider" ? `<div class="tor-choix">
+            <span>${ETATS[j.etat] || j.etat}${j.etat === "telechargement" ? " " + (j.progression || 0) + " %" : ""} · ${esc(j.message || "")}</span>
+            ${j.page && window.MouPageTracker ? `<div class="pt-liens">${MouPageTracker.lien(j.page)}</div>` : ""}</div>${j.etat === "a_valider" ? `<div class="tor-choix">
                 <button type="button" class="mou-btn" data-decider="${esc(j.id)}" data-remplacer="1">Remplacer tous les tomes</button>
                 <button type="button" class="mou-btn" data-decider="${esc(j.id)}" data-remplacer="0">Ajouter seulement les manquants</button>
                 <button type="button" class="mou-btn ghost" data-decider="${esc(j.id)}" data-remplacer="ignorer">Ne rien faire</button>
@@ -40,11 +41,18 @@
             <div class="tor-info"><b>${esc(x.titre)}</b>
             <small>${taille(x.taille)} · ${x.sources} source${x.sources > 1 ? "s" : ""} · ${esc(x.indexeur)}${x.date ? " · " + esc(x.date) : ""}</small>
             <span class="tor-badges">${x.badges.map(b => `<i>${esc(b)}</i>`).join("")}</span></div>
-            <div class="tor-act">${x.page ? `<a class="mou-btn ghost small" href="${esc(x.page)}" target="_blank" rel="noopener" title="Voir sur le site">🔗</a>` : ""}
+            <div class="tor-act">${x.page ? `<a class="mou-btn ghost small" href="${esc(x.page)}" target="_blank" rel="noopener noreferrer" title="Voir sur le site">🔗</a>
+            <button type="button" class="mou-btn ghost small" data-lire-page="${i}" title="Lire la présentation et le NFO sur le tracker">📄</button>` : ""}
             <button type="button" class="mou-btn small" data-choisir="${i}">⬇️</button></div></div>`).join("")
             : '<div class="loading">Rien trouvé. Essaie un autre nom, ou coche « toutes les catégories ».</div>';
     }
     document.addEventListener("click", async e => {
+        const lp = e.target.closest("[data-lire-page]");
+        if (lp && window.MouPageTracker) {
+            const x = res[+lp.dataset.lirePage];
+            MouPageTracker.ouvrir(lp.closest(".tor-res"), {page: x.page, titre: x.titre, serie: params.get("serie") || ""});
+            return;
+        }
         const c = e.target.closest("[data-choisir]");
         if (c) {
             const bloc = c.closest(".tor-res"), i = +c.dataset.choisir;
@@ -60,7 +68,7 @@
             if (!serie) return;
             env.disabled = true;
             const envoyer = (nom, confirme) => fetch("/api/torrents", {method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({lien: x.lien, titre: x.titre, serie: nom, confirme, proposition: params.get("proposition") || ""})}).then(q => q.json());
+                body: JSON.stringify({resultat: x.id, lien: x.lien || "", titre: x.titre, page: x.page || "", serie: nom, confirme, proposition: params.get("proposition") || ""})}).then(q => q.json());
             let r = await envoyer(serie, false);
             if (!r.ok && r.proche) {          // nom proche d'une série déjà là : la rejoindre, ou garder le nom tapé
                 r = await envoyer(await MouConfirm(r.error + "\n\nRanger dans « " + r.proche + " » ou garder « " + serie + " » (nouvelle série) ?", {ok: "Ranger dans « " + r.proche + " »", annuler: "Garder mon nom"}) ? r.proche : serie, true);

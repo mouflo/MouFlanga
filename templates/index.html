@@ -8,8 +8,10 @@
 <link rel="icon" type="image/svg+xml" href="/icons/mouflanga.svg"><link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=2"><link rel="manifest" href="/icons/manifest.webmanifest"><meta name="theme-color" content="#121315">
 <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
 <link rel="stylesheet" href="/ui/mouflanga.css?v={{ version|urlencode }}">
+<link rel="stylesheet" href="/ui/page-tracker.css?v={{ version|urlencode }}">
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
 <script src="/ui/hors-ligne.js?v={{ version|urlencode }}" defer></script>
+<script src="/ui/page-tracker.js?v={{ version|urlencode }}" defer></script>
 <script src="/ui/mouflanga.js?v={{ version|urlencode }}" defer></script>
 <script src="/ui/verif-banniere.js?v={{ version|urlencode }}" defer></script>
 <link rel="stylesheet" href="/ui/apparence.css?v={{ version|urlencode }}">
@@ -118,7 +120,7 @@
                     </div>
                 </div>
             </div>
-            <div class="resume" id="sPitch"><div class="resume-titre"><span class="resume-nom">📖 Synopsis</span><button class="resume-modif secondary" id="sInfos" title="Infos sur la série" aria-label="Infos sur la série">ℹ️</button><button class="resume-modif secondary" id="sEcouter" hidden title="Écouter le générique de l'anime" aria-label="Écouter le générique">🎵</button><button class="resume-modif secondary" id="sPitchModif" title="Modifier le synopsis" aria-label="Modifier le synopsis">✏️</button></div><div class="resume-texte" id="sPitchTexte" title="Appuie pour tout lire"></div>
+            <div class="resume" id="sPitch"><div class="resume-titre"><span class="resume-nom">📖 Synopsis</span><button class="resume-modif secondary" id="sInfos" title="Infos sur la série" aria-label="Infos sur la série">ℹ️</button><button class="resume-modif secondary" id="sEcouter" hidden title="Écouter le générique de l'anime" aria-label="Écouter le générique">🎵</button><button class="resume-modif secondary" id="sPitchModif" title="Modifier le synopsis" aria-label="Modifier le synopsis">✏️</button></div><div class="resume-texte" id="sPitchTexte" title="Appuie pour tout lire"></div><div class="resume-source" id="sPitchSource" hidden></div>
                 <div id="sPitchEdit" hidden><textarea id="sPitchZone" class="mou-field resume-zone" rows="8" maxlength="5000" placeholder="Écris le synopsis de la série…"></textarea>
                     <div class="actions resume-actions"><button id="sPitchOk">💾 Enregistrer</button><button class="secondary" id="sPitchAnnuler">Annuler</button><button class="secondary" id="sPitchAuto" title="Effacer ton texte et reprendre le synopsis trouvé sur Internet">↺ Automatique</button></div>
                     <div class="resume-aide">Pour copier un synopsis : <a id="sPitchNautiljon" target="_blank" rel="noopener">🔎 Nautiljon</a> (appui long sur le texte → Copier, puis colle-le ici).</div></div></div>

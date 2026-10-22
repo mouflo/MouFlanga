@@ -9,6 +9,7 @@ place en plus) et importé (tomes, nom, couverture) ; puis qBittorrent déplace 
 Réglages (data/secrets.env, page Réglages → Connexions) : PROWLARR_URL, PROWLARR_API_KEY, QBIT_URL, QBIT_USER,
 QBIT_PASSWORD, TORRENTS_NOK, TORRENTS_OK, et facultatif TORRENTS_CHEMINS « chemin_qbittorrent=>chemin_local ».
 """
+import hashlib
 import json
 import logging
 import os
@@ -115,6 +116,34 @@ def chercher(q: str, toutes_categories=False) -> list[dict]:
     # score des formats d'abord, puis VF, intégrale/digital, et nombre de sources
     out.sort(key=lambda x: (-x.get("score", 0), "🇫🇷 FR" not in x["badges"], "Intégrale" not in x["badges"], "Digital" not in x["badges"], -x["sources"]))
     return out
+
+
+_LIENS = {}                       # numéro → (lien de téléchargement, instant) : gardés ici, jamais envoyés au navigateur
+_LIENS_MAX, _LIENS_DUREE = 1000, 2 * 3600
+
+
+def publier(resultats: list) -> list:
+    """Résultats de recherche pour le navigateur : sans lien de téléchargement (celui de Prowlarr contient sa clé API) mais avec un numéro
+    (`id`) que `lien_de` retrouve pendant deux heures. Les liens magnet, qui ne contiennent aucune clé, restent tels quels."""
+    maintenant, out = time.time(), []
+    with _verrou:
+        for k in [k for k, (_, t) in _LIENS.items() if maintenant - t > _LIENS_DUREE]:
+            del _LIENS[k]
+        for r in resultats:
+            lien = r.get("lien") or ""
+            ident = hashlib.sha1(lien.encode("utf-8")).hexdigest()[:16]
+            _LIENS[ident] = (lien, maintenant)
+            out.append({**{k: v for k, v in r.items() if k != "lien"}, "id": ident, **({"lien": lien} if lien.startswith("magnet:") else {})})
+        while len(_LIENS) > _LIENS_MAX:
+            del _LIENS[min(_LIENS, key=lambda k: _LIENS[k][1])]
+    return out
+
+
+def lien_de(ident: str) -> str:
+    """Lien de téléchargement d'un résultat publié (« » s'il est inconnu ou trop ancien : relancer la recherche)."""
+    with _verrou:
+        e = _LIENS.get(str(ident or ""))
+    return e[0] if e and time.time() - e[1] <= _LIENS_DUREE else ""
 
 
 # ---------------------------------------------------------------- qBittorrent
@@ -240,7 +269,7 @@ def _forcer_demarrage(q, jid):
             return
 
 
-def lancer(lien: str, titre: str, serie: str, remplacer: bool | None = None) -> dict:
+def lancer(lien: str, titre: str, serie: str, remplacer: bool | None = None, page: str = "") -> dict:
     r = reglages()
     q = Qbit()
     q.preparer_categorie()
@@ -248,7 +277,7 @@ def lancer(lien: str, titre: str, serie: str, remplacer: bool | None = None) -> 
     q.appel("torrents/add", urls=lien, category=CATEGORIE, tags=f"mouflanga,mf-{jid}", savepath=r["nok"], autoTMM="false")
     _forcer_demarrage(q, jid)
     j = {"id": jid, "titre": titre, "serie": serie, "remplacer": remplacer, "etat": "telechargement", "progression": 0, "debut": datetime.now().strftime("%Y-%m-%d %H:%M"),
-         "message": "Envoyé à qBittorrent"}
+         "message": "Envoyé à qBittorrent", **({"page": page} if str(page).startswith("https://") and len(page) <= 600 else {})}
     with _verrou:
         d = _lire()
         d.append(j)

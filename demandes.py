@@ -17,6 +17,8 @@ from pathlib import Path
 import requests
 from flask import jsonify, request
 
+import reseau
+
 logger = logging.getLogger(__name__)
 
 STATUTS = {"FINISHED": "terminée", "RELEASING": "en cours", "NOT_YET_RELEASED": "pas encore sortie",
@@ -47,10 +49,8 @@ def chercher_anilist(q):
     """Séries correspondant au texte tapé (les 8 plus proches)."""
     requete = ("query($s:String){Page(perPage:8){media(search:$s,type:MANGA,sort:SEARCH_MATCH){id title{romaji english native} "
                "coverImage{medium} startDate{year} status volumes format countryOfOrigin}}}")
-    r = requests.post("https://graphql.anilist.co", json={"query": requete, "variables": {"s": q}}, timeout=15)
-    r.raise_for_status()
     out = []
-    for m in ((r.json().get("data") or {}).get("Page") or {}).get("media") or []:
+    for m in ((reseau.anilist(requete, {"s": q}) or {}).get("Page") or {}).get("media") or []:
         t = m.get("title") or {}
         out.append({"anilist": m["id"], "titre": t.get("english") or t.get("romaji") or t.get("native") or "?",
                     "original": t.get("romaji") if t.get("english") and t.get("romaji") != t.get("english") else "",
@@ -71,10 +71,9 @@ def _cle_titre(texte):
 
 def chercher_mangadex(q):
     """MangaDex (API publique, sans clé) : séries correspondant au texte, avec la couverture et la langue d'origine."""
-    r = requests.get("https://api.mangadex.org/manga", params={
+    r = reseau.get("https://api.mangadex.org/manga", params={
         "title": q, "limit": 8, "includes[]": "cover_art", "order[relevance]": "desc",
-        "contentRating[]": ["safe", "suggestive"]}, headers={"User-Agent": "MouFlanga/2.0"}, timeout=15)
-    r.raise_for_status()
+        "contentRating[]": ["safe", "suggestive"]}, memo=120)
     out = []
     for m in r.json().get("data") or []:
         a = m.get("attributes") or {}
@@ -95,9 +94,7 @@ def chercher_mangadex(q):
 
 def chercher_mangaupdates(q):
     """MangaUpdates (sans clé) : titres, années et couvertures ; les éditeurs sont sur la fiche."""
-    r = requests.post("https://api.mangaupdates.com/v1/series/search", json={"search": q, "perpage": 8},
-                      headers={"User-Agent": "MouFlanga/2.0"}, timeout=15)
-    r.raise_for_status()
+    r = reseau.post("https://api.mangaupdates.com/v1/series/search", json={"search": q, "perpage": 8})
     out = []
     for x in r.json().get("results") or []:
         m = x.get("record") or {}

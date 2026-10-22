@@ -20,7 +20,7 @@ class FicheChoisieTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, mock.patch.object(tomes, "DOSSIER", Path(d)), \
                 mock.patch.object(tomes, "ID_CHOISI", lambda s: 46708), \
                 mock.patch.object(tomes._SESSION, "post", side_effect=post), \
-                mock.patch.object(tomes, "_resume", return_value=("Résumé", "fr")):
+                mock.patch.object(tomes, "_resume", return_value=("Résumé", "fr", [], "MangaDex")):
             st = tomes.statut_officiel("Crows", forcer=True)
         self.assertEqual(appels, [{"i": 46708}])
         self.assertEqual((st["anilist"], st["volumes"], st["choisi"]), (46708, 28, True))
@@ -36,7 +36,7 @@ class FicheChoisieTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, mock.patch.object(tomes, "DOSSIER", Path(d)), \
                 mock.patch.object(tomes, "ID_INDICE", lambda s: 7), \
                 mock.patch.object(tomes._SESSION, "post", side_effect=post), \
-                mock.patch.object(tomes, "_resume", return_value=("Résumé", "fr")):
+                mock.patch.object(tomes, "_resume", return_value=("Résumé", "fr", [], "MangaDex")):
             st = tomes.statut_officiel("Crows", forcer=True)
         self.assertEqual(appels, [{"i": 7}])
         self.assertEqual((st["anilist"], st["choisi"]), (7, False))

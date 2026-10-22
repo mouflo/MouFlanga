@@ -42,8 +42,9 @@ class IsbnSerieTest(unittest.TestCase):
         self.isbn = {10: "9782505013112", 30: "9782505013129"}        # couleur du gris de la dernière page -> ISBN
         sommaire.ocr = self._faux_ocr
         A.MANGA_DIR = self.root
-        self._google = A.tomes.isbn_google
-        A.tomes.isbn_google = lambda *a, **k: None                    # jamais Internet dans les tests : Google « indisponible »
+        import identification
+        self._internet = A._isbn_internet_serie
+        A._isbn_internet_serie = lambda *a, **k: identification.Bilan("vide", "", None, {"attente": False})   # jamais Internet dans les tests
         A._scan_invalider()
         self.c = A.app.test_client()
 
@@ -55,7 +56,7 @@ class IsbnSerieTest(unittest.TestCase):
     def tearDown(self):
         self.auth.role = self._role
         self.som.ocr, self.som.disponible = self._ocr, self._dispo
-        self.A.tomes.isbn_google = self._google
+        self.A._isbn_internet_serie = self._internet
         self.tmp.cleanup()
 
     def _attendre(self):
@@ -77,6 +78,13 @@ class IsbnSerieTest(unittest.TestCase):
         self.assertEqual(isbn.get("1"), "9782505013112")
         self.assertEqual(isbn.get("3"), "9782505013129")
         self.assertNotIn("2", isbn)
+
+    def test_lecture_ratee_pas_refaite_automatiquement_avant_90_jours(self):
+        self.c.post("/api/serie/isbn/lire", json={"series": "Serie"})
+        self._attendre()
+        auto = [t for t, _ in self.A._tomes_sans_isbn("Serie", auto=True)]
+        bouton = [t for t, _ in self.A._tomes_sans_isbn("Serie")]
+        self.assertEqual((auto, bouton), ([], [2]))              # le tome 2 est introuvable : le fond ne le relit pas, le bouton 🔍 si
 
     def test_ne_relit_pas_ce_qui_est_connu(self):
         import edition

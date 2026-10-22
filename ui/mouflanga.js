@@ -387,6 +387,8 @@
     $('sMeta').textContent = (s.compte || '') + ' · ' + nbLus + ' lu' + (nbLus > 1 ? 's' : '');
     $('sPitchTexte').textContent = s.resume || 'Aucun synopsis trouvé sur Internet. Appuie sur ✏️ pour en écrire un.';
     $('sPitchTexte').classList.toggle('vide', !s.resume);
+    $('sPitchSource').hidden = !(s.resume && s.resume_source);
+    $('sPitchSource').textContent = s.resume_source ? 'Source : ' + s.resume_source : '';
     $('sPitchNautiljon').href = 'https://www.nautiljon.com/search.php?q=' + encodeURIComponent(s.title);
     $('sPitch').classList.remove('ouvert');
     $('sPitchEdit').hidden = true; $('sPitchTexte').hidden = false; $('sPitchModif').hidden = false;
@@ -419,8 +421,12 @@
     $('sProps').hidden = !(sv && sv.surveiller) && !props.length;
     $('sPropsListe').innerHTML = props.length ? props.map(function (p) {
       var url = '/telecharger?torrent=' + encodeURIComponent(p.titre) + '&serie=' + encodeURIComponent(s.id) + '&proposition=' + p.id + (p.type === 'meilleur' || p.type === 'equipe' ? '&remplacer=1' : '');
+      var tracker = window.MouPageTracker, lu = tracker ? tracker.ligne(p.lu) : '';
       return '<div class="prop"><div class="dem-info"><b>' + ({meilleur: '⬆️ ', equipe: '🔁 '}[p.type] || '🆕 ') + esc(p.titre) + '</b><small>' +
-        (p.type === 'meilleur' ? 'Meilleure version' : p.type === 'equipe' ? 'Même équipe que la série pour les tomes ' + esc((p.tomes || []).join(', ')) : 'Tomes absents : ' + esc((p.tomes || []).join(', '))) + ' · ' + (p.badges || []).map(esc).join(' · ') + '</small></div>' +
+        (p.type === 'meilleur' ? 'Meilleure version' : p.type === 'equipe' ? 'Même équipe que la série pour les tomes ' + esc((p.tomes || []).join(', ')) : 'Tomes absents : ' + esc((p.tomes || []).join(', '))) + ' · ' + (p.badges || []).map(esc).join(' · ') + '</small>' +
+        (lu ? '<small class="prop-lu">' + lu + '</small>' : '') +
+        (tracker && tracker.https(p.page) ? '<div class="pt-liens">' + tracker.lien(p.page) +
+          '<button type="button" class="ghost pt-lire" data-lire="' + esc(p.id) + '" title="Lire la présentation et le NFO du torrent sur son tracker">📄 Lire la page</button></div>' : '') + '</div>' +
         '<div class="dem-act"><a class="mou-btn small" href="' + url + '">⬇️</a><button type="button" class="ghost" data-ignorer="' + p.id + '">✕</button></div></div>';
     }).join('') : '<div class="dem-sous">Rien de nouveau' + (sv && sv.derniere_verif ? ' (vérifié le ' + esc(sv.derniere_verif) + ')' : '') + '.</div>';
     $('sEtat').hidden = !s.etat_texte;
@@ -1458,7 +1464,7 @@
     new MutationObserver(function () { if ($('infosVue').hidden) arreterEcouteGen(); }).observe($('infosVue'), {attributes: true, attributeFilter: ['hidden']});
 
     // 🔄 Fenêtre d'avancement : chaque étape de la ré-identification, mise à jour toutes les 1,5 s
-    var ICONE_ETAPE = {attente: '⏳', en_cours: '🔄', ok: '✅', echec: '⚠️'};
+    var ICONE_ETAPE = {attente: '⏳', en_cours: '🔄', ok: '✅', vide: '➖', reprise: '🕒', echec: '⚠️'};
     function suivreIdentification(serie) {
       var nom = serie;
       $('infosTitre').textContent = '🔄 Identification : ' + nom;
@@ -1468,7 +1474,9 @@
           return '<li class="ident-' + e.etat + '"><span>' + (ICONE_ETAPE[e.etat] || '•') + '</span><div><b>' + esc(e.nom) + '</b>'
             + (e.detail ? '<small>' + esc(e.detail) + '</small>' : '') + '</div></li>';
         }).join('');
-        var fin = r.fini ? '<p class="dem-sous"><b>Terminé.</b> La fiche de la série a été rechargée avec les nouvelles infos.</p>'
+        var enAttente = (r.etapes || []).some(function (e) { return e.etat === 'reprise'; });
+        var fin = r.fini ? '<p class="dem-sous"><b>Terminé.</b> La fiche de la série a été rechargée avec les nouvelles infos.'
+            + (enAttente ? ' Ce qui attend un service (🕒) sera repris tout seul à l\'heure indiquée : rien de ce qu\'on savait n\'a été effacé.' : '') + '</p>'
           : '<p class="dem-sous">En cours… tu peux fermer cette fenêtre : la fiche se rechargera toute seule à la fin.</p>';
         $('infosCorps').innerHTML = '<ul class="ident-liste">' + lignes + '</ul>' + fin;
       }
@@ -1583,7 +1591,7 @@
       var provOrigine = String(prov.origine || '').replace(/[.\s]+$/, '');
       var equipeDejaLa = prov.equipe && provOrigine.toLowerCase().indexOf(String(prov.equipe).toLowerCase()) >= 0;   // le nom du torrent contient déjà l'équipe : pas de doublon
       var provTexte = (prov.equipe && !equipeDejaLa ? 'Équipe : ' + prov.equipe + ' · ' : '') + provOrigine + (prov.manuel ? ' (saisi à la main)' : '');
-      var champs = [['Titre', d.titre], ['Infos', d.infos_hs], ['Sortie en France', d.sortie], ['ISBN', d.isbn], ['Provenance', provTexte.trim() ? provTexte : '']].filter(function (x) { return x[1]; });
+      var champs = [['Titre', d.titre], ['Infos', d.infos_hs], ['Sortie en France', d.sortie], ['ISBN', d.isbn ? d.isbn + (d.isbn_source ? ' (' + d.isbn_source + ')' : '') : ''], ['Autres ISBN connus', (d.isbn_autres || []).join(', ')], ['Provenance', provTexte.trim() ? provTexte : '']].filter(function (x) { return x[1]; });
       var chap = d.chapitres || [], pagesCh = d.chapitres_pages || [];
       var lien = function (c, i) {                    // chapitre lu dans le sommaire d'un tome complet : ouvert à sa page
         if (d.fichier && pagesCh[i] != null) return '<a href="/lire?s=' + encodeURIComponent(current.id) + '&c=' + encodeURIComponent(d.fichier) + '&p=' + pagesCh[i] + '">' + esc(sansDoublon(c)) + '</a>';
@@ -1740,6 +1748,26 @@
       $('sVerifier').disabled = false; note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err'); if (r.ok) await openSeries(current.id, false);
     });
     $('sPropsListe').addEventListener('click', async function (e) {
+      var l = e.target.closest('[data-lire]');
+      if (l && window.MouPageTracker && current) {
+        var p = ((current.suivi && current.suivi.propositions) || []).filter(function (x) { return x.id === l.dataset.lire; })[0];
+        if (!p) return;
+        MouPageTracker.ouvrir(l.closest('.prop'), {serie: current.id, proposition: p.id, page: p.page, titre: p.titre}, function (r) {
+          p.lu = Object.assign({}, p.lu, MouPageTracker.depuisPage(r.page));         // la ligne de la proposition dit ce qui vient d'être lu
+          var rang = l.closest('.prop'), ligne = rang.querySelector('.prop-lu');
+          if (!ligne) {
+            ligne = document.createElement('small'); ligne.className = 'prop-lu';
+            rang.querySelector('.pt-liens').insertAdjacentElement('beforebegin', ligne);
+          }
+          ligne.innerHTML = MouPageTracker.ligne(p.lu);
+          if ((r.applique || []).indexOf('synopsis') >= 0 && !current.resume && r.page.infos.synopsis) {   // le synopsis qui manquait vient d'être ajouté
+            current.resume = r.page.infos.synopsis;
+            $('sPitchTexte').textContent = current.resume; $('sPitchTexte').classList.remove('vide');
+            $('sPitchSource').hidden = false; $('sPitchSource').textContent = 'Source : présentation du torrent sur ' + r.page.tracker;
+          }
+        });
+        return;
+      }
       var b = e.target.closest('[data-ignorer]'); if (!b) return;
       var r = await post('/api/suivies', {action: 'ignorer', nom: current.id, id: b.dataset.ignorer});
       if (r.ok) await openSeries(current.id, false);

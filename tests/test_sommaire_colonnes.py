@@ -72,14 +72,14 @@ class Resume(unittest.TestCase):
                                                               "description": {"fr": "[Wikipedia](https://fr.wikipedia.org/wiki/07-Ghost)"}}}]}
         with mock.patch.object(tomes._SESSION, "get", return_value=reponse), \
                 mock.patch.object(tomes, "_wikipedia_fr", return_value="Teito Klein est un adolescent."):
-            texte, langue = tomes._resume({"id": 31349, "title": {"romaji": "07-Ghost"}, "description": ""}, "07-ghost")
+            texte, langue, pannes, source = tomes._resume({"id": 31349, "title": {"romaji": "07-Ghost"}, "description": ""}, "07-ghost")
         self.assertEqual((texte, langue), ("Teito Klein est un adolescent.", "fr"))
 
     def test_resume_dun_mot_est_refait(self):
         import time
         self.assertFalse(tomes.statut_a_jour({"resume": "Wikipedia", "statut": "FINISHED", "date": time.time() - 2 * 86400}))
         self.assertTrue(tomes.statut_a_jour({"resume": "x" * 120, "statut": "FINISHED", "date": time.time() - 2 * 86400,
-                                                    "resume_v": tomes.RESUME_VERSION}))
+                                                    "resume_v": tomes.RESUME_VERSION, "synonymes": []}))
         # résumé gardé par l'ancien code (dernier mot coupé) : refait même s'il est récent
         self.assertFalse(tomes.statut_a_jour({"resume": "x" * 120, "statut": "FINISHED", "date": time.time() - 3600}))
 

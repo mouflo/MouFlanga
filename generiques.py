@@ -17,13 +17,14 @@ from pathlib import Path
 
 import requests
 
+import reseau
+
 logger = logging.getLogger(__name__)
 FICHIER_SON = ".theme.mp3"
 REVOIR = 30 * 86400
 _ETAT = {"fichier": Path("generiques.json"), "en_cours": False, "fait": 0, "total": 0, "ajoutes": 0, "message": ""}
 _verrou = threading.Lock()
-_session = requests.Session()
-_session.headers["User-Agent"] = "MouFlanga (bibliotheque perso)"
+_session = reseau.SESSION             # une seule session pour tout Internet (voir reseau.py)
 
 
 def lire():
@@ -45,10 +46,7 @@ def _noter(serie, **kw):
 def anime_du_manga(manga_id: int):
     """Anime adapté du manga : série TV la plus ancienne (saison 1), sinon film ou OVA. → (id, titre) ou None."""
     q = "query($i:Int){Media(id:$i){relations{edges{relationType node{id type format title{romaji english} startDate{year month}}}}}}"
-    r = _session.post("https://graphql.anilist.co", json={"query": q, "variables": {"i": int(manga_id)}}, timeout=15)
-    if r.status_code == 429:
-        raise RuntimeError("AniList demande de ralentir")
-    edges = (((r.json().get("data") or {}).get("Media") or {}).get("relations") or {}).get("edges") or []
+    edges = (((reseau.anilist(q, {"i": int(manga_id)}) or {}).get("Media") or {}).get("relations") or {}).get("edges") or []
     animes = [e["node"] for e in edges if e["node"]["type"] == "ANIME" and e["relationType"] in ("ADAPTATION", "ALTERNATIVE", "SOURCE")]
     if not animes:
         return None
@@ -60,7 +58,7 @@ def anime_du_manga(manga_id: int):
 
 def opening_1(anime_id: int):
     """Adresse du son du premier opening (OP1) de l'anime chez AnimeThemes, ou None."""
-    r = _session.get("https://api.animethemes.moe/anime", params={
+    r = reseau.get("https://api.animethemes.moe/anime", params={
         "filter[has]": "resources", "filter[site]": "AniList", "filter[external_id]": int(anime_id),
         "include": "animethemes.animethemeentries.videos.audio"}, timeout=20)
     for a in r.json().get("anime", []):
@@ -78,7 +76,7 @@ def opening_1(anime_id: int):
 def themes_de_l_anime(anime_id: int) -> list[dict]:
     """Tous les génériques connus de l'anime chez AnimeThemes (openings puis endings, dans l'ordre), pour les écouter
     et en choisir un : [{"slug": "OP5", "type": "OP", "titre": "Truth", "episodes": "124-142", "lien": …}]."""
-    r = _session.get("https://api.animethemes.moe/anime", params={
+    r = reseau.get("https://api.animethemes.moe/anime", params={
         "filter[has]": "resources", "filter[site]": "AniList", "filter[external_id]": int(anime_id),
         "include": "animethemes.song,animethemes.animethemeentries.videos.audio"}, timeout=30)
     sortie = []

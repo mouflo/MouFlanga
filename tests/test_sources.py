@@ -6,14 +6,13 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import demandes  # noqa: E402
+import reseau  # noqa: E402
 
 
 class Reponse:
     def __init__(self, data):
         self._data = data
-
-    def raise_for_status(self):
-        pass
+        self.status_code = 200
 
     def json(self):
         return self._data
@@ -30,7 +29,7 @@ MANGAUPDATES = {"results": [{"record": {"series_id": 7, "title": "Radiant", "yea
 
 class SourcesTest(unittest.TestCase):
     def test_mangadex_lit_titre_couverture_et_langue(self):
-        with mock.patch.object(demandes.requests, "get", return_value=Reponse(MANGADEX)):
+        with mock.patch.object(reseau.SESSION, "get", return_value=Reponse(MANGADEX)):
             r = demandes.chercher_mangadex("radiant")[0]
         self.assertEqual(r["titre"], "Radiant")
         self.assertEqual(r["type"], "manga français")
@@ -39,7 +38,7 @@ class SourcesTest(unittest.TestCase):
         self.assertEqual(r["source"], "MangaDex")
 
     def test_mangaupdates_lit_titre_et_annee(self):
-        with mock.patch.object(demandes.requests, "post", return_value=Reponse(MANGAUPDATES)):
+        with mock.patch.object(reseau.SESSION, "post", return_value=Reponse(MANGAUPDATES)):
             r = demandes.chercher_mangaupdates("radiant")[0]
         self.assertEqual((r["titre"], r["annee"], r["mangaupdates"]), ("Radiant", "2013", 7))
 

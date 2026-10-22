@@ -224,6 +224,8 @@ body.lecteur #sSource { display:none !important; }
 .carte-retirer { position:absolute; top:6px; right:6px; z-index:2; width:34px; height:34px; border-radius:50%; border:none; background:rgba(0,0,0,.7); color:#fff; font-size:16px; cursor:pointer; }
 body.lecteur .carte-retirer { display:none; }
 .card .etat.recherche { background:#555; }
+.resume-source { color:var(--muted); font-size:.72rem; margin-top:4px; }
+.resume-source[hidden] { display:none; }
 .propositions { margin-top:14px; }
 .propositions[hidden] { display:none; }
 .prop { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--line, #2c2c2c); }
@@ -295,6 +297,8 @@ body.nav-bas #seriesView .chapters { padding-bottom:56px; }   /* le bas de la li
 .ident-liste small { color: #aaa; line-height: 1.4; }
 .ident-liste .ident-attente { opacity: 0.55; }
 .ident-liste .ident-echec small { color: #ffb4b4; }
+.ident-liste .ident-reprise small { color: #f0d9a0; }
+.ident-liste .ident-vide { opacity: 0.8; }
 body.lecteur .admin-seul { display:none !important; }
 .choix-fond { position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.7); display:flex; align-items:center; justify-content:center; padding:16px; }
 .choix-boite { background:var(--surface2, #222); border-radius:12px; padding:16px; max-width:420px; width:100%; display:flex; flex-direction:column; gap:10px; }

@@ -1,5 +1,47 @@
 # Historique des versions
 
+## 🧲 Propositions de torrents : lien vers la page du tracker et lecture automatique de sa présentation et de son NFO (22 octobre 2026)
+**Ce qui change pour toi.**
+- **Chaque proposition de torrent affiche le lien de sa page sur le tracker** (« 🔗 c411.org »), qui s'ouvre dans un nouvel onglet, avec un bouton **📄 Lire la page**. Avant, seul ⬇️ était proposé et menait à la page Télécharger. Le même 🔗 + 📄 est dans les résultats de recherche de Télécharger, et la liste des téléchargements garde le lien de la page du torrent.
+- **Lecture automatique de la page** : les trackers privés cachent leurs pages derrière une connexion, mais C411, TR4KER, The Old School et ABN ont une API prévue pour leurs membres, qui s'ouvre avec la clé que Prowlarr a déjà. MouFlanga lit ainsi la **présentation** et le **NFO** de chaque nouvelle proposition (cinq au plus après chaque recherche, au rythme que chaque tracker demande) et affiche sur la ligne l'éditeur, le nombre de pages, la résolution, la qualité et l'ISBN. Le volet 📄 montre le résumé, les infos, le NFO et la liste des fichiers.
+- **La fiche de la série suivie reçoit ce qui lui manque** : synopsis, auteur, éditeur, genre, jamais en remplacement, et seulement si le torrent est bien celui de la série (« One Piece FullColor », « One Piece Party » ou « No Guns Life » sous « Crows » sont refusés, avec un message). Un synopsis venu du tracker est signalé (« Source : présentation du torrent sur C411 ») et ne passe qu'après un résumé écrit à la main, un résumé officiel en français ou celui d'un NFO.
+- **Les séries suivies encore vides sont identifiées comme les autres** (statut, synopsis, fiche, noms français) : avant, elles n'avaient aucune recherche, d'où « Aucun synopsis trouvé sur Internet » sur WIND BREAKER et des torrents français (« Coq de Baston » pour Rooster Fighter) non reconnus. Leur fiche AniList est celle choisie à l'ajout.
+- Pas d'accès prévu (HD-Forever…) ou tracker en panne : le message dit pourquoi ; une panne est réessayée plus tard, jamais notée comme « page vide ».
+- **Sécurité** : les liens de téléchargement de Prowlarr (ils contiennent sa clé API) ne vont plus au navigateur et ne sont plus gardés dans `data/suivies.json` ; seules les pages d'un tracker de Prowlarr sont lues, en https ; les clés des trackers restent en mémoire, ne sont ni écrites, ni journalisées, ni envoyées à la page.
+- **Google Books** : la recherche d'une série suit maintenant les pages de 20 résultats que Google renvoie (elle s'arrêtait à la première) et reconnaît les tomes que Google rend sans numéro (« Air Gear » tout court) grâce à leur ISBN, connu par Wikipédia ou la BnF.
+- Les NFO des archives et les pages des trackers sont lus par le même code (`presentation.py`).
+
+**Côté code.** `presentation.py` (HTML / BBCode / Markdown / texte → infos), `page_tracker.py` (API des trackers, mémoire d'une semaine dans `data/torrent-pages.json`), `lecture_pages.py` (lecture en fond, reconnaissance de la série), `ui/page-tracker.js` et `.css` ; services `c411`, `tr4ker`, `unit3d`, `abn` et `prowlarr` dans `reseau.py`. Les tests ne touchent plus aux dossiers du serveur (`data/` de l'appli : dossier jetable pendant les tests).
+
+## 🧱 Toute la recherche sur Internet refaite à neuf : plus de données perdues, plus de scan inutile (22 octobre 2026)
+**Pourquoi.** Relancer l'identification d'« Akame ga Kill ! : Zero » avait effacé ses résumés, et l'appli ne retrouvait ni les tomes ni les résumés français alors que la
+page Wikipédia existait. Les causes étaient les mêmes partout : une panne (Wikipédia qui demande de patienter, Google Books à court de quota) était notée comme « rien trouvé »
+pour des jours ; « Relancer » effaçait le cache avant de chercher ; douze endroits parlaient à AniList chacun à sa façon ; deux recherches qui finissaient ensemble s'écrasaient.
+Tout est décrit dans `docs/identification.md`.
+
+**Ce qui change pour toi.**
+- **Une recherche n'efface plus jamais rien.** Elle complète et corrige. Une source qui ne répond pas (réseau, « patiente », quota du jour) ne change rien : l'écran de « 🔄 Identification »
+  affiche 🕒 avec l'heure de la reprise, et l'appli reprend toute seule à ce moment-là (Google Books : tous les jours à 9 h, heure française).
+- **Les ISBN ne se lisent plus dans les pages d'abord.** Ordre : liste des volumes de Wikipédia en français (qui donne l'ISBN français de chaque tome), puis **la BnF** (catalogue officiel des
+  livres français : ISBN, éditeur, pages et très souvent le résumé de chaque tome, sans quota), puis Google Books seulement pour ce qui manque. Deux sources qui donnent le même ISBN : sûr.
+  La lecture des pages d'un tome n'est plus qu'un dernier recours, seulement si toutes les sources ont répondu et ne l'ont pas, et jamais deux fois en moins de 90 jours.
+- **Résumés des tomes** : Wikipédia, puis BnF, puis Google Books ; une série dont le résumé n'existe qu'en anglais prend en français celui de son tome 1. Les ISBN et résumés saisis à la main passent toujours devant.
+- **Titres de chapitres en français** lus sous toutes leurs formes de numérotation sur Wikipédia (« Kill 1 », « Battle 3 », « Retrace VI », « Z=26 », « Premier épisode »…) : 98 % des lignes des 112 pages
+  essayées, contre une partie seulement avant. Les pages d'une série mère (Akame ga Kill ! Zero) ou d'un nom écrit autrement (Golden Kamuy / Kamui, Samouraï / Samurai, Docteur / Dr) sont reconnues ; celles d'une autre série
+  (Boruto qui recevait les 73 volumes de Naruto) sont écartées, et un mauvais rapprochement ancien est remplacé par la lecture juste.
+- **Répartition en tomes** : la liste française de Wikipédia passe devant une page anglaise mal lue ou un MangaDex incomplet (une répartition qui n'a que quelques tomes sur les 22 annoncés est refaite, avec des essais espacés).
+- **Écran « 🔄 Identification »** : une ligne par étape en français (statut et résumé · titres et ISBN de Wikipédia · répartition · fiche · ISBN et résumés des tomes · rangement · ISBN imprimés), avec ✅, ➖ (la source ne connaît pas la série), 🕒 (attend un service) ou ⚠️.
+  Fiche d'un tome : l'ISBN indique sa source (« Wikipédia + BnF ») et les autres ISBN connus (réimpression, autre édition).
+- **Journal** : nouvelle section « Sources Internet de l'identification » (chaque service : répond ? en pause jusqu'à quand ? requêtes du jour sur 1 000 pour Google Books ; séries qui attendent).
+- Renommer une série **déplace** ce qu'on avait appris au lieu de l'effacer.
+
+**Côté code.** Nouveaux modules `reseau.py` (un seul accès à Internet : rythme par service, nouvelles tentatives, pauses gardées au redémarrage, compteur de quota), `correspondance.py` (« ce titre est-il celui de la série ? »),
+`wikifr.py`, `bnf.py`, `googlebooks.py`, `notices.py`, `identification.py` ; `tomes.py` n'écrit plus que par `tomes.modifier` (verrou par série). Les notes (AniList, Kitsu, MyAnimeList), les couvertures MangaDex (qui gardaient « aucune couverture » 7 jours après une panne),
+les demandes, les hors-série et les génériques passent aussi par `reseau.py`. Les tests ne touchent plus aux vrais caches (un test avait vidé celui d'une vraie série). 746 tests, dont un faux Internet fait de vraies réponses (AniList, Wikipédia, BnF, Google) où
+l'on coupe chaque service, un à un, puis au hasard : aucune donnée ne doit disparaître.
+
+**Sources examinées et refusées** (anti-robot, robots.txt qui interdit Claude, pas d'API publique) : Manga-News, Bédéthèque, Livraddict, Nautiljon, Booknode, manga-sanctuary, Decitre, Babelio, Leslibraires, Placedeslibraires, Mangacollec ; Open Library est permise mais n'a presque aucun tome français.
+
 ## 🔁 Réidentification : titres français des tomes refaits et plus d'échec silencieux (22 octobre 2026)
 - La réidentification d'une série refait maintenant aussi les titres et chapitres français de chaque tome (Wikipédia), et l'écran l'indique (« Wikipédia français : 10 tome(s), 60 titre(s) de chapitres »). Avant, cette recherche n'était pas dans les étapes : elle se faisait plus tard, toute seule.
 - Quand Wikipédia ne répond pas (trop de requêtes d'un coup), l'appli réessaie trois fois et ne note plus « rien trouvé » : avant, un refus passager était mémorisé comme une absence et bloquait la recherche pendant un jour.

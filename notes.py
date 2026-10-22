@@ -15,13 +15,14 @@ from pathlib import Path
 
 import requests
 
+import reseau
+
 logger = logging.getLogger("mouflanga")
 
 FICHIER = Path(__file__).resolve().parent / "data" / "notes.json"
 DUREE = 86400                    # une mise à jour par jour (une série sans note est réessayée aussi une fois par jour)
 PAUSE = 2.5                      # secondes entre deux séries
-_SESSION = requests.Session()
-_SESSION.headers["User-Agent"] = "MouFlanga/2 (bibliotheque personnelle)"
+_SESSION = reseau.SESSION           # un seul accès à Internet pour toute l'appli (voir reseau.py)
 _VERROU = threading.Lock()
 _CACHE = {"cle": None, "notes": {}}
 _JIKAN_HS = {"depuis": 0.0}      # dernière panne de connexion à Jikan
@@ -69,23 +70,19 @@ def a_rafraichir(serie: str, maintenant=None) -> bool:
 # ---------------------------------------------------------------- Sources
 
 def _anilist(anilist_id, titres):
-    """(note sur 10, identifiant MyAnimeList) d'après AniList, ou (None, mal)."""
+    """(note sur 10, identifiant MyAnimeList) d'après AniList, ou (None, mal). Lève reseau.Panne si AniList ne répond pas."""
     if anilist_id:
         q, v = "query($i:Int){Media(id:$i,type:MANGA){averageScore meanScore idMal}}", {"i": int(anilist_id)}
-        m = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": v}, timeout=15).json()["data"]["Media"]
+        m = (reseau.anilist(q, v) or {}).get("Media")
     else:
         q = "query($s:String){Media(search:$s,type:MANGA,format_not:NOVEL){averageScore meanScore idMal title{romaji english} synonyms}}"
         m = None
         for t in [x for x in titres if x][:5]:
-            r = _SESSION.post("https://graphql.anilist.co", json={"query": q, "variables": {"s": t}}, timeout=15)
-            if r.status_code == 429:
-                raise RuntimeError("AniList demande de ralentir")
-            m = (r.json().get("data") or {}).get("Media")
+            m = (reseau.anilist(q, {"s": t}) or {}).get("Media")
             noms = [(m or {}).get("title", {}).get(k) or "" for k in ("romaji", "english")] + list((m or {}).get("synonyms") or [])
             if m and _simple(t) in {_simple(n) for n in noms if n}:
                 break
             m = None
-            time.sleep(0.8)
     if not m:
         return None, None
     score = m.get("averageScore") or m.get("meanScore")
@@ -95,9 +92,7 @@ def _anilist(anilist_id, titres):
 def _jikan(mal_id, titres):
     if not mal_id:
         for t in [x for x in titres if x][:2]:
-            r = _SESSION.get("https://api.jikan.moe/v4/manga", params={"q": t, "limit": 5}, timeout=8)
-            if r.status_code == 429:
-                raise RuntimeError("Jikan demande de ralentir")
+            r = reseau.get("https://api.jikan.moe/v4/manga", params={"q": t, "limit": 5}, timeout=8)
             for it in (r.json().get("data") or []):
                 noms = [it.get("title"), it.get("title_english")] + [x.get("title") for x in it.get("titles") or []]
                 if _simple(t) in {_simple(n) for n in noms if n}:
@@ -105,19 +100,18 @@ def _jikan(mal_id, titres):
                     break
             if mal_id:
                 break
-            time.sleep(1.2)
     if not mal_id:
         return None
-    r = _SESSION.get(f"https://api.jikan.moe/v4/manga/{int(mal_id)}", timeout=8)
-    if r.status_code == 429:
-        raise RuntimeError("Jikan demande de ralentir")
+    r = reseau.get(f"https://api.jikan.moe/v4/manga/{int(mal_id)}", timeout=8)
+    if r.statut == 404:
+        return None
     s = (r.json().get("data") or {}).get("score")
     return round(float(s), 1) if s else None
 
 
 def _kitsu(titres):
     for t in [x for x in titres if x][:2]:
-        r = _SESSION.get("https://kitsu.io/api/edge/manga", params={"filter[text]": t, "page[limit]": 5}, timeout=15)
+        r = reseau.get("https://kitsu.io/api/edge/manga", params={"filter[text]": t, "page[limit]": 5})
         for it in (r.json().get("data") or []):
             a = it.get("attributes") or {}
             noms = [a.get("canonicalTitle")] + list((a.get("titles") or {}).values())
@@ -147,7 +141,7 @@ def chercher(serie: str, anilist_id=None, titres=()) -> tuple:
             v = _jikan(mal, titres)
             if v:
                 return v, "MyAnimeList"
-        except requests.ConnectionError as e:
+        except (requests.ConnectionError, reseau.Panne) as e:
             _JIKAN_HS["depuis"] = time.time()          # injoignable : on n'insiste pas pendant une heure
             logger.info("MyAnimeList (Jikan) injoignable : %s", e.__class__.__name__)
         except Exception as e:

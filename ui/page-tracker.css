@@ -1,0 +1,24 @@
+/* MouFlanga · page d'un torrent sur son tracker (lien, volet « 📄 »). Fichier propre à MouFlanga, pas du kit commun. */
+.pt-liens { display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; margin-top:3px; }
+.pt-lien { color:var(--accent, #52b54b); font-size:.78rem; text-decoration:none; overflow-wrap:anywhere; }
+.pt-lien:hover { text-decoration:underline; }
+body.mou-skin .pt-lire, body.mou-skin .pt-relire { width:auto; margin:0; padding:2px 9px; min-height:0; font-size:.76rem; }
+.prop-lu { color:var(--muted, #9aa0a6); font-size:.74rem; overflow-wrap:anywhere; }
+
+.pt-volet { margin:2px 0 10px; padding:10px 12px; border:1px solid var(--line, #2c2c2c); border-radius:8px; background:var(--surface, #1e1f22);
+            font-size:.82rem; line-height:1.45; }
+.pt-etat { color:var(--muted, #9aa0a6); margin:0; }
+.pt-etat.err { color:#e8a05a; }
+.pt-tete b { display:block; overflow-wrap:anywhere; }
+.pt-tete small, .pt-sous { color:var(--muted, #9aa0a6); font-size:.74rem; }
+.pt-puces { display:flex; flex-wrap:wrap; gap:4px 6px; margin:8px 0 4px; }
+.pt-puces i { font-style:normal; padding:1px 8px; border-radius:9px; font-size:.74rem; overflow-wrap:anywhere;
+              background:color-mix(in srgb, var(--accent, #52b54b) 15%, transparent); color:var(--accent, #52b54b); }
+.pt-synopsis { margin:8px 0; overflow-wrap:anywhere; }
+.pt-volet details { margin-top:6px; }
+.pt-volet summary { cursor:pointer; color:var(--muted, #9aa0a6); }
+.pt-nfo { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.72rem; line-height:1.3; background:#111; border-radius:6px; padding:8px; max-height:45vh; overflow:auto; }
+.pt-fichiers { margin:4px 0 0; padding-left:18px; max-height:30vh; overflow:auto; font-size:.74rem; overflow-wrap:anywhere; }
+.pt-note { margin-top:8px; color:#6fcf73; }
+.pt-note.warn { color:#e8a05a; }
+.pt-pied { display:flex; flex-wrap:wrap; align-items:center; gap:6px 14px; margin-top:8px; }
