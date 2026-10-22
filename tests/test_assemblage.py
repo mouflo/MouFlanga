@@ -141,6 +141,15 @@ class JointureTest(unittest.TestCase):
             im = Image.open(io.BytesIO(optimiser.apercu_paire(f, 0, False, 900)))
         self.assertEqual(im.size, (600, 400))
 
+    def test_chapitres_et_sommaire_suivent_l_assemblage(self):
+        import app as m
+        carte = {0: 0, 1: 0, 2: 1, 3: 2, 4: 2, 5: 3, 6: 4}          # paires (0,1) et (3,4) assemblées
+        infos = {"sommaires": {"3": {"chapitres": [{"num": 1, "image": 2}, {"num": 2, "image": 5}], "page_sommaire": 1}}}
+        m._suivre_sommaire(infos, Path("/x/Serie - Tome 03.cbz"), carte)
+        lu = infos["sommaires"]["3"]
+        self.assertEqual([c["image"] for c in lu["chapitres"]], [1, 3])
+        self.assertEqual(lu["page_sommaire"], 0)
+
     def test_decalage_vertical_retrouve(self):
         import numpy as np
         from PIL import Image

@@ -1951,6 +1951,7 @@ def api_doubles_couper():
         _recaler_progression(name, _rel(chemin), carte)
         import edition                                       # retenu pour le point vert de la liste des tomes
         infos = edition.lire(MANGA_DIR / name)
+        _suivre_sommaire(infos, chemin, carte)
         infos.setdefault("doubles_coupees", {})[chemin.name] = {"date": datetime.now().strftime("%d/%m/%Y"), "taille": chemin.stat().st_size}
         edition.ecrire(MANGA_DIR / name, infos)
         edition.invalider(MANGA_DIR / name)
@@ -2002,6 +2003,9 @@ def api_doubles_assembler():
     def apres(chemin, carte):
         _recaler_progression(name, _rel(chemin), carte)
         import edition
+        infos = edition.lire(MANGA_DIR / name)
+        _suivre_sommaire(infos, chemin, carte)                # chapitres et sommaire gardent leur page
+        edition.ecrire(MANGA_DIR / name, infos)
         edition.invalider(MANGA_DIR / name)
     if not optimiser.lancer_coupes(name, travaux, sens, _vers_corbeille, apres, operation=optimiser.assembler):
         return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
@@ -2050,27 +2054,34 @@ def _chapitres_par_parasites(name, chemin, reperes):
     logger.info("Pages d'équipe de %s : %d chapitres déduits (%g à %g)", chemin.name, len(chap), chap[0]["num"], chap[-1]["num"])
 
 
+def _suivre_sommaire(infos, chemin, carte):
+    """Les chapitres lus d'un tome (première page de chacun, page du sommaire) suivent le changement de numérotation des pages :
+    crédits retirés, double page découpée ou assemblée. `infos` est modifié sur place."""
+    tome = _numero_tome(chemin.name)
+    if tome is None:
+        tome = _numero_tome(chemin.parent.name)
+    lu = (infos.get("sommaires") or {}).get(str(int(tome))) if tome is not None else None
+    if not lu:
+        return
+    def suivre(i):
+        if not isinstance(i, int):
+            return i
+        k = min((x for x in carte if x >= i), default=None)
+        return carte[k] if k is not None else i
+    for c in lu.get("chapitres") or []:
+        c["image"] = suivre(c.get("image"))
+        if lu.get("source") == "pages d'équipe" and isinstance(c["image"], int):
+            c["page"] = c["image"] + 1                   # pas de numéro imprimé : la place dans le fichier
+    lu["page_sommaire"] = suivre(lu.get("page_sommaire"))
+
+
 def _apres_nettoyage(name, chemin, carte):
     """Position de lecture recalée et tome noté comme vérifié (il ne sera pas réexaminé tant qu'il ne change pas)."""
     import edition
     _recaler_progression(name, _rel(chemin), carte)
     infos = edition.lire(MANGA_DIR / name)
     infos.setdefault("parasites_verifies", {})[chemin.name] = chemin.stat().st_size
-    tome = _numero_tome(chemin.name)
-    if tome is None:
-        tome = _numero_tome(chemin.parent.name)
-    lu = (infos.get("sommaires") or {}).get(str(int(tome))) if tome is not None else None
-    if lu:                                   # chapitres lus : leur première page suit (crédits retirés → page d'après)
-        def suivre(i):
-            if not isinstance(i, int):
-                return i
-            k = min((x for x in carte if x >= i), default=None)
-            return carte[k] if k is not None else i
-        for c in lu.get("chapitres") or []:
-            c["image"] = suivre(c.get("image"))
-            if lu.get("source") == "pages d'équipe" and isinstance(c["image"], int):
-                c["page"] = c["image"] + 1                   # pas de numéro imprimé : la place dans le fichier
-        lu["page_sommaire"] = suivre(lu.get("page_sommaire"))
+    _suivre_sommaire(infos, chemin, carte)
     edition.ecrire(MANGA_DIR / name, infos)
     edition.invalider(MANGA_DIR / name)
 
