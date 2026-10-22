@@ -145,6 +145,16 @@ class SerieSuivieVideTest(unittest.TestCase):
             r = m.api_torrents_page().get_json()
         self.assertEqual((r["ok"], r["definitif"]), (False, True))
 
+    def test_ne_plus_surveiller_efface_les_propositions_en_attente(self):
+        d = suivi.lire()
+        d["series"]["WIND BREAKER"]["propositions"] = [{"id": "a", "titre": "t", "statut": "attente"}, {"id": "b", "titre": "u", "statut": "telecharge"}]
+        suivi.ecrire(d)
+        with self.m.app.test_request_context("/api/suivies", method="POST", json={"action": "surveiller", "nom": "WIND BREAKER", "actif": False}):
+            self.assertTrue(self.m.api_suivies().get_json()["ok"])
+        x = suivi.lire()["series"]["WIND BREAKER"]
+        self.assertFalse(x["surveiller"])
+        self.assertEqual([p["id"] for p in x["propositions"]], ["b"])
+
     def test_retirer_une_serie_suivie_vide_oublie_sa_memoire(self):
         import tomes
         tomes.modifier("WIND BREAKER", lambda c: c.__setitem__("statut_officiel", {"anilist": 135083}))

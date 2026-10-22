@@ -418,7 +418,7 @@
     var sv = s.suivi;
     $('sSurveiller').textContent = sv && sv.surveiller ? '👁 Ne plus surveiller' : '👁 Surveiller les nouveaux tomes';
     var props = ((sv && sv.propositions) || []).filter(function (p) { return p.statut === 'attente'; });
-    $('sProps').hidden = !(sv && sv.surveiller) && !props.length;
+    $('sProps').hidden = !(sv && sv.surveiller);
     $('sPropsListe').innerHTML = props.length ? props.map(function (p) {
       var url = '/telecharger?torrent=' + encodeURIComponent(p.titre) + '&serie=' + encodeURIComponent(s.id) + '&proposition=' + p.id + (p.type === 'meilleur' || p.type === 'equipe' ? '&remplacer=1' : '');
       var tracker = window.MouPageTracker, lu = tracker ? tracker.ligne(p.lu) : '';

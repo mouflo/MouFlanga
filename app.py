@@ -4203,7 +4203,10 @@ def api_suivies():
         return jsonify({"ok": False, "error": "Série non suivie"}), 404
     if action == "surveiller":
         with suivi._verrou:
-            d = suivi.lire(); d["series"][nom]["surveiller"] = bool(body.get("actif")); suivi.ecrire(d)
+            d = suivi.lire(); d["series"][nom]["surveiller"] = bool(body.get("actif"))
+            if not body.get("actif"):                       # plus surveillée : les propositions en attente disparaissent avec la surveillance
+                d["series"][nom]["propositions"] = [p for p in d["series"][nom].get("propositions", []) if p.get("statut") != "attente"]
+            suivi.ecrire(d)
         return jsonify({"ok": True, "message": "Surveillance activée : vérification chaque jour." if body.get("actif") else "Surveillance coupée."})
     if action == "qualite":
         with suivi._verrou:
