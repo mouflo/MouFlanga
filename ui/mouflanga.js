@@ -2076,7 +2076,7 @@
       var ferme = false;
       ['infosVue', 'affVue'].forEach(function (id) {
         var el = $(id);
-        if (el && !el.hidden && el._pousse) { el._pousse = false; el.hidden = true; ferme = true; }
+        if (el && !el.hidden && el._pousse && !(history.state && history.state.modal === id)) { el._pousse = false; el.hidden = true; ferme = true; }   // pas quand on revient seulement d'une fenêtre de confirmation posée par-dessus
       });
       if (ferme) e.stopImmediatePropagation();
     });
