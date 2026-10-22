@@ -624,13 +624,14 @@ def _coller(premiere, seconde, sens_manga):
 
 
 def _rogner_bord(im, cote, maxi=0.04):
-    """Enlève, du côté qui touche l'autre page, les colonnes unies (marge blanche ou noire du scan) : c'est ce qui fait la raie au milieu.
-    Jamais plus de 4 % de la largeur, et jamais une colonne qui contient du dessin."""
-    a = np.asarray(im.convert("L"), dtype=np.int16)
-    vides = (a.std(axis=0) < 6) & ((a.mean(axis=0) > 232) | (a.mean(axis=0) < 24))
-    n, limite = 0, int(im.width * maxi)
-    ordre = vides[::-1] if cote == "droite" else vides
-    while n < limite and n < len(ordre) and ordre[n]:
+    """Enlève, du côté qui touche l'autre page, les colonnes de bord du scan (liseré blanc ou noir, même dégradé) qui tranchent sur le dessin
+    juste à côté : c'est ce qui fait la raie au milieu. Jamais plus de 4 % de la largeur ; le dessin, lui, n'est pas touché."""
+    moyennes = np.asarray(im.convert("L"), dtype=np.float32).mean(axis=0)
+    ordre = moyennes[::-1] if cote == "droite" else moyennes
+    limite = int(im.width * maxi)
+    ref = float(np.median(ordre[8:40])) if len(ordre) > 40 else float(np.median(ordre))     # le dessin juste derrière le liseré
+    n = 0
+    while n < limite and n < len(ordre) and abs(ordre[n] - ref) > 12 and (ordre[n] > 170 or ordre[n] < 40):
         n += 1
     if not n:
         return im
