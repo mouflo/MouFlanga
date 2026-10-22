@@ -601,10 +601,44 @@ def _coller(premiere, seconde, sens_manga):
     p, q = [im.convert("RGB").resize((max(1, round(im.width * h / im.height)), h), Image.LANCZOS) if im.height != h else im.convert("RGB")
             for im in (premiere, seconde)]
     gauche, droite = (q, p) if sens_manga else (p, q)
+    gauche, droite = _rogner_bord(gauche, "droite"), _rogner_bord(droite, "gauche")
+    decalage = _decalage_vertical(gauche, droite)
     out = Image.new("RGB", (gauche.width + droite.width, h), (255, 255, 255))
     out.paste(gauche, (0, 0))
-    out.paste(droite, (gauche.width, 0))
+    out.paste(droite, (gauche.width, decalage))
     return out
+
+
+def _rogner_bord(im, cote, maxi=0.04):
+    """Enlève, du côté qui touche l'autre page, les colonnes unies (marge blanche ou noire du scan) : c'est ce qui fait la raie au milieu.
+    Jamais plus de 4 % de la largeur, et jamais une colonne qui contient du dessin."""
+    a = np.asarray(im.convert("L"), dtype=np.int16)
+    vides = (a.std(axis=0) < 6) & ((a.mean(axis=0) > 232) | (a.mean(axis=0) < 24))
+    n, limite = 0, int(im.width * maxi)
+    ordre = vides[::-1] if cote == "droite" else vides
+    while n < limite and n < len(ordre) and ordre[n]:
+        n += 1
+    if not n:
+        return im
+    return im.crop((0, 0, im.width - n, im.height)) if cote == "droite" else im.crop((n, 0, im.width, im.height))
+
+
+def _decalage_vertical(gauche, droite, maxi=12):
+    """De combien de pixels descendre (ou monter) la page de droite pour que le dessin continue de part et d'autre de la jointure. 0 si rien
+    ne s'améliore nettement."""
+    k = 3
+    g = np.asarray(gauche.convert("L"), dtype=np.float32)[:, -k:].mean(axis=1)
+    d = np.asarray(droite.convert("L"), dtype=np.float32)[:, :k].mean(axis=1)
+    g, d = g - g.mean(), d - d.mean()          # seul compte le dessin, pas la teinte moyenne de chaque côté
+    h = len(g)
+    if h < 4 * maxi:
+        return 0
+
+    def ecart(dy):
+        lo, hi = max(0, dy), min(h, h + dy)
+        return float(np.abs(g[lo:hi] - d[lo - dy:hi - dy]).mean())
+    meilleur = min(range(-maxi, maxi + 1), key=lambda dy: (ecart(dy), abs(dy)))
+    return meilleur if ecart(meilleur) < 0.8 * ecart(0) else 0
 
 
 def assembler(chemin: Path, indices, sens_manga=True, destination=None) -> dict:

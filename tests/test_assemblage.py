@@ -111,5 +111,31 @@ class RouteTest(unittest.TestCase):
         lancer.assert_not_called()
 
 
+class JointureTest(unittest.TestCase):
+    """La raie blanche au milieu d'une double page assemblée (marges des scans, léger décalage en hauteur)."""
+
+    def _fond(self):
+        import numpy as np
+        return np.add.outer(np.sin(np.arange(400) / 7) * 60 + 120, np.sin(np.arange(600) / 5) * 60 + np.arange(600) / 10).clip(0, 255).astype("uint8")
+
+    def test_marges_unies_du_milieu_enlevees(self):
+        from PIL import Image
+        base = self._fond()
+        g, d = Image.new("L", (309, 400), 255), Image.new("L", (309, 400), 255)
+        g.paste(Image.fromarray(base[:, :300]), (0, 0))
+        d.paste(Image.fromarray(base[:, 300:]), (9, 0))
+        out = optimiser._coller(g.convert("RGB"), d.convert("RGB"), False)
+        self.assertEqual(out.size[0], 600)
+
+    def test_decalage_vertical_retrouve(self):
+        import numpy as np
+        from PIL import Image
+        base = self._fond()
+        g = Image.fromarray(base[:, :300]).convert("RGB")
+        d = Image.fromarray(np.roll(base[:, 300:], 5, 0)).convert("RGB")
+        self.assertEqual(optimiser._decalage_vertical(g, d), -5)
+        self.assertEqual(optimiser._decalage_vertical(g, Image.fromarray(base[:, 300:]).convert("RGB")), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
