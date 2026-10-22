@@ -359,8 +359,23 @@
       if (!r.ok) { c.checked = !c.checked; return; }
       s.travail = r; etat(r);
     });
+    // Bouton retour du téléphone : ferme la fenêtre (comme « Fermer ») au lieu de quitter la fiche
+    var pousse = true;
+    history.pushState({modal: 'travail'}, '', location.href);
+    function fermer(parRetour) {
+      window.removeEventListener('popstate', surRetour);
+      o.remove();
+      if (!parRetour && pousse && history.state && history.state.modal === 'travail') { window._retourModal = true; history.back(); }
+      pousse = false;
+      openSeries(s.id, false);
+    }
+    function surRetour() {
+      if (!document.body.contains(o) || (history.state && history.state.modal === 'travail')) return;   // pas quand on revient seulement d'une confirmation posée par-dessus
+      pousse = false; fermer(true);
+    }
+    window.addEventListener('popstate', surRetour);
     o.addEventListener('click', function (e) {
-      if (e.target === o || e.target.closest('[data-fermer]')) { o.remove(); openSeries(s.id, false); }
+      if (e.target === o || e.target.closest('[data-fermer]')) fermer(false);
     });
   }
 
