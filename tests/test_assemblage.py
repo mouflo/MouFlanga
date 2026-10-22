@@ -1,0 +1,115 @@
+"""Assembler deux pages simples en une double page (l'inverse de la découpe) : ordre, sens, noms de chapitres, signets, relecture."""
+import io
+import sys
+import tempfile
+import unittest
+import zipfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import archives  # noqa: E402
+import optimiser  # noqa: E402
+from PIL import Image  # noqa: E402
+
+
+def png(couleur, taille=(40, 60)):
+    b = io.BytesIO()
+    Image.new("RGB", taille, couleur).save(b, "PNG")
+    return b.getvalue()
+
+
+def cbz(chemin, pages, extra=None):
+    with zipfile.ZipFile(chemin, "w") as z:
+        for nom, data in pages:
+            z.writestr(nom, data)
+        for nom, data in (extra or []):
+            z.writestr(nom, data)
+
+
+def pixel(chemin, nom, xy):
+    with zipfile.ZipFile(chemin) as z:
+        return Image.open(io.BytesIO(z.read(nom))).convert("RGB").getpixel(xy)
+
+
+class AssemblerTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.f = Path(self.tmp.name) / "Tome 01.cbz"
+        cbz(self.f, [("001.png", png((255, 0, 0))), ("002.png", png((0, 255, 0))), ("003.png", png((0, 0, 255))), ("004.png", png((9, 9, 9)))])
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_manga_la_premiere_page_est_a_droite(self):
+        r = optimiser.assembler(self.f, {0}, sens_manga=True)
+        self.assertEqual((r["pages_avant"], r["pages"]), (4, 3))
+        with zipfile.ZipFile(self.f) as z:
+            self.assertEqual(Image.open(io.BytesIO(z.read("001.png"))).size, (80, 60))
+        self.assertEqual(pixel(self.f, "001.png", (70, 10)), (255, 0, 0))     # page 1 à droite
+        self.assertEqual(pixel(self.f, "001.png", (10, 10)), (0, 255, 0))
+        self.assertEqual(r["carte"], {0: 0, 1: 0, 2: 1, 3: 2})
+        self.assertTrue(r["avant"].exists())                                  # l'ancien fichier est gardé pour la corbeille
+
+    def test_occidental_la_premiere_page_est_a_gauche(self):
+        optimiser.assembler(self.f, {0}, sens_manga=False)
+        self.assertEqual(pixel(self.f, "001.png", (10, 10)), (255, 0, 0))
+
+    def test_hauteurs_differentes_agrandies_a_la_plus_haute(self):
+        cbz(self.f, [("001.png", png((255, 0, 0), (40, 30))), ("002.png", png((0, 255, 0), (40, 60)))])
+        optimiser.assembler(self.f, {0})
+        with zipfile.ZipFile(self.f) as z:
+            self.assertEqual(Image.open(io.BytesIO(z.read("001.png"))).size, (120, 60))
+
+    def test_deux_paires(self):
+        r = optimiser.assembler(self.f, {0, 2})
+        self.assertEqual(r["pages"], 2)
+
+    def test_une_page_dans_deux_paires_refusee_et_rien_modifie(self):
+        avant = self.f.read_bytes()
+        for indices in ({0, 1}, {3}, {7}, set()):
+            with self.assertRaises(RuntimeError):
+                optimiser.assembler(self.f, indices)
+        self.assertEqual(self.f.read_bytes(), avant)
+
+    def test_aller_retour_couper_puis_assembler(self):
+        cbz(self.f, [("001.png", png((255, 0, 0), (80, 60))), ("002.png", png((0, 0, 255)))])
+        optimiser.couper(self.f, {0}, sens_manga=True)
+        self.assertEqual(len(archives.pages(self.f)), 3)
+        optimiser.assembler(self.f, {0}, sens_manga=True)
+        self.assertEqual(len(archives.pages(self.f)), 2)
+        with zipfile.ZipFile(self.f) as z:
+            self.assertEqual(Image.open(io.BytesIO(z.read("001.png"))).size, (80, 60))
+        self.assertEqual(pixel(self.f, "001.png", (10, 10)), (255, 0, 0))
+
+    def test_noms_de_pages_de_chapitre_renumerotes_et_signets_suivis(self):
+        import tomes_cbz
+        noms = [tomes_cbz.nom_page(12, i, ext="png") for i in (1, 2, 3)] + [tomes_cbz.nom_page(13, 1, ext="png")]
+        info = ('<?xml version="1.0"?><ComicInfo><PageCount>4</PageCount><Pages><Page Image="0"/><Page Image="3" Bookmark="x"/></Pages></ComicInfo>').encode()
+        cbz(self.f, [(n, png((i * 40, 0, 0))) for i, n in enumerate(noms)], extra=[("ComicInfo.xml", info)])
+        r = optimiser.assembler(self.f, {0})
+        with zipfile.ZipFile(self.f) as z:
+            visibles = [n for n in z.namelist() if n.endswith(".png")]
+            self.assertEqual(len(visibles), 3)
+            self.assertEqual(visibles[:2], [tomes_cbz.nom_page(12, 1, ext="png"), tomes_cbz.nom_page(12, 2, ext="png")])
+            xml = z.read("ComicInfo.xml").decode()
+        self.assertIn("<PageCount>3</PageCount>", xml)
+        self.assertIn('Image="2"', xml)                                      # le signet de la dernière page a suivi
+        self.assertEqual(r["carte"][3], 2)
+
+
+class RouteTest(unittest.TestCase):
+    def test_une_page_dans_deux_paires_est_refusee_avant_tout_travail(self):
+        import app as m
+        from unittest import mock
+        with m.app.test_request_context("/api/doubles/assembler", method="POST",
+                                        json={"series": "S", "plan": [{"fichier": "T.cbz", "indices": [3, 4]}]}), \
+                mock.patch.object(m, "_scan", return_value={"S": []}), mock.patch.object(m, "_en_telechargement", return_value=False), \
+                mock.patch.object(m, "_fichiers_a_alleger", return_value=[Path("T.cbz")]), mock.patch.object(m.zipfile, "is_zipfile", return_value=True), \
+                mock.patch.object(m.optimiser, "lancer_coupes") as lancer:
+            rep = m.api_doubles_assembler()
+        self.assertEqual(rep[1], 400)
+        lancer.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()

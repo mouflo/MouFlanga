@@ -897,6 +897,11 @@
         '<div class="ident-actions"><label>Sens : <select id="dblSens"><option value="manga">manga (droite → gauche)</option><option value="occidental">occidental (gauche → droite)</option></select></label></div>' +
         '<div class="ident-actions"><button type="button" class="mou-btn" id="dblVoir">🔍 Voir les doubles pages</button></div>' +
         '<div id="dblPlanche"></div></div>' +
+        '<div class="dbl"><div class="dem-titre">🔗 Deux pages simples en une double page</div>' +
+        '<div class="dem-sous">L\'inverse : pour un scan où une double page a été coupée en deux. Choisis un tome, touche la <b>première</b> page de chaque paire à coller ' +
+        '(elle est collée à la suivante), puis assemble. Le sens ci-dessus décide de la page qui va à droite.</div>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn" id="asmVoir">🔍 Choisir un tome</button></div>' +
+        '<div id="asmPlanche"></div></div>' +
         '<div class="dbl"><div class="dem-titre">Tomes à traiter</div><div id="allTomes" class="dem-sous">…</div></div>' +
         '<div class="ident-actions"><label><input type="checkbox" id="allInfos" checked> 📝 Écrire aussi les infos du tome (résumé, chapitres, provenance, ISBN…) dans la même passe : pas besoin de « Réécrire les infos » ensuite</label></div>' +
         '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser les tomes cochés (rien n\'est modifié)</button></div><div id="allRes"></div>';
@@ -1161,7 +1166,7 @@
       if (e.target.id !== 'dblCols') return;
       dblCol = parseInt(e.target.value, 10) || 2;
       try { localStorage.setItem('mfDblCol', String(dblCol)); } catch (x) {}
-      grilleDoubles();
+      grilleDoubles(); asmGrille();
     });
     $('infosCorps').addEventListener('click', async function (e) {
       if (e.target.closest('#dblVoir')) { voirDoubles(); return; }
@@ -1181,6 +1186,74 @@
         var r = await post('/api/doubles/couper', {series: current.id, sens: $('dblSens').value, plan: [{fichier: tome.fichier, indices: indices}]});
         if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
         suivreDoubles();
+      }
+    });
+    // 🔗 Assembler deux pages simples en une double page : planche de toutes les pages du tome, on touche la 1re de chaque paire
+    var asmTomes = [], asmCourant = '', asmPaires = {};
+    function asmTome() { return asmTomes.filter(function (t) { return t.fichier === asmCourant; })[0]; }
+    async function asmListe() {
+      $('asmPlanche').innerHTML = '<div class="dem-sous">Recherche des tomes…</div>';
+      var r = await api('/api/doubles/tomes?series=' + dblSerie());
+      if (r.error) { $('asmPlanche').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
+      asmTomes = r.tomes || []; asmCourant = ''; asmPaires = {};
+      $('asmPlanche').innerHTML = asmTomes.length ? '<div class="dbl-liste">' + asmTomes.map(function (t) {
+        return '<button type="button" class="mou-btn ghost" data-asm-tome="' + esc(t.fichier) + '">' + esc(t.fichier.replace(/\.(cbz|zip)$/i, '')) + ' · ' + t.pages + ' pages</button>';
+      }).join('') + '</div><div id="asmTome"></div><div id="asmEtat"></div>' : '<div class="dem-sous">Aucun tome utilisable.</div>';
+    }
+    function asmGrille() {
+      var t = asmTome(); if (!t || !$('asmGrille')) return;
+      var w = {1: 700, 2: 450, 3: 300}[dblCol], h = '';
+      for (var i = 0; i < t.pages; i++) {
+        var lie = asmPaires[i - 1];                                   // cette page est la 2e d'une paire
+        h += '<button type="button" class="dbl-tuile' + (asmPaires[i] || lie ? ' garde' : '') + '" data-asm-tuile="' + i + '">' +
+          '<img loading="lazy" alt="" src="/api/doubles/image?series=' + dblSerie() + '&fichier=' + encodeURIComponent(t.fichier) + '&n=' + i + '&w=' + w + '">' +
+          '<span>' + (i + 1) + (asmPaires[i] ? ' ➕' : lie ? ' 🔗' : '') + '</span></button>';
+      }
+      $('asmGrille').style.gridTemplateColumns = 'repeat(' + dblCol + ', 1fr)';
+      $('asmGrille').innerHTML = h;
+      var n = Object.keys(asmPaires).length;
+      $('asmBilan').innerHTML = '<div class="dem-sous">' + n + ' paire(s) à coller.</div>' + (n ? '<button type="button" class="mou-btn" id="asmGo">🔗 Assembler ces pages</button>' : '');
+    }
+    async function suivreAssemblage() {
+      var r = await api('/api/doubles/etat?series=' + dblSerie());
+      if (!$('asmEtat')) return;
+      if (r.en_cours) { $('asmEtat').innerHTML = '<div class="dem-sous">Assemblage en cours…</div>'; setTimeout(suivreAssemblage, 3000); return; }
+      if (r.message) {
+        $('asmEtat').innerHTML = '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' + (r.rapport || []).map(function (x) {
+          return '<div class="dem-sous">' + esc(x.fichier) + (x.pages ? ' : ' + x.pages_avant + ' → ' + x.pages + ' pages' : '') + (x.note ? ' (' + esc(x.note) + ')' : '') + '</div>';
+        }).join('');
+        window.MouToast && window.MouToast('🔗 ' + r.message, 'ok');
+        rafraichirSerie(current.id); asmPaires = {};
+        var t = asmTome(); if (t) { api('/api/doubles/tomes?series=' + dblSerie()).then(function (n) { asmTomes = n.tomes || []; if (asmTome()) asmGrille(); }); }
+      }
+    }
+    $('infosCorps').addEventListener('click', async function (e) {
+      if (e.target.closest('#asmVoir')) { asmListe(); return; }
+      var tm = e.target.closest('[data-asm-tome]');
+      if (tm) {
+        asmCourant = tm.dataset.asmTome; asmPaires = {};
+        document.querySelectorAll('[data-asm-tome]').forEach(function (b) { b.classList.toggle('ghost', b.dataset.asmTome !== asmCourant); });
+        $('asmTome').innerHTML = '<div class="ident-actions"><label>Vignettes par ligne : <select id="dblCols">' +
+          [1, 2, 3].map(function (n) { return '<option value="' + n + '"' + (n === dblCol ? ' selected' : '') + '>' + n + '</option>'; }).join('') +
+          '</select></label></div><div class="dbl-grille" id="asmGrille"></div><div class="ident-actions" id="asmBilan"></div>';
+        asmGrille(); return;
+      }
+      var t = e.target.closest('[data-asm-tuile]');
+      if (t) {
+        var i = parseInt(t.dataset.asmTuile, 10), tome = asmTome();
+        if (asmPaires[i]) delete asmPaires[i];
+        else if (i >= tome.pages - 1) { MouAlert('La dernière page n\'a pas de suivante à coller.'); return; }
+        else if (asmPaires[i - 1] || asmPaires[i + 1]) { MouAlert('Cette page est déjà dans une paire.'); return; }
+        else asmPaires[i] = true;
+        asmGrille(); return;
+      }
+      if (e.target.closest('#asmGo')) {
+        var tm2 = asmTome(), indices = Object.keys(asmPaires).map(Number).sort(function (a, b) { return a - b; });
+        if (!tm2 || !indices.length) return;
+        if (!await MouConfirm('Coller ' + indices.length + ' paire(s) de pages en doubles pages dans « ' + tm2.fichier + ' » ? L\'ancien fichier va à la corbeille (30 jours).')) return;
+        var r = await post('/api/doubles/assembler', {series: current.id, sens: $('dblSens').value, plan: [{fichier: tm2.fichier, indices: indices}]});
+        if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
+        suivreAssemblage();
       }
     });
     async function suivreDoubles() {

@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🔗 Assembler deux pages simples en une vraie double page (22 octobre 2026)
+L'inverse de la découpe : ℹ️ → 🪶 Alléger → « Deux pages simples en une double page ». Choisis un tome, touche la **première** page de chaque paire (elle est collée à la suivante), puis « Assembler ». Le sens choisi (manga ou occidental) décide de la page qui va à droite ; si les deux pages n'ont pas la même hauteur, la plus petite est agrandie. L'ancien fichier part à la corbeille (30 jours), la position de lecture et les signets suivent, les fichiers partagés par qBittorrent ne sont pas touchés (version à part). Couper puis assembler redonne la page d'origine.
+
 ## 🧲 Propositions de torrents : lien vers la page du tracker et lecture automatique de sa présentation et de son NFO (22 octobre 2026)
 **Ce qui change pour toi.**
 - **Chaque proposition de torrent affiche le lien de sa page sur le tracker** (« 🔗 c411.org »), qui s'ouvre dans un nouvel onglet, avec un bouton **📄 Lire la page**. Avant, seul ⬇️ était proposé et menait à la page Télécharger. Le même 🔗 + 📄 est dans les résultats de recherche de Télécharger, et la liste des téléchargements garde le lien de la page du torrent.

@@ -1944,6 +1944,55 @@ def api_doubles_couper():
     return jsonify({"ok": True, "message": "Découpe lancée…"})
 
 
+@app.route("/api/doubles/tomes")
+def api_doubles_tomes():
+    """Tomes de la série qu'on peut assembler (pages simples → doubles) : {"tomes": [{"fichier", "pages"}]}."""
+    name = request.args.get("series", "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"error": "Série introuvable."}), 404
+    out = []
+    for f in _fichiers_a_alleger(name):
+        if not zipfile.is_zipfile(f) or (f.stat().st_nlink > 1 and not optimiser._dossier_a_lui(f, name)):
+            continue
+        try:
+            out.append({"fichier": f.name, "pages": len(archives.pages(f))})
+        except archives.ArchiveError:
+            continue
+    return jsonify({"tomes": out})
+
+
+@app.route("/api/doubles/assembler", methods=["POST"])
+def api_doubles_assembler():
+    """POST {series, sens: "manga"|"occidental", plan: [{fichier, indices: [numéro de la 1re page de chaque paire]}]} : colle chaque
+    page à la suivante pour en faire une vraie double page (l'inverse de la découpe), en arrière-plan."""
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if _en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours") or optimiser.etat(name).get("en_cours"):
+        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    fichiers = {f.name: f for f in _fichiers_a_alleger(name) if zipfile.is_zipfile(f)}
+    travaux = []
+    for t in body.get("plan") or []:
+        f = fichiers.get(str(t.get("fichier", "")))
+        indices = sorted({int(i) for i in t.get("indices") or [] if str(i).isdigit()})
+        if f and indices:
+            if any(b - a < 2 for a, b in zip(indices, indices[1:])):
+                return jsonify({"ok": False, "error": "Une page ne peut être que dans une seule paire."}), 400
+            travaux.append((f, set(indices)))
+    if not travaux:
+        return jsonify({"ok": False, "error": "Aucune paire de pages à assembler."}), 400
+    sens = str(body.get("sens", "manga")) != "occidental"
+
+    def apres(chemin, carte):
+        _recaler_progression(name, _rel(chemin), carte)
+        import edition
+        edition.invalider(MANGA_DIR / name)
+    if not optimiser.lancer_coupes(name, travaux, sens, _vers_corbeille, apres, operation=optimiser.assembler):
+        return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
+    return jsonify({"ok": True, "message": "Assemblage lancé…"})
+
+
 # ---------------- 🧹 Pages parasites des scans d'équipe (crédits, recrutement, pubs) ----------------
 import parasites
 
