@@ -1201,13 +1201,24 @@
         var tome = dblTome(); if (!tome) return;
         var indices = tome.pages.filter(function (pg) { return !dblGardees[tome.fichier + '|' + pg.index]; }).map(function (pg) { return pg.index; });
         if (!indices.length) { MouAlert('Toutes les doubles sont gardées entières : rien à couper.'); return; }
-        if (!await MouConfirm('Couper ' + indices.length + ' double(s) en deux dans « ' + tome.fichier + ' » ? L\'ancien fichier va à la corbeille (30 jours).')) return;
+        enquete = true;
+        if (!await MouConfirm('Couper ' + indices.length + ' double(s) en deux dans « ' + tome.fichier + ' » ? L\'ancien fichier va à la corbeille (30 jours).')) { enquete = false; return; }
         var r = await post('/api/doubles/couper', {series: current.id, sens: $('dblSens').value, plan: [{fichier: tome.fichier, indices: indices}]});
         if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
-        suivreDoubles();
+        enquete = true; suivreDoubles();
       }
     });
     // 🔗 Assembler deux pages simples en une double page : planche de toutes les pages du tome, on touche la 1re de chaque paire
+    // Enquête : si la fenêtre des infos se ferme pendant une découpe / un assemblage, la cause (pile d'appels) est envoyée au journal du serveur
+    var enquete = false;
+    (function () {
+      var el = $('infosVue'), d = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'hidden');
+      var envoyer = function (t) { try { fetch('/api/clientlog', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({message: 'Enquête doubles pages : ' + t, where: 'mouflanga.js'})}); } catch (e) {} };
+      Object.defineProperty(el, 'hidden', {configurable: true, get: function () { return d.get.call(this); },
+        set: function (v) { if (v && enquete && !d.get.call(this)) envoyer('fenêtre des infos fermée par ' + String(new Error().stack).split('\n').slice(1, 5).join(' | ')); d.set.call(this, v); }});
+      window.addEventListener('popstate', function () { if (enquete) envoyer('popstate, état=' + JSON.stringify(history.state) + ', hash=' + location.hash); });
+      window.addEventListener('pagehide', function () { if (enquete) envoyer('la page se décharge'); });
+    })();
     var asmTomes = [], asmCourant = '', asmPaires = {}, aRedessiner = false;
     new MutationObserver(function () {                                // fiche remise à jour une fois la fenêtre des doubles pages fermée
       if ($('infosVue').hidden && aRedessiner) { aRedessiner = false; if (current) rafraichirSerie(current.id); }
@@ -1289,10 +1300,11 @@
       if (e.target.closest('#asmGo')) {
         var tm2 = asmTome(), indices = Object.keys(asmPaires).map(Number).sort(function (a, b) { return a - b; });
         if (!tm2 || !indices.length) return;
-        if (!await MouConfirm('Coller ' + indices.length + ' paire(s) de pages en doubles pages dans « ' + tm2.fichier + ' » ? L\'ancien fichier va à la corbeille (30 jours).')) return;
+        enquete = true;
+        if (!await MouConfirm('Coller ' + indices.length + ' paire(s) de pages en doubles pages dans « ' + tm2.fichier + ' » ? L\'ancien fichier va à la corbeille (30 jours).')) { enquete = false; return; }
         var r = await post('/api/doubles/assembler', {series: current.id, sens: $('dblSens').value, plan: [{fichier: tm2.fichier, indices: indices}]});
         if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
-        suivreAssemblage();
+        enquete = true; suivreAssemblage();
       }
     });
     async function suivreDoubles() {
