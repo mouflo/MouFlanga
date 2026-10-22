@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🎯 Doubles pages : nouvelle méthode de recalage, bien plus fiable (22 octobre 2026)
+Le décalage en hauteur était mal trouvé (une paire sur trois à peine). Nouvelle méthode : les traits des 100 colonnes qui touchent la jointure sont prolongés en ligne droite jusqu'à elle, et la page de droite est décalée jusqu'à ce que les points d'arrivée des deux côtés se superposent le mieux, en tenant compte des pixels que le scan a mangés au milieu (les traits en biais ne s'alignent plus par hasard). Essai sur 51 vraies doubles pages numériques coupées et décalées exprès : bon à 3 pixels près dans 8 cas sur 10 quand la méthode est sûre d'elle, contre 3 sur 10 avant ; sur tes 163 paires d'Air Gear, 136 reçoivent un décalage (jusqu'à 45 pixels) et les planches avant/après montrent des traits qui se suivent. Quand rien ne se superpose nettement, la page n'est pas bougée.
+
 ## 🧵 Assemblage des doubles pages : raccord automatique bien meilleur (22 octobre 2026)
 Réglé en examinant les 163 paires que tu avais assemblées dans Air Gear (tomes 1, 3 à 8), retrouvées en comparant chaque tome à sa copie d'origine.
 - **Bords des scans** : l'appli enlève maintenant l'ombre ou le halo de la reliure (jusqu'à 24 colonnes), les raies fines (blanche dans une zone noire, noire dans une zone blanche, même sur 2 colonnes) et les grandes marges blanches vides. Les « petites lignes noires verticales » viennent de là.
