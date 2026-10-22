@@ -1193,7 +1193,10 @@
       }
     });
     // 🔗 Assembler deux pages simples en une double page : planche de toutes les pages du tome, on touche la 1re de chaque paire
-    var asmTomes = [], asmCourant = '', asmPaires = {};
+    var asmTomes = [], asmCourant = '', asmPaires = {}, aRedessiner = false;
+    new MutationObserver(function () {                                // fiche remise à jour une fois la fenêtre des doubles pages fermée
+      if ($('infosVue').hidden && aRedessiner) { aRedessiner = false; if (current) rafraichirSerie(current.id); }
+    }).observe($('infosVue'), {attributes: true, attributeFilter: ['hidden']});
     function asmTome() { return asmTomes.filter(function (t) { return t.fichier === asmCourant; })[0]; }
     async function asmListe() {
       $('asmPlanche').innerHTML = '<div class="dem-sous">Recherche des tomes…</div>';
@@ -1247,7 +1250,7 @@
           return '<div class="dem-sous">' + esc(x.fichier) + (x.pages ? ' : ' + x.pages_avant + ' → ' + x.pages + ' pages' : '') + (x.note ? ' (' + esc(x.note) + ')' : '') + '</div>';
         }).join('');
         window.MouToast && window.MouToast('🔗 ' + r.message, 'ok');
-        rafraichirSerie(current.id);
+        aRedessiner = true;
         var fini = asmCourant, i = asmTomes.map(function (t) { return t.fichier; }).indexOf(fini), suiv = asmTomes[i + 1];
         var btn = document.querySelector('[data-asm-tome="' + (window.CSS && CSS.escape ? CSS.escape(fini) : fini) + '"]');
         if (btn) btn.innerHTML = '✅ ' + esc(fini.replace(/\.(cbz|zip)$/i, '')) + ' · assemblé';
@@ -1289,7 +1292,7 @@
           return '<div class="dem-sous">' + esc(x.fichier) + (x.pages ? ' : ' + x.pages_avant + ' → ' + x.pages + ' pages' : '') + (x.note ? ' (' + esc(x.note) + ')' : '') + '</div>';
         }).join('');
         window.MouToast && window.MouToast('📖 ' + r.message, 'ok');
-        rafraichirSerie(current.id);
+        aRedessiner = true;                                          // la fiche est remise à jour à la fermeture, pas pendant qu'on enchaîne les tomes
         var fini = dblCourant, apres = dblTomes.filter(function (t) { return !t.fait && t.fichier !== fini; });
         var suiv = dblTomes.slice(dblTomes.map(function (t) { return t.fichier; }).indexOf(fini) + 1).filter(function (t) { return !t.fait && t.pages.length; })[0] || apres[0];
         var btn = document.querySelector('[data-dbl-tome="' + (window.CSS && CSS.escape ? CSS.escape(fini) : fini) + '"]');
