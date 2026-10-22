@@ -148,6 +148,8 @@ class JointureTest(unittest.TestCase):
         g = Image.fromarray(base[:, :300]).convert("RGB")
         d = Image.fromarray(np.roll(base[:, 300:], 5, 0)).convert("RGB")
         self.assertEqual(optimiser._decalage_vertical(g, d), -5)
+        d = Image.fromarray(np.roll(base[:, 300:], 23, 0)).convert("RGB")
+        self.assertEqual(optimiser._decalage_vertical(g, d), -23)
         self.assertEqual(optimiser._decalage_vertical(g, Image.fromarray(base[:, 300:]).convert("RGB")), 0)
 
 

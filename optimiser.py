@@ -638,22 +638,28 @@ def _rogner_bord(im, cote, maxi=0.04):
     return im.crop((0, 0, im.width - n, im.height)) if cote == "droite" else im.crop((n, 0, im.width, im.height))
 
 
-def _decalage_vertical(gauche, droite, maxi=12):
-    """De combien de pixels descendre (ou monter) la page de droite pour que le dessin continue de part et d'autre de la jointure. 0 si rien
-    ne s'améliore nettement."""
-    k = 3
-    g = np.asarray(gauche.convert("L"), dtype=np.float32)[:, -k:].mean(axis=1)
-    d = np.asarray(droite.convert("L"), dtype=np.float32)[:, :k].mean(axis=1)
-    g, d = g - g.mean(), d - d.mean()          # seul compte le dessin, pas la teinte moyenne de chaque côté
-    h = len(g)
-    if h < 4 * maxi:
+def _decalage_vertical(gauche, droite, maxi=40):
+    """De combien de pixels descendre (ou monter) la page de droite pour que le dessin continue de part et d'autre de la jointure.
+    On compare les contours (traits, trames) des quelques colonnes qui touchent la jointure, débarrassés des grandes plages de gris : la
+    corrélation la plus forte donne le décalage. 0 quand aucun décalage ne ressort nettement (page sans dessin au bord, par exemple)."""
+    k, sigma = 4, 2.0
+    h = min(gauche.height, droite.height)
+    if h < 8 * maxi:
         return 0
 
-    def ecart(dy):
+    def contours(im, cote):
+        a = np.asarray(im.convert("L"), dtype=np.float32)
+        v = (a[:, -k:] if cote == "g" else a[:, :k]).mean(axis=1)
+        v = v.reshape(-1, 1)
+        return (cv2.GaussianBlur(v, (1, 0), sigma) - cv2.GaussianBlur(v, (1, 0), sigma * 5)).ravel()
+    g, d = contours(gauche, "g"), contours(droite, "d")
+
+    def correlation(dy):
         lo, hi = max(0, dy), min(h, h + dy)
-        return float(np.abs(g[lo:hi] - d[lo - dy:hi - dy]).mean())
-    meilleur = min(range(-maxi, maxi + 1), key=lambda dy: (ecart(dy), abs(dy)))
-    return meilleur if ecart(meilleur) < 0.8 * ecart(0) else 0
+        x, y = g[lo:hi] - g[lo:hi].mean(), d[lo - dy:hi - dy] - d[lo - dy:hi - dy].mean()
+        return float((x * y).sum() / (np.sqrt((x * x).sum() * (y * y).sum()) + 1e-9))
+    meilleur = max(range(-maxi, maxi + 1), key=lambda dy: (round(correlation(dy), 3), -abs(dy)))
+    return meilleur if correlation(meilleur) >= 0.2 and correlation(meilleur) - correlation(0) >= 0.08 else 0
 
 
 def assembler(chemin: Path, indices, sens_manga=True, destination=None) -> dict:
