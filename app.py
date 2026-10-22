@@ -1907,6 +1907,21 @@ def api_doubles_image():
     return Response(jpeg, mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
 
 
+@app.route("/api/doubles/paire")
+def api_doubles_paire():
+    """Prévisualisation d'une paire : les pages n et n+1 collées exactement comme le fera l'assemblage."""
+    name = request.args.get("series", "")
+    f = next((x for x in _fichiers_a_alleger(name) if x.name == request.args.get("fichier", "")), None) if name in _scan() else None
+    if f is None:
+        return Response("Introuvable", status=404)
+    try:
+        largeur = max(300, min(1400, int(request.args.get("w", "900"))))
+        jpeg = optimiser.apercu_paire(f, int(request.args.get("n", "0")), request.args.get("sens", "manga") != "occidental", largeur)
+    except (ValueError, archives.ArchiveError) as e:
+        return Response(str(e), status=404)
+    return Response(jpeg, mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
+
+
 @app.route("/api/doubles/etat")
 def api_doubles_etat():
     return jsonify(optimiser.coupes_etat(request.args.get("series", "")))

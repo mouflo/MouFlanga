@@ -127,6 +127,20 @@ class JointureTest(unittest.TestCase):
         out = optimiser._coller(g.convert("RGB"), d.convert("RGB"), False)
         self.assertEqual(out.size[0], 600)
 
+    def test_apercu_identique_a_l_assemblage(self):
+        import io, tempfile, zipfile
+        from PIL import Image
+        base = self._fond()
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "t.cbz"
+            with zipfile.ZipFile(f, "w") as z:
+                for i, (x0, x1) in enumerate([(0, 300), (300, 600)]):
+                    b = io.BytesIO()
+                    Image.fromarray(base[:, x0:x1]).save(b, "PNG")
+                    z.writestr("%03d.png" % i, b.getvalue())
+            im = Image.open(io.BytesIO(optimiser.apercu_paire(f, 0, False, 900)))
+        self.assertEqual(im.size, (600, 400))
+
     def test_decalage_vertical_retrouve(self):
         import numpy as np
         from PIL import Image

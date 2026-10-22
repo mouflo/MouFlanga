@@ -1241,9 +1241,8 @@
       };
       for (var i = 0; i < t.pages; i++) {
         if (asmPaires[i]) {                                           // paire : les deux pages déjà collées, comme elles seront
-          var ordre = manga ? [i + 1, i] : [i, i + 1];
           h += '<button type="button" class="dbl-tuile garde asm-paire" style="grid-column:span ' + Math.min(2, dblCol) + '" data-asm-tuile="' + i + '" title="Touche pour défaire">' +
-            '<span class="asm-duo">' + img(ordre[0], w) + img(ordre[1], w) + '</span><span>' + (i + 1) + '–' + (i + 2) + ' 🔗 (touche pour défaire)</span></button>';
+            '<span class="asm-duo"><img alt="" src="/api/doubles/paire?series=' + dblSerie() + '&fichier=' + encodeURIComponent(t.fichier) + '&n=' + i + '&sens=' + (manga ? 'manga' : 'occidental') + '&w=' + (w * 2) + '"></span><span>' + (i + 1) + '–' + (i + 2) + ' 🔗 (touche pour défaire)</span></button>';
           i++;
         } else {
           h += '<button type="button" class="dbl-tuile" data-asm-tuile="' + i + '">' + img(i, w) + '<span>' + (i + 1) + '</span></button>';

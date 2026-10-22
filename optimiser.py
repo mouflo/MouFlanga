@@ -492,6 +492,20 @@ def apercu_page(chemin: Path, index: int, largeur=300) -> bytes:
     return _jpeg(im, 85)
 
 
+def apercu_paire(chemin: Path, index: int, sens_manga=True, largeur=900) -> bytes:
+    """La double page que donnerait l'assemblage des pages `index` et `index + 1`, calculée comme à l'assemblage (marges rognées,
+    recalage), en JPEG réduit : c'est ce que montre la prévisualisation."""
+    pages = []
+    for n in (index, index + 1):
+        data, _ = archives.read_page(Path(chemin), n)
+        im = Image.open(io.BytesIO(data))
+        im.load()
+        pages.append(im)
+    im = _coller(pages[0], pages[1], sens_manga)
+    im.thumbnail((largeur, largeur))
+    return _jpeg(im, 85)
+
+
 def _moities(im, sens_manga):
     """Les deux moitiés d'une double page. Manga : la moitié droite se lit d'abord."""
     w, h = im.size

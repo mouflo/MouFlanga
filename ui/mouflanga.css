@@ -409,5 +409,5 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .par-groupe.coche .par-etat { background:#c0392b; color:#fff; }
 .asm-paire { border-color:var(--accent, #52b54b); }
 .dbl-tuile .asm-duo { position:static; display:flex; direction:ltr; width:100%; padding:0; border-radius:0; background:none; font-size:inherit; }
-.asm-duo img { width:50%; height:auto; display:block; }
+.asm-duo img { width:100%; height:auto; display:block; }
 .dbl-tuile > span:not(.asm-duo) { direction:ltr; unicode-bidi:isolate; }
