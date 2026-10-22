@@ -170,6 +170,17 @@ class JointureTest(unittest.TestCase):
                     z.writestr("%03d.png" % i, p)
             self.assertEqual(optimiser.carte_assemblage(avant, apres), {0: 0, 1: 1, 2: 1, 3: 2, 4: 3, 5: 3})
 
+    def test_grande_marge_blanche_du_scan_enlevee(self):
+        from PIL import Image
+        base = self._fond()
+        g = Image.new("L", (320, 400), 255)
+        g.paste(Image.fromarray(base[:, :300]), (0, 0))
+        g.putpixel((310, 100), 0)                                    # une poussière dans la marge ne l'arrête pas
+        d = Image.new("L", (320, 400), 255)
+        d.paste(Image.fromarray(base[:, 300:]), (20, 0))
+        out = optimiser._coller(g.convert("RGB"), d.convert("RGB"), False)
+        self.assertEqual(out.size[0], 600)
+
     def test_decalage_vertical_retrouve(self):
         import numpy as np
         from PIL import Image

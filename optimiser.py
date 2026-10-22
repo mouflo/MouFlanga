@@ -625,13 +625,18 @@ def _coller(premiere, seconde, sens_manga):
 
 def _rogner_bord(im, cote, maxi=0.04):
     """Enlève, du côté qui touche l'autre page, les colonnes de bord du scan (liseré blanc ou noir, même dégradé) qui tranchent sur le dessin
-    juste à côté : c'est ce qui fait la raie au milieu. Jamais plus de 4 % de la largeur ; le dessin, lui, n'est pas touché."""
+    juste à côté : c'est ce qui fait la raie au milieu. Jamais plus de 4 % de la largeur pour le liseré, 8 % pour la marge blanche vide ; le dessin, lui, n'est pas touché."""
     moyennes = np.asarray(im.convert("L"), dtype=np.float32).mean(axis=0)
     ordre = moyennes[::-1] if cote == "droite" else moyennes
     limite = int(im.width * maxi)
     ref = float(np.median(ordre[8:40])) if len(ordre) > 40 else float(np.median(ordre))     # le dessin juste derrière le liseré
     n = 0
     while n < limite and n < len(ordre) and abs(ordre[n] - ref) > 12 and (ordre[n] > 170 or ordre[n] < 40):
+        n += 1
+    encre = (np.asarray(im.convert("L")) < 215).sum(axis=0)                  # traits par colonne
+    encre = encre[::-1] if cote == "droite" else encre
+    blanc_max = int(im.width * 0.08)
+    while n < blanc_max and n < len(encre) and encre[n] <= max(2, im.height // 120) and (ordre[n] > 200 or ordre[n] < 40):   # marge blanche coupée par le scan
         n += 1
     if not n:
         return im
