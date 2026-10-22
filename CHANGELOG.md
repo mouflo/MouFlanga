@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🩹 Doubles pages : bande blanche après une grande marge (22 octobre 2026)
+Quand la marge blanche du bord était retirée, son dégradé clair restait devant le dessin et faisait une fine bande blanche au milieu (Air Gear tome 6, paire 142-143). Ce dégradé est maintenant retiré aussi.
+
 ## 🎯 Doubles pages : nouvelle méthode de recalage, bien plus fiable (22 octobre 2026)
 Le décalage en hauteur était mal trouvé (une paire sur trois à peine). Nouvelle méthode : les traits des 100 colonnes qui touchent la jointure sont prolongés en ligne droite jusqu'à elle, et la page de droite est décalée jusqu'à ce que les points d'arrivée des deux côtés se superposent le mieux, en tenant compte des pixels que le scan a mangés au milieu (les traits en biais ne s'alignent plus par hasard). Essai sur 51 vraies doubles pages numériques coupées et décalées exprès : bon à 3 pixels près dans 8 cas sur 10 quand la méthode est sûre d'elle, contre 3 sur 10 avant ; sur tes 163 paires d'Air Gear, 136 reçoivent un décalage (jusqu'à 45 pixels) et les planches avant/après montrent des traits qui se suivent. Quand rien ne se superpose nettement, la page n'est pas bougée.
 

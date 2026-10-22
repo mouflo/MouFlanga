@@ -647,8 +647,14 @@ def _rogner_bord(im, cote, maxi=0.04):
     encre = (np.asarray(im.convert("L")) < 215).sum(axis=0)                  # traits par colonne
     encre = encre[::-1] if cote == "droite" else encre
     blanc_max = int(im.width * 0.08)
+    avant_marge = n
     while n < blanc_max and n < len(encre) and encre[n] <= max(2, im.height // 120) and (ordre[n] > 200 or ordre[n] < 40):   # marge blanche coupée par le scan
         n += 1
+    if n > avant_marge:                                                      # marge blanche retirée : son dégradé (halo clair) reste devant le dessin
+        ref2 = float(np.median(ordre[n + 12:n + 45])) if len(ordre) > n + 45 else float(np.median(ordre[n:]))
+        fin = n + 12
+        while n < fin and n < len(ordre) and ordre[n] - ref2 > 20:
+            n += 1
     gris = np.asarray(im.convert("L"), dtype=np.int16)
     gris = gris[:, ::-1] if cote == "droite" else gris
     n += _raie_dans_le_noir_ou_le_blanc(gris[:, n:])
