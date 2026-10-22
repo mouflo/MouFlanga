@@ -1230,7 +1230,7 @@
       if (r.error) { $('asmPlanche').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
       asmTomes = r.tomes || []; asmCourant = ''; asmPaires = {}; asmAjust = {};
       $('asmPlanche').innerHTML = asmTomes.length ? '<div class="dbl-liste">' + asmTomes.map(function (t) {
-        return '<button type="button" class="mou-btn ghost" data-asm-tome="' + esc(t.fichier) + '">' + esc(t.fichier.replace(/\.(cbz|zip)$/i, '')) + ' · ' + t.pages + ' pages</button>';
+        return '<button type="button" class="mou-btn ghost" data-asm-tome="' + esc(t.fichier) + '">' + (t.fait ? '✅ ' : '') + esc(t.fichier.replace(/\.(cbz|zip)$/i, '')) + (t.fait ? ' · assemblé' : ' · ' + t.pages + ' pages') + '</button>';
       }).join('') + '<div id="asmTome"></div></div><div id="asmEtat"></div>' : '<div class="dem-sous">Aucun tome utilisable.</div>';
     }
     function asmGrille() {

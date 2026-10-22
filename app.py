@@ -1961,6 +1961,36 @@ def api_doubles_couper():
     return jsonify({"ok": True, "message": "Découpe lancée…"})
 
 
+def _assembles_chemin():
+    return Path(DATA_DIR) / "assembles.json"
+
+
+def _assembles_lire() -> dict:
+    try:
+        return json.loads(_assembles_chemin().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _marquer_assemble(name, f):
+    """Retient qu'un tome a été assemblé (avec la date du fichier : un tome remis à son état d'origine n'est plus coché)."""
+    try:
+        d = _assembles_lire()
+        st = Path(f).stat()
+        d.setdefault(name, {})[Path(f).name] = [st.st_mtime_ns, st.st_size]
+        _assembles_chemin().write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _est_assemble(name, f) -> bool:
+    try:
+        st = Path(f).stat()
+        return (_assembles_lire().get(name) or {}).get(Path(f).name) == [st.st_mtime_ns, st.st_size]
+    except OSError:
+        return False
+
+
 @app.route("/api/doubles/tomes")
 def api_doubles_tomes():
     """Tomes de la série qu'on peut assembler (pages simples → doubles) : {"tomes": [{"fichier", "pages"}]}."""
@@ -1972,7 +2002,7 @@ def api_doubles_tomes():
         if not zipfile.is_zipfile(f) or (f.stat().st_nlink > 1 and not optimiser._dossier_a_lui(f, name)):
             continue
         try:
-            out.append({"fichier": f.name, "pages": len(archives.pages(f))})
+            out.append({"fichier": f.name, "pages": len(archives.pages(f)), "fait": _est_assemble(name, f)})
         except archives.ArchiveError:
             continue
     return jsonify({"tomes": out})
@@ -2009,6 +2039,7 @@ def api_doubles_assembler():
         _suivre_sommaire(infos, chemin, carte)                # chapitres et sommaire gardent leur page
         edition.ecrire(MANGA_DIR / name, infos)
         edition.invalider(MANGA_DIR / name)
+        _marquer_assemble(name, chemin)
     if not optimiser.lancer_coupes(name, travaux, sens, _vers_corbeille, apres, operation=optimiser.assembler):
         return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
     return jsonify({"ok": True, "message": "Assemblage lancé…"})
