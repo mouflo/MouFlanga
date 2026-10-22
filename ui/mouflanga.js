@@ -1219,7 +1219,7 @@
       window.addEventListener('popstate', function () { if (enquete) envoyer('popstate, état=' + JSON.stringify(history.state) + ', hash=' + location.hash); });
       window.addEventListener('pagehide', function () { if (enquete) envoyer('la page se décharge'); });
     })();
-    var asmTomes = [], asmCourant = '', asmPaires = {}, aRedessiner = false;
+    var asmTomes = [], asmCourant = '', asmPaires = {}, asmAjust = {}, aRedessiner = false;
     new MutationObserver(function () {                                // fiche remise à jour une fois la fenêtre des doubles pages fermée
       if ($('infosVue').hidden && aRedessiner) { aRedessiner = false; if (current) rafraichirSerie(current.id); }
     }).observe($('infosVue'), {attributes: true, attributeFilter: ['hidden']});
