@@ -83,7 +83,7 @@
                         {% if formats %}<br>Points : {% for f in formats %}{{ f.nom }} {{ '%+d'|format(p.scores[f.id] if p.scores and f.id in p.scores else f.score) }}{{ ' · ' if not loop.last }}{% endfor %}{% endif %}
                     </div>
                     <div class="actions">
-                        <a href="/regles?onglet=profils&edit={{ p.id }}">✏️ Modifier</a>
+                        <a href="/regles?onglet=profils&edit={{ p.id }}#edition">✏️ Modifier</a>
                         <form method="post" action="/regles/enregistrer" style="margin:0" data-confirme="Supprimer ce profil ?">
                             <input type="hidden" name="quoi" value="profil"><input type="hidden" name="id" value="{{ p.id }}"><input type="hidden" name="supprimer" value="1">
                             <button type="submit">🗑 Supprimer</button>
@@ -102,7 +102,7 @@
                 <p class="note">Ajoute des formats prêts à l'emploi (version française, numérique, scan, PDF…) et un profil « Manga VF numérique » <b>désactivé</b>. Rien d'existant n'est touché.</p>
             </form>
 
-            <form class="formulaire" method="post" action="/regles/enregistrer">
+            <form class="formulaire" id="edition" method="post" action="/regles/enregistrer">
                 <input type="hidden" name="quoi" value="profil">
                 <input type="hidden" name="id" value="{{ modif.id if modif and onglet == 'profils' else '' }}">
                 <h2 style="margin-top: 0;">{{ 'Modifier le profil' if modif and onglet == 'profils' else 'Nouveau profil' }}</h2>
@@ -172,7 +172,7 @@
                     <div class="nom">{{ f.nom }} <span class="off">{{ '%+d'|format(f.score) }} pts</span></div>
                     <div class="detail">{% for c in f.conditions %}{{ '🔒 ' if c.obligatoire }}{{ 'PAS ' if c.inverse }}{{ types_conditions[c.type] }} : {{ c.valeur|join(', ') if c.valeur is iterable and c.valeur is not string else c.valeur }}{{ '<br>'|safe if not loop.last }}{% else %}Aucune condition : ce format ne reconnaît rien.{% endfor %}</div>
                     <div class="actions">
-                        <a href="/regles?onglet=formats&edit={{ f.id }}">✏️ Modifier</a>
+                        <a href="/regles?onglet=formats&edit={{ f.id }}#edition">✏️ Modifier</a>
                         <form method="post" action="/regles/enregistrer" style="margin:0" data-confirme="Supprimer ce format ?">
                             <input type="hidden" name="quoi" value="format"><input type="hidden" name="id" value="{{ f.id }}"><input type="hidden" name="supprimer" value="1">
                             <button type="submit">🗑 Supprimer</button>
@@ -183,7 +183,7 @@
                 <p class="note">Aucun format pour l'instant.</p>
             {% endfor %}
 
-            <form class="formulaire" method="post" action="/regles/enregistrer">
+            <form class="formulaire" id="edition" method="post" action="/regles/enregistrer">
                 <input type="hidden" name="quoi" value="format">
                 <input type="hidden" name="id" value="{{ modif.id if modif and onglet == 'formats' else '' }}">
                 <h2 style="margin-top: 0;">{{ 'Modifier le format' if modif and onglet == 'formats' else 'Nouveau format' }}</h2>
@@ -304,5 +304,19 @@
             {% endif %}
         {% endif %}
     </div>
+    {% if modif and onglet in ('profils', 'formats') %}
+    <script>
+    (function () {
+        var f = document.getElementById('edition');
+        if (!f) return;
+        function aller() {
+            f.scrollIntoView({behavior: 'smooth', block: 'start'});
+            var n = f.querySelector('input[name=nom]');
+            if (n) n.focus({preventScroll: true});
+        }
+        if (document.readyState === 'complete') setTimeout(aller, 50); else window.addEventListener('load', function () { setTimeout(aller, 50); });
+    })();
+    </script>
+    {% endif %}
 </body>
 </html>

@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 📏 Règles : « Modifier » descend tout seul sur le formulaire (23 octobre 2026)
+Sur la page des règles, le bouton ✏️ Modifier d'un profil ou d'un format affichait le formulaire tout en bas, sans rien montrer à l'écran. La page descend maintenant toute seule sur le formulaire (ancre et défilement doux) et place le curseur dans le nom.
+
 ## 🇫🇷 Langue : l'anglais refusé à tout prix, profil « Manga · Français » (23 octobre 2026)
 Analyse de 347 noms de torrents déjà téléchargés et de 266 résultats réels de Prowlarr : 82 % portent une marque française (FR, FRENCH), environ 15 % n'en portent aucune (équipes françaises comme PapriKa, IpMan, NOTAG, ou noms avec « Tome » / « Intégrale »), et l'anglais est toujours écrit explicitement (« [CBR-CBZ ENG] », « [PDF] [EN] »).
 - **Refus absolu de l'anglais, avec ou sans profil** (`regles.est_anglais`) : ENG, ENGLISH, ou [EN] / (EN) entre crochets ou parenthèses. « One Piece **En** Couleurs » reste accepté. Un résultat refusé n'est jamais proposé, ni par la surveillance, ni par le bouton 🤖 ; il apparaît dans « Montrer les refusés » avec la raison.
