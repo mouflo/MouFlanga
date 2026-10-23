@@ -442,7 +442,7 @@
         (lu ? '<small class="prop-lu">' + lu + '</small>' : '') +
         (tracker && tracker.https(p.page) ? '<div class="pt-liens">' + tracker.lien(p.page) +
           '<button type="button" class="ghost pt-lire" data-lire="' + esc(p.id) + '" title="Lire la présentation et le NFO du torrent sur son tracker">📄 Lire la page</button></div>' : '') + '</div>' +
-        '<div class="dem-act"><a class="mou-btn small" href="' + url + '">⬇️</a><button type="button" class="ghost" data-ignorer="' + p.id + '">✕</button></div></div>';
+        '<div class="dem-act"><button type="button" class="mou-btn small" data-dl="' + esc(p.id) + '" title="Télécharger maintenant">⬇️</button><button type="button" class="ghost" data-ignorer="' + p.id + '">✕</button></div></div>';
     }).join('') : '<div class="dem-sous">Rien de nouveau' + (sv && sv.derniere_verif ? ' (vérifié le ' + esc(sv.derniere_verif) + ')' : '') + '.</div>';
     $('sEtat').hidden = !s.etat_texte;
     $('sEtat').className = 'etat-ligne ' + (s.etat || '');
@@ -1898,6 +1898,15 @@
       $('sVerifier').disabled = false; note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err'); if (r.ok) await openSeries(current.id, false);
     });
     $('sPropsListe').addEventListener('click', async function (e) {
+      var dl = e.target.closest('[data-dl]');
+      if (dl && current) {                                  // ⬇️ : le téléchargement part tout de suite, sans changer de page
+        dl.disabled = true; dl.textContent = '⏳';
+        note('sMsg', 'Envoi à qBittorrent… (jusqu\'à une minute)', 'warn');
+        var rd = await post('/api/suivies', {action: 'telecharger', nom: current.id, id: dl.dataset.dl});
+        note('sMsg', rd.message || rd.error, rd.ok ? 'ok' : 'err');
+        if (rd.ok) await openSeries(current.id, false); else { dl.disabled = false; dl.textContent = '⬇️'; }
+        return;
+      }
       var l = e.target.closest('[data-lire]');
       if (l && window.MouPageTracker && current) {
         var p = ((current.suivi && current.suivi.propositions) || []).filter(function (x) { return x.id === l.dataset.lire; })[0];

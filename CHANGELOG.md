@@ -1,5 +1,8 @@
 # Historique des versions
 
+## ⬇️ Propositions de torrents : le bouton télécharge directement (23 octobre 2026)
+Sur la fiche d'une série, le bouton ⬇️ d'une proposition renvoyait vers la page Télécharger. Il envoie maintenant le torrent à qBittorrent tout de suite, sans changer de page : l'appli retrouve le torrent chez Prowlarr par son nom (le lien de Prowlarr, qui contient sa clé, n'est jamais gardé ni envoyé au navigateur), le lance, et marque la proposition « téléchargée ». Une proposition 🆕 n'ajoute que les tomes manquants ; une proposition ⬆️ ou 🔁 (meilleure version, même équipe) remplace les tomes concernés, qui vont à la corbeille. Un torrent marqué en anglais n'est jamais envoyé. Si Prowlarr ne le propose plus ou si qBittorrent ne répond pas, un message l'explique et la proposition reste en attente.
+
 ## 📏 Règles : « Modifier » descend tout seul sur le formulaire (23 octobre 2026)
 Sur la page des règles, le bouton ✏️ Modifier d'un profil ou d'un format affichait le formulaire tout en bas, sans rien montrer à l'écran. La page descend maintenant toute seule sur le formulaire (ancre et défilement doux) et place le curseur dans le nom.
 

@@ -4329,6 +4329,37 @@ def api_suivies():
                     p["statut"] = "ignore"
             suivi.ecrire(d)
         return jsonify({"ok": True, "message": "Proposition ignorée."})
+    if action == "telecharger":
+        # ⬇️ d'une proposition : un clic, ça part. Le lien de Prowlarr n'est jamais gardé : on retrouve le torrent par son nom.
+        if not torrents.configure():
+            return jsonify({"ok": False, "error": "Prowlarr et qBittorrent ne sont pas encore réglés (⚙️ Réglages → Connexions)."}), 400
+        p = suivi.proposition(nom, str(body.get("id", "")))
+        if not p or p.get("statut") != "attente":
+            return jsonify({"ok": False, "error": "Cette proposition n'existe plus."}), 404
+        trouve = None
+        try:
+            for t in list(dict.fromkeys([p["titre"], nom] + (d["series"][nom].get("titres") or [])))[:3]:
+                trouve = next((x for x in torrents.chercher(t, serie=nom, avec_rejets=True) if x["titre"] == p["titre"] and x.get("lien")), None)
+                if trouve:
+                    break
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"Recherche impossible : {e}"}), 502
+        if not trouve:
+            return jsonify({"ok": False, "error": "Prowlarr ne propose plus ce torrent : relance « Vérifier maintenant »."}), 404
+        if "anglais" in (trouve.get("rejet") or ""):
+            return jsonify({"ok": False, "error": "Ce torrent est marqué en anglais : jamais pris."}), 400
+        try:
+            torrents.lancer(trouve["lien"], trouve["titre"], nom, p["type"] in ("meilleur", "equipe"), str(trouve.get("page", ""))[:600])
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"qBittorrent : {e}"}), 502
+        with suivi._verrou:
+            d = suivi.lire()
+            for q in (d["series"].get(nom) or {}).get("propositions", []):
+                if q["id"] == p["id"]:
+                    q["statut"] = "telecharge"
+            suivi.ecrire(d)
+        suite = "les tomes remplacés iront à la corbeille" if p["type"] in ("meilleur", "equipe") else "seuls les tomes manquants seront ajoutés"
+        return jsonify({"ok": True, "message": f"Envoyé à qBittorrent : {suite}. Suivi dans Télécharger → Torrents."})
     if action == "verifier":
         if not torrents.configure():
             return jsonify({"ok": False, "error": "Prowlarr n'est pas réglé."}), 400
