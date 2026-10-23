@@ -1027,10 +1027,21 @@
         if (sel && !sel.options.length) { sel.innerHTML = i.tomes.map(function (n) { return '<option>' + esc(n) + '</option>'; }).join(''); }
         if (sel) sel.value = i.fichier;
         $('cmpPage').textContent = 'page ' + (i.page + 1) + ' / ' + i.pages;
+        var al = $('cmpAller'); if (al && al.options.length !== i.pages + 1) { al.innerHTML = pagesCmp(); }
+        var nu = $('cmpNum'); if (nu) { nu.max = i.pages; nu.value = i.page + 1; }
         var gain = i.avant_ko ? Math.round(100 * (1 - i.apres_ko / i.avant_ko)) : 0;
         $('cmpInfo').textContent = (i.couleur ? '🎨 Page en couleur : l\'amélioration ne la touche pas. ' : i.ameliore ? '✨ Amélioration appliquée. ' : '') + (i.inchange ? 'Cette page garde ses octets d\'origine (' + i.avant_ko + ' Ko) : rien à gagner à ce réglage.'
           : 'Qualité ' + i.qualite + '/100 (' + (i.auto ? 'choisie automatiquement' : 'manuelle') + ') · Avant ' + i.avant_ko + ' Ko (' + i.dimensions[0][0] + '×' + i.dimensions[0][1] + ') → Après ' + i.apres_ko + ' Ko (' + i.dimensions[1][0] + '×' + i.dimensions[1][1] + ') · ' + (gain >= 0 ? '−' : '+') + Math.abs(gain) + ' % sur cette page');
       });
+    }
+    function pagesCmp() {                                         // liste déroulante de toutes les pages du tome
+      var h = '<option value="">Page…</option>';
+      for (var p = 1; p <= (cmp.pages || 0); p++) h += '<option value="' + p + '"' + (p === cmp.page + 1 ? ' selected' : '') + '>Page ' + p + '</option>';
+      return h;
+    }
+    function allerPageCmp(v) {
+      var p = parseInt(v, 10); if (!cmp || !p) return;
+      cmp.page = Math.max(0, Math.min((cmp.pages || p) - 1, p - 1)); cmp.zoom = null; dessinerComparaison();
     }
     function dessinerComparaison() {
       var z = $('allCmp'); if (!z || !cmp) return;
@@ -1040,6 +1051,8 @@
         '<span id="cmpPage">page ' + (cmp.page + 1) + (cmp.pages ? ' / ' + cmp.pages : '') + '</span>' +
         '<button type="button" class="mou-btn ghost small" data-cmp="suiv">▶</button>' +
         '<button type="button" class="mou-btn ghost small" data-cmp="fermer">✕</button></div>' +
+        '<div class="cmp-barre"><label>Aller à la page : <input type="number" id="cmpNum" class="mou-field" inputmode="numeric" min="1"' + (cmp.pages ? ' max="' + cmp.pages + '"' : '') +
+        ' value="' + (cmp.page + 1) + '" style="width:5.5em"></label> <select id="cmpAller" class="mou-field" aria-label="Choisir la page">' + pagesCmp() + '</select></div>' +
         '<div class="cmp-cote">' + [['avant', 'Avant'], ['rideau', '↔ Rideau'], ['apres', 'Après']].map(function (c) {
           return '<button type="button" class="mou-btn' + (cmp.cote === c[0] ? '' : ' ghost') + '" data-cmp="' + c[0] + '">' + c[1] + '</button>'; }).join('') + '</div>' +
         '<div class="cmp-boite" id="cmpBoite"><img id="cmpImg" class="cmp-img" alt="">' +
@@ -1107,6 +1120,7 @@
         var am = amelioration(); $('allProfil').value = PROFILS_AMEL.some(function (p) { return p[0] === am; }) ? am : 'perso';
         if (!cmp) ouvrirComparaison(''); else majComparaison();
       }
+      else if ((e.target.id === 'cmpAller' || e.target.id === 'cmpNum') && cmp) allerPageCmp(e.target.value);
       else if (e.target.id === 'cmpTome' && cmp) { cmp.fichier = e.target.value; cmp.zoom = null; dessinerComparaison(); }
     });
     $('infosCorps').addEventListener('click', function (e) {

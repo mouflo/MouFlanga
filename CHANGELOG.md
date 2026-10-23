@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 👁 Amélioration : aller directement à une page (23 octobre 2026)
+Dans « Avant / après », on peut maintenant taper le numéro de la page ou la choisir dans une liste déroulante, au lieu de passer les pages une par une.
+
 ## ✅ Doubles pages : les tomes assemblés restent cochés (22 octobre 2026)
 La coche verte d'un tome assemblé disparaissait en quittant la page. Elle est maintenant retenue par l'appli : en revenant, les tomes déjà faits sont toujours cochés. Un tome remis à son état d'origine (depuis la corbeille) perd sa coche.
 
