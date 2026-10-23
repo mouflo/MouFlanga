@@ -43,6 +43,10 @@ class ReglesTest(unittest.TestCase):
         self.assertEqual(len(out), 1)            # ne concerne pas One Piece
         self.assertEqual(len(regles.filtrer(self.titres("Kaf 01 VO"), "Kaf")), 0)
 
+    def test_series_choisies_dans_la_collection_avec_virgule(self):
+        regles.enregistrer_profil("", "Liste", True, "FR", "", ["Kaf", "Ranma 1/2, le film"], "")
+        self.assertEqual(regles.profils()[0]["series"], ["Kaf", "Ranma 1/2, le film"])
+
     def test_taille_maximale(self):
         regles.enregistrer_profil("", "Moins de 3 Go", True, "", "", "", "3")
         out = regles.filtrer([{"titre": "Gros", "taille": 5 * GO}, {"titre": "Petit", "taille": 2 * GO}], "")

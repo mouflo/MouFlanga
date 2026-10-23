@@ -23,6 +23,10 @@
         .formulaire input[type=text], .formulaire input[type=number], .formulaire textarea { width: 100%; box-sizing: border-box; font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid #2c2f36; background: #0f1012; color: #eee; margin-top: 4px; }
         .formulaire textarea { min-height: 70px; }
         .formulaire .aide { color: #aaa; font-size: 0.9em; margin-top: 4px; }
+        .series-liste { max-height: 260px; overflow-y: auto; border: 1px solid #2c2f36; border-radius: 8px; background: #0f1012; padding: 4px 10px; margin-top: 6px; }
+        .series-liste .serie { margin-top: 0; padding: 9px 0; font-weight: 400; border-bottom: 1px solid #1c1e22; }
+        .series-liste input { width: 22px; height: 22px; flex: none; }
+        .series-liste .serie[hidden] { display: none; }
         .formulaire .coche { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
         .formulaire button { margin-top: 14px; width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; background: var(--accent); color: #0b0c0e; border: none; font-weight: 600; }
         .msg { padding: 10px 12px; border-radius: 8px; margin: 10px 0; }
@@ -83,9 +87,31 @@
                 <div class="aide">Un mot par virgule ou par ligne (au moins un doit être présent).</div>
                 <label for="pne">Ne doit pas contenir</label>
                 <textarea id="pne" name="ne_doit_pas">{{ modif.ne_doit_pas|join(', ') if modif and onglet == 'profils' else '' }}</textarea>
-                <label for="pseries">Séries concernées</label>
-                <textarea id="pseries" name="series">{{ modif.series|join(', ') if modif and onglet == 'profils' else '' }}</textarea>
-                <div class="aide">Vide = toutes les séries. Sinon le nom de la série, par exemple « Kaf ».</div>
+                <label for="pfiltre">Séries concernées</label>
+                {% set choisies = (modif.series if modif and onglet == 'profils' else []) %}
+                <input type="text" id="pfiltre" placeholder="🔍 Chercher dans ma collection…" autocomplete="off">
+                <div class="series-liste" id="pliste">
+                    {% for s in choisies if s not in toutes_series %}
+                        <label class="coche serie" data-nom="{{ s|lower }}"><input type="checkbox" name="series" value="{{ s }}" checked> {{ s }} <small>(hors collection)</small></label>
+                    {% endfor %}
+                    {% for s in toutes_series %}
+                        <label class="coche serie" data-nom="{{ s|lower }}"><input type="checkbox" name="series" value="{{ s }}" {{ 'checked' if s in choisies }}> {{ s }}</label>
+                    {% endfor %}
+                </div>
+                <div class="aide" id="pcompte">Rien de coché = toutes les séries. Coche celles que le profil doit concerner : les noms viennent de ta collection, pas besoin de les taper.</div>
+                <script>
+                (function () {
+                    var f = document.getElementById('pfiltre'), l = document.getElementById('pliste'), c = document.getElementById('pcompte');
+                    function norm(s) { return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+                    function maj() {
+                        var q = norm(f.value.trim());
+                        l.querySelectorAll('.serie').forEach(function (x) { x.hidden = !!q && norm(x.dataset.nom).indexOf(q) < 0; });
+                        var n = l.querySelectorAll('input:checked').length;
+                        c.textContent = n ? n + ' série(s) cochée(s).' : 'Rien de coché = toutes les séries. Coche celles que le profil doit concerner : les noms viennent de ta collection, pas besoin de les taper.';
+                    }
+                    f.addEventListener('input', maj); l.addEventListener('change', maj); maj();
+                })();
+                </script>
                 <label for="ptaille">Taille maximale (Go)</label>
                 <input type="number" id="ptaille" name="taille_max_go" step="0.1" min="0" value="{{ modif.taille_max_go or '' if modif and onglet == 'profils' else '' }}">
                 <button type="submit">💾 Enregistrer le profil</button>

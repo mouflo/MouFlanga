@@ -6272,7 +6272,8 @@ def page_regles():
         modif = next((x for x in regles.formats() if x["id"] == edit), None)
     cle = tomes.cle_google_books()
     return render_template("regles.html", version=APP_VERSION, onglet=onglet, profils=regles.profils(),
-                           formats=regles.formats(), modif=modif, cle_gb=("…" + cle[-4:]) if len(cle) >= 8 else "",
+                           formats=regles.formats(), modif=modif, toutes_series=sorted((n for n in _scan() if n != "(Sans série)"), key=str.lower),
+                           cle_gb=("…" + cle[-4:]) if len(cle) >= 8 else "",
                            cle_claude=("…" + os.getenv("CLAUDE_API_KEY", "").strip()[-4:]) if len(os.getenv("CLAUDE_API_KEY", "").strip()) >= 8 else "",
                            ok=request.args.get("ok", ""), erreur=request.args.get("erreur", ""))
 
@@ -6341,7 +6342,7 @@ def regles_enregistrer():
             msg = "Supprimé."
         elif quoi == "profil":
             regles.enregistrer_profil(f.get("id", ""), f.get("nom", ""), bool(f.get("actif")), f.get("doit", ""),
-                                      f.get("ne_doit_pas", ""), f.get("series", ""), f.get("taille_max_go", ""))
+                                      f.get("ne_doit_pas", ""), f.getlist("series"), f.get("taille_max_go", ""))
             msg = "Profil enregistré. Les prochaines recherches en tiennent compte."
         else:
             regles.enregistrer_format(f.get("id", ""), f.get("nom", ""), f.get("termes", ""), f.get("score", "0"))

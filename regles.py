@@ -49,7 +49,8 @@ def enregistrer_profil(id_: str, nom: str, actif: bool, doit: str, ne_doit_pas: 
         raise ValueError("La taille maximale doit être un nombre de Go (ou vide).")
     d = _lire()
     p = {"id": id_ or uuid.uuid4().hex[:10], "nom": nom, "actif": bool(actif), "doit": _liste(doit),
-         "ne_doit_pas": _liste(ne_doit_pas), "series": _liste(series), "taille_max_go": taille}
+         "ne_doit_pas": _liste(ne_doit_pas),
+         "series": [str(x).strip() for x in series if str(x).strip()] if isinstance(series, (list, tuple)) else _liste(series), "taille_max_go": taille}
     d["profils"] = [x for x in d["profils"] if x["id"] != p["id"]] + [p]
     _ecrire(d)
     return p["id"]

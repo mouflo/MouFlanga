@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 📏 Règles de recherche : séries choisies dans la collection (23 octobre 2026)
+Dans un profil de version, les « séries concernées » ne se tapent plus : une liste de toutes les séries de la collection, avec un champ de recherche, où l'on coche celles voulues. Plus de faute de frappe ni de majuscule à surveiller, et les noms contenant une virgule fonctionnent. Les anciens noms tapés à la main qui ne sont pas dans la collection restent cochés, marqués « hors collection ».
+
 ## 👁 Amélioration : aller directement à une page (23 octobre 2026)
 Dans « Avant / après », on peut maintenant taper le numéro de la page ou la choisir dans une liste déroulante, au lieu de passer les pages une par une.
 
