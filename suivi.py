@@ -106,6 +106,14 @@ def propositions_pour(nom, info, resultats, deja):
             sorte = "nouveau"
         elif meme(r) and autres:
             sorte, manquants = "equipe", autres
+        elif info.get("profil"):
+            # un profil s'applique à la série : un tome déjà là n'est proposé que si ce torrent vaut PLUS de points que sa provenance
+            # et que celle-ci n'atteint pas le score d'arrêt du profil (« assez bon »)
+            scores, arret = info.get("scores_tomes") or {}, info.get("arret")
+            ameliorables = sorted(t for t in couverts & possedes
+                                  if t in scores and scores[t] < r.get("score", 0) and (arret is None or scores[t] < arret))
+            if ameliorables:
+                sorte, manquants = "meilleur", ameliorables
         elif (possedes and info.get("qualite") == "Digital" and rang < 2 and "Digital" in r["badges"]
               and (not couverts or couverts & possedes or "Intégrale" in r["badges"])):
             sorte = "meilleur"
@@ -113,12 +121,47 @@ def propositions_pour(nom, info, resultats, deja):
             continue
         vus.add(r["titre"])
         out.append({"id": uuid.uuid4().hex[:8], "type": sorte, "titre": r["titre"], "page": r.get("page", ""), "lien": r.get("lien") or "",
-                    "taille": r.get("taille", 0), "sources": r.get("sources", 0),
+                    "taille": r.get("taille", 0), "sources": r.get("sources", 0), "score": r.get("score", 0),
                     "badges": (["⭐ même équipe"] if meme(r) else []) + list(r["badges"]), "meme_equipe": meme(r),
                     "tomes": manquants[:40], "date": datetime.now().strftime("%Y-%m-%d"), "statut": "attente"})
         if len(out) >= 5:
             break
     return out
+
+
+def plage(tomes) -> str:
+    """[1, 2, 3, 5] → « T1–T3, T5 »."""
+    t, out = sorted({int(x) for x in tomes}), []
+    i = 0
+    while i < len(t):
+        j = i
+        while j + 1 < len(t) and t[j + 1] == t[j] + 1:
+            j += 1
+        out.append(f"T{t[i]}" if i == j else f"T{t[i]}–T{t[j]}")
+        i = j + 1
+    return ", ".join(out)
+
+
+def purger(propositions, info) -> int:
+    """Passe en « ignoré » les propositions en attente devenues inutiles : tous leurs tomes sont arrivés entre-temps (nouveau),
+    sont maintenant au moins aussi bien notés (meilleur) ou sont déjà de la bonne équipe (équipe). Renvoie leur nombre."""
+    import provenance
+    possedes, scores, par_tome = info.get("tomes") or set(), info.get("scores_tomes") or {}, info.get("equipe_tomes") or {}
+    n = 0
+    for p in propositions:
+        t = [int(x) for x in p.get("tomes") or []]
+        if p.get("statut") != "attente" or not t:
+            continue
+        if p["type"] == "nouveau":
+            inutile = all(x in possedes for x in t)
+        elif p["type"] == "meilleur":
+            inutile = bool(info.get("profil")) and all(x in scores and scores[x] >= p.get("score", 0) for x in t)
+        else:
+            inutile = all(provenance.meme_equipe(par_tome.get(x) or "", info.get("equipe") or "") for x in t)
+        if inutile:
+            p["statut"], p["obsolete"] = "ignore", True
+            n += 1
+    return n
 
 
 def _sans_point(titre):
@@ -163,6 +206,7 @@ def verifier(nom, chercher, infos_serie, lancer=None, envoyer=None, apres=None):
     with _verrou:
         d = lire()
         if nom in d["series"]:
+            purger(d["series"][nom].get("propositions", []), info)
             d["series"][nom].setdefault("propositions", []).extend(nouvelles)
             d["series"][nom]["propositions"] = d["series"][nom]["propositions"][-30:]
             d["series"][nom]["derniere_verif"] = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -260,7 +304,9 @@ def boucle(chercher, infos_serie, envoyer, adresse, actif, lancer=None, apres=No
                 if nouv:
                     lien = adresse().rstrip("/") + "/#" + __import__("urllib.parse").parse.quote(nom) if adresse() else ""
                     envoyer(f"{'🆕' if nouv[0]['type'] == 'nouveau' else '⬆️'} MouFlanga : {nom} — {len(nouv)} proposition(s)\n"
-                            + "\n".join(f"• « {_sans_point(p['titre'][:90])} »" for p in nouv)
+                            + "\n".join(f"• « {_sans_point(p['titre'][:90])} » — "
+                                        f"{ {'nouveau': 'manque', 'equipe': 'même équipe', 'meilleur': 'meilleure qualité'}.get(p['type'], '') } "
+                                        f"{plage(p['tomes'])}".rstrip() for p in nouv)
                             + (f"\n👉 Ouvrir dans MouFlanga : {lien}" if lien else ""))
                 time.sleep(20)                    # sobre avec Prowlarr et les indexeurs
         except Exception as e:

@@ -93,6 +93,10 @@
             {% else %}
                 <p class="note">Aucun profil pour l'instant : tous les torrents trouvés sont proposés (ceux sans source en dernier).</p>
             {% endfor %}
+            <form method="post" action="/regles/equipes" style="margin: 12px 0;">
+                <button type="submit" class="mou-btn">🔄 Mettre à jour les profils d'équipe</button>
+                <p class="note">Les profils « Manga · Équipe » (marqués automatiques) sont recalculés toutes les 6 heures d'après l'équipe de chaque série de la bibliothèque : une équipe n'a un profil que si elle fournit au moins deux séries. Modifier un de ces profils le rend manuel : il n'est plus touché.</p>
+            </form>
             <form method="post" action="/regles/modeles" style="margin: 12px 0;">
                 <button type="submit" class="mou-btn">✨ Ajouter les modèles de départ</button>
                 <p class="note">Ajoute des formats prêts à l'emploi (version française, numérique, scan, PDF…) et un profil « Manga VF numérique » <b>désactivé</b>. Rien d'existant n'est touché.</p>

@@ -98,6 +98,24 @@
             etat();
         }
     });
+    // 🤖 Série complétée automatiquement : on montre d'abord ce qui serait téléchargé, puis on lance après confirmation
+    async function auto(lancer) {
+        const serie = $("tor-auto-serie").value.trim() || params.get("serie") || "";
+        if (!serie) { $("tor-auto-res").innerHTML = '<div class="note err">Écris le nom de la série.</div>'; return; }
+        $("tor-auto-res").innerHTML = '<div class="loading">⏳ Recherche dans Prowlarr… (jusqu\'à une minute)</div>';
+        const r = await (await fetch("/api/torrents/auto", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({serie, lancer})})).json();
+        if (r.error && !r.torrents) { $("tor-auto-res").innerHTML = `<div class="note err">${esc(r.error)}</div>`; return; }
+        const l = r.torrents || [];
+        const entete = `<div class="note ${r.ok ? "ok" : "err"}">${esc(r.message || r.error || "")}${r.profil ? ` Profil : « ${esc(r.profil)} ».` : " Aucun profil pour cette série."}
+            ${r.attendus ? ` ${r.possedes} tome(s) sur ${r.attendus} déjà là.` : ""}${(r.manquants || []).length ? ` Rien ne couvre : T${r.manquants.join(", T")}.` : ""}</div>`;
+        $("tor-auto-res").innerHTML = entete + l.map(x => `<div class="tor-res"><div class="tor-info"><b>${x.score ? `<em class="tor-score">${x.score > 0 ? "+" : ""}${x.score}</em> ` : ""}${esc(x.titre)}</b>
+            <small>Tomes ${x.tomes.join(", ")} · ${taille(x.taille)} · ${x.sources} source${x.sources > 1 ? "s" : ""} · ${esc(x.indexeur)}</small>
+            <span class="tor-badges">${(x.formats || []).map(f => `<i class="fmt">${esc(f)}</i>`).join("")}</span></div></div>`).join("")
+            + (l.length && !lancer ? `<div class="tor-envoi"><button type="button" class="mou-btn" id="tor-auto-ok">✅ Lancer ces ${l.length} téléchargement(s)</button></div>` : "");
+        if (l.length && !lancer) $("tor-auto-ok").addEventListener("click", async () => { if (await MouConfirm("Envoyer " + l.length + " torrent(s) à qBittorrent pour « " + serie + " » ? Les tomes déjà présents ne seront pas remplacés.")) { await auto(true); etat(); } });
+    }
+    $("tor-auto-go").addEventListener("click", () => auto(false));
+    $("tor-auto-serie").value = params.get("serie") || "";
     $("tor-go").addEventListener("click", chercher);
     $("tor-refuses").addEventListener("change", afficher);
     $("tor-q").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); chercher(); } });

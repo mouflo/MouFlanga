@@ -11,6 +11,7 @@ import uuid
 from pathlib import Path
 
 FICHIER = Path(__file__).resolve().parent / "data" / "regles.json"
+SERIES_CONNUES = lambda: []      # branché par app.py : noms des séries de la bibliothèque et des séries suivies
 
 TYPES = {
     "titre": "Mot dans le titre",
@@ -202,18 +203,28 @@ def _cle(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
-def _concerne(profil: dict, serie: str) -> bool:
-    """Un profil sans série s'applique à tout ; sinon seulement aux séries nommées (sans accents ni casse)."""
+def _resolue(serie: str) -> str:
+    """La série visée par une recherche : le plus long nom connu (bibliothèque, séries suivies, séries des profils) contenu dans le texte.
+    « Gantz : Osaka T03 » → « Gantz : Osaka » et non « Gantz » ; « Air Gear intégrale » → « Air Gear » et non « Air Gear Unlimited »."""
+    q = _cle(serie or "")
+    connues = {_cle(n) for n in SERIES_CONNUES()} | {_cle(x) for p in profils() for x in p.get("series") or []}
+    return max((k for k in connues if k and k in q), key=len, default=q)
+
+
+def _concerne(profil: dict, serie: str, resolue: str | None = None) -> bool:
+    """Un profil sans série s'applique à tout ; sinon seulement à la série visée, comparée par son nom entier (sans accents ni casse)."""
     if not profil.get("series"):
         return True
-    return any(_cle(s) and _cle(s) in _cle(serie or "") for s in profil["series"])
+    r = resolue if resolue is not None else _resolue(serie)
+    return any(_cle(x) == r for x in profil["series"] if _cle(x))
 
 
 def profil_pour(serie: str = ""):
     """Le profil qui s'applique à cette série, comme dans Sonarr : un seul. Celui qui nomme la série passe avant
     le profil général (sans série) ; à égalité, le premier créé."""
     actifs = [p for p in profils() if p.get("actif")]
-    precis = [p for p in actifs if p.get("series") and _concerne(p, serie)]
+    r = _resolue(serie)
+    precis = [p for p in actifs if p.get("series") and _concerne(p, serie, r)]
     general = [p for p in actifs if not p.get("series")]
     return (precis or general or [None])[0]
 
@@ -290,3 +301,65 @@ def ajouter_modeles() -> int:
         enregistrer_profil("", "Manga VF numérique", False, "", "", [], "", scores={}, score_min="0", score_arret="150", sources_min="1")
         n += 1
     return n
+
+
+# ---------------------------------------------------------------- profils par équipe, tenus à jour tout seuls
+
+def _mot_equipe(equipe: str) -> str:
+    """« PRiNTER-PapriKa+ » → « PapriKa » ; « Tadatoshi FUJIMAKI » (un nom d'auteur), « INT » ou « Oku » (trop court) → « »."""
+    e = (equipe or "").strip()
+    if not e or " " in e:
+        return ""
+    t = re.split(r"-+", e)[-1].rstrip("+").strip()
+    return t if re.fullmatch(r"[A-Za-z0-9]{4,24}", t) else ""
+
+
+def synchroniser_equipes(equipes_par_serie: dict) -> dict:
+    """Crée, met à jour et retire les profils « Manga · <Équipe> » (marqués `auto`) d'après l'équipe de chaque série de la bibliothèque.
+    Une équipe n'a un profil que si elle est celle d'au moins DEUX séries (sinon c'est souvent un auteur). Le profil donne +1000 au
+    format « Équipe X » (créé au besoin, 0 point par défaut) et exige 1 source. Ne touche jamais à un profil modifié ou créé à la main
+    (sans `auto`), ni aux séries déjà citées dans un profil à la main. Renvoie {crees, mis_a_jour, supprimes}."""
+    groupes = {}
+    for serie, eq in equipes_par_serie.items():
+        t = _mot_equipe(eq)
+        if t:
+            groupes.setdefault(t.lower(), [t, []])[1].append(serie)
+    d = _lire()
+    a_la_main = {_cle(x) for p in d["profils"] if not p.get("auto") for x in p.get("series") or []}
+    voulus = {}
+    for cle, (nom_equipe, series) in groupes.items():
+        series = sorted({x for x in series if _cle(x) not in a_la_main}, key=str.lower)
+        if len(series) >= 2:
+            voulus["Manga · " + nom_equipe] = (nom_equipe, series)
+    bilan = {"crees": [], "mis_a_jour": [], "supprimes": []}
+    for nom, (nom_equipe, series) in sorted(voulus.items()):
+        p = next((x for x in d["profils"] if x["nom"] == nom), None)
+        if p and not p.get("auto"):
+            continue                                     # un profil du même nom fait à la main : on ne s'en mêle pas
+        fmt = next((f for f in d["formats"] if f["nom"] == "Équipe " + nom_equipe), None)
+        if fmt is None:
+            fmt = {"id": uuid.uuid4().hex[:10], "nom": "Équipe " + nom_equipe,
+                   "conditions": [{"type": "titre", "valeur": [nom_equipe.lower()], "inverse": False, "obligatoire": False}], "score": 0}
+            d["formats"].append(fmt)
+        if p is None:
+            d["profils"].append({"id": uuid.uuid4().hex[:10], "nom": nom, "actif": True, "auto": True, "doit": [], "ne_doit_pas": [], "series": series,
+                                 "taille_max_go": None, "scores": {fmt["id"]: 1000}, "score_min": None, "score_arret": 1000, "sources_min": 1})
+            bilan["crees"].append(nom)
+        elif p.get("series") != series:
+            p["series"] = series
+            bilan["mis_a_jour"].append(nom)
+    for p in list(d["profils"]):
+        if p.get("auto") and p["nom"] not in voulus:
+            d["profils"].remove(p)
+            bilan["supprimes"].append(p["nom"])
+    if any(bilan.values()):
+        _ecrire(d)
+    return bilan
+
+
+def score_titre(titre: str, serie: str = "") -> int:
+    """Points qu'un nom de torrent (celui d'où vient un tome de la bibliothèque) obtiendrait avec le profil de la série, refus ignorés :
+    sert à savoir si un tome déjà là est dans la qualité voulue par le profil."""
+    import torrents                                   # import tardif : torrents importe déjà regles
+    r = {"titre": titre, "taille": 0, "sources": 99, "indexeur": "", "badges": torrents.badges(titre)}
+    return filtrer([r], serie, avec_rejets=True)[0]["score"]

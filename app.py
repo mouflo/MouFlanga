@@ -4270,7 +4270,13 @@ def _infos_suivi(nom):
     equipe_tomes = {int(k): v.get("equipe") for k, v in provenance.lire(d).items() if v.get("equipe") and str(k).isdigit()}
     principale = Counter(equipe_tomes.values()).most_common(1)
     equipe = principale[0][0] if principale else next((provenance.equipe_torrent(a) for a in d.get("archives", []) if provenance.equipe_torrent(a)), "")
-    return {"tomes": t, "source": source, "complete": complete, "en_cours": en_cours, "equipe": equipe, "equipe_tomes": equipe_tomes}
+    # Qualité de ce qu'on possède d'après le profil de la série : points du nom du torrent d'où vient chaque tome
+    profil = regles.profil_pour(nom)
+    origines = {int(k): v["origine"].split(" : ", 1)[1] for k, v in provenance.lire(d).items()
+                if str(k).isdigit() and str(v.get("origine") or "").startswith("Torrent : ")}
+    scores = {tome: regles.score_titre(titre, nom) for tome, titre in origines.items()} if profil else {}
+    return {"tomes": t, "source": source, "complete": complete, "en_cours": en_cours, "equipe": equipe, "equipe_tomes": equipe_tomes,
+            "profil": profil is not None, "scores_tomes": scores, "arret": (profil or {}).get("score_arret")}
 
 
 def _accepter_demande(x):
@@ -4462,6 +4468,42 @@ torrents._ETAT["volumes"] = _noter_volumes_torrent
 tomes.SERIES_EXISTANTES = lambda: [n for n in _scan() if n != "(Sans série)"]
 
 
+regles.SERIES_CONNUES = lambda: [n for n in _scan() if n != "(Sans série)"] + list(suivi.lire()["series"])
+
+
+def _equipes_par_serie():
+    """{série: équipe dominante} d'après la provenance des tomes de la bibliothèque (au moins 60 % des tomes d'une même équipe)."""
+    import edition
+    from collections import Counter
+    out = {}
+    for nom in _scan():
+        if nom == "(Sans série)":
+            continue
+        try:
+            c = Counter((v.get("equipe") or "").strip() for v in provenance.lire(edition.lire(MANGA_DIR / nom)).values() if isinstance(v, dict))
+        except Exception:
+            continue
+        c.pop("", None)
+        if c:
+            eq, n = c.most_common(1)[0]
+            if n / sum(c.values()) >= 0.6:
+                out[nom] = eq
+    return out
+
+
+def _boucle_equipes():
+    """Profils « Manga · <Équipe> » tenus à jour tout seuls (au démarrage, puis toutes les 6 heures)."""
+    time.sleep(120)
+    while True:
+        try:
+            b = regles.synchroniser_equipes(_equipes_par_serie())
+            if any(b.values()):
+                logger.info("Profils d'équipe : %s", b)
+        except Exception as e:
+            logger.warning("Profils d'équipe : %s", e)
+        time.sleep(6 * 3600)
+
+
 @app.route("/api/torrents/chercher")
 def api_torrents_chercher():
     q = (request.args.get("q") or "").strip()
@@ -4476,6 +4518,51 @@ def api_torrents_chercher():
     except Exception as e:
         logger.warning("Recherche Prowlarr impossible : %s", e)
         return jsonify({"error": f"Recherche impossible : {e}"}), 502
+
+
+@app.route("/api/torrents/auto", methods=["POST"])
+def api_torrents_auto():
+    """🤖 Téléchargement automatique d'une série. {serie} : montre ce qui serait téléchargé (rien n'est envoyé) ;
+    {serie, lancer: true} : l'envoie à qBittorrent (tomes manquants seulement, jamais de remplacement)."""
+    import auto_telechargement
+    body = request.get_json(silent=True) or {}
+    nom = _nom_serie(str(body.get("serie", "")).strip())
+    if not nom or nom == "sans-titre":
+        return jsonify({"ok": False, "error": "Choisis le nom de la série."}), 400
+    if not torrents.configure():
+        return jsonify({"ok": False, "error": "Prowlarr et qBittorrent ne sont pas encore réglés (⚙️ Réglages → Connexions)."}), 400
+    info = _infos_suivi(nom)
+    if info["en_cours"]:
+        return jsonify({"ok": True, "torrents": [], "message": "Un téléchargement est déjà en cours pour cette série : attends qu'il soit fini."})
+    attendus = _volumes_attendus(nom) if _scan().get(nom) else None
+    titres = list(dict.fromkeys([nom] + (suivi.lire()["series"].get(nom, {}).get("titres") or [])))[:2]
+    resultats, vus = [], set()
+    try:
+        for t in titres:
+            for r in torrents.chercher(t, serie=nom):
+                if r["titre"] not in vus:
+                    vus.add(r["titre"])
+                    resultats.append(r)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Recherche impossible : {e}"}), 502
+    p = auto_telechargement.plan(resultats, info["tomes"], attendus)
+    profil = regles.profil_pour(nom)
+    res = [{k: v for k, v in x.items() if k != "lien"} for x in p["torrents"]]
+    base = {"ok": True, "profil": profil["nom"] if profil else "", "manquants": p["manquants"], "attendus": attendus, "possedes": len(info["tomes"])}
+    if not p["torrents"]:
+        return jsonify({**base, "torrents": [], "message": "Rien à télécharger : aucun torrent accepté n'apporte de tome manquant."})
+    if not body.get("lancer"):
+        return jsonify({**base, "torrents": res})
+    envoyes = []
+    for x in p["torrents"]:
+        try:
+            torrents.lancer(x["lien"], x["titre"], nom, False, x.get("page", "")[:600])
+            envoyes.append(x["titre"])
+        except Exception as e:
+            logger.warning("Téléchargement automatique de %s : %s", nom, e)
+            return jsonify({**base, "ok": False, "torrents": res, "error": f"{len(envoyes)} envoyé(s), puis : {e}"}), 502
+    logger.info("Téléchargement automatique lancé à la main pour « %s » : %d torrent(s)", nom, len(envoyes))
+    return jsonify({**base, "torrents": res, "message": f"{len(envoyes)} torrent(s) envoyé(s) à qBittorrent : ils seront importés dans « {nom} » à la fin."})
 
 
 @app.route("/api/regles/tester")
@@ -6384,6 +6471,14 @@ def regles_enregistrer():
         return redirect("/regles?onglet=" + onglet + "&erreur=" + quote(str(e)))
 
 
+@app.route("/regles/equipes", methods=["POST"])
+def regles_equipes():
+    """Met à jour tout de suite les profils d'équipe (sinon ils le sont toutes les 6 heures)."""
+    b = regles.synchroniser_equipes(_equipes_par_serie())
+    msg = ("Profils d'équipe à jour : " + ", ".join(f"{len(v)} {k.replace('_', ' ')}" for k, v in b.items() if v)) if any(b.values()) else "Les profils d'équipe étaient déjà à jour."
+    return redirect("/regles?onglet=profils&ok=" + quote(msg))
+
+
 @app.route("/regles/modeles", methods=["POST"])
 def regles_modeles():
     """Ajoute les formats de départ et un profil « Manga VF numérique » (désactivé) sans rien toucher à l'existant."""
@@ -6768,6 +6863,7 @@ if __name__ == "__main__":
     redemarrage.verifier(BASE_DIR, "MouFlanga", DATA_DIR / "mouflanga.log", lambda t: notifier.envoyer(t))
     threading.Thread(target=_boucle_generiques, daemon=True).start()
     threading.Thread(target=_boucle_parasites, daemon=True).start()
+    threading.Thread(target=_boucle_equipes, daemon=True).start()
     threading.Thread(target=suivi.boucle, args=(torrents.chercher, _infos_suivi, lambda t: notifier.envoyer(t),
                                                 lambda: os.getenv("APP_URL", "").strip(), torrents.configure,
                                                 lambda lien, titre, nom: torrents.lancer(lien, titre, nom, True),
