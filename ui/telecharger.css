@@ -386,6 +386,9 @@ body.mou-skin .serie-ligne { background: none; color: var(--text, #eee); font-we
 .tor-zero { color:#e0a84a; }
 .tor-raison { color:#ff8a80 !important; }
 .tor-res.refuse { opacity:.55; }
+.tor-res.deja { opacity:.5; }
+.tor-deja { color:#8a8a8a !important; }
+.tor-nouveau { color:var(--accent, #52b54b) !important; font-weight:700; }
 .tor-badges i.fmt { background:rgba(224,178,92,.15); color:#e0b25c; }
 .tor-act { display:flex; gap:6px; flex:none; }
 .tor-envoi { flex-basis:100%; display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:6px 0 2px; }

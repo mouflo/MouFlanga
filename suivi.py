@@ -76,6 +76,9 @@ def renommer(ancien, nouveau):
 def tomes_du_titre(titre: str) -> set:
     """Tomes couverts par un torrent d'après son nom : « T01-T14 », « Tomes 1 à 20 », « T07 », « Vol. 3 »."""
     t = titre.lower()
+    m = re.search(r"[\[(]\s*(?:t|tomes?|vol\.?)?\s?(\d{1,3})\s*(?:-|à|a|to)\s*(?:t|tome)?\s?(\d{1,3})\s*[\])]", t)
+    if m and 1 <= int(m.group(1)) <= int(m.group(2)) <= 300:
+        return set(range(int(m.group(1)), int(m.group(2)) + 1))
     m = re.search(r"\b(?:t|tomes?|vol\.?|volumes?)\s?\.?\s?(\d{1,3})\s?(?:-|à|a|to|\.)\s?(?:t|tome)?\.?\s?(\d{1,3})\b", t)
     if m and int(m.group(1)) <= int(m.group(2)) <= 300:
         return set(range(int(m.group(1)), int(m.group(2)) + 1))

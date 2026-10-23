@@ -4504,6 +4504,26 @@ def _boucle_equipes():
         time.sleep(6 * 3600)
 
 
+def _annoter_possession(resultats, requete, serie=""):
+    """Compare chaque résultat à la bibliothèque : `tomes` (ceux que son nom annonce), `nouveaux` (ceux qu'on n'a pas) et `deja`
+    (rien de nouveau). Renvoie {serie, possedes} si la recherche vise une série de la bibliothèque, sinon None. Ne casse jamais la recherche."""
+    try:
+        cle = regles._resolue(serie or requete)
+        nom = next((n for n in _scan() if n != "(Sans série)" and regles._cle(n) == cle), None)
+        if not nom:
+            return None
+        possedes = _infos_suivi(nom)["tomes"]
+        for x in resultats:
+            t = suivi.tomes_du_titre(x["titre"])
+            if t:
+                x["tomes"], x["nouveaux"] = sorted(t), sorted(t - possedes)
+                x["deja"] = not x["nouveaux"]
+        return {"serie": nom, "possedes": len(possedes)}
+    except Exception as e:
+        logger.warning("Comparaison avec la bibliothèque impossible : %s", e)
+        return None
+
+
 @app.route("/api/torrents/chercher")
 def api_torrents_chercher():
     q = (request.args.get("q") or "").strip()
@@ -4513,8 +4533,9 @@ def api_torrents_chercher():
         return jsonify({"error": "Prowlarr et qBittorrent ne sont pas encore réglés (⚙️ Réglages → Connexions)."}), 400
     try:
         # les refusés par le profil sont rendus aussi (marqués `rejet`, en fin de liste) : la page les cache ou les montre
-        return jsonify({"resultats": torrents.publier(torrents.chercher(q[:100], request.args.get("tout") == "1",
-                                                                         serie=(request.args.get("serie") or "").strip()[:100], avec_rejets=True))})
+        res = torrents.chercher(q[:100], request.args.get("tout") == "1", serie=(request.args.get("serie") or "").strip()[:100], avec_rejets=True)
+        comparaison = _annoter_possession(res, q, (request.args.get("serie") or "").strip())
+        return jsonify({"resultats": torrents.publier(res), "bibliotheque": comparaison})
     except Exception as e:
         logger.warning("Recherche Prowlarr impossible : %s", e)
         return jsonify({"error": f"Recherche impossible : {e}"}), 502
@@ -4580,7 +4601,8 @@ def api_regles_tester():
         return jsonify({"error": "Profil introuvable."}), 404
     try:
         res = torrents.chercher(q[:100], False, serie=(request.args.get("serie") or "").strip()[:100], avec_rejets=True, profil=profil)
-        return jsonify({"resultats": [{k: v for k, v in x.items() if k != "lien"} for x in res]})
+        comparaison = _annoter_possession(res, q, (request.args.get("serie") or "").strip())
+        return jsonify({"resultats": [{k: v for k, v in x.items() if k != "lien"} for x in res], "bibliotheque": comparaison})
     except Exception as e:
         logger.warning("Test des règles impossible : %s", e)
         return jsonify({"error": f"Recherche impossible : {e}"}), 502

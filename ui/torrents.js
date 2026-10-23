@@ -3,7 +3,7 @@
     const $ = id => document.getElementById(id);
     const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
     const taille = o => o >= 1e9 ? (o / 1073741824).toFixed(1).replace(".", ",") + " Go" : Math.round(o / 1048576) + " Mo";
-    let res = [], series = [], minuteur = null;
+    let res = [], series = [], minuteur = null, bib = null;
     const params = new URLSearchParams(location.search);
     const ETATS = {telechargement: "⬇️ Téléchargement", import: "📦 Import", fini: "✅ Importé", erreur: "⚠️ Erreur", a_valider: "❓ À valider"};
 
@@ -37,6 +37,7 @@
         const r = await (await fetch("/api/torrents/chercher?q=" + encodeURIComponent(q) + ($("tor-tout").checked ? "&tout=1" : "") + (params.get("serie") ? "&serie=" + encodeURIComponent(params.get("serie")) : ""))).json();
         if (r.error) { $("tor-res").innerHTML = `<div class="loading" style="color:#ff6b6b">${esc(r.error)}</div>`; return; }
         res = r.resultats || [];
+        bib = r.bibliotheque || null;
         afficher();
     }
     // Les index (data-i, data-choisir…) restent ceux de `res` : les refusés, masqués par défaut, gardent leur place
@@ -45,15 +46,18 @@
         $("tor-refuses-n").textContent = nb ? " (" + nb + ")" : "";
         $("tor-refuses-bloc").hidden = !nb;
         const liste = res.map((x, i) => [x, i]).filter(([x]) => montrer || !x.rejet);
-        $("tor-res").innerHTML = liste.length ? liste.map(([x, i]) => `<div class="tor-res${x.rejet ? " refuse" : ""}" data-i="${i}">
+        const plage = a => { const o = []; for (let i = 0; i < a.length; i++) { let j = i; while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++; o.push(i === j ? "T" + a[i] : "T" + a[i] + "–T" + a[j]); i = j; } return o.join(", "); };
+        const compare = x => !x.tomes ? "" : x.deja ? `<small class="tor-deja">✅ Déjà dans ta bibliothèque (${plage(x.tomes)})</small>` : `<small class="tor-nouveau">🆕 Apporte ${plage(x.nouveaux)}</small>`;
+        $("tor-res").innerHTML = (bib ? `<div class="note">Comparé à ta bibliothèque : « ${esc(bib.serie)} » (${bib.possedes} tomes).</div>` : "") + (liste.length ? liste.map(([x, i]) => `<div class="tor-res${x.rejet ? " refuse" : ""}${x.deja ? " deja" : ""}" data-i="${i}">
             <div class="tor-info"><b>${x.score ? `<em class="tor-score">${x.assez_bon ? "⭐ " : ""}${x.score > 0 ? "+" : ""}${x.score}</em> ` : ""}${esc(x.titre)}</b>
             <small>${taille(x.taille)} · <span class="${x.sources ? "" : "tor-zero"}">${x.sources} source${x.sources > 1 ? "s" : ""}</span> · ${esc(x.indexeur)}${x.date ? " · " + esc(x.date) : ""}</small>
+            ${compare(x)}
             ${x.rejet ? `<small class="tor-raison">❌ Refusé par ton profil : ${esc(x.rejet)}</small>` : ""}
             <span class="tor-badges">${x.badges.map(b => `<i>${esc(b)}</i>`).join("")}${(x.formats || []).map(f => `<i class="fmt">${esc(f)}</i>`).join("")}</span></div>
             <div class="tor-act">${x.page ? `<a class="mou-btn ghost small" href="${esc(x.page)}" target="_blank" rel="noopener noreferrer" title="Voir sur le site">🔗</a>
             <button type="button" class="mou-btn ghost small" data-lire-page="${i}" title="Lire la présentation et le NFO sur le tracker">📄</button>` : ""}
             <button type="button" class="mou-btn small" data-choisir="${i}">⬇️</button></div></div>`).join("")
-            : '<div class="loading">' + (res.length ? "Tout est refusé par ton profil : coche « Montrer les refusés »." : "Rien trouvé. Essaie un autre nom, ou coche « toutes les catégories ».") + "</div>";
+            : '<div class="loading">' + (res.length ? "Tout est refusé par ton profil : coche « Montrer les refusés »." : "Rien trouvé. Essaie un autre nom, ou coche « toutes les catégories ».") + "</div>");
     }
     document.addEventListener("click", async e => {
         const lp = e.target.closest("[data-lire-page]");

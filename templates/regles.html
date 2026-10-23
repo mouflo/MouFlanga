@@ -258,10 +258,13 @@
                     var r = await (await fetch('/api/regles/tester?q=' + encodeURIComponent(q) + '&profil=' + encodeURIComponent($('tprofil').value))).json();
                     if (r.error) { $('tres').innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
                     var l = r.resultats || [], ok = l.filter(function (x) { return !x.rejet; }).length;
-                    $('tres').innerHTML = '<p class="note"><b>' + ok + '</b> accepté(s), <b>' + (l.length - ok) + '</b> refusé(s).</p>' + l.map(function (x) {
-                        return '<div class="res-test' + (x.rejet ? ' refuse' : '') + '"><span class="pts">' + (x.assez_bon ? '⭐ ' : '') + (x.score > 0 ? '+' : '') + x.score + '</span><b>' + esc(x.titre) + '</b>' +
+                    function plage(a) { var o = []; for (var i = 0; i < a.length; i++) { var j = i; while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++; o.push(i === j ? 'T' + a[i] : 'T' + a[i] + '–T' + a[j]); i = j; } return o.join(', '); }
+                    var bib = r.bibliotheque ? '<p class="note">Comparé à ta bibliothèque : « ' + esc(r.bibliotheque.serie) + ' » (' + r.bibliotheque.possedes + ' tomes). Ce test montre tout ce que Prowlarr trouve ; seul ce qui apporte des tomes manquants est proposé pour de vrai.</p>' : '';
+                    $('tres').innerHTML = '<p class="note"><b>' + ok + '</b> accepté(s), <b>' + (l.length - ok) + '</b> refusé(s).</p>' + bib + l.map(function (x) {
+                        var cmp = !x.tomes ? '' : x.deja ? '<small>✅ Déjà dans ta bibliothèque (' + plage(x.tomes) + ')</small>' : '<small style="color:var(--accent);font-weight:700">🆕 Apporte ' + plage(x.nouveaux) + '</small>';
+                        return '<div class="res-test' + (x.rejet || x.deja ? ' refuse' : '') + '"><span class="pts">' + (x.assez_bon ? '⭐ ' : '') + (x.score > 0 ? '+' : '') + x.score + '</span><b>' + esc(x.titre) + '</b>' +
                             '<small>' + taille(x.taille) + ' · ' + x.sources + ' source' + (x.sources > 1 ? 's' : '') + ' · ' + esc(x.indexeur) + (x.date ? ' · ' + esc(x.date) : '') + '</small>' +
-                            (x.rejet ? '<small class="raison">❌ Refusé : ' + esc(x.rejet) + '</small>' : '') +
+                            cmp + (x.rejet ? '<small class="raison">❌ Refusé : ' + esc(x.rejet) + '</small>' : '') +
                             '<span class="formats">' + (x.formats || []).map(function (f) { return '<i>' + esc(f) + '</i>'; }).join('') + '</span></div>';
                     }).join('');
                 }
