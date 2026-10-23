@@ -4351,7 +4351,8 @@ def _infos_suivi(nom):
                 if str(k).isdigit() and str(v.get("origine") or "").startswith("Torrent : ")}
     scores = {tome: regles.score_titre(titre, nom) for tome, titre in origines.items()} if profil else {}
     return {"tomes": t, "source": source, "complete": complete, "en_cours": en_cours, "equipe": equipe, "equipe_tomes": equipe_tomes,
-            "profil": profil is not None, "scores_tomes": scores, "arret": (profil or {}).get("score_arret")}
+            "profil": profil is not None, "scores_tomes": scores, "arret": (profil or {}).get("score_arret"),
+            "sources_tomes": d.get("sources_tomes") or {}}
 
 
 def _accepter_demande(x):
@@ -4690,7 +4691,7 @@ def api_torrents_auto():
                     resultats.append(r)
     except Exception as e:
         return jsonify({"ok": False, "error": f"Recherche impossible : {e}"}), 502
-    p = auto_telechargement.plan(resultats, info["tomes"], attendus)
+    p = auto_telechargement.plan(resultats, info["tomes"], attendus, info)
     profil = regles.profil_pour(nom)
     res = [{k: v for k, v in x.items() if k != "lien"} for x in p["torrents"]]
     base = {"ok": True, "profil": profil["nom"] if profil else "", "manquants": p["manquants"], "attendus": attendus, "possedes": len(info["tomes"])}
@@ -4701,7 +4702,7 @@ def api_torrents_auto():
     envoyes = []
     for x in p["torrents"]:
         try:
-            torrents.lancer(x["lien"], x["titre"], nom, False, x.get("page", "")[:600])
+            torrents.lancer(x["lien"], x["titre"], nom, x.get("type") == "meilleur", x.get("page", "")[:600])
             envoyes.append(x["titre"])
         except Exception as e:
             logger.warning("Téléchargement automatique de %s : %s", nom, e)

@@ -18,8 +18,11 @@ def tomes_couverts(r: dict, attendus) -> set:
     return t
 
 
-def plan(resultats: list, possedes: set, attendus=None) -> dict:
-    """{torrents: [résultat + `tomes` apportés], manquants: [tomes que rien ne couvre]} ; `resultats` vient de torrents.chercher."""
+def plan(resultats: list, possedes: set, attendus=None, info=None) -> dict:
+    """{torrents: [résultat + `tomes` + `type`], manquants: [tomes que rien ne couvre]} ; `resultats` vient de torrents.chercher.
+    type « nouveau » : tomes manquants, rien n'est remplacé ; type « meilleur » : le torrent remplace des tomes en scan par de l'officiel
+    (ou mieux notés d'après le profil), et seulement si TOUS les tomes déjà là qu'il apporte méritent d'être remplacés. `info` : voir
+    app._infos_suivi (sources par tome, scores, score d'arrêt)."""
     possedes = set(possedes or ())
     candidats = []
     for r in resultats:
@@ -27,16 +30,21 @@ def plan(resultats: list, possedes: set, attendus=None) -> dict:
             continue
         if "🇫🇷 FR" not in (r.get("badges") or []) and not r.get("profil"):
             continue                                   # ni marqué français, ni jugé acceptable par un profil
-        c = tomes_couverts(r, attendus) - possedes
-        if c:
-            candidats.append((r, c))
-    voulus = set(range(1, int(attendus) + 1)) - possedes if attendus else set().union(*[c for _, c in candidats]) if candidats else set()
+        couverts = tomes_couverts(r, attendus)
+        neufs = couverts - possedes
+        deja = couverts & possedes
+        mieux = suivi.tomes_ameliorables(r, deja, info or {}) if deja else set()
+        mieux = mieux if mieux and deja <= mieux else set()          # jamais remplacer un tome qui n'a pas besoin de l'être
+        if neufs or mieux:
+            candidats.append((r, neufs | mieux, bool(mieux)))
+    voulus = set(range(1, int(attendus) + 1)) - possedes if attendus else set()
+    voulus |= set().union(*[c for _, c, _ in candidats]) if candidats else set()
     restants, choisis = set(voulus), []
     while restants and len(choisis) < MAX_TORRENTS:
-        dispo = [(r, c & restants) for r, c in candidats if c & restants]
+        dispo = [(r, c & restants, m) for r, c, m in candidats if c & restants]
         if not dispo:
             break
-        r, c = max(dispo, key=lambda x: (x[0].get("score", 0), len(x[1]), x[0].get("sources", 0)))
-        choisis.append({**r, "tomes": sorted(c)})
+        r, c, m = max(dispo, key=lambda x: (x[0].get("score", 0), len(x[1]), x[0].get("sources", 0)))
+        choisis.append({**r, "tomes": sorted(c), "type": "meilleur" if m else "nouveau"})
         restants -= c
     return {"torrents": choisis, "manquants": sorted(restants) if attendus else []}

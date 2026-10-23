@@ -73,6 +73,30 @@ def renommer(ancien, nouveau):
             ecrire(d)
 
 
+_OFFICIEL = re.compile(r"digital|officiel|num[ée]rique|neo[ ._-]?rip[ ._-]?club", re.I)
+
+
+def est_officiel(titre: str) -> bool:
+    """Un torrent d'ebook officiel (Digital, Neo Rip Club…) ? « eBook » seul ne suffit pas : ebdz appelle ainsi ses scans traduits."""
+    t = titre or ""
+    return bool(_OFFICIEL.search(t)) or (bool(re.search(r"e-?book", t, re.I)) and not re.search(r"ebdz", t, re.I))
+
+
+def tomes_ameliorables(r: dict, deja_la, info: dict) -> set:
+    """Parmi les tomes déjà là que ce torrent apporte, ceux qu'il vaut la peine de remplacer :
+    - noté « Scantrad » ou « Scan… » (source du tome) alors que le torrent est un ebook officiel ;
+    - ou, avec un profil, provenance moins bien notée que ce torrent et sous le score d'arrêt du profil (provenance inconnue : jamais)."""
+    sources, scores, arret = info.get("sources_tomes") or {}, info.get("scores_tomes") or {}, info.get("arret")
+    out = set()
+    for t in deja_la:
+        s = str(sources.get(str(t)) or sources.get(t) or "")
+        if s and (s == "Scantrad" or s.lower().startswith("scan")) and est_officiel(r.get("titre")):
+            out.add(t)
+        elif info.get("profil") and t in scores and scores[t] < r.get("score", 0) and (arret is None or scores[t] < arret):
+            out.add(t)
+    return out
+
+
 def tomes_du_titre(titre: str) -> set:
     """Tomes couverts par un torrent d'après son nom : « T01-T14 », « Tomes 1 à 20 », « T07 », « Vol. 3 »."""
     t = titre.lower()
@@ -109,15 +133,10 @@ def propositions_pour(nom, info, resultats, deja):
             sorte = "nouveau"
         elif meme(r) and autres:
             sorte, manquants = "equipe", autres
-        elif info.get("profil"):
-            # un profil s'applique à la série : un tome déjà là n'est proposé que si ce torrent vaut PLUS de points que sa provenance
-            # et que celle-ci n'atteint pas le score d'arrêt du profil (« assez bon »)
-            scores, arret = info.get("scores_tomes") or {}, info.get("arret")
-            ameliorables = sorted(t for t in couverts & possedes
-                                  if t in scores and scores[t] < r.get("score", 0) and (arret is None or scores[t] < arret))
-            if ameliorables:
-                sorte, manquants = "meilleur", ameliorables
-        elif (possedes and info.get("qualite") == "Digital" and rang < 2 and "Digital" in r["badges"]
+        elif tomes_ameliorables(r, couverts & possedes, info):
+            # un tome déjà là n'est proposé que s'il est en scan alors que ce torrent est officiel, ou s'il vaut PLUS de points d'après le profil
+            sorte, manquants = "meilleur", sorted(tomes_ameliorables(r, couverts & possedes, info))
+        elif (not info.get("profil") and possedes and info.get("qualite") == "Digital" and rang < 2 and "Digital" in r["badges"]
               and (not couverts or couverts & possedes or "Intégrale" in r["badges"])):
             sorte = "meilleur"
         if not sorte:

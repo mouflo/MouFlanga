@@ -1,5 +1,10 @@
 # Historique des versions
 
+## ⬆️ Le scan (scantrad) est remplacé par l'officiel quand il est disponible (23 octobre 2026)
+- **Règle** (`suivi.tomes_ameliorables`) : un tome noté « Scantrad » ou « Scan… » (source par tome) est proposé en remplacement quand un torrent d'ebook **officiel** l'apporte (Digital, numérique, Neo Rip Club, « eBook » sauf ebdz, dont les « eBook » sont des scans traduits). S'y ajoute l'ancienne règle des profils (provenance moins bien notée que le torrent et sous le score d'arrêt). Valable pour les propositions de la surveillance (Telegram, fiche de la série) et pour le bouton 🤖.
+- **Bouton 🤖** : propose aussi ces remplacements (⬆️), sans jamais remplacer un tome qui n'en a pas besoin : un torrent n'est retenu en remplacement que si tous les tomes déjà là qu'il apporte sont à remplacer. Les ⬆️ remplacent (anciens tomes à la corbeille), les 🆕 ajoutent seulement les manquants.
+- Cas d'usage : Gachiakuta, tomes 1 à 9 en scantrad d'ebdz remplacés par les ebooks de Neo Rip Club.
+
 ## 🏷 Source par tome (Scantrad, Scan, Digital…) (23 octobre 2026)
 Une série peut mélanger les sources (Gashiakuta : tomes 1 à 10 en scantrad d'EBDZ, 11 à 13 officiels). La source peut maintenant se noter **par tome** :
 - Menu ⋯ → 🏷 Corriger la source → « 🔢 Seulement certains tomes… » : on tape « 1-10 » (ou « 1,3,5 », « tous »), puis on choisit la source. Dans la fenêtre ⓘ d'un tome, un bouton « 🏷 Source du tome » règle ce seul tome, et la source du tome s'y affiche.
