@@ -235,6 +235,15 @@ def _points(f: dict, profil) -> int:
     return f.get("score", 0)
 
 
+# Anglais : refusé à tout prix, avec ou sans profil. « En » seul (« One Piece En Couleurs ») n'est PAS de l'anglais : on n'exige que des marques explicites
+# (ENG, ENGLISH, [EN] / (EN) entre crochets ou parenthèses, éventuellement avec un autre mot : « [CBR-CBZ ENG] », « [PDF EN] »).
+_ANGLAIS = re.compile(r"\beng\b|\benglish\b|[\[(]\s*(?:[a-z0-9-]+[\s/-]+)?en\s*[\])]", re.I)
+
+
+def est_anglais(titre: str) -> bool:
+    return bool(_ANGLAIS.search((titre or "").replace("_", " ")))
+
+
 def _refus(profil: dict, r: dict, score: int) -> str:
     """Pourquoi le profil refuse ce torrent (« » s'il l'accepte)."""
     titre = r.get("titre") or ""
@@ -265,6 +274,9 @@ def filtrer(resultats: list[dict], serie: str = "", avec_rejets: bool = False, p
         r["score"] = score
         r["formats"] = [f["nom"] for f in trouves]
         r["rejet"] = _refus(profil, r, score) if profil else ""
+        if not r["rejet"] and est_anglais(r.get("titre")):
+            r["rejet"] = "marqué en anglais (ENG / EN) : jamais pris"
+        r["profil"] = profil["nom"] if profil else ""
         r["assez_bon"] = bool(profil and profil.get("score_arret") is not None and score >= profil["score_arret"])
         if r["rejet"] and not avec_rejets:
             continue

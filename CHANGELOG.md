@@ -1,5 +1,12 @@
 # Historique des versions
 
+## 🇫🇷 Langue : l'anglais refusé à tout prix, profil « Manga · Français » (23 octobre 2026)
+Analyse de 347 noms de torrents déjà téléchargés et de 266 résultats réels de Prowlarr : 82 % portent une marque française (FR, FRENCH), environ 15 % n'en portent aucune (équipes françaises comme PapriKa, IpMan, NOTAG, ou noms avec « Tome » / « Intégrale »), et l'anglais est toujours écrit explicitement (« [CBR-CBZ ENG] », « [PDF] [EN] »).
+- **Refus absolu de l'anglais, avec ou sans profil** (`regles.est_anglais`) : ENG, ENGLISH, ou [EN] / (EN) entre crochets ou parenthèses. « One Piece **En** Couleurs » reste accepté. Un résultat refusé n'est jamais proposé, ni par la surveillance, ni par le bouton 🤖 ; il apparaît dans « Montrer les refusés » avec la raison.
+- **Profil général « Manga · Français »** (actif, toutes les séries sans profil propre) : +100 si marqué français (FR, FRENCH, VF, MULTI), +60 pour une équipe française connue (PapriKa, TONER, PRiNTER, Chromatique, ebdz, Dogbanov, NoFace696, Scantrads, IpMan, Corridor, NOTAG), +30 pour le vocabulaire français (Tome, Intégrale, Chapitre), −1000 pour VO / VOSTFR / raw ; score minimum 30 et 1 source minimum. Un nom sans aucun indice (« Blazer Drive - 01-09 ») est refusé, faute de pouvoir savoir. Les formats et les points se modifient dans /regles.
+- Un résultat **sans marque FR** est maintenant accepté par la surveillance et le bouton 🤖 quand un profil s'applique et ne l'a pas refusé (avant : marque FR obligatoire, ce qui écartait les sorties PapriKa sans marque).
+- Tests : `tests/test_langue.py`.
+
 ## ✅ Recherche et test des règles : « déjà dans ta bibliothèque » / « apporte T… » (23 octobre 2026)
 Quand la recherche vise une série de la bibliothèque, chaque résultat (page Télécharger → Torrents et onglet 🧪 Tester) est comparé aux tomes qu'on possède : ✅ « Déjà dans ta bibliothèque (T1–T100) » (grisé) ou 🆕 « Apporte T113 » (en vert), avec le nom de la série comparée en tête. Le nom d'un pack écrit « Tome.[1 à 100] » ou « (T1-T20) » est maintenant lu comme une plage de tomes (cela corrige aussi les propositions de la surveillance). Sur One Piece (112 tomes) : 181 résultats sur 256 sont signalés « déjà là » et 4 apportent du neuf (T113, T114). Le test continue de montrer tout ce que Prowlarr trouve ; seules les propositions et le bouton 🤖 filtrent vraiment.
 

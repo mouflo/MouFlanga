@@ -23,8 +23,10 @@ def plan(resultats: list, possedes: set, attendus=None) -> dict:
     possedes = set(possedes or ())
     candidats = []
     for r in resultats:
-        if r.get("rejet") or not r.get("sources") or not r.get("lien") or "🇫🇷 FR" not in (r.get("badges") or []):
+        if r.get("rejet") or not r.get("sources") or not r.get("lien"):
             continue
+        if "🇫🇷 FR" not in (r.get("badges") or []) and not r.get("profil"):
+            continue                                   # ni marqué français, ni jugé acceptable par un profil
         c = tomes_couverts(r, attendus) - possedes
         if c:
             candidats.append((r, c))

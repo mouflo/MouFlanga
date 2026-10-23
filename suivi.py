@@ -97,7 +97,7 @@ def propositions_pour(nom, info, resultats, deja):
     equipe = info.get("equipe") or ""
     meme = lambda r: bool(equipe) and provenance.meme_equipe(provenance.equipe_torrent(r["titre"]), equipe)
     for r in sorted(resultats, key=lambda r: not meme(r)):     # même équipe d'abord
-        if r["titre"] in vus or "🇫🇷 FR" not in r["badges"]:
+        if r["titre"] in vus or r.get("rejet") or ("🇫🇷 FR" not in r["badges"] and not r.get("profil")):
             continue
         couverts = tomes_du_titre(r["titre"])
         manquants = sorted(couverts - possedes)
