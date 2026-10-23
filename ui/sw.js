@@ -1,7 +1,7 @@
 /* MouFlanga · service worker : appli installée, tomes gardés sur le téléphone (lecture hors ligne), notifications.
    Servi depuis /sw.js (portée : tout le site). Les pages d'un tome gardé sont dans le cache « mf-hors-ligne »
    (rangées par ui/hors-ligne.js) ; le reste de l'appli dans « mf-appli ». */
-const APPLI = 'mf-appli-v3', PAGES = 'mf-hors-ligne';
+const APPLI = 'mf-appli-v4', PAGES = 'mf-hors-ligne';
 const COQUILLE = ['/ui/mou-ui.css', '/ui/mou-ui.js', '/ui/mouflanga.css', '/ui/mouflanga.js', '/ui/lecteur.js', '/ui/hors-ligne.js',
                   '/icons/icon-192.png', '/icons/mouflanga.svg'];
 

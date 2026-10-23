@@ -9,8 +9,9 @@
   var path = '', debut = 0;     // fichier lu et position de la 1re page du chapitre dans ce fichier
   function pref(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
   function setPref(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
-  var dir = pref('mfDir', 'rtl'), mode = pref('mfMode', 'page'), fit = pref('mfFit', 'height'), double = pref('mfDouble', 'decoupe');
+  var dir = pref('mfDir', 'rtl'), mode = pref('mfMode', 'page'), fit = pref('mfFit', 'height'), double = pref('mfDouble', 'glisse');
   var demi = 0, versFin = false, large = false;          // doubles pages : moitié affichée (0 = la première à lire)
+  var placer = false, depuisFin = false;                 // « glissées » : replacer l'image au début (ou à la fin) de la double page
   var zoom = {s: 1, x: 0, y: 0};
 
   async function api(url, opts) {
@@ -33,7 +34,7 @@
     $('optFit').textContent = fit === 'width' ? (small ? '↔' : '↔ Largeur') : (small ? '↕' : '↕ Page entière');
     $('optFit').style.display = mode === 'page' ? '' : 'none';
     $('optDouble').style.display = mode === 'page' ? '' : 'none';
-    $('optDouble').textContent = double === 'decoupe' ? (small ? '◫' : '◫ Coupées') : (small ? '▭' : '▭ Entières');
+    $('optDouble').textContent = double === 'decoupe' ? (small ? '◫' : '◫ Coupées') : double === 'glisse' ? (small ? '⇆' : '⇆ Glissées') : (small ? '▭' : '▭ Entières');
     $('stage').classList.toggle('mode-scroll', mode === 'scroll');
     $('stage').classList.toggle('fit-height', fit === 'height');
     $('slider').style.direction = dir === 'rtl' && mode === 'page' ? 'rtl' : 'ltr';
@@ -80,6 +81,7 @@
     remiseZoom();
     page = n; updateInfo(); scheduleSave();
     if (mode === 'page') {
+      placer = true;
       $('img').src = pageUrl(n);
       $('stage').scrollTop = 0;
       for (var k = 1; k <= 2; k++) if (n + k < count) { var pre = new Image(); pre.src = pageUrl(n + k); }
@@ -90,11 +92,23 @@
   // Doubles pages découpées seulement en portrait : téléphone tourné en paysage = double page entière
   function portrait() { var st = $('stage'); return st.clientHeight > st.clientWidth; }
   function coupee() { return mode === 'page' && large && double === 'decoupe' && portrait(); }
+  // « Glissées » : la double page prend toute la hauteur et déborde sur les côtés ; un doigt la fait glisser, on ne tourne la page qu'au bord
+  function glisse() { return mode === 'page' && large && double === 'glisse' && portrait(); }
+  function maxGlisse() { var st = $('stage'); return Math.max(0, st.scrollWidth - st.clientWidth); }
+  // Appui sur le bord ou touche : va au bout de la double page ; renvoie true si elle a bougé (sinon on tourne la page)
+  function glisserVers(droite) {
+    var st = $('stage'), cible = droite ? maxGlisse() : 0;
+    if (Math.abs(st.scrollLeft - cible) <= 4) return false;
+    st.scrollTo({left: cible, behavior: 'smooth'});
+    return true;
+  }
   function next() {
+    if (glisse() && glisserVers(dir !== 'rtl')) return;
     if (coupee() && demi === 0) { demi = 1; majDouble(); remiseZoom(); return; }   // 2e moitié de la double page
     if (page < count - 1) go(page + 1); else if (idx < chapters.length - 1) openChapter(idx + 1); else showToast('Dernier chapitre terminé 🎉');
   }
   function prev() {
+    if (glisse() && glisserVers(dir === 'rtl')) return;
     if (coupee() && demi === 1) { demi = 0; majDouble(); remiseZoom(); return; }
     if (page > 0) { versFin = true; go(page - 1); } else if (idx > 0) openChapter(idx - 1, true);
   }
@@ -103,9 +117,19 @@
   function majDouble() {
     var im = $('img');
     large = im.naturalWidth > im.naturalHeight * 1.2;
-    var c = coupee();
+    var c = coupee(), g = glisse();
     im.classList.toggle('moitie', c);
-    if (c) {
+    $('stage').classList.toggle('glisse', g);
+    if (g) {
+      // Toute la hauteur de l'écran, largeur proportionnelle : l'image déborde et se parcourt au doigt
+      var sg = $('stage'), hg = sg.clientHeight;
+      im.style.height = hg + 'px'; im.style.width = (hg * im.naturalWidth / im.naturalHeight) + 'px'; im.style.objectPosition = '';
+      if (placer) {      // début de la double page = côté où l'on commence à lire (sens manga : à droite) ; en revenant en arrière, l'autre bout
+        placer = false;
+        sg.scrollLeft = (dir === 'rtl') !== depuisFin ? maxGlisse() : 0;
+        depuisFin = false;
+      }
+    } else if (c) {
       var premiere = dir === 'rtl' ? '100%' : '0%', seconde = dir === 'rtl' ? '0%' : '100%';
       // Taille d'une moitié, calculée pour tenir dans l'écran sans rien couper
       var st = $('stage'), w = st.clientWidth, h = st.clientHeight, r = im.naturalWidth / 2 / im.naturalHeight;
@@ -113,12 +137,13 @@
       im.style.width = w + 'px'; im.style.height = (w / r) + 'px';
       im.style.objectPosition = (demi === 0 ? premiere : seconde) + ' 50%';
     } else if (large && mode === 'page') {
+      placer = false;
       // Double page entière (paysage, ou « ▭ Entières ») : toujours en entier dans l'écran, quel que soit l'ajustement
       var st2 = $('stage'), w2 = st2.clientWidth, h2 = st2.clientHeight, r2 = im.naturalWidth / im.naturalHeight;
       if (w2 / h2 > r2) w2 = h2 * r2;
       im.style.width = w2 + 'px'; im.style.height = (w2 / r2) + 'px'; im.style.objectPosition = '';
       st2.scrollTop = 0;
-    } else { im.style.width = ''; im.style.height = ''; im.style.objectPosition = ''; }
+    } else { placer = false; im.style.width = ''; im.style.height = ''; im.style.objectPosition = ''; }
   }
 
   // ---------- Zoom (deux doigts, deux appuis au centre) ----------
@@ -148,7 +173,7 @@
     var t = e.touches;
     if (t.length === 2) t0 = {pince: true, d: dist(t[0], t[1]), s: zoom.s, x: zoom.x, y: zoom.y,
                               mx: (t[0].clientX + t[1].clientX) / 2, my: (t[0].clientY + t[1].clientY) / 2};
-    else if (t.length === 1) t0 = {x0: t[0].clientX, y0: t[0].clientY, zx: zoom.x, zy: zoom.y, temps: Date.now()};
+    else if (t.length === 1) t0 = {x0: t[0].clientX, y0: t[0].clientY, zx: zoom.x, zy: zoom.y, temps: Date.now(), sl: $('stage').scrollLeft};
   }, {passive: true});
   $('stage').addEventListener('touchmove', function (e) {
     if (mode !== 'page' || !t0) return;
@@ -169,7 +194,14 @@
     if (mode !== 'page' || !t0) return;
     if (t0.pince) { if (zoom.s < 1.1) remiseZoom(); t0 = null; return; }
     var t = e.changedTouches[0], dx = t.clientX - t0.x0, dy = t.clientY - t0.y0;
-    if (zoom.s === 1 && Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy) && Date.now() - t0.temps < 700) {
+    // Double page « glissée » : le doigt la fait glisser ; on ne tourne la page que si elle était déjà au bord et ne peut plus bouger
+    var bord = true;
+    if (glisse()) {
+      var sl = $('stage').scrollLeft, mx = maxGlisse();
+      bord = Math.abs(sl - t0.sl) <= 2 && (dx > 0 ? t0.sl <= 2 : t0.sl >= mx - 2);
+      if (Math.abs(sl - t0.sl) > 2) geste = Date.now();       // elle a glissé : ce n'est pas un appui sur un bord
+    }
+    if (bord && zoom.s === 1 && Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy) && Date.now() - t0.temps < 700) {
       geste = Date.now();
       // Doigt vers la droite = on « tire » la page de gauche : suivante en sens manga, précédente en sens occidental
       if (dx > 0) { dir === 'rtl' ? next() : prev(); } else { dir === 'rtl' ? prev() : next(); }
@@ -273,10 +305,10 @@
     appuiTimer = setTimeout(function () { if (zoom.s === 1) document.body.classList.toggle('hide-ui'); }, 300);
   });
   $('img').addEventListener('load', function () {
-    if (versFin) { large = $('img').naturalWidth > $('img').naturalHeight * 1.2; if (coupee()) demi = 1; versFin = false; }
+    if (versFin) { large = $('img').naturalWidth > $('img').naturalHeight * 1.2; if (coupee()) demi = 1; if (glisse()) depuisFin = true; versFin = false; }
     majDouble();
   });
-  $('optDouble').addEventListener('click', function () { double = double === 'decoupe' ? 'entiere' : 'decoupe'; setPref('mfDouble', double); demi = 0; applyOptions(); majDouble(); });
+  $('optDouble').addEventListener('click', function () { double = double === 'decoupe' ? 'glisse' : double === 'glisse' ? 'entiere' : 'decoupe'; setPref('mfDouble', double); demi = 0; placer = true; depuisFin = false; applyOptions(); majDouble(); });
   // Aide : boutons et gestes (montrée d'office la première fois)
   function aide(ouvrir) { $('aide').hidden = !ouvrir; if (!ouvrir) setPref('mfAideVue', '1'); }
   $('optAide').addEventListener('click', function () { aide(true); });

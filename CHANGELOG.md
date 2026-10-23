@@ -1,5 +1,10 @@
 # Historique des versions
 
+## ⇆ Lecteur : doubles pages « glissées » (23 octobre 2026)
+- Nouveau réglage du bouton ⇆ / ◫ / ▭ (par défaut sur un appareil neuf) : la double page prend **toute la hauteur** de l'écran et déborde sur les côtés. Un doigt la fait glisser (défilement natif, avec élan) pour voir tous les détails. La page ne se tourne que si la double page est déjà au bord et qu'on glisse encore dans ce sens.
+- Appui sur un bord de l'écran ou touche flèche : va d'abord au bout de la double page, puis tourne la page. En revenant en arrière, on arrive du côté de la fin.
+- Les pages simples, le zoom (deux doigts, deux appuis) et les autres réglages (◫ découpées, ▭ entières) ne changent pas. En paysage, la double page reste entière.
+
 ## ⬆️ Le scan (scantrad) est remplacé par l'officiel quand il est disponible (23 octobre 2026)
 - **Règle** (`suivi.tomes_ameliorables`) : un tome noté « Scantrad » ou « Scan… » (source par tome) est proposé en remplacement quand un torrent d'ebook **officiel** l'apporte (Digital, numérique, Neo Rip Club, « eBook » sauf ebdz, dont les « eBook » sont des scans traduits). S'y ajoute l'ancienne règle des profils (provenance moins bien notée que le torrent et sous le score d'arrêt). Valable pour les propositions de la surveillance (Telegram, fiche de la série) et pour le bouton 🤖.
 - **Bouton 🤖** : propose aussi ces remplacements (⬆️), sans jamais remplacer un tome qui n'en a pas besoin : un torrent n'est retenu en remplacement que si tous les tomes déjà là qu'il apporte sont à remplacer. Les ⬆️ remplacent (anciens tomes à la corbeille), les 🆕 ajoutent seulement les manquants.

@@ -35,6 +35,11 @@ body.rtl .foot input[type=range] { direction:rtl; }
 /* Zoom, doubles pages, annonce du chapitre, aide */
 .stage:not(.mode-scroll) { touch-action: pan-y; }
 .stage.zoome { touch-action: none; overflow: hidden; }
+/* Doubles pages « glissées » : l'image déborde de l'écran et se parcourt au doigt (défilement natif, sans glisser la page entière) */
+.stage.glisse:not(.mode-scroll) { touch-action: pan-x pan-y; overscroll-behavior-x: contain; }
+.stage.glisse.zoome { touch-action: none; overflow: hidden; }
+.stage.glisse .single { justify-content: flex-start; }
+.stage.glisse .single img, .stage.fit-height.glisse .single img { max-width: none; max-height: none; flex: none; object-fit: fill; }
 .single img { transform-origin: center center; will-change: transform; }
 .single img.moitie, .stage.fit-height .single img.moitie { object-fit: cover; max-width: none; max-height: none; }
 .annonce { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); background: rgba(0,0,0,.8); color: #fff; padding: 8px 14px; border-radius: 16px; font-size: .9rem; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 4; max-width: 90%; text-align: center; }
