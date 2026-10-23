@@ -382,6 +382,11 @@ body.mou-skin .serie-ligne { background: none; color: var(--text, #eee); font-we
 .tor-info b { font-size:.88rem; overflow-wrap:anywhere; }
 .tor-info small, .tor-info span { font-size:.76rem; color:var(--muted, #999); overflow-wrap:anywhere; }
 .tor-badges i { font-style:normal; display:inline-block; margin:2px 4px 0 0; padding:1px 7px; border-radius:9px; background:color-mix(in srgb, var(--accent) 15%, transparent); color:var(--accent); font-size:.72rem; }
+.tor-score { font-style:normal; font-weight:800; color:var(--accent, #52b54b); }
+.tor-zero { color:#e0a84a; }
+.tor-raison { color:#ff8a80 !important; }
+.tor-res.refuse { opacity:.55; }
+.tor-badges i.fmt { background:rgba(224,178,92,.15); color:#e0b25c; }
 .tor-act { display:flex; gap:6px; flex:none; }
 .tor-envoi { flex-basis:100%; display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:6px 0 2px; }
 .tor-envoi label { font-size:.8rem; color:var(--muted, #999); flex-basis:100%; }

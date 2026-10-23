@@ -34,17 +34,26 @@
         const q = $("tor-q").value.trim();
         if (q.length < 2) return;
         $("tor-res").innerHTML = '<div class="loading">⏳ Recherche dans Prowlarr… (jusqu\'à une minute)</div>';
-        const r = await (await fetch("/api/torrents/chercher?q=" + encodeURIComponent(q) + ($("tor-tout").checked ? "&tout=1" : ""))).json();
+        const r = await (await fetch("/api/torrents/chercher?q=" + encodeURIComponent(q) + ($("tor-tout").checked ? "&tout=1" : "") + (params.get("serie") ? "&serie=" + encodeURIComponent(params.get("serie")) : ""))).json();
         if (r.error) { $("tor-res").innerHTML = `<div class="loading" style="color:#ff6b6b">${esc(r.error)}</div>`; return; }
         res = r.resultats || [];
-        $("tor-res").innerHTML = res.length ? res.map((x, i) => `<div class="tor-res" data-i="${i}">
-            <div class="tor-info"><b>${esc(x.titre)}</b>
-            <small>${taille(x.taille)} · ${x.sources} source${x.sources > 1 ? "s" : ""} · ${esc(x.indexeur)}${x.date ? " · " + esc(x.date) : ""}</small>
-            <span class="tor-badges">${x.badges.map(b => `<i>${esc(b)}</i>`).join("")}</span></div>
+        afficher();
+    }
+    // Les index (data-i, data-choisir…) restent ceux de `res` : les refusés, masqués par défaut, gardent leur place
+    function afficher() {
+        const montrer = $("tor-refuses").checked, nb = res.filter(x => x.rejet).length;
+        $("tor-refuses-n").textContent = nb ? " (" + nb + ")" : "";
+        $("tor-refuses-bloc").hidden = !nb;
+        const liste = res.map((x, i) => [x, i]).filter(([x]) => montrer || !x.rejet);
+        $("tor-res").innerHTML = liste.length ? liste.map(([x, i]) => `<div class="tor-res${x.rejet ? " refuse" : ""}" data-i="${i}">
+            <div class="tor-info"><b>${x.score ? `<em class="tor-score">${x.assez_bon ? "⭐ " : ""}${x.score > 0 ? "+" : ""}${x.score}</em> ` : ""}${esc(x.titre)}</b>
+            <small>${taille(x.taille)} · <span class="${x.sources ? "" : "tor-zero"}">${x.sources} source${x.sources > 1 ? "s" : ""}</span> · ${esc(x.indexeur)}${x.date ? " · " + esc(x.date) : ""}</small>
+            ${x.rejet ? `<small class="tor-raison">❌ Refusé par ton profil : ${esc(x.rejet)}</small>` : ""}
+            <span class="tor-badges">${x.badges.map(b => `<i>${esc(b)}</i>`).join("")}${(x.formats || []).map(f => `<i class="fmt">${esc(f)}</i>`).join("")}</span></div>
             <div class="tor-act">${x.page ? `<a class="mou-btn ghost small" href="${esc(x.page)}" target="_blank" rel="noopener noreferrer" title="Voir sur le site">🔗</a>
             <button type="button" class="mou-btn ghost small" data-lire-page="${i}" title="Lire la présentation et le NFO sur le tracker">📄</button>` : ""}
             <button type="button" class="mou-btn small" data-choisir="${i}">⬇️</button></div></div>`).join("")
-            : '<div class="loading">Rien trouvé. Essaie un autre nom, ou coche « toutes les catégories ».</div>';
+            : '<div class="loading">' + (res.length ? "Tout est refusé par ton profil : coche « Montrer les refusés »." : "Rien trouvé. Essaie un autre nom, ou coche « toutes les catégories ».") + "</div>";
     }
     document.addEventListener("click", async e => {
         const lp = e.target.closest("[data-lire-page]");
@@ -90,6 +99,7 @@
         }
     });
     $("tor-go").addEventListener("click", chercher);
+    $("tor-refuses").addEventListener("change", afficher);
     $("tor-q").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); chercher(); } });
     document.querySelector('.tab[data-tab="torrents"]').addEventListener("click", etat);
     // Lien direct : /telecharger?torrent=<recherche>

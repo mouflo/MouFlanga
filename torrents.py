@@ -93,7 +93,9 @@ def badges(titre: str) -> list[str]:
     return out
 
 
-def chercher(q: str, toutes_categories=False) -> list[dict]:
+def chercher(q: str, toutes_categories=False, serie: str = "", avec_rejets: bool = False, profil="auto") -> list[dict]:
+    """Résultats de Prowlarr, jugés par le profil de la série (`serie`, sinon la recherche). Les refusés ne sont rendus qu'avec
+    `avec_rejets` (marqués `rejet`, en fin de liste). `profil` : "auto" = celui de la série, None = aucun, ou un profil donné."""
     r = reglages()
     params = [("query", q), ("type", "search"), ("limit", "100")]
     if not toutes_categories:
@@ -111,10 +113,12 @@ def chercher(q: str, toutes_categories=False) -> list[dict]:
                     "indexeur": x.get("indexer") or "", "date": (x.get("publishDate") or "")[:10],
                     "page": x.get("infoUrl") or "", "lien": x.get("downloadUrl") or x.get("magnetUrl"),
                     "badges": badges(titre)})
-    # Règles de recherche (profils) : on écarte ce qu'elles refusent, puis le score des formats personnalisés
-    out = regles.filtrer(out, q)
-    # score des formats d'abord, puis VF, intégrale/digital, et nombre de sources
-    out.sort(key=lambda x: (-x.get("score", 0), "🇫🇷 FR" not in x["badges"], "Intégrale" not in x["badges"], "Digital" not in x["badges"], -x["sources"]))
+    # Règles de recherche (profils) : score des formats personnalisés, refus du profil de la série
+    out = regles.filtrer(out, serie or q, avec_rejets, profil)
+    # refusés en dernier, puis les torrents sans aucune source (rien à télécharger), puis le score des formats ;
+    # à score égal : VF, intégrale, digital, et nombre de sources
+    out.sort(key=lambda x: (bool(x.get("rejet")), not x["sources"], -x.get("score", 0), "🇫🇷 FR" not in x["badges"],
+                            "Intégrale" not in x["badges"], "Digital" not in x["badges"], -x["sources"]))
     return out
 
 

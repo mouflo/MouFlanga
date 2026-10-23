@@ -29,6 +29,20 @@
         .series-liste .serie[hidden] { display: none; }
         .formulaire .coche { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
         .formulaire button { margin-top: 14px; width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; background: var(--accent); color: #0b0c0e; border: none; font-weight: 600; }
+        .cond { border: 1px solid #2c2f36; border-radius: 10px; padding: 10px; margin-top: 10px; background: #0f1012; }
+        .cond select, .cond input[type=text] { width: 100%; box-sizing: border-box; font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid #2c2f36; background: #17181c; color: #eee; margin-top: 6px; }
+        .cond .coche { margin-top: 8px; }
+        .formulaire button.mini { width: auto; margin-top: 8px; padding: 8px 12px; font-size: 15px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; font-weight: 400; }
+        .formulaire button.mini.danger { background: #3a1f22; color: #ffb4b4; border-color: #6b2f35; }
+        .points-liste { display: grid; grid-template-columns: 1fr 90px; gap: 6px 10px; align-items: center; margin-top: 6px; }
+        .points-liste input { margin-top: 0 !important; }
+        .res-test { border-bottom: 1px solid #2c2f36; padding: 9px 0; }
+        .res-test b { overflow-wrap: anywhere; font-size: 0.95em; }
+        .res-test small { display: block; color: #aaa; margin-top: 2px; overflow-wrap: anywhere; }
+        .res-test.refuse { opacity: 0.6; }
+        .res-test .raison { color: #ffb4b4; }
+        .res-test .formats i { font-style: normal; display: inline-block; margin: 3px 4px 0 0; padding: 1px 8px; border-radius: 9px; background: #1d2b1f; color: #9be3a6; font-size: 0.85em; }
+        .res-test .pts { float: right; margin-left: 8px; font-weight: 700; color: var(--accent); }
         .msg { padding: 10px 12px; border-radius: 8px; margin: 10px 0; }
         .msg.ok { background: #14291a; color: #9be3a6; border: 1px solid #2f6b3a; }
         .msg.err { background: #2a1416; color: #ffb4b4; border: 1px solid #6b2f35; }
@@ -50,18 +64,23 @@
         <nav class="regles-onglets">
             <a href="/regles?onglet=profils" class="{{ 'actif' if onglet == 'profils' }}">🧾 Profils de version</a>
             <a href="/regles?onglet=formats" class="{{ 'actif' if onglet == 'formats' }}">🏷 Formats personnalisés</a>
+            <a href="/regles?onglet=tester" class="{{ 'actif' if onglet == 'tester' }}">🧪 Tester</a>
             <a href="/regles?onglet=sources" class="{{ 'actif' if onglet == 'sources' }}">🔑 Sources</a>
         </nav>
 
         {% if onglet == 'profils' %}
-            <p class="note">Un profil <b>refuse</b> les torrents qui ne respectent pas ses conditions. Sans série indiquée, il vaut pour toutes les séries. Les conditions « doit contenir » se valident si le titre contient <b>au moins un</b> des mots ; « ne doit pas contenir » refuse le torrent dès qu'un mot est présent. Ne compte pas les majuscules.</p>
+            <p class="note">Un profil <b>refuse</b> les torrents qui ne respectent pas ses conditions, et donne des <b>points</b> à chaque format reconnu. Comme dans Sonarr, <b>un seul profil</b> sert pour une série : celui qui la nomme, sinon le profil général (sans série). Sans série indiquée, il vaut pour toutes les séries. Les conditions « doit contenir » se valident si le titre contient <b>au moins un</b> des mots ; « ne doit pas contenir » refuse le torrent dès qu'un mot est présent. Ne compte pas les majuscules.</p>
             {% for p in profils %}
                 <div class="regle">
                     <div class="nom">{{ p.nom }}{% if not p.actif %} <span class="off">(désactivé)</span>{% endif %}</div>
                     <div class="detail">
                         Doit contenir : {{ p.doit|join(', ') or '—' }}<br>
                         Ne doit pas contenir : {{ p.ne_doit_pas|join(', ') or '—' }}<br>
-                        Séries : {{ p.series|join(', ') or 'toutes' }}{% if p.taille_max_go %}<br>Taille maximale : {{ '%g'|format(p.taille_max_go) }} Go{% endif %}
+                        Séries : {{ p.series|join(', ') or 'toutes (profil général)' }}{% if p.taille_max_go %}<br>Taille maximale : {{ '%g'|format(p.taille_max_go) }} Go{% endif %}
+                        {% if p.sources_min %}<br>Sources minimum : {{ p.sources_min }}{% endif %}
+                        {% if p.score_min is not none %}<br>Score minimum : {{ p.score_min }}{% endif %}
+                        {% if p.score_arret is not none %}<br>Score d'arrêt (assez bon) : {{ p.score_arret }}{% endif %}
+                        {% if formats %}<br>Points : {% for f in formats %}{{ f.nom }} {{ '%+d'|format(p.scores[f.id] if p.scores and f.id in p.scores else f.score) }}{{ ' · ' if not loop.last }}{% endfor %}{% endif %}
                     </div>
                     <div class="actions">
                         <a href="/regles?onglet=profils&edit={{ p.id }}">✏️ Modifier</a>
@@ -72,8 +91,12 @@
                     </div>
                 </div>
             {% else %}
-                <p class="note">Aucun profil pour l'instant : tous les torrents trouvés sont proposés.</p>
+                <p class="note">Aucun profil pour l'instant : tous les torrents trouvés sont proposés (ceux sans source en dernier).</p>
             {% endfor %}
+            <form method="post" action="/regles/modeles" style="margin: 12px 0;">
+                <button type="submit" class="mou-btn">✨ Ajouter les modèles de départ</button>
+                <p class="note">Ajoute des formats prêts à l'emploi (version française, numérique, scan, PDF…) et un profil « Manga VF numérique » <b>désactivé</b>. Rien d'existant n'est touché.</p>
+            </form>
 
             <form class="formulaire" method="post" action="/regles/enregistrer">
                 <input type="hidden" name="quoi" value="profil">
@@ -114,15 +137,36 @@
                 </script>
                 <label for="ptaille">Taille maximale (Go)</label>
                 <input type="number" id="ptaille" name="taille_max_go" step="0.1" min="0" value="{{ modif.taille_max_go or '' if modif and onglet == 'profils' else '' }}">
+                <label for="psources">Sources minimum</label>
+                <input type="number" id="psources" name="sources_min" step="1" min="0" value="{{ modif.sources_min or '' if modif and onglet == 'profils' else '' }}">
+                <div class="aide">En dessous, le torrent est refusé. Vide = pas de minimum (les torrents sans source passent quand même en dernier).</div>
+                <label for="pmin">Score minimum</label>
+                <input type="number" id="pmin" name="score_min" step="1" value="{{ modif.score_min if modif and onglet == 'profils' and modif.score_min is not none else '' }}">
+                <div class="aide">Le total des points d'un torrent doit atteindre ce nombre, sinon il est refusé. Vide = pas de minimum.</div>
+                <label for="parret">Score d'arrêt</label>
+                <input type="number" id="parret" name="score_arret" step="1" value="{{ modif.score_arret if modif and onglet == 'profils' and modif.score_arret is not none else '' }}">
+                <div class="aide">À partir de ce total, le torrent est « assez bon » (⭐ dans la recherche). Servira plus tard au téléchargement automatique.</div>
+                <label>Points par format</label>
+                {% if formats %}
+                <div class="points-liste">
+                    {% for f in formats %}
+                        <span>{{ f.nom }}</span>
+                        <input type="number" step="1" name="score_{{ f.id }}" placeholder="{{ f.score }}" value="{{ modif.scores[f.id] if modif and onglet == 'profils' and modif.scores and f.id in modif.scores else '' }}">
+                    {% endfor %}
+                </div>
+                <div class="aide">Laisse vide pour garder les points par défaut du format (affichés en gris).</div>
+                {% else %}
+                <div class="aide">Crée d'abord des formats dans l'onglet « Formats personnalisés » (ou ajoute les modèles de départ ci-dessus).</div>
+                {% endif %}
                 <button type="submit">💾 Enregistrer le profil</button>
             </form>
             {% if modif and onglet == 'profils' %}<p><a href="/regles?onglet=profils">Annuler la modification</a></p>{% endif %}
         {% elif onglet == 'formats' %}
-            <p class="note">Un format personnalisé ajoute des <b>points</b> aux torrents dont le titre contient un de ses mots. Les torrents avec le plus de points sont proposés en premier. Un score négatif fait descendre un torrent.</p>
+            <p class="note">Un format personnalisé reconnaît un genre de torrent grâce à des <b>conditions</b> (mot dans le titre, équipe, indexeur, taille…). Chaque condition peut être <b>obligatoire</b> (elle doit être vraie) ou <b>inversée</b> (elle doit être fausse). Sans condition obligatoire, il suffit qu'<b>une</b> condition soit vraie. Les points du format se règlent par défaut ici, et peuvent changer dans chaque profil. Les torrents avec le plus de points passent en premier ; un score négatif les fait descendre.</p>
             {% for f in formats %}
                 <div class="regle">
                     <div class="nom">{{ f.nom }} <span class="off">{{ '%+d'|format(f.score) }} pts</span></div>
-                    <div class="detail">Mots : {{ f.termes|join(', ') or '—' }}</div>
+                    <div class="detail">{% for c in f.conditions %}{{ '🔒 ' if c.obligatoire }}{{ 'PAS ' if c.inverse }}{{ types_conditions[c.type] }} : {{ c.valeur|join(', ') if c.valeur is iterable and c.valeur is not string else c.valeur }}{{ '<br>'|safe if not loop.last }}{% else %}Aucune condition : ce format ne reconnaît rien.{% endfor %}</div>
                     <div class="actions">
                         <a href="/regles?onglet=formats&edit={{ f.id }}">✏️ Modifier</a>
                         <form method="post" action="/regles/enregistrer" style="margin:0" data-confirme="Supprimer ce format ?">
@@ -141,14 +185,86 @@
                 <h2 style="margin-top: 0;">{{ 'Modifier le format' if modif and onglet == 'formats' else 'Nouveau format' }}</h2>
                 <label for="fnom">Nom</label>
                 <input type="text" id="fnom" name="nom" required value="{{ modif.nom if modif and onglet == 'formats' else '' }}">
-                <label for="ftermes">Mots dans le titre</label>
-                <textarea id="ftermes" name="termes">{{ modif.termes|join(', ') if modif and onglet == 'formats' else '' }}</textarea>
-                <div class="aide">Un mot par virgule ou par ligne, par exemple « Tsundere-Raws, SR-71 ».</div>
-                <label for="fscore">Score (points)</label>
+                <label>Conditions</label>
+                <div id="fconds"></div>
+                <button type="button" class="mini" id="fajout">➕ Ajouter une condition</button>
+                <div class="aide">Pour « mot dans le titre », « équipe », « indexeur » et « étiquette » : plusieurs valeurs possibles, séparées par des virgules (une seule suffit). Étiquettes : FR, Digital, Scan, Intégrale. Les tailles sont en Go.</div>
+                <input type="hidden" name="conditions" id="fconditions" value="[]">
+                <label for="fscore">Score par défaut (points)</label>
                 <input type="number" id="fscore" name="score" step="1" value="{{ modif.score if modif and onglet == 'formats' else 0 }}">
                 <button type="submit">💾 Enregistrer le format</button>
+                <script>
+                (function () {
+                    var TYPES = {{ types_conditions|tojson }};
+                    var depart = {{ (modif.conditions if modif and onglet == 'formats' else [])|tojson }};
+                    var zone = document.getElementById('fconds'), champ = document.getElementById('fconditions');
+                    function ligne(c) {
+                        c = c || {type: 'titre', valeur: '', inverse: false, obligatoire: false};
+                        var d = document.createElement('div'); d.className = 'cond';
+                        var sel = document.createElement('select');
+                        Object.keys(TYPES).forEach(function (k) { var o = document.createElement('option'); o.value = k; o.textContent = TYPES[k]; if (k === c.type) o.selected = true; sel.appendChild(o); });
+                        var val = document.createElement('input'); val.type = 'text'; val.autocomplete = 'off'; val.autocapitalize = 'off'; val.spellcheck = false;
+                        val.value = Array.isArray(c.valeur) ? c.valeur.join(', ') : (c.valeur == null ? '' : c.valeur);
+                        val.placeholder = 'Valeur (ex. Tsundere-Raws, SR-71)';
+                        function coche(texte, etat) {
+                            var l = document.createElement('label'); l.className = 'coche';
+                            var i = document.createElement('input'); i.type = 'checkbox'; i.checked = !!etat;
+                            l.appendChild(i); l.appendChild(document.createTextNode(' ' + texte)); d.appendChild(l); return i;
+                        }
+                        d.appendChild(sel); d.appendChild(val);
+                        var ob = coche('Obligatoire (doit être vraie)', c.obligatoire), inv = coche('Inversée (doit être fausse)', c.inverse);
+                        var sup = document.createElement('button'); sup.type = 'button'; sup.className = 'mini danger'; sup.textContent = '🗑 Retirer cette condition';
+                        sup.onclick = function () { d.remove(); };
+                        d.appendChild(sup);
+                        d._lire = function () { return {type: sel.value, valeur: val.value, obligatoire: ob.checked, inverse: inv.checked}; };
+                        zone.appendChild(d);
+                    }
+                    depart.forEach(ligne);
+                    if (!depart.length) ligne();
+                    document.getElementById('fajout').onclick = function () { ligne(); };
+                    champ.form.addEventListener('submit', function () {
+                        champ.value = JSON.stringify(Array.prototype.map.call(zone.children, function (d) { return d._lire(); }));
+                    });
+                })();
+                </script>
             </form>
             {% if modif and onglet == 'formats' %}<p><a href="/regles?onglet=formats">Annuler la modification</a></p>{% endif %}
+        {% elif onglet == 'tester' %}
+            <p class="note">Lance une vraie recherche dans Prowlarr et montre, pour chaque torrent, son score, les formats reconnus et pourquoi il est refusé. Change de profil pour comparer. Rien n'est téléchargé.</p>
+            <div class="formulaire">
+                <label for="tq">Recherche</label>
+                <input type="text" id="tq" placeholder="Nom du manga (ex. Air Gear intégrale)" autocomplete="off" spellcheck="false" enterkeyhint="search">
+                <label for="tprofil">Profil à essayer</label>
+                <select id="tprofil" style="width:100%;box-sizing:border-box;font-size:16px;padding:10px;border-radius:8px;border:1px solid #2c2f36;background:#0f1012;color:#eee;margin-top:4px;">
+                    <option value="auto">Celui de la série (automatique)</option>
+                    <option value="aucun">Aucun profil (tout montrer)</option>
+                    {% for p in profils %}<option value="{{ p.id }}">{{ p.nom }}{{ '' if p.actif else ' (désactivé)' }}</option>{% endfor %}
+                </select>
+                <button type="button" id="tgo">🧪 Tester</button>
+            </div>
+            <div id="tres"></div>
+            <script>
+            (function () {
+                var $ = function (i) { return document.getElementById(i); };
+                function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]; }); }
+                function taille(o) { return o >= 1e9 ? (o / 1073741824).toFixed(1).replace('.', ',') + ' Go' : Math.round(o / 1048576) + ' Mo'; }
+                async function tester() {
+                    var q = $('tq').value.trim(); if (q.length < 2) return;
+                    $('tres').innerHTML = '<p class="note">⏳ Recherche dans Prowlarr… (jusqu\'à une minute)</p>';
+                    var r = await (await fetch('/api/regles/tester?q=' + encodeURIComponent(q) + '&profil=' + encodeURIComponent($('tprofil').value))).json();
+                    if (r.error) { $('tres').innerHTML = '<div class="msg err">' + esc(r.error) + '</div>'; return; }
+                    var l = r.resultats || [], ok = l.filter(function (x) { return !x.rejet; }).length;
+                    $('tres').innerHTML = '<p class="note"><b>' + ok + '</b> accepté(s), <b>' + (l.length - ok) + '</b> refusé(s).</p>' + l.map(function (x) {
+                        return '<div class="res-test' + (x.rejet ? ' refuse' : '') + '"><span class="pts">' + (x.assez_bon ? '⭐ ' : '') + (x.score > 0 ? '+' : '') + x.score + '</span><b>' + esc(x.titre) + '</b>' +
+                            '<small>' + taille(x.taille) + ' · ' + x.sources + ' source' + (x.sources > 1 ? 's' : '') + ' · ' + esc(x.indexeur) + (x.date ? ' · ' + esc(x.date) : '') + '</small>' +
+                            (x.rejet ? '<small class="raison">❌ Refusé : ' + esc(x.rejet) + '</small>' : '') +
+                            '<span class="formats">' + (x.formats || []).map(function (f) { return '<i>' + esc(f) + '</i>'; }).join('') + '</span></div>';
+                    }).join('');
+                }
+                $('tgo').onclick = tester;
+                $('tq').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); tester(); } });
+            })();
+            </script>
         {% else %}
             <h2 style="margin-top: 0;">🔑 Google Books</h2>
             <p class="note">Quand une série est ré-identifiée (menu ⋯ → 🔄 Relancer l'identification), MouFlanga interroge aussi <b>MangaUpdates</b> (sans clé) et <b>Google Books</b> : éditeur, auteur et nombre de tomes. Google Books demande une clé API gratuite : Google Cloud → Bibliothèque d'API → activer « Books API », puis Identifiants → Créer une clé d'API.</p>

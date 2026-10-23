@@ -1,5 +1,15 @@
 # Historique des versions
 
+## 🧲 Règles de recherche « comme Sonarr » : formats à conditions, profils à points, tri corrigé (23 octobre 2026)
+- **Tri corrigé** : les torrents **sans aucune source** passent en dernier (avant, un « FR + Intégrale » à 0 source passait devant un torrent à 200 sources). Le nombre de sources s'affiche en orange quand il est à 0.
+- **Formats personnalisés à conditions** : mot dans le titre, expression (regex), équipe, indexeur, étiquette (FR, Digital, Scan, Intégrale), taille minimale ou maximale. Chaque condition peut être **obligatoire** ou **inversée** ; sans condition obligatoire, une seule condition vraie suffit (règle de Sonarr). Les anciens formats « mots » sont convertis tout seuls.
+- **Profils à points** : points propres à chaque profil pour chaque format, **score minimum** (en dessous, refusé), **score d'arrêt** (« assez bon » ⭐, pour le futur téléchargement automatique), **sources minimum**, taille maximale, mots obligatoires ou interdits. **Un seul profil** sert pour une série, comme dans Sonarr : celui qui la nomme, sinon le profil général.
+- **Recherche lisible** : chaque résultat montre son score et ses formats reconnus ; les torrents refusés par le profil sont cachés mais comptés, avec une case « Montrer les refusés » qui affiche la raison du refus.
+- **Onglet 🧪 Tester** (page Règles) : lance une vraie recherche et la juge avec le profil choisi (ou aucun) pour voir tout de suite ce qui passe, sans rien télécharger.
+- **✨ Modèles de départ** : formats prêts (version française, numérique, intégrale, scan, CBZ, PDF, VOSTFR à éviter) et un profil « Manga VF numérique » **désactivé**.
+- La surveillance des séries suivies profite du même tri et des mêmes refus. Elle ne télécharge toujours rien toute seule (sauf le remplacement de 1 à 3 tomes par la même équipe) : le téléchargement automatique par profil viendra dans un second temps.
+- Tests : `tests/test_regles_profils.py`.
+
 ## 📏 Règles de recherche : séries choisies dans la collection (23 octobre 2026)
 Dans un profil de version, les « séries concernées » ne se tapent plus : une liste de toutes les séries de la collection, avec un champ de recherche, où l'on coche celles voulues. Plus de faute de frappe ni de majuscule à surveiller, et les noms contenant une virgule fonctionnent. Les anciens noms tapés à la main qui ne sont pas dans la collection restent cochés, marqués « hors collection ».
 

@@ -4470,9 +4470,32 @@ def api_torrents_chercher():
     if not torrents.configure():
         return jsonify({"error": "Prowlarr et qBittorrent ne sont pas encore réglés (⚙️ Réglages → Connexions)."}), 400
     try:
-        return jsonify({"resultats": torrents.publier(torrents.chercher(q[:100], request.args.get("tout") == "1"))})
+        # les refusés par le profil sont rendus aussi (marqués `rejet`, en fin de liste) : la page les cache ou les montre
+        return jsonify({"resultats": torrents.publier(torrents.chercher(q[:100], request.args.get("tout") == "1",
+                                                                         serie=(request.args.get("serie") or "").strip()[:100], avec_rejets=True))})
     except Exception as e:
         logger.warning("Recherche Prowlarr impossible : %s", e)
+        return jsonify({"error": f"Recherche impossible : {e}"}), 502
+
+
+@app.route("/api/regles/tester")
+def api_regles_tester():
+    """🧪 Page de test des règles : la recherche habituelle, jugée par le profil choisi (`profil` = identifiant, « auto » = celui de la
+    série, « aucun » = sans profil). Les refusés sont rendus avec leur raison."""
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify({"resultats": []})
+    if not torrents.configure():
+        return jsonify({"error": "Prowlarr et qBittorrent ne sont pas encore réglés (⚙️ Réglages → Connexions)."}), 400
+    choix = request.args.get("profil") or "auto"
+    profil = "auto" if choix == "auto" else None if choix == "aucun" else next((x for x in regles.profils() if x["id"] == choix), None)
+    if choix not in ("auto", "aucun") and profil is None:
+        return jsonify({"error": "Profil introuvable."}), 404
+    try:
+        res = torrents.chercher(q[:100], False, serie=(request.args.get("serie") or "").strip()[:100], avec_rejets=True, profil=profil)
+        return jsonify({"resultats": [{k: v for k, v in x.items() if k != "lien"} for x in res]})
+    except Exception as e:
+        logger.warning("Test des règles impossible : %s", e)
         return jsonify({"error": f"Recherche impossible : {e}"}), 502
 
 
@@ -6264,7 +6287,7 @@ def verification():
 @app.route("/regles")
 def page_regles():
     """📏 Règles de recherche (admin) : profils de version et formats personnalisés, comme dans Sonarr."""
-    onglet = request.args.get("onglet") if request.args.get("onglet") in ("formats", "sources") else "profils"
+    onglet = request.args.get("onglet") if request.args.get("onglet") in ("formats", "tester", "sources") else "profils"
     edit = request.args.get("edit", "")
     cle = "profils" if onglet == "profils" else "formats"
     modif = next((x for x in regles.profils() if x["id"] == edit), None) if edit and cle == "profils" else None
@@ -6272,7 +6295,7 @@ def page_regles():
         modif = next((x for x in regles.formats() if x["id"] == edit), None)
     cle = tomes.cle_google_books()
     return render_template("regles.html", version=APP_VERSION, onglet=onglet, profils=regles.profils(),
-                           formats=regles.formats(), modif=modif, toutes_series=sorted((n for n in _scan() if n != "(Sans série)"), key=str.lower),
+                           formats=regles.formats(), modif=modif, types_conditions=regles.TYPES, toutes_series=sorted((n for n in _scan() if n != "(Sans série)"), key=str.lower),
                            cle_gb=("…" + cle[-4:]) if len(cle) >= 8 else "",
                            cle_claude=("…" + os.getenv("CLAUDE_API_KEY", "").strip()[-4:]) if len(os.getenv("CLAUDE_API_KEY", "").strip()) >= 8 else "",
                            ok=request.args.get("ok", ""), erreur=request.args.get("erreur", ""))
@@ -6341,15 +6364,32 @@ def regles_enregistrer():
             regles.supprimer(quoi, f.get("id", ""))
             msg = "Supprimé."
         elif quoi == "profil":
+            points = {fm["id"]: f.get("score_" + fm["id"], "") for fm in regles.formats()}      # vide = points par défaut du format
             regles.enregistrer_profil(f.get("id", ""), f.get("nom", ""), bool(f.get("actif")), f.get("doit", ""),
-                                      f.get("ne_doit_pas", ""), f.getlist("series"), f.get("taille_max_go", ""))
+                                      f.get("ne_doit_pas", ""), f.getlist("series"), f.get("taille_max_go", ""),
+                                      scores=points, score_min=f.get("score_min", ""), score_arret=f.get("score_arret", ""),
+                                      sources_min=f.get("sources_min", ""))
             msg = "Profil enregistré. Les prochaines recherches en tiennent compte."
         else:
-            regles.enregistrer_format(f.get("id", ""), f.get("nom", ""), f.get("termes", ""), f.get("score", "0"))
+            try:
+                conditions = json.loads(f.get("conditions") or "[]")
+            except ValueError:
+                raise ValueError("Les conditions n'ont pas pu être lues : recharge la page et recommence.")
+            if not isinstance(conditions, list):
+                raise ValueError("Les conditions n'ont pas pu être lues : recharge la page et recommence.")
+            regles.enregistrer_format(f.get("id", ""), f.get("nom", ""), "", f.get("score", "0"), conditions)
             msg = "Format enregistré. Les prochaines recherches en tiennent compte."
         return redirect("/regles?onglet=" + onglet + "&ok=" + quote(msg))
     except ValueError as e:
         return redirect("/regles?onglet=" + onglet + "&erreur=" + quote(str(e)))
+
+
+@app.route("/regles/modeles", methods=["POST"])
+def regles_modeles():
+    """Ajoute les formats de départ et un profil « Manga VF numérique » (désactivé) sans rien toucher à l'existant."""
+    n = regles.ajouter_modeles()
+    msg = f"{n} élément(s) ajouté(s). Le profil « Manga VF numérique » est désactivé : active-le quand il te convient." if n else "Les modèles de départ sont déjà là."
+    return redirect("/regles?onglet=profils&ok=" + quote(msg))
 
 
 @app.route("/telecharger")
