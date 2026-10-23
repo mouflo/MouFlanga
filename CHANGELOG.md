@@ -1,5 +1,12 @@
 # Historique des versions
 
+## 🏷 Source par tome (Scantrad, Scan, Digital…) (23 octobre 2026)
+Une série peut mélanger les sources (Gashiakuta : tomes 1 à 10 en scantrad d'EBDZ, 11 à 13 officiels). La source peut maintenant se noter **par tome** :
+- Menu ⋯ → 🏷 Corriger la source → « 🔢 Seulement certains tomes… » : on tape « 1-10 » (ou « 1,3,5 », « tous »), puis on choisit la source. Dans la fenêtre ⓘ d'un tome, un bouton « 🏷 Source du tome » règle ce seul tome, et la source du tome s'y affiche.
+- Sous le nom de l'édition, un résumé : « 📚 T1–T10 Scantrad · T11–T13 Digital ».
+- **Dès que tous les tomes ont une source**, celle de la série suit toute seule : identique partout → c'est la source de la série (ex. « Digital ») ; sinon « Mixte » (nouvelle pastille violette). Tant qu'il en manque, la source de la série ne bouge pas.
+- Enregistré dans la fiche de la série (`sources_tomes`) ; `POST /api/tome/source` ({series, tomes, source}, source vide = effacer). Tests : `tests/test_sources_tomes.py`.
+
 ## 📗 Notification courte pour un nouveau tome (23 octobre 2026)
 Quand un torrent ajoute des tomes à une série qui existait déjà, Telegram n'envoie plus le compte rendu complet : une seule ligne, par exemple « 📗 One Piece : tome 113 ajouté » ou « 📗 Gantz : tomes 4–6 ajoutés ». Le compte rendu complet (édition, parution, auteurs, générique, résumé…) est gardé pour l'arrivée d'une série neuve, la première fois. Les tomes arrivés sont ceux dont la provenance est ce torrent ; si on ne peut pas le savoir, le compte rendu complet est envoyé comme avant.
 

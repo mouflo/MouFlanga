@@ -420,7 +420,8 @@
     var tr = s.travail || {fait: [], total: 0};
     var pense = (s.recherchee || !tr.total || document.body.classList.contains('lecteur')) ? '' : '<button type="button" class="travail-pastille' + (tr.complet ? ' complet' : '') + '" data-travail="1" ' +
       'title="Ce que tu as déjà fait à la main sur cette série">' + (tr.complet ? '✅ Tout est fait' : '📋 ' + tr.fait.length + '/' + tr.total) + '</button>';
-    var bouts = [ed.edition ? '🏷 ' + esc(ed.edition) : '', ed.resolution ? '📐 ' + esc(ed.resolution) : '', src, pense].filter(Boolean);
+    var bouts = [ed.edition ? '🏷 ' + esc(ed.edition) : '', ed.resolution ? '📐 ' + esc(ed.resolution) : '', src,
+      ed.sources_tomes ? '<small title="Source de chaque tome">📚 ' + esc(ed.sources_tomes) + '</small>' : '', pense].filter(Boolean);
     $('sEdition').hidden = !bouts.length; $('sEdition').innerHTML = bouts.join(' · ');
     $('sEdition').onclick = function (e) {
       var b = e.target.closest('[data-travail]');
@@ -568,7 +569,8 @@
     {nom: 'Scan 🥇', couleur: '#e6c229', quoi: 'scan de la version officielle, nettoyé, recadré, simple et double page'},
     {nom: 'Scan 🥈', couleur: '#e08a2c', quoi: 'scan de la version officielle brute'},
     {nom: 'Digital', couleur: '#52b54b', quoi: 'ebook officiel'},
-    {nom: '?', couleur: '#8a8a8a', quoi: 'à vérifier : l\'appli n\'est pas sûre'}];
+    {nom: '?', couleur: '#8a8a8a', quoi: 'à vérifier : l\'appli n\'est pas sûre'},
+    {nom: 'Mixte', couleur: '#9b7be0', quoi: 'les tomes n\'ont pas tous la même source (voir le détail par tome)'}];
   function categorieSource(source, devine) {
     var s = String(source || '').toLowerCase();
     var trouve = SOURCES.find(function (x) { return x.nom.toLowerCase() === s; }) ||
@@ -1741,7 +1743,7 @@
       var provOrigine = String(prov.origine || '').replace(/[.\s]+$/, '');
       var equipeDejaLa = prov.equipe && provOrigine.toLowerCase().indexOf(String(prov.equipe).toLowerCase()) >= 0;   // le nom du torrent contient déjà l'équipe : pas de doublon
       var provTexte = (prov.equipe && !equipeDejaLa ? 'Équipe : ' + prov.equipe + ' · ' : '') + provOrigine + (prov.manuel ? ' (saisi à la main)' : '');
-      var champs = [['Titre', d.titre], ['Infos', d.infos_hs], ['Sortie en France', d.sortie], ['ISBN', d.isbn ? d.isbn + (d.isbn_source ? ' (' + d.isbn_source + ')' : '') : ''], ['Autres ISBN connus', (d.isbn_autres || []).join(', ')], ['Provenance', provTexte.trim() ? provTexte : '']].filter(function (x) { return x[1]; });
+      var champs = [['Titre', d.titre], ['Infos', d.infos_hs], ['Sortie en France', d.sortie], ['ISBN', d.isbn ? d.isbn + (d.isbn_source ? ' (' + d.isbn_source + ')' : '') : ''], ['Autres ISBN connus', (d.isbn_autres || []).join(', ')], ['Provenance', provTexte.trim() ? provTexte : ''], ['Source du tome', d.source_tome || '']].filter(function (x) { return x[1]; });
       var chap = d.chapitres || [], pagesCh = d.chapitres_pages || [];
       var lien = function (c, i) {                    // chapitre lu dans le sommaire d'un tome complet : ouvert à sa page
         if (d.fichier && pagesCh[i] != null) return '<a href="/lire?s=' + encodeURIComponent(current.id) + '&c=' + encodeURIComponent(d.fichier) + '&p=' + pagesCh[i] + '">' + esc(sansDoublon(c)) + '</a>';
@@ -1782,6 +1784,7 @@
         (d.hors_serie ? '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" data-hs-ident="' + n + '">🔎 Identifier ce hors-série</button></div>' : '') +
         boutonGarder(n) +
         '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-prov="' + n + '">✏️ Noter la provenance (équipe, origine)</button>' +
+        '<button type="button" class="mou-btn ghost admin-seul" data-src-tome="' + n + '">🏷 Source du tome</button>' +
         '<button type="button" class="mou-btn ghost admin-seul" data-isbn="' + n + '">📚 Noter les ISBN de la série</button>' +
         (som.possible && !som.en_cours ? '<button type="button" class="mou-btn ghost admin-seul" data-sommaire="' + n + '"' + (som.manuel || som.valide_le || som.saisie ? ' data-manuel="1"' : '') + '>🔍 ' + (som.lu ? 'Relire' : 'Lire') + ' le sommaire du tome</button>' : '') + '</div>' +
         (d.ecriture_possible ? '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEcrire" data-tome="' + n + '" title="Résumé, chapitres, provenance… suivent le fichier quand tu le partages">📝 Écrire les infos dans le fichier</button></div>' : '') +
@@ -1866,6 +1869,15 @@
       afficherTome(b.dataset.tome, false);
     });
     $('infosVue').addEventListener('click', function (e) { if (e.target === $('infosVue')) $('infosVue').hidden = true; });
+    $('infosCorps').addEventListener('click', async function (e) {         // source d'un tome (Scantrad, Scan, Digital…)
+      var st = e.target.closest('[data-src-tome]');
+      if (!st) return;
+      var v = await choisirSource('Source du ' + nomTome(st.dataset.srcTome).toLowerCase(), {tomes: false, effacer: '↺ Effacer la source de ce tome'});
+      if (v === null) return;
+      var rs = await post('/api/tome/source', {series: current.id, tomes: st.dataset.srcTome, source: v});
+      note('sMsg', rs.message || rs.error, rs.ok ? 'ok' : 'err');
+      if (rs.ok) await openSeries(current.id, false);
+    });
     $('infosCorps').addEventListener('click', async function (e) {         // provenance d'un tome : équipe et origine notées à la main
       var pv = e.target.closest('[data-prov]'); if (!pv) return;
       var equipe = await MouPrompt('Équipe de scan de ce tome (ex. PapriKa+). Tu peux aussi coller le nom complet du torrent : l\'équipe en sera tirée.', '');
@@ -2028,13 +2040,14 @@
       note('sMsg', '📝 Réécriture de ' + etat.total + ' tome(s) en cours…', 'ok');
       suivreInfosTous(current.id);
     });
-    $('sSource').addEventListener('click', async function () {
-      fermerMenus();
-      var v = await new Promise(function (fin) {
+    // Boîte de choix d'une source : renvoie le nom, « » (effacer / détection automatique), « __tomes » (choisir des tomes) ou null (annulé)
+    function choisirSource(titre, options) {
+      return new Promise(function (fin) {
         var o = document.createElement('div'); o.className = 'choix-fond';
-        o.innerHTML = '<div class="choix-boite"><h3>Source de « ' + esc(current.title) + ' »</h3>' + SOURCES.map(function (x) {
+        o.innerHTML = '<div class="choix-boite"><h3>' + esc(titre) + '</h3>' + SOURCES.filter(function (x) { return x.nom !== 'Mixte' && x.nom !== '?'; }).map(function (x) {
           return '<button type="button" class="mou-btn ghost src-choix" data-src="' + esc(x.nom) + '"><span class="src-pastille" style="--c:' + x.couleur + '">' + esc(x.nom) + '</span> <small>' + esc(x.quoi) + '</small></button>'; }).join('') +
-          '<button type="button" class="mou-btn ghost" data-src="">↺ Détection automatique</button><button type="button" class="mou-btn ghost" data-annuler="1">Annuler</button></div>';
+          (options.tomes ? '<button type="button" class="mou-btn ghost" data-src="__tomes">🔢 Seulement certains tomes… (ex. 1-10)</button>' : '') +
+          '<button type="button" class="mou-btn ghost" data-src="">' + esc(options.effacer) + '</button><button type="button" class="mou-btn ghost" data-annuler="1">Annuler</button></div>';
         o.addEventListener('click', function (e) {
           var b = e.target.closest('[data-src],[data-annuler]');
           if (!b && e.target !== o) return;
@@ -2042,7 +2055,22 @@
         });
         document.body.appendChild(o);
       });
+    }
+    window.choisirSource = choisirSource;
+    $('sSource').addEventListener('click', async function () {
+      fermerMenus();
+      var v = await choisirSource('Source de « ' + current.title + ' »', {tomes: true, effacer: '↺ Détection automatique'});
       if (v === null) return;
+      if (v === '__tomes') {                                  // la source varie d'un tome à l'autre (ex. 1-10 scantrad, 11-13 officiels)
+        var t = await MouPrompt('Quels tomes ? (ex. 1-10 ou 1,3,5 ou « tous »)');
+        if (!t) return;
+        var v2 = await choisirSource('Source des tomes ' + t, {tomes: false, effacer: '↺ Effacer la source de ces tomes'});
+        if (v2 === null) return;
+        var rt = await post('/api/tome/source', {series: current.id, tomes: t, source: v2});
+        note('sMsg', rt.message || rt.error, rt.ok ? 'ok' : 'err');
+        if (rt.ok) await openSeries(current.id, false);
+        return;
+      }
       var r = await post('/api/edition', {series: current.id, source: v});
       note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err');
       if (r.ok) await openSeries(current.id, false);

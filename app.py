@@ -1200,7 +1200,82 @@ def _infos_edition(name, files):
     source, devine = (d["source_manuelle"], False) if d.get("source_manuelle") else (a.get("source") or "", a.get("devine", True))
     return {"resolution": a.get("resolution", ""), "source": source, "devine": devine, "pourquoi": a.get("pourquoi", ""),
             "nfo": d.get("nfo", ""), "archives": d.get("archives", []), "analyse_faite": "analyse" in d,
-            "edition": d.get("edition", "")}
+            "edition": d.get("edition", ""), "sources_tomes": _resume_sources_tomes(d.get("sources_tomes") or {})}
+
+
+def _resume_sources_tomes(st):
+    """{"1": "Scantrad", "11": "Digital"} → « T1 Scantrad · T11 Digital » (tomes de même source regroupés en plages)."""
+    par = {}
+    for t, s in sorted(((int(k), v) for k, v in (st or {}).items() if str(k).isdigit() and v), key=lambda x: x[0]):
+        par.setdefault(s, []).append(t)
+    return " · ".join(f"{suivi.plage(ts)} {s}" for s, ts in sorted(par.items(), key=lambda x: x[1][0]))
+
+
+def _parse_tomes(texte, presents):
+    """« 1-10 », « 1,3,5-7 », « tous » → numéros de tomes présents. ValueError si le texte est incompréhensible."""
+    t = str(texte or "").strip().lower()
+    if t in ("tous", "tout", "*"):
+        return set(presents)
+    t = re.sub(r"\s*(?:-|à|a)\s*", "-", t)
+    out = set()
+    for part in re.split(r"[,;\s]+", t):
+        if not part:
+            continue
+        m = re.fullmatch(r"(\d{1,3})-(\d{1,3})", part)
+        if m:
+            out |= set(range(int(m.group(1)), int(m.group(2)) + 1))
+        elif part.isdigit():
+            out.add(int(part))
+        else:
+            raise ValueError("Écris les tomes comme « 1-10 » ou « 1,3,5 » (ou « tous »).")
+    return out & set(presents)
+
+
+def _recalcul_source(infos, presents):
+    """Quand TOUS les tomes de la série ont une source : identique partout → c'est la source de la série ; sinon « Mixte ».
+    Tant qu'il en manque, la source de la série ne change pas (sauf un « Mixte » devenu faux)."""
+    st = infos.get("sources_tomes") or {}
+    vals = {st.get(str(t)) for t in presents}
+    if presents and None not in vals:
+        infos["source_manuelle"] = next(iter(vals)) if len(vals) == 1 else "Mixte"
+    elif infos.get("source_manuelle") == "Mixte":
+        infos.pop("source_manuelle", None)
+
+
+@app.route("/api/tome/source", methods=["POST"])
+def api_tome_source():
+    """Source (Scantrad, Scan, Digital…) PAR TOME : {series, tomes: « 1-10 », source} ; source vide = effacer. Quand tous les tomes
+    sont renseignés, la source de la série suit toute seule (identique partout, sinon « Mixte »)."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name, source = str(body.get("series", "")), str(body.get("source", "")).strip()[:40]
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if any(c in source for c in '"$`\\\n\r'):
+        return jsonify({"ok": False, "error": "Caractères interdits."}), 400
+    presents = _tomes_presents(name)
+    try:
+        tomes_visees = _parse_tomes(body.get("tomes", ""), presents)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    if not tomes_visees:
+        return jsonify({"ok": False, "error": "Aucun de ces tomes n'est dans la série."}), 400
+    infos = edition.lire(MANGA_DIR / name)
+    st = infos.setdefault("sources_tomes", {})
+    for t in tomes_visees:
+        if source:
+            st[str(t)] = source
+        else:
+            st.pop(str(t), None)
+    if not st:
+        infos.pop("sources_tomes", None)
+    _recalcul_source(infos, presents)
+    edition.ecrire(MANGA_DIR / name, infos)
+    n = len(tomes_visees)
+    msg = f"{n} tome{'s' if n > 1 else ''} : source « {source} »." if source else f"{n} tome{'s' if n > 1 else ''} : source effacée."
+    if infos.get("source_manuelle") and source and all(st.get(str(t)) for t in presents):
+        msg += f" Tous les tomes sont renseignés : la série est « {infos['source_manuelle']} »."
+    return jsonify({"ok": True, "message": msg, "source_serie": infos.get("source_manuelle", "")})
 
 
 @app.route("/api/edition", methods=["POST"])
@@ -5296,6 +5371,7 @@ def api_tome():
     if not prov and (nf.get("equipe") or nf.get("origine")):     # série reçue sans ses infos : la provenance est dans le fichier
         prov = {"equipe": nf.get("equipe", ""), "origine": nf.get("origine", ""), "manuel": bool(nf.get("provenance_manuelle"))}
     d["provenance"] = prov
+    d["source_tome"] = (edition.lire(MANGA_DIR / name).get("sources_tomes") or {}).get(str(int(tome)), "")
     isbn_infos = edition.lire(MANGA_DIR / name)
     d["isbn"] = _isbn_connus(isbn_infos, google=False).get(str(int(tome))) or du_fichier.get("isbn", "")   # puis celui écrit dans le fichier
     if d["isbn"]:
