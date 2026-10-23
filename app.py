@@ -4371,6 +4371,21 @@ def api_suivies():
     return jsonify({"ok": False, "error": "Action inconnue"}), 400
 
 
+def _message_court_nouveaux_tomes(nom, titre_torrent, numeros):
+    """Série qui existait déjà : une ligne « tomes ajoutés » suffit (le compte rendu complet est pour l'arrivée d'une série neuve).
+    Les tomes arrivés sont ceux dont la provenance est ce torrent ; si tous les tomes de la série en viennent, ou si on ne sait pas, « » (rapport complet)."""
+    import edition
+    try:
+        prov = provenance.lire(edition.lire(MANGA_DIR / nom))
+    except Exception:
+        return ""
+    arrives = sorted(int(k) for k, v in prov.items() if str(k).isdigit() and str(v.get("origine") or "").endswith(" : " + titre_torrent))
+    if not arrives or not (set(numeros) - set(arrives)):
+        return ""
+    n = len(arrives)
+    return f"📗 {nom} : {'tome' if n == 1 else 'tomes'} {suivi.plage(arrives).replace('T', '')} ajouté{'' if n == 1 else 's'}"
+
+
 def _rapport_serie(nom, titre_torrent, origine="🧲 Torrent"):
     """Compte rendu Telegram d'une série arrivée par torrent : import, édition, parution, auteurs, éditeurs, générique,
     synopsis, demande d'un lecteur, surveillance. Les infos manquantes sont cherchées tout de suite."""
@@ -4378,6 +4393,9 @@ def _rapport_serie(nom, titre_torrent, origine="🧲 Torrent"):
     files = _scan().get(nom) or []
     entrees = _entrees(files)
     numeros = sorted({int(_tome_de_entree(e)) for e in entrees if _tome_de_entree(e) is not None})
+    court = _message_court_nouveaux_tomes(nom, titre_torrent, numeros)
+    if court:
+        return court
     taille = sum(f.stat().st_size for f in files if f.exists()) / 1073741824
     tome_max = max(numeros) if numeros else None
     st = tomes.statut_officiel(nom, tome_max=tome_max) or {}

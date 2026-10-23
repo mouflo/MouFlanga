@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 📗 Notification courte pour un nouveau tome (23 octobre 2026)
+Quand un torrent ajoute des tomes à une série qui existait déjà, Telegram n'envoie plus le compte rendu complet : une seule ligne, par exemple « 📗 One Piece : tome 113 ajouté » ou « 📗 Gantz : tomes 4–6 ajoutés ». Le compte rendu complet (édition, parution, auteurs, générique, résumé…) est gardé pour l'arrivée d'une série neuve, la première fois. Les tomes arrivés sont ceux dont la provenance est ce torrent ; si on ne peut pas le savoir, le compte rendu complet est envoyé comme avant.
+
 ## ⬇️ Propositions de torrents : le bouton télécharge directement (23 octobre 2026)
 Sur la fiche d'une série, le bouton ⬇️ d'une proposition renvoyait vers la page Télécharger. Il envoie maintenant le torrent à qBittorrent tout de suite, sans changer de page : l'appli retrouve le torrent chez Prowlarr par son nom (le lien de Prowlarr, qui contient sa clé, n'est jamais gardé ni envoyé au navigateur), le lance, et marque la proposition « téléchargée ». Une proposition 🆕 n'ajoute que les tomes manquants ; une proposition ⬆️ ou 🔁 (meilleure version, même équipe) remplace les tomes concernés, qui vont à la corbeille. Un torrent marqué en anglais n'est jamais envoyé. Si Prowlarr ne le propose plus ou si qBittorrent ne répond pas, un message l'explique et la proposition reste en attente.
 
