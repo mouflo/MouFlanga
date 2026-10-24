@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🎯 Séries suivies : plus de torrents d'une autre série (24 octobre 2026)
+Une série suivie comme « Air Gear Unlimited » avait « Air Gear » parmi ses noms de recherche, et recevait donc des propositions d'Air Gear (intégrale, T24, T26, T36…) alors que ces tomes sont déjà dans la collection, dans leur propre série. Un nom de recherche qui est exactement celui d'une autre série de la collection n'est plus utilisé, et un torrent qui porte le nom d'une autre série est écarté. Les propositions de ce genre déjà gardées sont passées en « ignoré ».
+
 ## ⇆ Lecteur : doubles pages « glissées » (23 octobre 2026)
 - Nouveau réglage du bouton ⇆ / ◫ / ▭ (par défaut sur un appareil neuf) : la double page prend **toute la hauteur** de l'écran et déborde sur les côtés. Un doigt la fait glisser (défilement natif, avec élan) pour voir tous les détails. La page ne se tourne que si la double page est déjà au bord et qu'on glisse encore dans ce sens.
 - Appui sur un bord de l'écran ou touche flèche : va d'abord au bout de la double page, puis tourne la page. En revenant en arrière, on arrive du côté de la fin.

@@ -4326,6 +4326,7 @@ import lecture_pages
 import page_tracker
 page_tracker.FICHIER = DATA_DIR / "torrent-pages.json"
 lecture_pages.NOMS = lambda nom: tomes.noms_de_recherche(nom)[0]
+suivi.AUTRES_SERIES = lambda nom: [n for n in _scan() if n not in (nom, "(Sans série)")]
 
 
 def _infos_suivi(nom):

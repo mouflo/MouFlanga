@@ -6,6 +6,7 @@ est vide ; les séries surveillées sont vérifiées chaque jour dans Prowlarr. 
 Rien n'est téléchargé tout seul : message Telegram + liste sur la fiche ; l'admin choisit. Fichier data/suivies.json.
 """
 import json
+import correspondance
 import logging
 import os
 import re
@@ -191,6 +192,16 @@ def _sans_point(titre):
     return titre.replace(".", " ")
 
 
+AUTRES_SERIES = lambda nom: []            # réglé par app.py : les noms des autres séries de la collection
+
+
+def _d_une_autre_serie(titre_torrent: str, noms, autres) -> bool:
+    """Le torrent porte exactement le nom d'une AUTRE série de la collection (et pas celui de celle-ci) : il n'est pas pour elle."""
+    import lecture_pages
+    nom_torrent = set(correspondance.jetons(lecture_pages.nom_dans_titre(titre_torrent)))
+    return bool(nom_torrent) and nom_torrent in autres and not any(set(correspondance.jetons(n)) == nom_torrent for n in noms)
+
+
 def verifier(nom, chercher, infos_serie, lancer=None, envoyer=None, apres=None):
     """Cherche dans Prowlarr pour une série suivie et garde les nouvelles propositions. Renvoie celles-ci.
     lancer(lien, titre, nom) : une version de la MÊME ÉQUIPE pour 1 à 3 tomes déjà là d'une autre équipe est téléchargée
@@ -201,11 +212,14 @@ def verifier(nom, chercher, infos_serie, lancer=None, envoyer=None, apres=None):
     if not x:
         return []
     resultats, vus = [], set()
-    for titre in x.get("titres", [nom])[:2]:
+    autres = [set(correspondance.jetons(a)) for a in AUTRES_SERIES(nom)]
+    titres = [t for t in x.get("titres", [nom]) if t == nom or set(correspondance.jetons(t)) not in autres]     # « Air Gear » n'est pas « Air Gear Unlimited »
+    for titre in titres[:2]:
         for r in chercher(titre):
             if r["titre"] not in vus:
                 vus.add(r["titre"])
                 resultats.append(r)
+    resultats = [r for r in resultats if not _d_une_autre_serie(r["titre"], titres, autres)]
     info = infos_serie(nom)
     info["qualite"] = x.get("qualite", "Digital")
     deja = [p["titre"] for p in x.get("propositions", [])]
@@ -228,6 +242,9 @@ def verifier(nom, chercher, infos_serie, lancer=None, envoyer=None, apres=None):
     with _verrou:
         d = lire()
         if nom in d["series"]:
+            for p in d["series"][nom].get("propositions", []):          # celles gardées avant, qui sont en fait d'une autre série
+                if p.get("statut") == "attente" and _d_une_autre_serie(p["titre"], titres, autres):
+                    p["statut"] = "ignore"
             purger(d["series"][nom].get("propositions", []), info)
             d["series"][nom].setdefault("propositions", []).extend(nouvelles)
             d["series"][nom]["propositions"] = d["series"][nom]["propositions"][-30:]
