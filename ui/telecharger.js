@@ -410,7 +410,7 @@ async function loadJobs() {
         // Torrents (Prowlarr → qBittorrent) : affichés aussi ici
         let tor = [];
         try { tor = ((await (await fetch("/api/torrents?leger=1")).json()).torrents || []).slice(0, 15); } catch (e) {}
-        const ETATS_TOR = {telechargement: "⬇️ Téléchargement", import: "📦 Import", fini: "✅ Importé", erreur: "⚠️ Erreur"};
+        const ETATS_TOR = {telechargement: "⬇️ Téléchargement", import: "📦 Import", fini: "✅ Importé", erreur: "⚠️ Erreur", rate: "⛔ Raté"};
         const htmlTor = tor.length ? '<h3 style="font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent,#52b54b);margin:18px 0 4px">🧲 Torrents</h3>'
             + tor.map(t => `<div class="job-item" style="background: var(--card); border-radius: 8px; padding: 12px 16px; margin: 12px 0;">
                 <strong>${echapper(t.serie)}</strong> — ${ETATS_TOR[t.etat] || echapper(t.etat)}

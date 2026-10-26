@@ -124,7 +124,9 @@
                 <div id="sPitchEdit" hidden><textarea id="sPitchZone" class="mou-field resume-zone" rows="8" maxlength="5000" placeholder="Écris le synopsis de la série…"></textarea>
                     <div class="actions resume-actions"><button id="sPitchOk">💾 Enregistrer</button><button class="secondary" id="sPitchAnnuler">Annuler</button><button class="secondary" id="sPitchAuto" title="Effacer ton texte et reprendre le synopsis trouvé sur Internet">↺ Automatique</button></div>
                     <div class="resume-aide">Pour copier un synopsis : <a id="sPitchNautiljon" target="_blank" rel="noopener">🔎 Nautiljon</a> (appui long sur le texte → Copier, puis colle-le ici).</div></div></div>
-            <div class="propositions" id="sProps" hidden><div class="dem-titre">🧲 Propositions de torrents</div><div id="sPropsListe"></div>
+            <div class="propositions" id="sProps" hidden><div class="dem-titre">🧲 Propositions de torrents</div>
+                <label class="auto-ligne"><input type="checkbox" id="sAuto"> 🤖 Télécharger tout seul les tomes manquants</label>
+                <div class="auto-aide" id="sAutoAide"></div><div id="sPropsListe"></div>
                 <button type="button" class="ghost" id="sVerifier">🔎 Chercher maintenant</button></div>
             <details class="nfo" id="sNfo" hidden><summary>📄 Infos de l'édition</summary><div id="sNfoArchives" class="nfo-arch"></div><pre id="sNfoTexte"></pre></details>
             <div class="progres" id="sProgres" hidden></div>

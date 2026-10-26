@@ -2,8 +2,8 @@
 🤖 Téléchargement automatique d'une série, à la demande (bouton de la page Télécharger → Torrents).
 
 Choisit, parmi les résultats déjà jugés par le profil de la série (refusés écartés), les torrents qui apportent les tomes qu'on n'a pas :
-français seulement, avec des sources, les mieux notés d'abord (score du profil), puis ceux qui couvrent le plus de tomes manquants, puis les
-plus partagés. Un tome n'est jamais pris deux fois. Rien n'est jamais remplacé : les torrents sont envoyés en mode « ajouter seulement les manquants ».
+français seulement, avec des sources, les mieux notés d'abord (score du profil), puis ceux qui ont assez de sources pour ne pas rester
+bloqués, puis ceux qui couvrent le plus de tomes manquants (et le moins de tomes en trop), puis les plus partagés. Un tome n'est jamais pris deux fois. Rien n'est jamais remplacé : les torrents sont envoyés en mode « ajouter seulement les manquants ».
 """
 import suivi
 
@@ -32,7 +32,7 @@ def plan(resultats: list, possedes: set, attendus=None, info=None) -> dict:
             continue                                   # ni marqué français, ni jugé acceptable par un profil
         couverts = tomes_couverts(r, attendus)
         neufs = couverts - possedes
-        deja = couverts & possedes
+        deja = (couverts & possedes) - set((info or {}).get("tomes_en_cours") or ())     # un tome en téléchargement n'est pas à remplacer
         mieux = suivi.tomes_ameliorables(r, deja, info or {}) if deja else set()
         mieux = mieux if mieux and deja <= mieux else set()          # jamais remplacer un tome qui n'a pas besoin de l'être
         if neufs or mieux:
@@ -41,10 +41,11 @@ def plan(resultats: list, possedes: set, attendus=None, info=None) -> dict:
     voulus |= set().union(*[c for _, c, _ in candidats]) if candidats else set()
     restants, choisis = set(voulus), []
     while restants and len(choisis) < MAX_TORRENTS:
-        dispo = [(r, c & restants, m) for r, c, m in candidats if c & restants]
+        dispo = [(r, c & restants, m, c) for r, c, m in candidats if c & restants]
         if not dispo:
             break
-        r, c, m = max(dispo, key=lambda x: (x[0].get("score", 0), len(x[1]), x[0].get("sources", 0)))
+        # même ordre que la surveillance : score, assez de sources, le plus de tomes utiles, le moins de tomes en trop, sources
+        r, c, m, _ = max(dispo, key=lambda x: suivi.cle_torrent(x[0], x[1], tomes_couverts(x[0], attendus)))
         choisis.append({**r, "tomes": sorted(c), "type": "meilleur" if m else "nouveau"})
         restants -= c
     return {"torrents": choisis, "manquants": sorted(restants) if attendus else []}

@@ -228,6 +228,9 @@ body.lecteur .carte-retirer { display:none; }
 .resume-source[hidden] { display:none; }
 .propositions { margin-top:14px; }
 .propositions[hidden] { display:none; }
+.auto-ligne { display:inline-flex; align-items:center; gap:8px; margin:6px 0 2px; font-size:.9rem; cursor:pointer; }
+.auto-ligne input { width:20px; height:20px; accent-color: var(--accent, #52b54b); }
+.auto-aide { font-size:.78rem; color: var(--muted, #9a9a9a); margin-bottom:6px; }
 .prop { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--line, #2c2c2c); }
 .prop .dem-info b { white-space:normal; font-size:.85rem; overflow-wrap:anywhere; }
 body.mou-skin #sVerifier { margin-top:8px; padding:6px 10px; font-size:.82rem; width:auto; }

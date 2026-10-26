@@ -34,7 +34,7 @@ class MemeEquipeTest(unittest.TestCase):
             nouv = suivi.verifier("One Piece", lambda t: res, lambda n: dict(info), lambda *a: lances.append(a), messages.append)
         self.assertEqual(nouv[0]["type"], "equipe")
         self.assertEqual(nouv[0]["tomes"], [106])
-        self.assertEqual(lances, [("magnet:x", "One.Piece.T106.FR.[CBZ]-TONER-Paprika", "One Piece")])
+        self.assertEqual(lances, [("magnet:x", "One.Piece.T106.FR.[CBZ]-TONER-Paprika", "One Piece", True, "")])     # remplacer = oui
         self.assertIn("NoFace696 → PRiNTER-PapriKa+", messages[0])
 
 

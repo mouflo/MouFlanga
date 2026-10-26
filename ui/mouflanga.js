@@ -435,6 +435,12 @@
     $('sSurveiller').textContent = sv && sv.surveiller ? '👁 Ne plus surveiller' : '👁 Surveiller les nouveaux tomes';
     var props = ((sv && sv.propositions) || []).filter(function (p) { return p.statut === 'attente'; });
     $('sProps').hidden = !(sv && sv.surveiller);
+    $('sAuto').checked = !!(sv && sv.auto);
+    var partis = ((sv && sv.propositions) || []).filter(function (p) { return p.auto && p.statut === 'telecharge'; }).slice(-6);
+    $('sAutoAide').innerHTML = sv && sv.auto
+      ? 'Un seul torrent par tome, le mieux noté par ton profil ; jamais de remplacement, jamais d\'anglais.' +
+        (partis.length ? '<br>📥 Partis tout seuls : ' + partis.map(function (p) { return esc(p.date || '') + ' ' + ((p.tomes || []).length ? 'T' + p.tomes.join(', T') : esc(p.titre.slice(0, 40))); }).join(' · ') : '')
+      : 'Éteint : les torrents trouvés restent des propositions à valider.';
     $('sPropsListe').innerHTML = props.length ? props.map(function (p) {
       var url = '/telecharger?torrent=' + encodeURIComponent(p.titre) + '&serie=' + encodeURIComponent(s.id) + '&proposition=' + p.id + (p.type === 'meilleur' || p.type === 'equipe' ? '&remplacer=1' : '');
       var tracker = window.MouPageTracker, lu = tracker ? tracker.ligne(p.lu) : '';
@@ -1906,6 +1912,12 @@
       fermerMenus();
       var r = await post('/api/suivies', {action: 'surveiller', nom: current.id, actif: !(current.suivi && current.suivi.surveiller)});
       note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err'); if (r.ok) await openSeries(current.id, false);
+    });
+    $('sAuto').addEventListener('change', async function () {
+      var actif = $('sAuto').checked;
+      if (actif && !await MouConfirm('🤖 Les tomes manquants de « ' + current.id + ' » partiront tout seuls dès qu\'un torrent accepté par ton profil est trouvé (un seul par tome, le mieux noté, au plus 40 torrents par jour pour toute la bibliothèque). Activer ?')) { $('sAuto').checked = false; return; }
+      var r = await post('/api/suivies', {action: 'auto', nom: current.id, actif: actif});
+      note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err'); if (r.ok) await openSeries(current.id, false); else $('sAuto').checked = !actif;
     });
     $('sVerifier').addEventListener('click', async function () {
       $('sVerifier').disabled = true; note('sMsg', 'Recherche dans Prowlarr… (jusqu\'à une minute)', 'warn');

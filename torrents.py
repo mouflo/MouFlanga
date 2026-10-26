@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 CATEGORIE = "mouflanga"
 EXT_IMPORT = {".cbz", ".cbr", ".zip", ".rar", ".7z", ".pdf", ".nfo", ".txt", ".jpg", ".jpeg", ".png", ".webp"}
 _ETAT = {"fichier": Path("torrents.json")}
+HISTORIQUE = 1000                  # torrents gardés dans torrents.json (au-delà, les plus anciens sont oubliés)
+EN_COURS = ("telechargement", "import", "a_valider")
+# États de qBittorrent où un torrent devrait avancer : s'il ne bouge plus, il est bloqué. En pause ou en file d'attente : on attend.
+ETATS_ACTIFS = {"stalledDL", "metaDL", "forcedMetaDL", "downloading", "forcedDL", "missingFiles", "error", "unknown"}
 _verrou = threading.Lock()
 
 
@@ -93,9 +97,8 @@ def badges(titre: str) -> list[str]:
     return out
 
 
-def chercher(q: str, toutes_categories=False, serie: str = "", avec_rejets: bool = False, profil="auto") -> list[dict]:
-    """Résultats de Prowlarr, jugés par le profil de la série (`serie`, sinon la recherche). Les refusés ne sont rendus qu'avec
-    `avec_rejets` (marqués `rejet`, en fin de liste). `profil` : "auto" = celui de la série, None = aucun, ou un profil donné."""
+def _brut(q: str, toutes_categories=False) -> list[dict]:
+    """Résultats de Prowlarr tels quels (sans profil). Une recherche vide donne les derniers torrents parus sur chaque tracker."""
     r = reglages()
     params = [("query", q), ("type", "search"), ("limit", "100")]
     if not toutes_categories:
@@ -113,6 +116,13 @@ def chercher(q: str, toutes_categories=False, serie: str = "", avec_rejets: bool
                     "indexeur": x.get("indexer") or "", "date": (x.get("publishDate") or "")[:10],
                     "page": x.get("infoUrl") or "", "lien": x.get("downloadUrl") or x.get("magnetUrl"),
                     "badges": badges(titre)})
+    return out
+
+
+def chercher(q: str, toutes_categories=False, serie: str = "", avec_rejets: bool = False, profil="auto") -> list[dict]:
+    """Résultats de Prowlarr, jugés par le profil de la série (`serie`, sinon la recherche). Les refusés ne sont rendus qu'avec
+    `avec_rejets` (marqués `rejet`, en fin de liste). `profil` : "auto" = celui de la série, None = aucun, ou un profil donné."""
+    out = _brut(q, toutes_categories)
     # Règles de recherche (profils) : score des formats personnalisés, refus du profil de la série
     out = regles.filtrer(out, serie or q, avec_rejets, profil)
     # refusés en dernier, puis les torrents sans aucune source (rien à télécharger), puis le score des formats ;
@@ -120,6 +130,12 @@ def chercher(q: str, toutes_categories=False, serie: str = "", avec_rejets: bool
     out.sort(key=lambda x: (bool(x.get("rejet")), not x["sources"], -x.get("score", 0), "🇫🇷 FR" not in x["badges"],
                             "Intégrale" not in x["badges"], "Digital" not in x["badges"], -x["sources"]))
     return out
+
+
+def flux() -> list[dict]:
+    """📡 Derniers torrents parus sur tous les trackers, en une seule demande à Prowlarr (comme le flux RSS de Sonarr). Sans profil :
+    le flux sert seulement à repérer qu'une série surveillée a du nouveau ; sa vraie recherche juge ensuite les torrents."""
+    return _brut("")
 
 
 _LIENS = {}                       # numéro → (lien de téléchargement, instant) : gardés ici, jamais envoyés au navigateur
@@ -222,7 +238,7 @@ def _lire():
 def _ecrire(d):
     f = _ETAT["fichier"]
     tmp = f.with_suffix(".tmp")
-    tmp.write_text(json.dumps(d[-200:], ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.write_text(json.dumps(d[-HISTORIQUE:], ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, f)
 
 
@@ -233,6 +249,59 @@ def _maj(jid, **kw):
             if j["id"] == jid:
                 j.update(kw)
         _ecrire(d)
+
+
+def deja_pris() -> set:
+    """Noms des torrents déjà envoyés à qBittorrent (en cours, importés, ratés ou supprimés à la main) : jamais repris tout seuls,
+    jamais reproposés. Un torrent raté sert ainsi de liste noire : la recherche passe au suivant."""
+    return {j.get("titre") for j in _lire() if j.get("titre")}
+
+
+def en_cours_de(serie: str) -> list:
+    """Torrents de cette série pas encore finis (téléchargement, import, choix à faire)."""
+    return [j for j in _lire() if j.get("serie") == serie and j.get("etat") in EN_COURS]
+
+
+def stagnation_heures() -> float:
+    """Au bout de combien d'heures sans aucun progrès un téléchargement est déclaré raté (réglage TORRENTS_STAGNATION_H, 24 par défaut)."""
+    try:
+        return max(1.0, float(os.getenv("TORRENTS_STAGNATION_H", "24").replace(",", ".")))
+    except ValueError:
+        return 24.0
+
+
+def suivre_avance(j: dict, t: dict, maintenant: datetime) -> tuple:
+    """({avance, avance_le} à garder, raison du blocage ou « »). Un torrent qui avance, en pause ou en file d'attente repart à zéro ;
+    un torrent actif qui n'a pas avancé depuis stagnation_heures() est bloqué (sources mortes, fichiers disparus…)."""
+    fmt = "%Y-%m-%d %H:%M"
+    avance = round(float(t.get("progress") or 0), 4)
+    neuf = {"avance": avance, "avance_le": maintenant.strftime(fmt)}
+    if avance > float(j.get("avance") or 0) or t.get("state") not in ETATS_ACTIFS:
+        return neuf, ""
+    try:
+        depuis = datetime.strptime(j.get("avance_le") or j.get("debut") or "", fmt)
+    except ValueError:
+        return neuf, ""
+    heures = (maintenant - depuis).total_seconds() / 3600
+    if heures < stagnation_heures():
+        return {}, ""
+    duree = f"{int(heures // 24)} jours" if heures >= 48 else f"{int(heures)} h"
+    return {}, f"aucun progrès depuis {duree}" + ("" if t.get("num_seeds") else ", aucune source")
+
+
+def rater(q, j: dict, t: dict, raison: str):
+    """Téléchargement bloqué : retiré de qBittorrent (seulement un torrent de la catégorie de MouFlanga, avec ses fichiers incomplets)
+    et marqué « raté » : il ne sera plus jamais proposé ni repris."""
+    retire = False
+    if (t.get("category") or CATEGORIE) == CATEGORIE and t.get("hash"):
+        try:
+            q.appel("torrents/delete", hashes=t["hash"], deleteFiles="true")
+            retire = True
+        except Exception as e:
+            logger.warning("Retrait du torrent bloqué %s impossible : %s", j.get("titre"), e)
+    _maj(j["id"], etat="rate", rate_le=datetime.now().strftime("%Y-%m-%d %H:%M"),
+         message=f"Raté : {raison}." + (" Retiré de qBittorrent." if retire else "") + " Il ne sera plus proposé.")
+    logger.info("Torrent raté (%s) : %s", raison, j.get("titre"))
 
 
 def demander_choix(jid, tomes) -> str:
@@ -433,6 +502,7 @@ def adopter(q):
 
 def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
     """Un passage du suivi : progression, ou copie + import + déplacement vers « OK » quand c'est fini."""
+    rates = []
     if True:
         for j in en_cours:
             if j["etat"] != "telechargement":
@@ -440,11 +510,18 @@ def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
             try:
                 infos = q.info(tag=f"mf-{j['id']}")
                 if not infos:
-                    _maj(j["id"], etat="erreur", message="Torrent introuvable dans qBittorrent (supprimé ?)")
+                    _maj(j["id"], etat="rate", rate_le=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                         message="Introuvable dans qBittorrent (supprimé à la main ?) : il ne sera plus proposé.")
+                    rates.append({**j, "raison": "supprimé de qBittorrent", "chercher": False})
                     continue
                 t = infos[0]
                 if t.get("progress", 0) < 1:
-                    _maj(j["id"], progression=round(t.get("progress", 0) * 100), message=t.get("state", ""))
+                    garder, bloque = suivre_avance(j, t, datetime.now())
+                    if bloque:
+                        rater(q, j, t, bloque)
+                        rates.append({**j, "raison": bloque, "chercher": True})
+                        continue
+                    _maj(j["id"], progression=round(t.get("progress", 0) * 100), message=t.get("state", ""), **garder)
                     continue
                 source = chemin_local(t.get("content_path") or str(Path(t["save_path"]) / t["name"]))
                 if j.get("remplacer") is None and _ETAT.get("doublons"):
@@ -481,3 +558,12 @@ def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
                 logger.warning("Torrent %s : %s", j["titre"], e)
                 _maj(j["id"], etat="erreur", message=str(e)[:200])
                 envoyer(f"⚠️ MouFlanga : import du torrent {j['titre'][:80]} impossible : {e}")
+    if rates:
+        if _ETAT.get("apres_rate"):
+            try:
+                _ETAT["apres_rate"](rates)          # app.py : un seul message, puis une autre version cherchée pour les séries surveillées
+                return
+            except Exception as e:
+                logger.warning("Suite des torrents ratés : %s", e)
+        envoyer("⛔ MouFlanga : téléchargement raté, retiré de qBittorrent\n"
+                + "\n".join(f"• {j['serie']} : « {j['titre'][:80]} » ({j['raison']})" for j in rates))

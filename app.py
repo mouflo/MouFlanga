@@ -4360,7 +4360,15 @@ def _infos_suivi(nom):
     source = d.get("source_manuelle") or (d.get("analyse") or {}).get("source", "")
     attendus = _volumes_attendus(nom) if files else None
     complete = bool(attendus) and all(i in t for i in range(1, int(attendus) + 1))
-    en_cours = any(j.get("serie") == nom and j.get("etat") in ("telechargement", "import", "a_valider") for j in torrents._lire())
+    # Torrents pas encore finis : ils ne bloquent que leurs propres tomes ; un torrent dont le nom ne dit pas les tomes (intégrale
+    # « 10 tomes »…) bloque toute la série tant qu'il n'est pas fini ou raté
+    tomes_en_cours, en_cours = set(), False
+    for j in torrents.en_cours_de(nom):
+        tj = suivi.tomes_du_titre(j.get("titre") or "")
+        if tj:
+            tomes_en_cours |= tj
+        else:
+            en_cours = True
     # Équipe de chaque tome (provenance) et équipe principale de la série (la plus fréquente, sinon celle de l'archive d'origine)
     from collections import Counter
     equipe_tomes = {int(k): v.get("equipe") for k, v in provenance.lire(d).items() if v.get("equipe") and str(k).isdigit()}
@@ -4371,9 +4379,51 @@ def _infos_suivi(nom):
     origines = {int(k): v["origine"].split(" : ", 1)[1] for k, v in provenance.lire(d).items()
                 if str(k).isdigit() and str(v.get("origine") or "").startswith("Torrent : ")}
     scores = {tome: regles.score_titre(titre, nom) for tome, titre in origines.items()} if profil else {}
-    return {"tomes": t, "source": source, "complete": complete, "en_cours": en_cours, "equipe": equipe, "equipe_tomes": equipe_tomes,
+    return {"tomes": t, "source": source, "complete": complete, "en_cours": en_cours, "tomes_en_cours": tomes_en_cours,
+            "deja_pris": torrents.deja_pris(), "equipe": equipe, "equipe_tomes": equipe_tomes,
             "profil": profil is not None, "scores_tomes": scores, "arret": (profil or {}).get("score_arret"),
             "sources_tomes": d.get("sources_tomes") or {}}
+
+
+def _lancer_torrent(lien, titre, nom, remplacer=True, page=""):
+    """Envoi d'un torrent choisi par la surveillance (🤖 Auto, même équipe) à qBittorrent."""
+    return torrents.lancer(lien, titre, nom, remplacer, str(page or "")[:600])
+
+
+def _verifier_serie(nom):
+    """Vérification complète d'une série suivie, avec son message Telegram (flux des nouveautés, torrent raté, interrupteur 🤖)."""
+    import notifier
+    return suivi.verifier_et_prevenir(nom, torrents.chercher, _infos_suivi, lambda t: notifier.envoyer(t),
+                                      lambda: os.getenv("APP_URL", "").strip(), _lancer_torrent, lecture_pages.lire_en_fond)
+
+
+def _apres_rate(rates):
+    """Téléchargements ratés (bloqués ou supprimés de qBittorrent) : un seul message ; pour une série surveillée, une autre version est
+    cherchée tout de suite (le torrent raté ne sera plus jamais proposé ; en 🤖 Auto, le suivant part tout seul)."""
+    import notifier
+    suivies = suivi.lire()["series"]
+    a_chercher = sorted({j["serie"] for j in rates if j.get("chercher") and (suivies.get(j["serie"]) or {}).get("surveiller")})
+    lignes = [f"• {j['serie']} : « {suivi._sans_point(j['titre'][:80])} » ({j['raison']})" for j in rates]
+    suite = []
+    if a_chercher:
+        suite.append("🔎 Autre version cherchée pour : " + ", ".join(a_chercher))
+    if any(j.get("chercher") and j["serie"] not in a_chercher for j in rates):
+        suite.append("Pour les autres séries : cherche une autre version dans Télécharger → Torrents.")
+    notifier.envoyer("⛔ MouFlanga : téléchargement" + ("s" if len(rates) > 1 else "") + " raté" + ("s" if len(rates) > 1 else "")
+                     + ", retiré" + ("s" if len(rates) > 1 else "") + " de qBittorrent\n" + "\n".join(lignes + suite))
+
+    def chercher_encore():
+        for nom in a_chercher:
+            try:
+                _verifier_serie(nom)
+            except Exception as e:
+                logger.warning("Autre version pour %s : %s", nom, e)
+            time.sleep(20)
+    if a_chercher:
+        threading.Thread(target=chercher_encore, daemon=True).start()
+
+
+torrents._ETAT["apres_rate"] = _apres_rate
 
 
 def _accepter_demande(x):
@@ -4408,6 +4458,19 @@ def api_suivies():
                 d["series"][nom]["propositions"] = [p for p in d["series"][nom].get("propositions", []) if p.get("statut") != "attente"]
             suivi.ecrire(d)
         return jsonify({"ok": True, "message": "Surveillance activée : vérification chaque jour." if body.get("actif") else "Surveillance coupée."})
+    if action == "auto":
+        actif = bool(body.get("actif"))
+        with suivi._verrou:
+            d = suivi.lire(); d["series"][nom]["auto"] = actif
+            if actif:
+                d["series"][nom]["surveiller"] = True            # le mode automatique passe par la surveillance
+            suivi.ecrire(d)
+        if not actif:
+            return jsonify({"ok": True, "message": "🤖 Téléchargement automatique coupé : les torrents trouvés restent des propositions."})
+        if torrents.configure():
+            threading.Thread(target=_verifier_serie, args=(nom,), daemon=True).start()
+        return jsonify({"ok": True, "message": "🤖 Téléchargement automatique activé : les tomes manquants partent tout seuls dès qu'un torrent "
+                                               "accepté par ton profil est trouvé (un seul par tome, le mieux noté). Vérification lancée."})
     if action == "qualite":
         with suivi._verrou:
             d = suivi.lire(); d["series"][nom]["qualite"] = "Digital" if body.get("qualite") == "Digital" else "Indifférente"; suivi.ecrire(d)
@@ -4461,10 +4524,14 @@ def api_suivies():
         if not torrents.configure():
             return jsonify({"ok": False, "error": "Prowlarr n'est pas réglé."}), 400
         try:
-            nouv = suivi.verifier(nom, torrents.chercher, _infos_suivi, apres=lecture_pages.lire_en_fond)
+            nouv = suivi.verifier(nom, torrents.chercher, _infos_suivi, _lancer_torrent, apres=lecture_pages.lire_en_fond)
         except Exception as e:
             return jsonify({"ok": False, "error": f"Recherche impossible : {e}"}), 502
-        return jsonify({"ok": True, "message": f"{len(nouv)} nouvelle(s) proposition(s)." if nouv else "Rien de nouveau pour l'instant."})
+        partis = [p for p in nouv if p.get("auto")]
+        reste = len(nouv) - len(partis)
+        morceaux = ([f"🤖 {len(partis)} torrent(s) envoyé(s) tout seul(s) ({suivi.plage([t for p in partis for t in p.get('tomes') or []])})"] if partis else []) \
+            + ([f"{reste} nouvelle(s) proposition(s)"] if reste else [])
+        return jsonify({"ok": True, "message": " · ".join(morceaux) + "." if morceaux else "Rien de nouveau pour l'instant."})
     return jsonify({"ok": False, "error": "Action inconnue"}), 400
 
 
@@ -4700,7 +4767,7 @@ def api_torrents_auto():
         return jsonify({"ok": False, "error": "Prowlarr et qBittorrent ne sont pas encore réglés (⚙️ Réglages → Connexions)."}), 400
     info = _infos_suivi(nom)
     if info["en_cours"]:
-        return jsonify({"ok": True, "torrents": [], "message": "Un téléchargement est déjà en cours pour cette série : attends qu'il soit fini."})
+        return jsonify({"ok": True, "torrents": [], "message": "Un téléchargement de toute la série (intégrale) est déjà en cours : attends qu'il soit fini ou raté."})
     attendus = _volumes_attendus(nom) if _scan().get(nom) else None
     titres = list(dict.fromkeys([nom] + (suivi.lire()["series"].get(nom, {}).get("titres") or [])))[:2]
     resultats, vus = [], set()
@@ -4712,7 +4779,8 @@ def api_torrents_auto():
                     resultats.append(r)
     except Exception as e:
         return jsonify({"ok": False, "error": f"Recherche impossible : {e}"}), 502
-    p = auto_telechargement.plan(resultats, info["tomes"], attendus, info)
+    resultats = [r for r in resultats if r["titre"] not in info["deja_pris"]]          # déjà envoyé (fini, en cours ou raté) : jamais repris
+    p = auto_telechargement.plan(resultats, info["tomes"] | info["tomes_en_cours"], attendus, info)
     profil = regles.profil_pour(nom)
     res = [{k: v for k, v in x.items() if k != "lien"} for x in p["torrents"]]
     base = {"ok": True, "profil": profil["nom"] if profil else "", "manquants": p["manquants"], "attendus": attendus, "possedes": len(info["tomes"])}
@@ -7296,8 +7364,10 @@ if __name__ == "__main__":
     threading.Thread(target=_boucle_equipes, daemon=True).start()
     threading.Thread(target=suivi.boucle, args=(torrents.chercher, _infos_suivi, lambda t: notifier.envoyer(t),
                                                 lambda: os.getenv("APP_URL", "").strip(), torrents.configure,
-                                                lambda lien, titre, nom: torrents.lancer(lien, titre, nom, True),
-                                                lecture_pages.lire_en_fond), daemon=True).start()
+                                                _lancer_torrent, lecture_pages.lire_en_fond), daemon=True).start()
+    threading.Thread(target=suivi.boucle_flux, args=(torrents.flux, _verifier_serie, torrents.configure, torrents.deja_pris),
+                     daemon=True, name="flux-nouveautes").start()      # 📡 nouveautés de Prowlarr toutes les 15 minutes
+    threading.Timer(150, suivi.nettoyer, args=(_infos_suivi,)).start()   # propositions en doublon ou périmées, une fois au démarrage
     suivi.nettoyer_liens()                         # anciennes propositions : plus de lien de Prowlarr (il contient sa clé)
     threading.Timer(90, lecture_pages.rattrapage).start()      # pages des propositions déjà gardées, lues sans bousculer le démarrage
     threading.Thread(target=torrents.surveiller, args=(_importer_torrent, lambda t: notifier.envoyer(t), MANGA_DIR), daemon=True).start()

@@ -5,7 +5,7 @@
     const taille = o => o >= 1e9 ? (o / 1073741824).toFixed(1).replace(".", ",") + " Go" : Math.round(o / 1048576) + " Mo";
     let res = [], series = [], minuteur = null, bib = null;
     const params = new URLSearchParams(location.search);
-    const ETATS = {telechargement: "⬇️ Téléchargement", import: "📦 Import", fini: "✅ Importé", erreur: "⚠️ Erreur", a_valider: "❓ À valider"};
+    const ETATS = {telechargement: "⬇️ Téléchargement", import: "📦 Import", fini: "✅ Importé", erreur: "⚠️ Erreur", a_valider: "❓ À valider", rate: "⛔ Raté"};
 
     // Nom de série proposé : texte cherché sans « intégrale », « FR », « T01-T20 »… ; série existante si elle correspond
     function nomPropose(q) {

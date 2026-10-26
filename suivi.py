@@ -3,7 +3,10 @@
 est vide ; les séries surveillées sont vérifiées chaque jour dans Prowlarr. Deux sortes de propositions :
   🆕 nouveau  : un torrent contient des tomes qu'on n'a pas (nouveau tome sorti, ou tome manquant) ;
   ⬆️ meilleur : la série est en Scan/Web et un torrent Digital existe (surclassement de qualité).
-Rien n'est téléchargé tout seul : message Telegram + liste sur la fiche ; l'admin choisit. Fichier data/suivies.json.
+Comme Sonarr, un seul choix par tome : le meilleur torrent d'après le profil (jamais deux propositions pour le même tome).
+Par défaut rien n'est téléchargé tout seul (message Telegram + liste sur la fiche, l'admin choisit) ; avec l'interrupteur 🤖 Auto
+d'une série, les tomes manquants partent tout seuls. Le flux des nouveautés de Prowlarr est lu toutes les 15 minutes : une série
+surveillée qui y apparaît est vérifiée tout de suite. Fichier data/suivies.json.
 """
 import json
 import correspondance
@@ -21,6 +24,11 @@ logger = logging.getLogger(__name__)
 _ETAT = {"fichier": Path("suivies.json")}
 _verrou = threading.Lock()
 RANG_QUALITE = {"Web (chapitres)": 0, "Scan": 1, "Digital": 2}
+MAX_PROPOSITIONS = 40          # propositions gardées par vérification (une par tome ou groupe de tomes)
+SOURCES_SAINES = 2             # en dessous, un torrent risque de rester bloqué : il passe après les autres à score égal
+AUTO_MAX_JOUR = 40             # 🤖 torrents lancés tout seuls par jour, toutes séries confondues
+FLUX_INTERVALLE = 900          # 📡 lecture du flux des nouveautés : toutes les 15 minutes
+FLUX_REPOS = 3600              # une série n'est pas revérifiée par le flux moins d'une heure après sa dernière vérification
 
 
 def lire():
@@ -110,46 +118,94 @@ def tomes_du_titre(titre: str) -> set:
     return {int(x) for x in re.findall(r"\b(?:t|tome|vol\.?|volume)\s?\.?\s?(\d{1,3})\b", t) if int(x) <= 300}
 
 
+def choisir(candidats, cle) -> list:
+    """Un seul torrent par tome, comme Sonarr. candidats : [(résultat, tomes utiles)] ; on prend à chaque fois le meilleur d'après
+    `cle(résultat, tomes encore à couvrir)`, puis on retire ses tomes des autres. Renvoie [(résultat, tomes qu'il apporte)]."""
+    restants = set().union(*[set(c) for _, c in candidats]) if candidats else set()
+    choisis = []
+    while restants:
+        dispo = [(r, set(c) & restants) for r, c in candidats if set(c) & restants and all(r is not x for x, _ in choisis)]
+        if not dispo:
+            break
+        r, c = max(dispo, key=lambda x: cle(x[0], x[1]))
+        choisis.append((r, c))
+        restants -= c
+    return choisis
+
+
+def cle_torrent(r: dict, utiles: set, couverts=None) -> tuple:
+    """Ordre de préférence entre deux torrents pour les mêmes tomes : score du profil, puis assez de sources pour ne pas rester bloqué,
+    puis pas de gaspillage (un pack des tomes 1 à 32 pour 2 tomes manquants passe après les tomes seuls, s'ils existent), puis le plus
+    de tomes utiles, puis le moins de tomes en trop, puis le nombre de sources."""
+    couverts = couverts if couverts is not None else tomes_du_titre(r.get("titre") or "")
+    trop = len(set(couverts) - set(utiles))
+    return (r.get("score", 0), (r.get("sources") or 0) >= SOURCES_SAINES, trop <= max(2, 2 * len(utiles)), len(utiles), -trop,
+            r.get("sources") or 0)
+
+
 def propositions_pour(nom, info, resultats, deja):
     """info : {"tomes": set des tomes présents, "source": « Scan »…, "qualite": visée, "equipe": équipe principale,
-    "equipe_tomes": {tome: équipe}}. Renvoie les nouvelles propositions, la MÊME ÉQUIPE en premier (⭐)."""
+    "equipe_tomes": {tome: équipe}, "tomes_en_cours": tomes déjà en téléchargement, "deja_pris": torrents déjà envoyés}.
+    deja : noms de torrents à ne plus proposer. Renvoie les propositions, un seul torrent par tome (le meilleur d'après le profil,
+    la MÊME ÉQUIPE en premier ⭐), au plus MAX_PROPOSITIONS."""
     import provenance
-    out, vus = [], set(deja)
-    if info.get("complete") or info.get("en_cours"):          # série terminée ou téléchargement déjà lancé : rien à proposer
-        return out
-    possedes = info["tomes"]
+    if info.get("complete") or info.get("en_cours"):          # série terminée, ou torrent en cours dont on ne connaît pas les tomes
+        return []
+    en_cours = set(info.get("tomes_en_cours") or ())
+    presents = set(info["tomes"])
+    possedes = presents | en_cours                             # un tome en téléchargement compte comme là
     rang = RANG_QUALITE.get(info.get("source") or "", 1)
     equipe = info.get("equipe") or ""
     meme = lambda r: bool(equipe) and provenance.meme_equipe(provenance.equipe_torrent(r["titre"]), equipe)
-    for r in sorted(resultats, key=lambda r: not meme(r)):     # même équipe d'abord
-        if r["titre"] in vus or r.get("rejet") or ("🇫🇷 FR" not in r["badges"] and not r.get("profil")):
+    exclus = set(deja) | set(info.get("deja_pris") or ())
+    cands = {"nouveau": [], "equipe": [], "meilleur": []}
+    couverts_de, serie_entiere = {}, []
+    for r in resultats:
+        if r["titre"] in exclus or r.get("rejet") or ("🇫🇷 FR" not in r["badges"] and not r.get("profil")):
             continue
         couverts = tomes_du_titre(r["titre"])
-        manquants = sorted(couverts - possedes)
+        couverts_de[id(r)] = couverts
+        manquants = couverts - possedes
+        la = (couverts & presents) - en_cours
         # tomes déjà là mais d'une autre équipe, que l'équipe de la série sort enfin (NoFace696 → Paprika)
-        autres = sorted(t for t in couverts & possedes if (info.get("equipe_tomes") or {}).get(t)
-                        and not provenance.meme_equipe(info["equipe_tomes"][t], equipe))
-        sorte = None
+        autres = {t for t in la if (info.get("equipe_tomes") or {}).get(t) and not provenance.meme_equipe(info["equipe_tomes"][t], equipe)}
+        mieux = tomes_ameliorables(r, la, info) if la else set()
         if manquants:
-            sorte = "nouveau"
+            cands["nouveau"].append((r, manquants))
         elif meme(r) and autres:
-            sorte, manquants = "equipe", autres
-        elif tomes_ameliorables(r, couverts & possedes, info):
+            cands["equipe"].append((r, autres))
+        elif mieux:
             # un tome déjà là n'est proposé que s'il est en scan alors que ce torrent est officiel, ou s'il vaut PLUS de points d'après le profil
-            sorte, manquants = "meilleur", sorted(tomes_ameliorables(r, couverts & possedes, info))
-        elif (not info.get("profil") and possedes and info.get("qualite") == "Digital" and rang < 2 and "Digital" in r["badges"]
-              and (not couverts or couverts & possedes or "Intégrale" in r["badges"])):
-            sorte = "meilleur"
-        if not sorte:
-            continue
-        vus.add(r["titre"])
-        out.append({"id": uuid.uuid4().hex[:8], "type": sorte, "titre": r["titre"], "page": r.get("page", ""), "lien": r.get("lien") or "",
-                    "taille": r.get("taille", 0), "sources": r.get("sources", 0), "score": r.get("score", 0),
-                    "badges": (["⭐ même équipe"] if meme(r) else []) + list(r["badges"]), "meme_equipe": meme(r),
-                    "tomes": manquants[:40], "date": datetime.now().strftime("%Y-%m-%d"), "statut": "attente"})
-        if len(out) >= 5:
-            break
-    return out
+            cands["meilleur"].append((r, mieux))
+        elif (not info.get("profil") and presents and info.get("qualite") == "Digital" and rang < 2 and "Digital" in r["badges"]
+              and (not couverts or couverts & presents or "Intégrale" in r["badges"])):
+            serie_entiere.append(r)                            # série en scan, torrent Digital sans tomes précis : toute la série
+    cle = lambda r, utiles: (meme(r), (r.get("sources") or 0) > 0) + cle_torrent(r, utiles, couverts_de.get(id(r)))
+    out = []
+    for sorte in ("nouveau", "equipe", "meilleur"):
+        for r, tomes in choisir(cands[sorte], cle):
+            out.append((sorte, r, sorted(tomes)))
+    if serie_entiere:
+        out.append(("meilleur", max(serie_entiere, key=lambda r: cle(r, set())), []))
+    return [{"id": uuid.uuid4().hex[:8], "type": sorte, "titre": r["titre"], "page": r.get("page", ""), "lien": r.get("lien") or "",
+             "taille": r.get("taille", 0), "sources": r.get("sources", 0), "score": r.get("score", 0),
+             "badges": (["⭐ même équipe"] if meme(r) else []) + list(r["badges"]), "meme_equipe": meme(r),
+             "tomes": tomes[:40], "date": datetime.now().strftime("%Y-%m-%d"), "statut": "attente"}
+            for sorte, r, tomes in out[:MAX_PROPOSITIONS]]
+
+
+def dedoublonner(propositions) -> int:
+    """Propositions en attente gardées avant le « un seul choix par tome » : celles dont tous les tomes sont déjà apportés par une
+    proposition mieux notée passent en « ignoré » (doublon). Renvoie leur nombre."""
+    attente = [p for p in propositions if p.get("statut") == "attente" and p.get("tomes")]
+    vus, n = set(), 0
+    for p in sorted(attente, key=lambda p: (-(p.get("score") or 0), -(p.get("sources") or 0), p.get("date") or "")):
+        tomes = {int(x) for x in p["tomes"]}
+        if tomes <= vus:
+            p["statut"], p["obsolete"], p["doublon"] = "ignore", True, True
+            n += 1
+        vus |= tomes
+    return n
 
 
 def plage(tomes) -> str:
@@ -202,11 +258,23 @@ def _d_une_autre_serie(titre_torrent: str, noms, autres) -> bool:
     return bool(nom_torrent) and nom_torrent in autres and not any(set(correspondance.jetons(n)) == nom_torrent for n in noms)
 
 
+def _quota_auto(d, n=0) -> int:
+    """Torrents que le mode 🤖 peut encore lancer aujourd'hui ; avec n > 0, les compte comme lancés (d est ensuite écrit par l'appelant)."""
+    jour = datetime.now().strftime("%Y-%m-%d")
+    q = d.get("auto_jour") if isinstance(d.get("auto_jour"), dict) and d["auto_jour"].get("date") == jour else {"date": jour, "n": 0}
+    q["n"] += n
+    d["auto_jour"] = q
+    return max(0, AUTO_MAX_JOUR - q["n"])
+
+
 def verifier(nom, chercher, infos_serie, lancer=None, envoyer=None, apres=None):
-    """Cherche dans Prowlarr pour une série suivie et garde les nouvelles propositions. Renvoie celles-ci.
-    lancer(lien, titre, nom) : une version de la MÊME ÉQUIPE pour 1 à 3 tomes déjà là d'une autre équipe est téléchargée
-    et remplace ces tomes toute seule (ancien à la corbeille, lu gardé), avec un message.
-    apres(nom, nouvelles) : appelé une fois les propositions gardées (lecture de leurs pages sur les trackers)."""
+    """Cherche dans Prowlarr pour une série suivie et met ses propositions à jour : un seul torrent par tome, le meilleur.
+    Une proposition en attente que le nouveau choix rend inutile (un meilleur torrent pour tous ses tomes) passe en « ignoré ».
+    lancer(lien, titre, nom, remplacer, page) : envoie un torrent à qBittorrent. Sert (1) au mode 🤖 Auto de la série : les tomes
+    manquants partent tout seuls (jamais de remplacement, AUTO_MAX_JOUR par jour) ; (2) à la MÊME ÉQUIPE pour 1 à 3 tomes déjà là
+    d'une autre équipe, téléchargée et mise à la place toute seule (ancien à la corbeille, lu gardé), avec un message.
+    apres(nom, nouvelles) : appelé une fois les propositions gardées (lecture de leurs pages sur les trackers).
+    Renvoie les nouvelles propositions ; celles lancées tout seules ont le statut « telecharge » et `auto`."""
     d = lire()
     x = d["series"].get(nom)
     if not x:
@@ -222,13 +290,17 @@ def verifier(nom, chercher, infos_serie, lancer=None, envoyer=None, apres=None):
     resultats = [r for r in resultats if not _d_une_autre_serie(r["titre"], titres, autres)]
     info = infos_serie(nom)
     info["qualite"] = x.get("qualite", "Digital")
-    deja = [p["titre"] for p in x.get("propositions", [])]
-    nouvelles = propositions_pour(nom, info, resultats, deja)
+    anciennes = x.get("propositions", [])
+    # les propositions en attente sont rejugées (gardées si elles restent le meilleur choix) ; ignorées ou téléchargées : plus jamais
+    choix = propositions_pour(nom, info, resultats, [p["titre"] for p in anciennes if p.get("statut") != "attente"])
+    attente = {p["titre"]: p for p in anciennes if p.get("statut") == "attente"}
+    nouvelles = [c for c in choix if c["titre"] not in attente]
+    gardees = {c["titre"]: c for c in choix if c["titre"] in attente}
     if lancer and x.get("equipe_auto", True):
         for p in nouvelles:
             if p["type"] == "equipe" and p.get("lien") and 1 <= len(p["tomes"]) <= 3 and not info.get("en_cours"):
                 try:
-                    lancer(p["lien"], p["titre"], nom)
+                    lancer(p["lien"], p["titre"], nom, True, p.get("page", ""))
                     p["statut"] = "telecharge"
                     info["en_cours"] = True
                     if envoyer:
@@ -237,17 +309,55 @@ def verifier(nom, chercher, infos_serie, lancer=None, envoyer=None, apres=None):
                                 f"(téléchargement lancé, l'ancien ira à la corbeille)")
                 except Exception as e:
                     logger.warning("Remplacement automatique (même équipe) de %s : %s", nom, e)
-    for p in nouvelles:
-        p.pop("lien", None)           # le lien de Prowlarr contient sa clé API : jamais gardé (la page Télécharger en redemande un frais)
+    lances = set()
+    if lancer and x.get("auto"):
+        # 🤖 tomes manquants : partent tout seuls (nouvelles propositions et anciennes encore en attente qui restent le meilleur choix)
+        with _verrou:
+            reste = _quota_auto(lire())
+        for c in choix:
+            if reste <= 0:
+                logger.info("🤖 %s : plafond de %d torrents automatiques atteint pour aujourd'hui", nom, AUTO_MAX_JOUR)
+                break
+            if c["type"] != "nouveau" or not c.get("lien") or not c.get("sources") or c.get("statut") != "attente":
+                continue
+            try:
+                lancer(c["lien"], c["titre"], nom, False, c.get("page", ""))
+            except Exception as e:
+                logger.warning("🤖 Téléchargement automatique de %s (%s) : %s", nom, c["titre"], e)
+                break                                    # qBittorrent injoignable : on réessaiera à la prochaine vérification
+            c["statut"], c["auto"] = "telecharge", True
+            lances.add(c["titre"])
+            reste -= 1
+        if lances:
+            with _verrou:
+                dq = lire()
+                _quota_auto(dq, len(lances))
+                ecrire(dq)
+    for c in choix:
+        c.pop("lien", None)           # le lien de Prowlarr contient sa clé API : jamais gardé (la page Télécharger en redemande un frais)
     with _verrou:
         d = lire()
         if nom in d["series"]:
-            for p in d["series"][nom].get("propositions", []):          # celles gardées avant, qui sont en fait d'une autre série
-                if p.get("statut") == "attente" and _d_une_autre_serie(p["titre"], titres, autres):
+            props = d["series"][nom].setdefault("propositions", [])
+            choisis = {t for c in choix for t in c["tomes"]}
+            for p in props:
+                if p.get("statut") != "attente":
+                    continue
+                if _d_une_autre_serie(p["titre"], titres, autres):          # gardée avant, mais en fait d'une autre série
                     p["statut"] = "ignore"
-            purger(d["series"][nom].get("propositions", []), info)
-            d["series"][nom].setdefault("propositions", []).extend(nouvelles)
-            d["series"][nom]["propositions"] = d["series"][nom]["propositions"][-30:]
+                elif p["titre"] in gardees:                                  # toujours le meilleur choix : mise à jour
+                    c = gardees[p["titre"]]
+                    p.update(tomes=c["tomes"], score=c["score"], sources=c["sources"], type=c["type"])
+                    if c["titre"] in lances:
+                        p["statut"], p["auto"] = "telecharge", True
+                elif p.get("tomes") and {int(t) for t in p["tomes"]} <= choisis:
+                    p["statut"], p["obsolete"], p["remplacee"] = "ignore", True, True     # un meilleur torrent apporte tous ses tomes
+            purger(props, info)
+            dedoublonner(props)
+            props.extend(nouvelles)
+            # on garde toutes les propositions en attente, et les 50 dernières déjà traitées (historique)
+            traitees = [p for p in props if p.get("statut") != "attente"]
+            d["series"][nom]["propositions"] = [p for p in props if p.get("statut") == "attente" or p in traitees[-50:]]
             d["series"][nom]["derniere_verif"] = datetime.now().strftime("%Y-%m-%d %H:%M")
             ecrire(d)
     if apres and nouvelles:
@@ -255,7 +365,65 @@ def verifier(nom, chercher, infos_serie, lancer=None, envoyer=None, apres=None):
             apres(nom, nouvelles)
         except Exception as e:
             logger.warning("Lecture des pages de %s : %s", nom, e)
-    return nouvelles
+    return nouvelles + [dict(gardees[t], statut="telecharge", auto=True) for t in lances if t in gardees]
+
+
+def message(nom, nouvelles, lien="") -> str:
+    """Message Telegram d'une vérification : ce qui est parti tout seul (📥), puis les propositions à décider. « » s'il n'y a rien."""
+    if not nouvelles:
+        return ""
+    sortes = {"nouveau": "manque", "equipe": "même équipe", "meilleur": "meilleure qualité"}
+    partis = [p for p in nouvelles if p.get("auto")]
+    reste = [p for p in nouvelles if not p.get("auto")]
+    lignes = []
+    if partis:
+        tomes = sorted({int(t) for p in partis for t in p.get("tomes") or []})
+        lignes.append(f"📥 MouFlanga : {nom} — {plage(tomes) or str(len(partis)) + ' torrent(s)'} téléchargé{'s' if len(tomes) > 1 else ''} tout seul (🤖)")
+        lignes += [f"• « {_sans_point(p['titre'][:90])} »" + (f" ({p['score']} pts)" if p.get("score") else "") for p in partis[:6]]
+        if len(partis) > 6:
+            lignes.append(f"… et {len(partis) - 6} autre(s)")
+    if reste:
+        lignes.append(f"{'🆕' if reste[0]['type'] == 'nouveau' else '⬆️'} MouFlanga : {nom} — {len(reste)} proposition(s)")
+        lignes += [f"• « {_sans_point(p['titre'][:90])} » — {sortes.get(p['type'], '')} {plage(p.get('tomes') or [])}".rstrip() for p in reste[:8]]
+        if len(reste) > 8:
+            autres_tomes = sorted({int(t) for p in reste[8:] for t in p.get("tomes") or []})
+            lignes.append(f"… et {len(reste) - 8} autre(s) {plage(autres_tomes)}".rstrip())
+    if lien:
+        lignes.append(f"👉 Ouvrir dans MouFlanga : {lien}")
+    return "\n".join(lignes)
+
+
+def verifier_et_prevenir(nom, chercher, infos_serie, envoyer, adresse, lancer=None, apres=None):
+    """Une vérification complète d'une série (surveillance du jour, flux des nouveautés, torrent raté) avec son message Telegram."""
+    nouv = verifier(nom, chercher, infos_serie, lancer, envoyer, apres)
+    if nouv:
+        lien = adresse().rstrip("/") + "/#" + __import__("urllib.parse").parse.quote(nom) if adresse() else ""
+        envoyer(message(nom, nouv, lien))
+    return nouv
+
+
+def nettoyer(infos_serie) -> int:
+    """Une fois au démarrage : les propositions en attente devenues inutiles (tomes arrivés entre-temps, même pour une série qui n'est
+    plus surveillée) ou en doublon (gardées avant le « un seul choix par tome ») passent en « ignoré ». Renvoie leur nombre."""
+    n = 0
+    for nom, x in list(lire()["series"].items()):
+        if not any(p.get("statut") == "attente" for p in x.get("propositions", [])):
+            continue
+        try:
+            info = infos_serie(nom)                      # lu hors du verrou (ça lit la bibliothèque)
+        except Exception as e:
+            logger.warning("Nettoyage des propositions de %s : %s", nom, e)
+            continue
+        with _verrou:
+            d = lire()
+            props = (d["series"].get(nom) or {}).get("propositions", [])
+            k = purger(props, info) + dedoublonner(props)
+            if k:
+                ecrire(d)
+                n += k
+    if n:
+        logger.info("Propositions de torrents : %d en doublon ou périmées passées en « ignoré »", n)
+    return n
 
 
 def proposition(nom, pid):
@@ -324,7 +492,7 @@ def en_attente():
 
 
 def boucle(chercher, infos_serie, envoyer, adresse, actif, lancer=None, apres=None):
-    """Chaque jour (vers 7 h) : vérifie les séries surveillées ; un message Telegram groupé si du nouveau."""
+    """Chaque jour (vers 7 h) : vérifie les séries surveillées ; un message Telegram par série qui a du nouveau."""
     while True:
         time.sleep(600)
         try:
@@ -336,17 +504,69 @@ def boucle(chercher, infos_serie, envoyer, adresse, actif, lancer=None, apres=No
                 if not x.get("surveiller") or (x.get("derniere_verif") or "")[:10] == jour:
                     continue
                 try:
-                    nouv = verifier(nom, chercher, infos_serie, lancer, envoyer, apres)
+                    verifier_et_prevenir(nom, chercher, infos_serie, envoyer, adresse, lancer, apres)
                 except Exception as e:
                     logger.warning("Surveillance de %s impossible : %s", nom, e)
                     continue
-                if nouv:
-                    lien = adresse().rstrip("/") + "/#" + __import__("urllib.parse").parse.quote(nom) if adresse() else ""
-                    envoyer(f"{'🆕' if nouv[0]['type'] == 'nouveau' else '⬆️'} MouFlanga : {nom} — {len(nouv)} proposition(s)\n"
-                            + "\n".join(f"• « {_sans_point(p['titre'][:90])} » — "
-                                        f"{ {'nouveau': 'manque', 'equipe': 'même équipe', 'meilleur': 'meilleure qualité'}.get(p['type'], '') } "
-                                        f"{plage(p['tomes'])}".rstrip() for p in nouv)
-                            + (f"\n👉 Ouvrir dans MouFlanga : {lien}" if lien else ""))
                 time.sleep(20)                    # sobre avec Prowlarr et les indexeurs
         except Exception as e:
             logger.warning("Surveillance des séries : %s", e)
+
+
+def _cle(texte: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", texte or "").encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]", "", t)
+
+
+def series_du_flux(resultats, series, deja_pris=()) -> dict:
+    """{série surveillée: [noms de torrents du flux qui la concernent]}. Un nom de la série (au moins 4 lettres) doit se trouver dans
+    celui du torrent ; les torrents déjà proposés ou déjà pris ne comptent pas. Large exprès : la vraie recherche de la série trie ensuite."""
+    out = {}
+    for nom, x in series.items():
+        if not x.get("surveiller"):
+            continue
+        cles = {_cle(t) for t in [nom] + list(x.get("titres") or []) if len(_cle(t)) >= 4}
+        connus = {p.get("titre") for p in x.get("propositions", [])} | set(deja_pris)
+        for r in resultats:
+            titre = r.get("titre") or ""
+            if titre not in connus and any(c in _cle(titre) for c in cles):
+                out.setdefault(nom, []).append(titre)
+    return out
+
+
+def boucle_flux(lire_flux, verifier_serie, actif, deja_pris=lambda: set()):
+    """📡 Toutes les 15 minutes : le flux des nouveautés de Prowlarr (une seule demande pour tous les trackers, comme le RSS de Sonarr).
+    Une série surveillée qui y apparaît avec un torrent jamais vu est vérifiée tout de suite (recherche complète, 🤖 si elle est en Auto),
+    au plus une fois par heure. Un torrent n'est compté comme vu qu'une fois sa série vérifiée."""
+    vus = set()
+    while True:
+        time.sleep(FLUX_INTERVALLE)
+        try:
+            if not actif():
+                continue
+            resultats = [r for r in lire_flux() if r.get("titre") not in vus]
+            d = lire()
+            concernes = series_du_flux(resultats, d["series"], deja_pris())
+            maintenant = datetime.now()
+            for nom, titres in concernes.items():
+                derniere = d["series"][nom].get("derniere_verif") or ""
+                try:
+                    if (maintenant - datetime.strptime(derniere, "%Y-%m-%d %H:%M")).total_seconds() < FLUX_REPOS:
+                        continue                      # vérifiée il y a moins d'une heure : ses torrents seront revus au prochain passage
+                except ValueError:
+                    pass
+                logger.info("📡 Flux des nouveautés : %s (%s)", nom, titres[0][:80])
+                try:
+                    verifier_serie(nom)
+                except Exception as e:
+                    logger.warning("📡 Vérification de %s impossible : %s", nom, e)
+                    continue
+                vus.update(titres)
+                time.sleep(20)
+            en_attente = {t for ts in concernes.values() for t in ts} - vus
+            vus.update(r["titre"] for r in resultats if r.get("titre") not in en_attente)
+            if len(vus) > 20000:
+                vus = set(list(vus)[-10000:])
+        except Exception as e:
+            logger.warning("📡 Flux des nouveautés : %s", e)
