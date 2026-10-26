@@ -1773,7 +1773,10 @@
            '<div class="ident-actions admin-seul"><button type="button" class="mou-btn" data-valider="' + n + '">✅ Valider le tome</button></div>') + '</div>' : '') +
         (chap.length ? '<div class="dem-titre">Chapitres' + (d.chapitres_langue === 'en' ? ' <small>(titres en anglais)</small>' : '') +
           (d.chapitres_source ? ' <small>(' + esc(d.chapitres_source) + ')</small>' : '') + '</div><ol class="tchap">' + chap.map(function (c, i) { return '<li>' + lien(c, i) + '</li>'; }).join('') + '</ol>' : '') +
-        (true ? '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="chapEditer">✏️ ' + (chap.length ? 'Corriger les chapitres' : 'Saisir les chapitres à la main') + '</button>' +
+        (true ? '<div class="ident-actions admin-seul">' +
+          (d.fichier && pagesCh.some(function (p) { return p != null; }) ? '<a class="mou-btn" href="/lire?s=' + encodeURIComponent(current.id) + '&c=' + encodeURIComponent(d.fichier) +
+            '&verif=1" title="Le lecteur s\'ouvre sur chaque chapitre : ✅ bonne page, ou 📍 le chapitre commence ici. Tout est enregistré au fur et à mesure.">🎯 Vérifier les pages au lecteur</a>' : '') +
+          '<button type="button" class="mou-btn ghost" id="chapEditer">✏️ ' + (chap.length ? 'Corriger les chapitres' : 'Saisir les chapitres à la main') + '</button>' +
           '</div>' +
           '<div id="chapEdition" hidden><textarea id="chapTexte" class="mou-field" rows="' + Math.max(5, Math.min(14, chap.length + 2)) + '" spellcheck="false" style="width:100%"' + (chap.length ? '' : ' placeholder="1. Titre du chapitre\n2. Titre du chapitre @64"') + '></textarea>' +
           '<div class="dem-sous">Une ligne par chapitre, avec son numéro : « 2. La valeur de la vie ». Après <b>@</b> : la page du lecteur où le chapitre commence (« 2. La valeur de la vie @64 »). Un @ resté vide ou absent : la page déjà connue est gardée.<br>💾 Enregistrer garde ta saisie sans la valider : tu peux revenir la compléter. Un tome validé qu\'on modifie redevient « pas encore validé ».</div>' +

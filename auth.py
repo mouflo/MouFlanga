@@ -30,6 +30,7 @@ USERS_FILE = BASE_DIR / "data" / "utilisateurs.json"     # comptes « lecteur »
 LECTEUR_OK = {("GET", "/"), ("GET", "/lire"), ("GET", "/api/library"), ("GET", "/api/series"), ("GET", "/api/cover"),
               ("GET", "/api/pages"), ("GET", "/api/page"), ("POST", "/api/progress"), ("POST", "/api/mark"), ("POST", "/api/favori"),
               ("GET", "/api/generique"), ("POST", "/api/clientlog"), ("GET", "/api/fiche"), ("GET", "/api/tome"), ("GET", "/api/tome/couverture"),
+              ("GET", "/api/lecteur/chapitres"),                                        # 📖 chapitres d'un tome dans le lecteur
               ("GET", "/api/demandes"), ("GET", "/api/demandes/chercher"), ("POST", "/api/demandes"),
               ("GET", "/sw.js"), ("GET", "/api/push"), ("POST", "/api/push"),          # 📱 appli installée, notifications
               ("GET", "/api/apparence"), ("POST", "/api/apparence"), ("POST", "/api/apparence/brouillon"),   # 🎨 son propre style

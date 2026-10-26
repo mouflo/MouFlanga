@@ -7,6 +7,7 @@ MouFlanga · bibliothèque et lecteur de BD / mangas (fichiers .cbz et .cbr) pou
 - Suivi de lecture (chapitres lus, page en cours), enregistré sur le serveur
 - Connexion, Journal de diagnostic et ⚙️ Réglages identiques aux autres applis
 """
+import functools
 import hashlib
 import io
 import json
@@ -57,6 +58,18 @@ import deux_tomes
 import diag
 import japscan_scraper
 
+_VERROU_SOMMAIRES = __import__("edition").VERROU      # le même verrou que la validation à la main, l'assemblage… (voir edition.VERROU)
+
+
+def _sous_verrou_infos(f):
+    """La fonction lit, modifie puis réécrit le fichier d'infos d'une série : jamais en même temps qu'une autre (edition.VERROU)."""
+    @functools.wraps(f)
+    def g(*a, **k):
+        with _VERROU_SOMMAIRES:
+            return f(*a, **k)
+    return g
+
+
 BASE_VERSION = "2.0"
 DEPART_VERSION = 120          # nombre de commits au passage en 2.0 : la version repart de 2.0.0
 
@@ -84,6 +97,8 @@ app.json.ensure_ascii = False
 
 import auth
 auth.init_app(app, APP_VERSION)
+import compression   # réponses texte compressées (gzip) : beaucoup moins de données au téléphone
+compression.init_app(app)
 import apparence
 apparence.init_app(app)
 
@@ -2023,6 +2038,7 @@ def api_doubles_couper():
         return jsonify({"ok": False, "error": "Aucune double page à couper."}), 400
     sens = str(body.get("sens", "manga")) != "occidental"
 
+    @_sous_verrou_infos
     def apres(chemin, carte):
         _recaler_progression(name, _rel(chemin), carte)
         import edition                                       # retenu pour le point vert de la liste des tomes
@@ -2107,6 +2123,7 @@ def api_doubles_assembler():
         return jsonify({"ok": False, "error": "Aucune paire de pages à assembler."}), 400
     sens = str(body.get("sens", "manga")) != "occidental"
 
+    @_sous_verrou_infos
     def apres(chemin, carte):
         _recaler_progression(name, _rel(chemin), carte)
         import edition
@@ -2129,6 +2146,7 @@ def _serie_occupee(name):
                 or optimiser.coupes_etat(name).get("en_cours") or parasites.etat(name).get("en_cours"))
 
 
+@_sous_verrou_infos
 def _chapitres_par_parasites(name, chemin, reperes):
     """Avant le retrait : la place des pages d'équipe donne les débuts de chapitres du tome (voir
     parasites.chapitres_par_reperes). Seulement pour un tome dont les chapitres ne sont pas encore connus ; le sommaire
@@ -2146,7 +2164,8 @@ def _chapitres_par_parasites(name, chemin, reperes):
         return
     try:
         fiche = tomes._charger(name) or {}
-        numeros = sorted(n for n, x in (fiche.get("tomes") or {}).items() if x is not None and int(x) == int(tome))
+        numeros = [] if _edition_differente(name) else \
+            sorted(n for n, x in (fiche.get("tomes") or {}).items() if x is not None and int(x) == int(tome))
     except Exception:
         numeros = []
     prec = [c.get("num") for c in (((infos.get("sommaires") or {}).get(str(int(tome) - 1))) or {}).get("chapitres") or []
@@ -2172,6 +2191,7 @@ def _suivre_sommaire(infos, chemin, carte):
         edition.suivre_pages(infos, int(tome), carte)
 
 
+@_sous_verrou_infos
 def _apres_nettoyage(name, chemin, carte):
     """Position de lecture recalée et tome noté comme vérifié (il ne sera pas réexaminé tant qu'il ne change pas)."""
     import edition
@@ -5490,7 +5510,7 @@ def _sommaire_du_tome(name, tome, d, fond=False):
     besoin = not d.get("chapitres") or d.get("chapitres_langue") == "en" or differente or sans_titres
     if lu and lu.get("chapitres") and (besoin or lu.get("manuel")):
         d["chapitres"] = [f"{c['num']:g}. {c['titre']}" if c.get("titre") else f"{c['num']:g}." for c in lu["chapitres"]]
-        d["chapitres_langue"], d["chapitres_source"] = "", "validés à la main" if lu.get("valide_le") else "saisis à la main" if lu.get("manuel") else "écrits dans le fichier" if lu.get("fichier") else "sommaire du tome, lu automatiquement"
+        d["chapitres_langue"], d["chapitres_source"] = "", "validés à la main" if lu.get("valide_le") else "saisis à la main" if lu.get("manuel") else "écrits dans le fichier" if lu.get("fichier") else "pages d'ouverture des chapitres, lues automatiquement" if lu.get("source") == "pages d'ouverture" else "sommaire du tome, lu automatiquement"
         if e:
             d["chapitres_pages"] = [c.get("image") for c in lu["chapitres"]]
             d["fichier"] = e["key"]
@@ -5513,8 +5533,7 @@ def _sommaire_du_tome(name, tome, d, fond=False):
         if ok:
             d["chapitres"], d["chapitres_pages"], d["fichier"] = titres, pages, e["key"]
     # lu par une version plus ancienne du lecteur : relu, sauf si tu y as touché (saisie en cours ou tome validé)
-    ancien = bool(lu and not lu.get("fichier") and lu.get("version", 1) < sommaire.VERSION
-                  and not (lu.get("saisie") or lu.get("manuel") or lu.get("valide_le")))
+    ancien = _lecture_perimee(lu, name, tome)
     # liste venue d'Internet avec des titres mais sans pages : le sommaire imprimé sert à relever les numéros de page
     if e and sommaire.disponible() and (not lu or ancien) and (besoin or ancien or d.get("chapitres")) and auth.role() != "lecteur":
         _lire_sommaire(name, tome, e, urgent=not fond)
@@ -5526,7 +5545,91 @@ def _sommaire_du_tome(name, tome, d, fond=False):
                      "manquants": _numeros_manquants([c.get("num") for c in (lu or {}).get("chapitres", [])])}
 
 
-_VERROU_SOMMAIRES = threading.Lock()
+def _numeros_fiables(name, tome) -> list:
+    """Numéros des chapitres que ce tome devrait contenir d'après Internet (Wikipédia, fiche), seulement s'ils valent pour NOTRE
+    édition. Édition spéciale reconnue par l'appli (Perfect, deluxe, intégrale… : autre nombre de tomes que l'édition standard) :
+    la répartition d'Internet est celle de l'édition standard et ne vaut pas ; on se fie alors à la seule lecture des tomes
+    eux-mêmes (liste vide : les numéros sont ceux imprimés dans le tome)."""
+    try:
+        if _edition_differente(name):
+            return []
+        return tomes.numeros_du_tome(name, tome)
+    except Exception:
+        return []
+
+
+def _suite_de(name, tome):
+    """Dernier chapitre lu du tome précédent (ou None) : le tome suivant reprend juste après."""
+    import edition
+    prec = (((edition.lire(MANGA_DIR / name).get("sommaires") or {}).get(str(int(tome) - 1))) or {}).get("chapitres") or []
+    nums = [float(c["num"]) for c in prec if c.get("num") is not None]
+    return max(nums) if nums else None
+
+
+def _lecture_perimee(lu, name, tome) -> bool:
+    """Lecture automatique faite par une version plus ancienne du lecteur et restée incomplète : à relire. Jamais une lecture saisie
+    ou validée à la main, ni des chapitres écrits dans le fichier."""
+    import sommaire
+    return bool(lu and not lu.get("fichier") and lu.get("version", 1) < sommaire.VERSION
+                and not (lu.get("saisie") or lu.get("manuel") or lu.get("valide_le")) and _a_relire(lu, name, tome))
+
+
+def _relire_sommaires_perimes(nom) -> int:
+    """Tomes de la série dont la lecture est périmée (voir _lecture_perimee) : relus en fond, un tome par cœur libre, sans rien
+    demander à Internet. Rend le nombre de tomes relus."""
+    import sommaire
+    import edition
+    lus = edition.lire(MANGA_DIR / nom).get("sommaires") or {}
+    a_faire = [t for t in sorted(_tomes_de(nom)) if _lecture_perimee(lus.get(str(t)), nom, t)]
+    en_lecture = []
+    for t in a_faire:
+        e = _tome_complet(nom, t)
+        if not e:
+            continue
+        _lire_sommaire(nom, t, e, urgent=False)
+        if sommaire.etat(nom, t).get("en_cours"):
+            en_lecture.append(t)
+        _attendre_lectures(sommaire, nom, en_lecture, sommaire.SIMULTANES - 1)
+    _attendre_lectures(sommaire, nom, en_lecture, 0)
+    return len(a_faire)
+
+
+def _boucle_relecture_sommaires():
+    """30 minutes après le démarrage, puis toutes les 6 heures : les sommaires lus par un lecteur plus ancien et restés incomplets
+    (rien trouvé, pages estimées, chapitres manquants) sont relus avec le lecteur actuel, série par série, quand l'appli n'a rien
+    d'autre à faire (ni préparation de fond, ni import, ni téléchargement). Une lecture complète n'est jamais relue."""
+    try:
+        os.nice(10)                  # discret, comme la préparation de fond : les lectures lancées d'ici héritent de la priorité basse
+    except (OSError, AttributeError):
+        pass
+    time.sleep(1800)
+    while True:
+        total = 0
+        try:
+            for nom in sorted(_scan()):
+                if nom == "(Sans série)":
+                    continue
+                while _travaux_en_cours() or prechauffage._ETAT.get("en_cours"):
+                    time.sleep(60)
+                n = _relire_sommaires_perimes(nom)
+                if n:
+                    logger.info("Sommaires de « %s » : %d tome(s) relu(s) par le lecteur version %d", nom, n, __import__("sommaire").VERSION)
+                total += n
+            if total:
+                logger.info("Relecture des sommaires périmés terminée : %d tome(s)", total)
+        except Exception as e:
+            logger.warning("Relecture des sommaires périmés : %s", e)
+        time.sleep(6 * 3600)
+
+
+def _a_relire(lu, name, tome) -> bool:
+    """Lecture automatique qui mérite d'être refaite par un lecteur plus récent : rien trouvé, des pages estimées ou sans image,
+    ou moins de chapitres que le tome n'en contient. Une lecture complète et sûre n'est jamais relue (ça coûtait des heures pour rien)."""
+    ch = (lu or {}).get("chapitres") or []
+    if not ch or any(c.get("estimee") or c.get("image") is None for c in ch):
+        return True
+    numeros = _numeros_fiables(name, tome)
+    return bool(numeros) and len(ch) < len(numeros)
 
 
 def _richesse(lecture):
@@ -5573,7 +5676,11 @@ def _lire_sommaire(name, tome, e, forcer=False, urgent=True):
         if (avant.get("saisie") or avant.get("manuel") or avant.get("valide_le")) and avant.get("chapitres") and not forcer:
             return                                       # tome validé ou saisi à la main : intouchable sans demande explicite
         if avant.get("source") == "pages d'équipe" and avant.get("chapitres") and not r.get("chapitres"):
-            return                                       # rien de lisible dans le tome : les chapitres déduits restent
+            # rien de lisible dans le tome : les chapitres déduits restent, mais marqués relus par cette version (sinon chaque
+            # ouverture de la fiche relançait plusieurs minutes de lecture)
+            infos.setdefault("sommaires", {})[str(tome)] = dict(avant, version=r["version"])
+            edition.ecrire(MANGA_DIR / name, infos)
+            return
         if not forcer and avant.get("chapitres") and _richesse(avant) > _richesse(r):
             # relecture automatique moins bonne que ce qu'on avait (moins de titres, de pages de lecture) : on garde l'ancienne
             logger.info("Sommaire de « %s » tome %s : la nouvelle lecture est moins complète, l'ancienne est gardée", name, tome)
@@ -5585,14 +5692,18 @@ def _lire_sommaire(name, tome, e, forcer=False, urgent=True):
                 r["manuel"], r["valide_le"] = avant.get("manuel", False), avant.get("valide_le", "")
             else:
                 r = dict(avant, version=r["version"])
+        appris = int(infos.get("decalage_chapitres") or 0)
+        if appris and _lecture_automatique(r) and not r.get("decalage_appris"):
+            _decaler_lecture(r, appris)                  # décalage appris de tes vérifications de cette série (voir _decalage_de_serie)
         infos.setdefault("sommaires", {})[str(tome)] = r
         edition.ecrire(MANGA_DIR / name, infos)
-    try:                                                 # chapitres connus du tome (Wikipédia) : numéros du sommaire illisible
-        numeros = tomes.numeros_du_tome(name, tome)
+    numeros = _numeros_fiables(name, tome)               # chapitres du tome d'après Internet, s'ils valent pour cette édition
+    try:
+        suite = _suite_de(name, tome)
     except Exception:
-        numeros = []
+        suite = None
     return sommaire.lancer(name, tome, chemin, lambda i: archives.read_page(chemin, i)[0], len(archives.pages(chemin)), enregistrer,
-                         noms=archives.pages(chemin), numeros=numeros, urgent=urgent)
+                         noms=archives.pages(chemin), numeros=numeros, urgent=urgent, suite_de=suite)
 
 
 @app.route("/api/tome/sommaire", methods=["POST"])
@@ -5633,6 +5744,7 @@ def _titres_officiels(name):
 
 
 @app.route("/api/titres-chapitres", methods=["GET", "POST"])
+@_sous_verrou_infos
 def api_titres_chapitres():
     """🏷 Titres des chapitres sur le modèle régulier de la série (« Trick 12 »). GET : aperçu seul.
     POST {series, confirmer: true} : écrit les titres proposés dans les infos du tome (rien n'est touché sans confirmation)."""
@@ -5657,6 +5769,7 @@ def api_titres_chapitres():
 
 
 @app.route("/api/tome/chapitres", methods=["POST"])
+@_sous_verrou_infos
 def api_tome_chapitres():
     """Correction à la main de la liste des chapitres d'un tome : une ligne « 2. La valeur de la vie » par chapitre.
     La page de chaque chapitre (lien de lecture) est gardée quand son numéro existait déjà. Remplace la lecture automatique."""
@@ -5746,6 +5859,7 @@ def _apprendre_chiffres(name, tome):
 
 
 @app.route("/api/tome/valider", methods=["POST"])
+@_sous_verrou_infos
 def api_tome_valider():
     """✅ Valider : la liste des chapitres et leurs pages sont complètes et justes (lue automatiquement ou saisie à la
     main). Le tome est verrouillé : plus jamais relu ni modifié automatiquement, plus signalé « à vérifier »."""
@@ -5769,6 +5883,172 @@ def api_tome_valider():
     except Exception as e:
         logger.info("Chiffres du sommaire de %s : %s", name, e.__class__.__name__)
     return jsonify({"ok": True, "message": f"{_nom_tome(name, tome)} : chapitres validés, l'appli n'y touchera plus."})
+
+
+# ---------------- 📖 Chapitres d'un tome complet dans le lecteur, et 🎯 vérification des pages au lecteur ----------------
+
+def _chapitres_pour_lecteur(name, tome, lu):
+    """[{num, titre, image, verifie}] d'un tome complet, dans l'ordre des chapitres. Titre : celui du sommaire, sinon celui de
+    Wikipédia pour ce tome (si la fiche vaut pour cette édition)."""
+    wiki = {}
+    if not _edition_differente(name):
+        det = ((((tomes._charger(name) or {}).get("titres_tomes") or {}).get("details") or {}).get(str(int(tome))) or {})
+        for ligne in det.get("chapitres") or []:
+            m = re.match(r"^(\d+(?:[.,]\d)?)\.?\s*(.*)$", str(ligne))
+            if m and m.group(2).strip():
+                wiki[float(m.group(1).replace(",", "."))] = m.group(2).strip()
+    out = []
+    for c in (lu or {}).get("chapitres") or []:
+        if c.get("num") is None:
+            continue
+        out.append({"num": c["num"], "titre": (c.get("titre") or "").strip() or wiki.get(float(c["num"]), ""),
+                    "image": c.get("image"), "verifie": bool(c.get("verifie"))})
+    return out
+
+
+@app.route("/api/lecteur/chapitres")
+def api_lecteur_chapitres():
+    """Chapitres d'un tome complet (un fichier = un tome) pour le lecteur : sauter d'un chapitre à l'autre, liste ☰, titre du
+    chapitre en cours. Rien n'est lancé ni écrit."""
+    import edition
+    name = request.args.get("s", "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"error": "Série introuvable"}), 404
+    try:
+        tome = int(float(request.args.get("tome", "")))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Tome inconnu"}), 400
+    lu = (edition.lire(MANGA_DIR / name).get("sommaires") or {}).get(str(tome)) or {}
+    return jsonify({"chapitres": _chapitres_pour_lecteur(name, tome, lu), "valide": bool(lu.get("valide_le")),
+                    "saisie": bool(lu.get("saisie"))})
+
+
+def _garder_places_auto(lu):
+    """Première correction à la main d'un tome lu automatiquement : la place trouvée par l'appli est gardée à côté de chaque
+    chapitre (« auto_image »), pour apprendre de tes corrections le décalage propre à la série (voir _decalage_de_serie)."""
+    if lu.get("saisie") or lu.get("manuel") or lu.get("valide_le") or lu.get("fichier"):
+        return
+    for c in lu.get("chapitres") or []:
+        if c.get("image") is not None:
+            c.setdefault("auto_image", c["image"])
+
+
+def _decalage_de_serie(infos) -> int:
+    """Décalage que tes vérifications au lecteur montrent pour la série : la page trouvée par l'appli est celle du titre, le
+    chapitre commence 1 ou 2 pages avant (ou après). Appris s'il y a au moins 5 chapitres vérifiés et que 70 % d'entre eux ont
+    le même écart (non nul, de 3 pages au plus) ; 0 sinon."""
+    from collections import Counter
+    ecarts = [c["image"] - c["auto_image"] for lu in (infos.get("sommaires") or {}).values() for c in lu.get("chapitres") or []
+              if c.get("verifie") and c.get("auto_image") is not None and c.get("image") is not None]
+    if len(ecarts) < 5:
+        return 0
+    d, n = Counter(ecarts).most_common(1)[0]
+    return d if d != 0 and abs(d) <= 3 and n >= 0.7 * len(ecarts) else 0
+
+
+def _lecture_automatique(lu) -> bool:
+    return bool(lu and lu.get("chapitres")) and not (lu.get("saisie") or lu.get("manuel") or lu.get("valide_le") or lu.get("fichier")) \
+        and lu.get("source") != "noms des images"
+
+
+def _decaler_lecture(lu, d):
+    """Applique à une lecture automatique le décalage appris d (en tenant compte de celui déjà appliqué)."""
+    deja = int(lu.get("decalage_appris") or 0)
+    if d == deja:
+        return False
+    for c in lu.get("chapitres") or []:
+        if c.get("image") is not None:
+            c["image"] = max(0, c["image"] + d - deja)
+    lu["decalage_appris"] = d
+    return True
+
+
+def _appliquer_decalage_appris(name, infos) -> tuple:
+    """Décalage appris de la série appliqué aux tomes lus automatiquement (jamais à un tome saisi ou validé à la main).
+    Rend (décalage, nombre de tomes recalés). infos est modifié ; à écrire par l'appelant."""
+    d = _decalage_de_serie(infos)
+    if d != int(infos.get("decalage_chapitres") or 0):
+        infos["decalage_chapitres"] = d
+    n = sum(1 for lu in (infos.get("sommaires") or {}).values() if _lecture_automatique(lu) and _decaler_lecture(lu, d))
+    return d, n
+
+
+def _tome_pour_verif(name, tome):
+    import edition
+    infos = edition.lire(MANGA_DIR / name)
+    lu = (infos.get("sommaires") or {}).get(str(tome))
+    e = _tome_complet(name, tome)
+    return infos, lu, (len(archives.pages(MANGA_DIR / e["path"])) if e else None)
+
+
+@app.route("/api/tome/chapitre_page", methods=["POST"])
+@_sous_verrou_infos
+def api_tome_chapitre_page():
+    """🎯 Vérification au lecteur, un chapitre à la fois : {series, tome, num, image?}. Avec image : le chapitre commence à cette
+    page (position dans le fichier) ; sans : la page enregistrée est la bonne. Enregistré tout de suite (« saisi, pas encore
+    validé ») : rien n'est perdu si tu t'arrêtes au milieu."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    try:
+        tome, num = int(float(body.get("tome", ""))), float(body.get("num", ""))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Tome ou chapitre inconnu"}), 400
+    infos, lu, nb = _tome_pour_verif(name, tome)
+    c = next((x for x in (lu or {}).get("chapitres") or [] if x.get("num") is not None and float(x["num"]) == num), None)
+    if c is None:
+        return jsonify({"ok": False, "error": "Chapitre inconnu dans ce tome."}), 400
+    _garder_places_auto(lu)
+    if body.get("image") is not None:
+        try:
+            image = int(body["image"])
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Page invalide"}), 400
+        if image < 0 or (nb and image >= nb):
+            return jsonify({"ok": False, "error": "Cette page n'existe pas dans le tome."}), 400
+        c["image"] = image
+    elif c.get("image") is None:
+        return jsonify({"ok": False, "error": "Ce chapitre n'a pas encore de page : place-toi sur sa première page."}), 400
+    c["verifie"] = True
+    c.pop("estimee", None)
+    lu.update(manuel=True, saisie=True)
+    lu.pop("valide_le", None)
+    d, n = _appliquer_decalage_appris(name, infos)
+    edition.ecrire(MANGA_DIR / name, infos)
+    return jsonify({"ok": True, "chapitres": _chapitres_pour_lecteur(name, tome, lu), "decalage": d, "tomes_recales": n})
+
+
+@app.route("/api/tome/chapitres_decaler", methods=["POST"])
+@_sous_verrou_infos
+def api_tome_chapitres_decaler():
+    """🎯 Vérification au lecteur : {series, tome, apres, decalage} : les chapitres pas encore vérifiés après le chapitre « apres »
+    sont décalés d'autant de pages (le même écart revient souvent dans tout un tome)."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    try:
+        tome, apres, delta = int(float(body.get("tome", ""))), float(body.get("apres", "")), int(body.get("decalage", 0))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Données invalides"}), 400
+    if not delta or abs(delta) > 20:
+        return jsonify({"ok": False, "error": "Décalage invalide"}), 400
+    infos, lu, nb = _tome_pour_verif(name, tome)
+    if not lu or not lu.get("chapitres"):
+        return jsonify({"ok": False, "error": "Pas de chapitres pour ce tome."}), 400
+    _garder_places_auto(lu)
+    n = 0
+    for c in lu["chapitres"]:
+        if c.get("num") is not None and float(c["num"]) > apres and not c.get("verifie") and c.get("image") is not None:
+            c["image"] = max(0, min((nb or 10 ** 6) - 1, c["image"] + delta))
+            n += 1
+    lu.update(manuel=True, saisie=True)
+    lu.pop("valide_le", None)
+    edition.ecrire(MANGA_DIR / name, infos)
+    return jsonify({"ok": True, "decales": n, "chapitres": _chapitres_pour_lecteur(name, tome, lu)})
 
 
 _SIGNETS = {}              # (série, tome) → {"en_cours", "message", "ok"} : écriture des chapitres dans le .cbz
@@ -7012,6 +7292,7 @@ if __name__ == "__main__":
     redemarrage.verifier(BASE_DIR, "MouFlanga", DATA_DIR / "mouflanga.log", lambda t: notifier.envoyer(t))
     threading.Thread(target=_boucle_generiques, daemon=True).start()
     threading.Thread(target=_boucle_parasites, daemon=True).start()
+    threading.Thread(target=_boucle_relecture_sommaires, daemon=True, name="relecture-sommaires").start()
     threading.Thread(target=_boucle_equipes, daemon=True).start()
     threading.Thread(target=suivi.boucle, args=(torrents.chercher, _infos_suivi, lambda t: notifier.envoyer(t),
                                                 lambda: os.getenv("APP_URL", "").strip(), torrents.configure,

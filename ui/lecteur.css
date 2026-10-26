@@ -29,7 +29,7 @@ body.hide-ui .foot { transform:translateY(100%); position:absolute; left:0; righ
 .rmsg.show { display:flex; }
 .foot input[type=range] { flex:1; accent-color:var(--accent); }
 body.rtl .foot input[type=range] { direction:rtl; }
-@media (max-width:700px) { .rbtn { padding:9px 9px; } #prevCh, #nextCh { font-size:0; } #prevCh::before { content:"⏮"; font-size:1rem; } #nextCh::before { content:"⏭"; font-size:1rem; } .rtitle small { display:none; } .rcount { font-size:.8rem; } }
+@media (max-width:700px) { .rbtn { padding:9px 9px; } #rBack, #prevCh, #nextCh { font-size:0; } #rBack::before { content:"←"; font-size:1rem; } #prevCh::before { content:"⏮"; font-size:1rem; } #nextCh::before { content:"⏭"; font-size:1rem; } .rtitle small { display:none; } .rcount { font-size:.8rem; } }
 #scroll .suite { display:block; margin:24px auto 60px; padding:14px 22px; font:inherit; font-weight:600; border:0; border-radius:6px; background:var(--accent); color:#fff; cursor:pointer; max-width:90%; }
 
 /* Zoom, doubles pages, annonce du chapitre, aide */
@@ -53,3 +53,19 @@ body.rtl .foot input[type=range] { direction:rtl; }
 .aide-boite li { margin: 4px 0; }
 .aide-note { color: #aaa; font-size: .85rem; }
 #aideFermer { margin-top: 10px; width: 100%; background: var(--accent); color: #fff; font-weight: 600; }
+
+/* ☰ Chapitres du tome */
+.liste-chap { margin: 0 0 12px; padding: 0; list-style: none; }
+.liste-chap li { padding: 10px 8px; border-bottom: 1px solid #2a2a2a; cursor: pointer; }
+.liste-chap li.ici { color: var(--accent); font-weight: 600; }
+.liste-chap li.sans { color: #777; cursor: default; }
+/* 🎯 Vérification des pages des chapitres (administrateur) */
+.verif { flex: none; z-index: 6; background: #14201a; border-top: 2px solid var(--accent); padding: 8px 10px; }
+.verif[hidden] { display: none; }
+.verif-titre { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.verif-sous { color: #aaa; font-size: .85rem; margin: 2px 0 6px; }
+.verif-boutons { display: flex; flex-wrap: wrap; gap: 6px; }
+.verif-boutons .rbtn { font-size: .95rem; padding: 10px 12px; }
+.verif-boutons .principal { background: var(--accent); color: #0b0c0e; font-weight: 600; flex: 1 1 auto; }
+.verif-boutons .ok { background: #2f6b3a; color: #fff; flex: 1 1 auto; }
+body.hide-ui .verif { position: absolute; left: 0; right: 0; bottom: 0; }

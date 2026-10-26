@@ -1,5 +1,38 @@
 # Historique des versions
 
+## 🗜️ Pages et listes compressées (26 octobre 2026)
+- Les pages, listes et réponses de l'appli sont compressées (gzip) quand le navigateur l'accepte : bien moins de données au téléphone par le VPN. Jamais les images des tomes, les archives ni les fichiers envoyés tels quels. Fichier `compression.py`, identique dans les quatre applis.
+
+## 🎯 Lecteur : chapitres d'un tome, et vérification des pages des chapitres (26 octobre 2026)
+- **Navigation par chapitres dans un tome complet** (pour tous les comptes) : « ⏮ Chapitre précédent » et « Chapitre suivant ⏭ » sautent au début du chapitre précédent ou suivant à l'intérieur du tome (puis au tome voisin une fois au bout). Nouveau bouton **☰** : la liste des chapitres du tome, pour aller directement à l'un d'eux. Le chapitre en cours est écrit en haut (sur grand écran) et annoncé à chaque saut.
+- **🎯 Vérifier les pages au lecteur** (bouton sur la fiche d'un tome, administrateur) : le lecteur s'ouvre sur chaque chapitre l'un après l'autre. « ✅ C'est la bonne page » passe au suivant ; « − 1 page / + 1 page » puis « 📍 Le chapitre commence ici » corrige. Chaque appui est enregistré tout de suite (« saisi, pas encore validé ») : plus rien à enregistrer par sécurité, rien de perdu si tu t'arrêtes. Deux corrections de suite du même écart : l'appli propose de décaler pareil les chapitres restants. À la fin : « ✅ Valider le tome » et « Tome suivant ▶ ». Ta position de lecture n'est pas touchée pendant la vérification.
+- **L'appli apprend de tes vérifications** : quand au moins 5 chapitres vérifiés d'une série montrent le même écart (le chapitre commence 1 ou 2 pages avant la page trouvée, par exemple), cet écart est appliqué aux autres tomes de la série lus automatiquement, et aux lectures suivantes. Jamais à un tome saisi ou validé à la main.
+- Sur téléphone, « ← Retour » devient « ← » pour que tous les boutons du haut tiennent dans l'écran.
+
+## 📑 Chapitres des tomes : refonte de la lecture des sommaires (26 octobre 2026)
+**Reconnaissance**
+- **Tomes sans sommaire** : chaque chapitre est maintenant retrouvé sur sa **page d'ouverture**, qui annonce son numéro (« CHAPITRE 36 », « #36 », « 88e punch », « 0333 »). Toutes les images sont lues vite (0,4 s chacune), puis le lecteur moderne relit seulement les endroits où un chapitre manque (au plus 80 pages par tome). Les mentions de fin (« chapitre 36 fin »), les pages de sommaire (plusieurs numéros) et les longueurs de chapitre aberrantes sont écartées. Exemples : Gantz Perfect 16 (17 chapitres, aucun avant), Nisekoi 5, Worst 4.
+- **Sommaire « 88º punch » / « Part de monstre … 7 »** (numéro devant le mot, sur sa propre ligne) : reconnu (One-Punch Man).
+- **Sommaire imprimé faux ou pages estimées** : quand les chapitres trouvés ont des longueurs incohérentes ou des pages estimées, l'appli vérifie sur les pages d'ouverture elles-mêmes, qui font foi. One-Punch Man 18 annonce « Limiteurs … 25 », le chapitre commence page 52 : il est maintenant placé au bon endroit. Un chapitre confirmé ainsi n'est plus marqué « estimé ».
+- **Éditions spéciales** (Perfect, deluxe, intégrale… reconnues par l'appli) : la répartition des chapitres trouvée sur Internet est celle de l'édition standard ; elle n'est plus utilisée. Seuls comptent les numéros imprimés dans le tome.
+
+**Rapidité**
+- Pendant la lecture d'un tome, une même image lue avec les mêmes réglages n'est plus jamais relue (numéros de page, second lecteur de texte…).
+- La place des chapitres n'est cherchée qu'une fois, sur la meilleure lecture (avant : une fois par lecteur de texte), et le numéro imprimé en bas des pages est lu avant de chercher le titre sur des pages entières.
+- Une lecture complète et sûre n'est plus jamais relue. Avant, chaque nouvelle version du lecteur relisait tous les tomes (3 à 4 lectures par tome depuis le 7 octobre).
+- Les tomes dont les chapitres viennent des pages d'équipe étaient relus à chaque ouverture de leur fiche (Defense Devil : jusqu'à 12 fois) : corrigé.
+- Les lectures périmées et incomplètes sont relues en fond, série par série, quand l'appli est libre, sans rien demander à Internet.
+
+**Sûreté**
+- Le fichier d'infos d'une série ne peut plus être écrit par deux tâches en même temps (lecture en fond, validation à la main, assemblage) : la seconde effaçait parfois la première.
+- Les tomes validés ou saisis à la main ne sont jamais relus ni modifiés.
+- Nouveau banc d'essai `outils/banc_sommaires.py` (tomes validés à la main comme référence, données dans `data/banc-sommaires/`).
+
+**Résultat sur les 125 tomes validés à la main (1 153 chapitres)**
+- Chapitres placés à la page exacte : **558** au lieu de 324 ; à une page près : **666** au lieu de 403.
+- Chapitres trouvés : **1 036** au lieu de 906 ; tomes avec des chapitres : **118** au lieu de 95. Aucun tome moins bien lu qu'avant.
+- Une première lecture prend environ 30 % de temps en plus, mais elle n'est plus jamais refaite à chaque nouvelle version.
+
 ## 🎯 Séries suivies : plus de torrents d'une autre série (24 octobre 2026)
 Une série suivie comme « Air Gear Unlimited » avait « Air Gear » parmi ses noms de recherche, et recevait donc des propositions d'Air Gear (intégrale, T24, T26, T36…) alors que ces tomes sont déjà dans la collection, dans leur propre série. Un nom de recherche qui est exactement celui d'une autre série de la collection n'est plus utilisé, et un torrent qui porte le nom d'une autre série est écarté. Les propositions de ce genre déjà gardées sont passées en « ignoré ».
 

@@ -13,11 +13,12 @@
 <script src="/ui/lecteur.js?v={{ version|urlencode }}" defer></script>
 <link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
 </head>
-<body class="reader-body{% if role == 'lecteur' %} lecteur{% endif %}">
+<body class="reader-body{% if role == 'lecteur' %} lecteur{% endif %}{% if role == 'admin' %} admin{% endif %}">
 <div id="bar" class="bar">
     <a href="/" id="rBack" class="rbtn" title="Retour à la série">← Retour</a>
     <div class="rtitle"><span id="rSeries"></span><small id="rChapter"></small></div>
     <span id="rCount" class="rcount"></span>
+    <button class="rbtn" id="optChap" title="Chapitres du tome" hidden>☰</button>
     <button class="rbtn" id="optMode" title="Une page à la fois ou défilement">📄 Page</button>
     <button class="rbtn" id="optDir" title="Sens de lecture">⟵ Manga</button>
     <button class="rbtn" id="optFit" title="Ajustement de l'image">↔ Largeur</button>
@@ -44,7 +45,8 @@
             <li><b>⛶</b> : plein écran.</li>
             {% if role == 'admin' %}<li><b>🗑</b> (en bas) : retirer la page affichée du tome (page parasite d'une équipe de scan). L'ancien fichier va à la corbeille (30 jours).</li>{% endif %}
             <li><b>13 / 172</b> : page actuelle du chapitre ; la barre du bas permet d'aller directement à une page.</li>
-            <li><b>⏮ ⏭</b> (en bas) : chapitre précédent ou suivant.</li>
+            <li><b>⏮ ⏭</b> (en bas) : chapitre précédent ou suivant, même à l'intérieur d'un tome complet quand ses chapitres sont connus.</li>
+            <li><b>☰</b> : la liste des chapitres du tome, pour aller directement à l'un d'eux. Le chapitre en cours est écrit en haut.</li>
         </ul>
         <h3>Les gestes</h3>
         <ul>
@@ -57,6 +59,14 @@
         <button class="rbtn" id="aideFermer">J'ai compris</button>
     </div>
 </div>
+<div id="listeChap" class="aide" hidden>
+    <div class="aide-boite">
+        <h2>Chapitres</h2>
+        <ol id="listeChapItems" class="liste-chap"></ol>
+        <button class="rbtn" id="listeChapFermer">Fermer</button>
+    </div>
+</div>
+<div id="verif" class="verif" hidden></div>
 <div id="foot" class="foot">
     <button class="rbtn" id="prevCh">⏮ Chapitre précédent</button>
     <input type="range" id="slider" min="1" max="1" value="1" aria-label="Page">

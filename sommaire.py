@@ -23,7 +23,7 @@ from pathlib import Path
 logger = logging.getLogger("mouflanga")
 
 PAGES_MAX = 14                  # images lues au début du tome
-VERSION = 9                     # version du lecteur (9 : mot « dossier » et numérotation propre au tome) : un tome « sans sommaire » lu par une version plus ancienne est relu
+VERSION = 10                    # version du lecteur (10 : pages d'ouverture, « 88º punch », éditions spéciales) : une lecture incomplète faite par une version plus ancienne est relue (app._lecture_perimee)
 _MOTS = r"(?:chapitre|kapitel|chap|ch|sc[eè]ne|[ée]pisode|ep|acte|round|le[cç]on|lesson|partie|nuit|jour|histoire|file|stage|level|trick|dossier|#)"
 _CHIFFRES_OCR = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1", "S": "5", "A": "4", "B": "8", "Z": "2"})
 # « SCÈNE 1 La tueuse aux yeux d'argent .......5 », « Chapitre 12 : Le retour 45 », « 12. Le retour ...... 45 »
@@ -58,6 +58,62 @@ def disponible() -> bool:
 
 _LOCAL = threading.local()
 _MOTEUR_ABSENT = False
+MEMO_DISQUE = None              # banc d'essai : mémoire durable des lectures (objet avec get / set), jamais dans l'appli
+_PAGES_GARDEES = 24             # images gardées en mémoire pendant la lecture d'un tome (les plus récentes)
+
+
+def _memo_lire(cle):
+    """Lecture déjà faite pendant la lecture de ce tome (même image, mêmes réglages), ou None."""
+    m = getattr(_LOCAL, "memo", None)
+    if m is not None and cle in m:
+        return m[cle]
+    if MEMO_DISQUE is not None:
+        v = MEMO_DISQUE.get(cle)
+        if v is not None:
+            if m is not None:
+                m[cle] = v
+            return v
+    return None
+
+
+def _memo_garder(cle, valeur):
+    m = getattr(_LOCAL, "memo", None)
+    if m is not None:
+        m[cle] = valeur
+    if MEMO_DISQUE is not None:
+        MEMO_DISQUE.set(cle, valeur)
+
+
+def _run(cmd, input=None, timeout=None, env=None, **_):
+    """subprocess.run pour tesseract, avec la mémoire des lectures : la même image lue avec les mêmes réglages (le numéro imprimé d'une
+    page relu pour le chapitre suivant, l'autre lecteur de texte qui refait les mêmes lectures d'image…) ne relance pas tesseract."""
+    actif = getattr(_LOCAL, "memo", None) is not None or MEMO_DISQUE is not None
+    cle = ("t|" + hashlib.md5(input or b"").hexdigest() + "|" + " ".join(map(str, cmd[3:]))) if actif else None
+    if cle:
+        v = _memo_lire(cle)
+        if v is not None:
+            return subprocess.CompletedProcess(cmd, 0, stdout=v.encode("utf-8"), stderr=b"")
+    r = subprocess.run(cmd, input=input, capture_output=True, timeout=timeout, env=env)
+    if cle and r.returncode == 0:
+        _memo_garder(cle, r.stdout.decode("utf-8", "replace"))
+    return r
+
+
+def _pages_en_memoire(lire_page):
+    """lire_page qui garde les dernières images lues : la lecture d'un tome relit souvent les mêmes pages (sommaire, ouvertures)."""
+    from collections import OrderedDict
+    gardees = OrderedDict()
+
+    def lire(i):
+        if i in gardees:
+            gardees.move_to_end(i)
+            return gardees[i]
+        octets = lire_page(i)
+        gardees[i] = octets
+        while len(gardees) > _PAGES_GARDEES:
+            gardees.popitem(last=False)
+        return octets
+    return lire
 
 
 def _moteur():
@@ -89,29 +145,43 @@ def _ocr_moderne(im) -> str | None:
     moteur = _moteur()
     if moteur is None:
         return None
+    cle = None
+    if getattr(_LOCAL, "memo", None) is not None or MEMO_DISQUE is not None:
+        cle = "m|" + hashlib.md5(im.tobytes() + repr((im.size, im.mode)).encode()).hexdigest()
+        v = _memo_lire(cle)
+        if v is not None:
+            return v
     try:
-        import numpy as np
-        r = moteur(np.array(im.convert("RGB"))[:, :, ::-1])
-        if r is None or r.boxes is None or not len(r.txts):
-            return ""
-        cases = []
-        for box, txt in zip(r.boxes, r.txts):
-            ys = [p[1] for p in box]; xs = [p[0] for p in box]
-            cases.append((sum(ys) / 4, max(ys) - min(ys), min(xs), txt))
-        cases.sort()
-        lignes = []                                       # [hauteur du centre (moyenne), hauteur de case (la plus petite), cases]
-        for cy, h, x, txt in cases:
-            if lignes and abs(cy - lignes[-1][0]) <= max(6, min(h, lignes[-1][1]) * .4):
-                l = lignes[-1]
-                l[0] = (l[0] * len(l[2]) + cy) / (len(l[2]) + 1)
-                l[1] = min(l[1], h)
-                l[2].append((x, txt))
-            else:
-                lignes.append([cy, h, [(x, txt)]])
-        return "\n".join(" ".join(t for _, t in sorted(l[2])) for l in lignes)
+        texte = _ocr_moderne_brut(moteur, im)
     except Exception as e:
         logger.info("Lecteur de texte moderne en échec (%s) : tesseract", e.__class__.__name__)
         return None
+    if cle:
+        _memo_garder(cle, texte)
+    return texte
+
+
+def _ocr_moderne_brut(moteur, im) -> str:
+    """Texte lu par le lecteur moderne, une ligne par ligne de texte (cases rapprochées en hauteur réunies de gauche à droite)."""
+    import numpy as np
+    r = moteur(np.array(im.convert("RGB"))[:, :, ::-1])
+    if r is None or r.boxes is None or not len(r.txts):
+        return ""
+    cases = []
+    for box, txt in zip(r.boxes, r.txts):
+        ys = [p[1] for p in box]; xs = [p[0] for p in box]
+        cases.append((sum(ys) / 4, max(ys) - min(ys), min(xs), txt))
+    cases.sort()
+    lignes = []                                       # [hauteur du centre (moyenne), hauteur de case (la plus petite), cases]
+    for cy, h, x, txt in cases:
+        if lignes and abs(cy - lignes[-1][0]) <= max(6, min(h, lignes[-1][1]) * .4):
+            l = lignes[-1]
+            l[0] = (l[0] * len(l[2]) + cy) / (len(l[2]) + 1)
+            l[1] = min(l[1], h)
+            l[2].append((x, txt))
+        else:
+            lignes.append([cy, h, [(x, txt)]])
+    return "\n".join(" ".join(t for _, t in sorted(l[2])) for l in lignes)
 
 
 def _simple(t):
@@ -129,7 +199,8 @@ def _avancer(image_octets=b""):
             if e and e.get("en_cours"):
                 e.setdefault("_vus", set()).add(hashlib.md5(image_octets).digest() if image_octets else len(e.get("_vus", ())))
                 e["pages"] = len(e["_vus"])
-                e["message"] = f"Lecture du sommaire… {e['pages']} page(s) différente(s) lue(s)"
+                phase = getattr(_LOCAL, "phase", None) or "Lecture du sommaire"
+                e["message"] = f"{phase}… {e['pages']} page(s) différente(s) lue(s)"
 
 
 def ocr(image_octets: bytes, clair: bool = False) -> str:
@@ -152,7 +223,7 @@ def ocr(image_octets: bytes, clair: bool = False) -> str:
     buf = io.BytesIO()
     im.save(buf, "PNG")
     env = dict(os.environ, OMP_THREAD_LIMIT="1")          # un seul cœur : l'appli reste fluide
-    r = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "6"],
+    r = _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "6"],
                        input=buf.getvalue(), capture_output=True, timeout=120, env=env)
     return r.stdout.decode("utf-8", "replace")
 
@@ -555,7 +626,7 @@ def _lectures_chiffres(im, boite) -> Counter:
             buf = io.BytesIO()
             g.save(buf, "PNG")
             for psm in ("7", "8", "13"):
-                r = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", psm, "-c",
+                r = _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", psm, "-c",
                                     "tessedit_char_whitelist=0123456789"], input=buf.getvalue(), capture_output=True,
                                    timeout=60, env=env)
                 t = r.stdout.decode("utf-8", "replace").strip()
@@ -725,7 +796,7 @@ def analyser_cases(image_octets: bytes, numeros=None) -> list[dict]:
         case = ImageOps.expand(case.resize((case.width * 2, case.height * 2)), border=20, fill=255)
         buf = io.BytesIO()
         case.save(buf, "PNG")
-        t = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "6"], input=buf.getvalue(),
+        t = _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "6"], input=buf.getvalue(),
                            capture_output=True, timeout=60, env=env).stdout.decode("utf-8", "replace")
         n = re.findall(r"[0-9OoIl]{1,4}", re.sub(r"(?i)page", "", t))
         num = _numero(n[-1]) if n else None
@@ -733,7 +804,7 @@ def analyser_cases(image_octets: bytes, numeros=None) -> list[dict]:
         milieu = gris.crop((g[2], min(g[1], d[1]), d[0], max(g[3], d[3])))
         buf = io.BytesIO()
         milieu.save(buf, "PNG")
-        titre = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "6"], input=buf.getvalue(),
+        titre = _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "6"], input=buf.getvalue(),
                                capture_output=True, timeout=60, env=env).stdout.decode("utf-8", "replace")
         titre = re.sub(r"\s+", " ", titre).strip(" .:-–—,'\"‘’|")
         dans_titre = re.findall(r"\b(\d{2,4})\b", titre)     # bord de la case de gauche lu avec le titre : « 108 »
@@ -976,7 +1047,7 @@ def analyser_rouge(image_octets: bytes, numeros=None) -> list[dict]:
     buf = io.BytesIO()
     noir.save(buf, "PNG")
     env = dict(os.environ, OMP_THREAD_LIMIT="1")
-    t = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "--psm", "11", "-c",
+    t = _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "--psm", "11", "-c",
                         "tessedit_char_whitelist=0123456789", "tsv"], input=buf.getvalue(), capture_output=True,
                        timeout=120, env=env).stdout.decode("utf-8", "replace")
     nombres = []
@@ -1009,7 +1080,7 @@ def analyser_rouge(image_octets: bytes, numeros=None) -> list[dict]:
         c = c.resize((c.width * 3, c.height * 3)).point(lambda v: 0 if v > 200 else 255)
         buf = io.BytesIO()
         c.save(buf, "PNG")
-        lu = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "--psm", "6"], input=buf.getvalue(),
+        lu = _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "--psm", "6"], input=buf.getvalue(),
                             capture_output=True, timeout=60, env=env).stdout.decode("utf-8", "replace")
         n = re.search(r"(?m)^\W*(\d{1,3})\b", lu)
         sortie.append({"num": float(n.group(1)) if n else None, "titre": "", "page": page})
@@ -1080,6 +1151,48 @@ def analyser_empile(texte: str) -> list[dict]:
         return []
     return _estimer_pages(_numeros_suivis(sortie))         # page absente ou aberrante (« 4 » pour 149) : estimée
 
+
+
+_ENTETE_NUM_AVANT = re.compile(r"^\W*(\d{1,4})\s*(?:e|[èe]me|er|re|[º°ª])?\.?\s+([^\W\d_]{3,15})\W*$", re.I)
+_ARTICLES = {"le", "la", "les", "un", "une", "des", "page", "pages", "tome", "vol", "volume"}
+
+
+def analyser_numero_avant(texte: str) -> list[dict]:
+    """« 88º punch » seul sur sa ligne, puis « Port de monstre 7 » (One-Punch Man) : le numéro est devant le mot du chapitre,
+    sur une ligne à lui ; titre et page viennent dessous (sur une ligne, ou le titre puis la page seule). Le mot, propre à la
+    série, doit revenir au moins deux fois (« punch », « nuit », « quart-temps »…)."""
+    lignes = [l.strip() for l in (texte or "").splitlines() if l.strip()]
+    entetes = {k: m for k, l in enumerate(lignes) for m in [_ENTETE_NUM_AVANT.match(l)] if m and _simple(m.group(2)) not in _ARTICLES}
+    if len(entetes) < 2:
+        return []
+    mot, fois = Counter(_simple(m.group(2)) for m in entetes.values()).most_common(1)[0]
+    if fois < 2:
+        return []
+    sortie = []
+    for k, m in sorted(entetes.items()):
+        if _simple(m.group(2)) != mot:
+            continue
+        titre, page = "", None
+        for l in lignes[k + 1:k + 4]:
+            if _ENTETE_NUM_AVANT.match(l):
+                break
+            seul = re.fullmatch(r"\W*(\d{1,3})\W*", l)
+            avec = re.match(r"^(.*?[^\W\d_].*?)[\s.·…_,!?|]+(\d{1,3})\W*$", l)
+            if seul:
+                page = int(seul.group(1))
+                break
+            if avec:
+                titre, page = (titre + " " + avec.group(1)).strip(), int(avec.group(2))
+                break
+            titre = (titre + " " + l).strip()
+        titre = re.sub(r"^[^\w«\"“‘'(\[]+", "", re.sub(r"[.·…_]{2,}.*$", "", titre)).strip(" .:-–—,'\"‘’|")
+        sortie.append({"num": float(m.group(1)), "titre": titre[:120], "page": page})
+    if len(sortie) < 2:
+        return []
+    sortie = _numeros_suivis(sortie)
+    if any(x["page"] is None for x in sortie):
+        return _estimer_pages(sortie)
+    return sortie
 
 
 def analyser_page_puis_titre(texte: str, numeros=None) -> list[dict]:
@@ -1276,7 +1389,7 @@ def mots_ocr(image_octets: bytes, clair: bool = False, psm: int = 11) -> list[di
     buf = io.BytesIO()
     im.save(buf, "PNG")
     env = dict(os.environ, OMP_THREAD_LIMIT="1")
-    r = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", str(psm), "tsv"],
+    r = _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", str(psm), "tsv"],
                        input=buf.getvalue(), capture_output=True, timeout=120, env=env)
     mots = []
     for ligne in r.stdout.decode("utf-8", "replace").splitlines()[1:]:
@@ -1475,7 +1588,7 @@ def _lire_chiffres(im, boite, clair=False, inverser=False):
     c = ImageOps.expand(c.resize((c.width * 3, c.height * 3)), border=30, fill=255)
     buf = io.BytesIO()
     c.save(buf, "PNG")
-    r = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "7", "-c",
+    r = _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "7", "-c",
                         "tessedit_char_whitelist=0123456789"], input=buf.getvalue(), capture_output=True, timeout=60,
                        env=dict(os.environ, OMP_THREAD_LIMIT="1"))
     t = r.stdout.decode("utf-8", "replace").strip()
@@ -1495,7 +1608,7 @@ def _lire_bande(im, boite, clair=False):
     c = ImageOps.expand(c.resize((c.width * 2, c.height * 2)), border=20, fill=255)
     buf = io.BytesIO()
     c.save(buf, "PNG")
-    r = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "7", "tsv"],
+    r = _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "7", "tsv"],
                        input=buf.getvalue(), capture_output=True, timeout=60, env=dict(os.environ, OMP_THREAD_LIMIT="1"))
     mots, confs = [], []
     for ligne in r.stdout.decode("utf-8", "replace").splitlines()[1:]:
@@ -1952,7 +2065,7 @@ def _bandes(im) -> str:
         bande = bande.resize((bande.width * 2, bande.height * 2))
         buf = io.BytesIO()
         bande.save(buf, "PNG")
-        t = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "7"], input=buf.getvalue(),
+        t = _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "7"], input=buf.getvalue(),
                            capture_output=True, timeout=60, env=env).stdout.decode("utf-8", "replace").strip()
         if t:
             lignes.append(t)
@@ -1968,7 +2081,8 @@ def _meilleure_lecture(texte: str) -> list[dict]:
         l = _numeros_suivis(analyser(t))
         return _combler(t, l) if _vraisemblable(l) else l
     meilleure, score = [], None
-    for lecteur in (ligne_a_ligne, _reparer_lignes, analyser_empile, analyser_ordinaux, analyser_nus, analyser_mot_appris):
+    for lecteur in (ligne_a_ligne, _reparer_lignes, analyser_empile, analyser_ordinaux, analyser_nus, analyser_mot_appris,
+                    analyser_numero_avant):
         try:
             l = lecteur(texte)
         except Exception as e:
@@ -2065,7 +2179,376 @@ def chapitres_par_noms(noms, numeros=None) -> list[dict]:
 
 
 
-_MOTS_SOMMAIRE = re.compile(r"(?i)sommaire|chapitre|chapter|kapitel|table|[ée]pisode|dossier|trick|contents|index|sc[eè]ne|partie|acte|round|le[cç]on|lesson|histoire|#\s?\d")
+# ---------------------------------------------------------------- Tomes sans sommaire : les pages d'ouverture des chapitres
+
+# Mention imprimée sur la page d'ouverture d'un chapitre : « CHAPITRE 36 », « #36 », « 88e punch », « Trick:166 », « 0333 »…
+_MOT_OUVERTURE = (r"(?:chap\w{0,5}|chapter|episode|trick|round|stage|nuit|lecon|lesson|level|acte|scene|histoire|partie|dossier|"
+                  r"punch|kill|mission|quart\w{0,6}|bataille|combat)")       # pas « ep », « match », « game »… : trop de faux dans les bulles
+_OUV_MOT_NUM = re.compile(r"\b" + _MOT_OUVERTURE + r"\s*[.:#]*\s*(?:n\s*)?0*(\d{1,4})\b")
+_OUV_DIESE = re.compile(r"#\s*0*(\d{1,4})\b")
+_OUV_NUM_MOT = re.compile(r"\b0*(\d{1,4})\s*(?:e|eme|er|re)?\s+" + _MOT_OUVERTURE + r"\b")
+_OUV_ZERO = re.compile(r"(?m)^\W*0(\d{3})\b")                  # « 0333 » en tête de ligne (Gantz)
+LONGUEUR_MIN = 4                                                # un chapitre fait au moins 4 images
+BUDGET_MODERNE = 80                                             # pages relues au lecteur moderne (2 s chacune) par tome, au plus
+
+
+def _mentions(texte: str, diese: bool = True) -> set:
+    """Numéros de chapitre annoncés sur une page (voir les motifs ci-dessus). diese=False : sans « #4 » (la lecture rapide de
+    tesseract en fabrique avec les textures du dessin ; seul le lecteur moderne est cru pour eux)."""
+    t = re.sub(r"[º°ª]", "e", texte or "")
+    t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode().lower()
+    out = set()
+    for motif in (_OUV_MOT_NUM, _OUV_DIESE, _OUV_NUM_MOT, _OUV_ZERO):
+        if motif is _OUV_DIESE and not diese:
+            continue
+        for m in motif.finditer(t):
+            # « chapitre 36 fin », « fin du chapitre 36 », « suite au chapitre 37 » : la fin d'un chapitre, ou une annonce
+            if re.match(r"\W{0,3}(?:-\s*)?(?:fin|end|suite)\b", t[m.end():m.end() + 12]) or \
+                    re.search(r"\b(?:fin|end|suite|prochain\w*)\W+(?:du|de|au|a|of)?\W*$", t[max(0, m.start() - 14):m.start()]):
+                continue
+            out.add(int(m.group(1)))
+    return {n for n in out if 0 < n < 5000}
+
+
+def _mentions_d_ouverture(texte: str, diese: bool = True) -> set:
+    """Mentions d'une page qui peut ouvrir un chapitre : une page qui en annonce trois ou plus est un sommaire ou une liste."""
+    m = _mentions(texte, diese)
+    return m if len(m) < 3 else set()
+
+
+def _image_reduite(octets: bytes, cote: int):
+    from PIL import Image
+    im = Image.open(io.BytesIO(octets))
+    im.draft("L", (cote, cote))                                 # JPEG décodé directement en petit : bien plus rapide
+    im = im.convert("L")
+    im.thumbnail((cote, cote))
+    return im
+
+
+def _texte_rapide(octets: bytes, moderne: bool = False) -> str:
+    """Texte d'une page entière, vite : tesseract en texte épars sur l'image réduite (0,3 s), ou le lecteur moderne (2 s, mais il lit
+    les titres stylisés : « 0333 » sur un dessin)."""
+    _avancer(octets)
+    if moderne:
+        reste = getattr(_LOCAL, "budget_moderne", None)
+        if reste is not None:
+            if reste <= 0:
+                return ""                                    # plafond atteint pour ce tome : le lecteur moderne n'est plus appelé
+            _LOCAL.budget_moderne = reste - 1
+        return _ocr_moderne(_image_reduite(octets, 1100)) or ""
+    buf = io.BytesIO()
+    _image_reduite(octets, 1500).save(buf, "PNG")
+    return _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "11"], input=buf.getvalue(), timeout=60,
+                env=dict(os.environ, OMP_THREAD_LIMIT="1")).stdout.decode("utf-8", "replace")
+
+
+def _empreinte(octets: bytes):
+    import numpy as np
+    return np.asarray(_image_reduite(octets, 96).resize((16, 24)), dtype=np.int16)
+
+
+def _separatrices(empreintes: dict) -> list:
+    """Pages de séparation : la même image revient plusieurs fois dans le tome, loin l'une de l'autre (page noire au logo de
+    Gantz avant chaque chapitre). Une page unie (blanche, noire) ne compte pas : elle est partout."""
+    import numpy as np
+    if len(empreintes) < 10:
+        return []
+    idx = sorted(empreintes)
+    a = np.stack([empreintes[i].ravel() for i in idx]).astype(np.int16)
+    unies = a.std(axis=1) < 6
+    seps = []
+    for k, i in enumerate(idx):
+        if unies[k]:
+            continue
+        d = np.abs(a - a[k]).mean(axis=1)                   # une ligne à la fois : peu de mémoire même pour 400 pages
+        semblables = [idx[j] for j in np.nonzero(d < 7)[0] if j != k and abs(idx[j] - i) >= LONGUEUR_MIN + 1]
+        if len(semblables) >= 2:
+            seps.append(i)
+    return [i for i in seps if i + 1 not in seps]            # deux pages de séparation de suite : l'ouverture suit la seconde
+
+
+def _longueur_min(nb_pages, depuis, nombre) -> int:
+    """Longueur minimale d'un chapitre : 4 images, ou 40 % de la longueur moyenne quand on sait combien de chapitres le tome
+    contient (un « 3 » lu dans une bulle à 5 pages d'un « 4 » ne fait pas deux chapitres)."""
+    if not nombre:
+        return LONGUEUR_MIN
+    return max(LONGUEUR_MIN, int(0.4 * (nb_pages - depuis) / nombre))
+
+
+def _chaine(vus: dict, attendus: list, nb_pages: int = None, long_min: int = LONGUEUR_MIN) -> list:
+    """Plus longue suite (page, numéro) de mentions qui montent ensemble : chapitres d'au moins LONGUEUR_MIN images, au plus 2
+    chapitres sautés d'une mention à la suivante. À longueur égale, les pages les plus tôt (la page d'ouverture, pas la fin du
+    chapitre qui rappelle son numéro). Le dernier chapitre du tome précédent n'est pas un filtre : il est parfois mal lu."""
+    permis = set(attendus) if attendus else None
+    occ = sorted((p, n) for p, ns in vus.items() for n in ns if (permis is None or n in permis)
+                 and (nb_pages is None or p <= nb_pages - LONGUEUR_MIN))      # un chapitre ne commence pas sur les dernières pages
+    meilleur = []                                            # (longueur, -somme des pages, précédent)
+    for j, (pj, nj) in enumerate(occ):
+        b = (1, -pj, None)
+        for i in range(j):
+            pi, ni = occ[i]
+            if ni < nj <= ni + 3 and long_min * (nj - ni) <= pj - pi <= 90 * (nj - ni):
+                c = (meilleur[i][0] + 1, meilleur[i][1] - pj, i)
+                if c[:2] > b[:2]:
+                    b = c
+        meilleur.append(b)
+    if not meilleur:
+        return []
+    j = max(range(len(occ)), key=lambda k: meilleur[k][:2])
+    sortie = []
+    while j is not None:
+        sortie.append(occ[j])
+        j = meilleur[j][2]
+    return sortie[::-1]
+
+
+def _reguliere(chaine: list) -> list:
+    """Retire de la suite (page, numéro) les mentions qui donneraient des chapitres de longueur aberrante (plus de 2,2 fois ou moins
+    de 0,4 fois la longueur habituelle) : une fin de chapitre qui rappelle son numéro, un numéro lu sur une page qui n'est pas
+    une ouverture. Le chapitre retiré sera cherché à nouveau, ou placé par estimation entre ses voisins."""
+    chaine = list(chaine)
+    while len(chaine) >= 4:
+        pas = [(b[0] - a[0]) / (b[1] - a[1]) for a, b in zip(chaine, chaine[1:])]
+        med = sorted(pas)[len(pas) // 2]
+        mauvais = [k for k, v in enumerate(pas) if v > 2.2 * med or v < 0.4 * med]
+        if not mauvais:
+            break
+        compte = Counter()
+        for k in mauvais:
+            compte[k] += 1
+            compte[k + 1] += 1
+        cible = max(compte, key=lambda k: (compte[k], k))   # celle qui gâche le plus de longueurs (à égalité : la plus tardive)
+        del chaine[cible]
+    return chaine
+
+
+def chapitres_par_ouvertures(lire_page, nb_pages: int, numeros=None, suite_de=None, depuis: int = 0) -> list[dict]:
+    """Tome sans sommaire lisible : chaque chapitre est retrouvé sur sa page d'ouverture, qui annonce son numéro (« CHAPITRE 36 »,
+    « #36 », « 88e punch », « 0333 »). Toutes les pages sont lues vite (tesseract, image réduite) ; les pages qui suivent une page
+    de séparation et les trous entre deux chapitres trouvés sont relus par le lecteur moderne. Les numéros imprimés font foi :
+    `numeros` (liste d'Internet) ne sert qu'à écarter le bruit quand elle vaut pour cette édition ; vide, seuls comptent les numéros
+    qui se suivent. Un chapitre annoncé mais introuvable entre deux chapitres trouvés est placé par estimation (« estimee »)."""
+    attendus = sorted({int(n) for n in numeros or [] if float(n).is_integer()})
+    _LOCAL.phase = "Pas de sommaire : recherche des pages d'ouverture des chapitres"
+    try:
+        return _ouvertures(lire_page, nb_pages, attendus, suite_de, depuis)
+    finally:
+        _LOCAL.phase = None
+
+
+def _lire_mentions(lire_page, nb_pages, depuis):
+    """Toutes les images du tome lues vite : ({image: numéros annoncés}, {image: empreinte})."""
+    vus, empreintes = {}, {}
+    for i in range(depuis, nb_pages):
+        try:
+            octets = lire_page(i)
+            empreintes[i] = _empreinte(octets)
+            vus[i] = _mentions_d_ouverture(_texte_rapide(octets), diese=False)
+        except Exception as e:
+            logger.info("Pages d'ouverture, image %d : %s", i, e.__class__.__name__)
+    return vus, empreintes
+
+
+def _ouvertures(lire_page, nb_pages, attendus, suite_de, depuis):
+    vus, empreintes = _lire_mentions(lire_page, nb_pages, depuis)
+    chaine = _reguliere(_chaine(vus, attendus, nb_pages, _longueur_min(nb_pages, depuis, len(attendus))))
+    relire = {s + 1 for s in _separatrices(empreintes) if s + 1 < nb_pages}
+    longueur = 20                                            # longueur habituelle d'un chapitre (en images)
+    if len(chaine) >= 2:
+        longueur = max(8, sorted(b[0] - a[0] for a, b in zip(chaine, chaine[1:]))[(len(chaine) - 1) // 2])
+    elif attendus:
+        longueur = max(8, (nb_pages - depuis) // max(1, len(attendus)))
+    fenetres = []                                            # endroits où un chapitre manque : relus par le lecteur moderne
+    if chaine:
+        for (pa, na), (pb, nb) in zip(chaine, chaine[1:]):
+            if nb - na > 1:
+                fenetres.append((pa + LONGUEUR_MIN, pb - LONGUEUR_MIN + 1))
+        debut_libre = chaine[0][0] - depuis >= 1.5 * longueur and (suite_de is None or chaine[0][1] > suite_de + 1)
+        if any(n < chaine[0][1] for n in attendus) or (not attendus and debut_libre):
+            fenetres.append((depuis, chaine[0][0] - LONGUEUR_MIN + 1))
+        if any(n > chaine[-1][1] for n in attendus) or (not attendus and nb_pages - chaine[-1][0] >= 1.5 * longueur):
+            fenetres.append((chaine[-1][0] + LONGUEUR_MIN, nb_pages))
+    elif attendus:                                           # chapitres annoncés, aucun trouvé : tout le tome
+        fenetres.append((depuis, nb_pages))
+    ordre = sorted(relire)                                   # pages après une séparation, puis les trous, puis avant / après
+    for a, b in fenetres:
+        ordre += [i for i in range(max(depuis, a), min(nb_pages, b)) if i not in ordre]
+    relire = ordre
+    if relire and _moteur() is not None:
+        for i in relire:
+            try:
+                vus[i] = vus.get(i, set()) | _mentions_d_ouverture(_texte_rapide(lire_page(i), moderne=True))
+            except Exception as e:
+                logger.info("Pages d'ouverture (lecteur moderne), image %d : %s", i, e.__class__.__name__)
+        chaine = _reguliere(_chaine(vus, attendus, nb_pages, _longueur_min(nb_pages, depuis, len(attendus))))
+    if len(chaine) < 2 or (not attendus and len(chaine) < 3 and not (suite_de is not None and chaine[0][1] == suite_de + 1)):
+        return []
+    sortie = [{"num": float(n), "titre": "", "page": p + 1, "image": p} for p, n in chaine]
+    complet = []                                             # chapitres annoncés entre deux trouvés : place estimée
+    for a, b in zip(sortie, sortie[1:] + [None]):
+        complet.append(a)
+        if b is None:
+            continue
+        absents = [n for n in (attendus or range(int(a["num"]) + 1, int(b["num"]))) if a["num"] < n < b["num"]]
+        pas = (b["image"] - a["image"]) / (len(absents) + 1)
+        if absents and pas >= LONGUEUR_MIN * 2:
+            for k, n in enumerate(absents, 1):
+                im = round(a["image"] + pas * k)
+                complet.append({"num": float(n), "titre": "", "page": im + 1, "image": im, "estimee": True})
+    return complet
+
+
+def _trouver_ouverture(n: int, pages, lire_page):
+    """Première image (dans l'ordre donné) qui annonce le chapitre n : lecture rapide d'abord, puis le lecteur moderne (les petits
+    en-têtes stylisés : « 450e épisode » de Naruto, « 90e punch »). None si aucune."""
+    pages = list(pages)
+    for moderne in (False, True):
+        if moderne and _moteur() is None:
+            break
+        for i in pages:
+            try:
+                if n in _mentions_d_ouverture(_texte_rapide(lire_page(i), moderne=moderne), diese=moderne):
+                    return i
+            except Exception:
+                continue
+    return None
+
+
+def _verifier_leger(chapitres, lire_page) -> bool:
+    """Chaque chapitre placé est cherché sur sa propre page (lecture rapide, une page par chapitre). Rend True si un chapitre au
+    moins n'y annonce pas son numéro (20th Century Boys 1 : chapitre 2 placé image 34, « CHAPITRE 2 AU KARAOKÉ » est image 40 ;
+    tous les chapitres de ce tome étaient décalés) : la vérification complète est alors faite. Tous confirmés : rien à faire."""
+    nums = [(c["image"], int(c["num"])) for c in chapitres
+            if c.get("image") is not None and c.get("num") is not None and float(c["num"]).is_integer()]
+    if len(nums) < 3:
+        return False
+    vus = 0
+    for image, n in nums:
+        try:
+            vus += n in _mentions_d_ouverture(_texte_rapide(lire_page(image)), diese=False)
+        except Exception:
+            continue
+    return vus < len(nums)
+
+
+def _a_verifier(chapitres, nb_pages) -> bool:
+    """Placement douteux : une page estimée ou sans image, ou des chapitres de longueurs incohérentes (One-Punch Man 18 : le
+    sommaire imprimé annonce « Limiteurs … 25 », le chapitre commence page 52 ; le dernier chapitre ferait alors 140 pages)."""
+    if any(c.get("estimee") or c.get("image") is None for c in chapitres):
+        return True
+    images = [c["image"] for c in chapitres]
+    longueurs = [b - a for a, b in zip(images, images[1:])]
+    if not longueurs:
+        return False
+    med = sorted(longueurs)[len(longueurs) // 2]
+    return any(l > 2.5 * med + 4 for l in longueurs) or nb_pages - images[-1] > 3 * med + 12
+
+
+def _verifier_par_ouvertures(chapitres, lire_page, nb_pages, page_sommaire, douteux=True) -> int:
+    """Placement douteux (voir _a_verifier) : toutes les images du tome sont lues vite et chaque chapitre dont la page d'ouverture
+    annonce le numéro y est placé (elle fait foi sur le sommaire imprimé et sur l'estimation). Rend le nombre de chapitres recalés.
+    douteux=False : les longueurs des chapitres étaient cohérentes (seule une page d'ouverture n'annonçait pas son numéro) ; un
+    chapitre placé d'après le sommaire n'est alors déplacé loin que si d'autres le sont d'autant (tome entier décalé)."""
+    nums = [int(c["num"]) for c in chapitres if c.get("num") is not None and float(c["num"]).is_integer()]
+    if len(nums) < 2:
+        return 0
+    _LOCAL.phase = "Vérification des chapitres sur leurs pages d'ouverture"
+    try:
+        vus, _ = _lire_mentions(lire_page, nb_pages, (page_sommaire if page_sommaire is not None else 0) + 1)
+    finally:
+        _LOCAL.phase = None
+    long_min = _longueur_min(nb_pages, (page_sommaire if page_sommaire is not None else 0) + 1, len(nums))
+    chaine = dict((n, p) for p, n in _reguliere(_chaine(vus, nums, nb_pages, long_min)))
+    if len(chaine) < 2:
+        return 0
+    avant_verif = [dict(c) for c in chapitres]
+    numero = lambda c: int(c["num"]) if c.get("num") is not None and float(c["num"]).is_integer() else None
+    debut = (page_sommaire if page_sommaire is not None else 0) + 1
+    for k, c in enumerate(chapitres):                        # pas annoncé à la lecture rapide : le lecteur moderne, entre ses voisins sûrs
+        n = numero(c)
+        if n is None or n in chaine:
+            continue
+        avant = max((chaine[numero(x)] for x in chapitres[:k] if numero(x) in chaine), default=debut - long_min)
+        apres = min((chaine[numero(x)] for x in chapitres[k + 1:] if numero(x) in chaine), default=nb_pages + long_min - 1)
+        bas, haut = max(debut, avant + long_min), min(nb_pages, apres - long_min + 1)
+        if c.get("image") is not None:                       # près de la place actuelle (souvent juste à quelques pages près)
+            bas, haut = max(bas, c["image"] - 6), min(haut, c["image"] + 9)
+        fenetre = range(bas, min(haut, bas + 40))
+        trouve = _trouver_ouverture(n, fenetre, lire_page)
+        if trouve is not None:
+            chaine[n] = trouve
+    if not douteux:
+        # Sommaire cohérent : un numéro lu ailleurs, seul de son espèce (« 52 » lu sur la page d'ouverture du 53 d'Akame ga Kill ! 11,
+        # « 4 » au milieu du chapitre 2 de Detective Conan 1), ne déplace pas un chapitre placé d'après le sommaire. Seul un
+        # décalage partagé par un autre chapitre compte : même sens et du même ordre (20th Century Boys 1 : tous décalés de
+        # quelques pages ; Air Gear 5 : décalage qui grandit au fil du tome, −7, −11, −13… −23).
+        ecarts = {numero(c): chaine[numero(c)] - c["image"] for c in chapitres
+                  if numero(c) in chaine and not c.get("estimee") and c.get("image") is not None}
+        semblables = lambda d, e: e * d > 0 and max(abs(d), abs(e)) <= 3.5 * min(abs(d), abs(e)) + 2
+        for n, d in list(ecarts.items()):
+            if abs(d) > 2 and not any(m != n and semblables(d, e) for m, e in ecarts.items()):
+                chaine.pop(n)
+        # Tous décalés pareil et de peu (+2, +2, +3, +2) : le numéro est imprimé 2 ou 3 pages après le vrai début du chapitre (page
+        # de titre illustrée, Akame ga Kill ! 9) ; le sommaire fait foi pour tous, comme pour un écart de 1 ou 2 pages.
+        reste = sorted(d for n, d in ecarts.items() if n in chaine)
+        if len(reste) >= 3 and reste[-1] - reste[0] <= 2 and abs(reste[len(reste) // 2]) <= 3:
+            for n in [n for n in ecarts if n in chaine]:
+                chaine.pop(n)
+    recales = 0
+    for c in chapitres:
+        n = numero(c)
+        if n not in chaine:
+            continue
+        if not c.get("estimee") and c.get("image") is not None and 0 < abs(c["image"] - chaine[n]) <= 2:
+            chaine.pop(n)        # placé d'après le sommaire, à 1 ou 2 pages : une annonce du chapitre suivant à la fin du précédent
+            continue             # (« prochain chapitre… ») tomberait juste avant ; la place lue reste
+        if c.get("image") != chaine[n] or c.get("estimee"):
+            recales += 1
+        c["image"] = chaine[n]
+        c.pop("estimee", None)
+    # un chapitre non confirmé trop près de ses voisins confirmés (un chapitre de 4 pages) : sa place est estimée entre eux
+    for k, c in enumerate(chapitres):
+        if numero(c) in chaine:
+            continue
+        avant = max((x["image"] for x in chapitres[:k] if x.get("image") is not None), default=-1)
+        apres = min((x["image"] for x in chapitres[k + 1:] if x.get("image") is not None), default=nb_pages)
+        if c.get("image") is None or not avant + LONGUEUR_MIN <= c["image"] <= apres - LONGUEUR_MIN:
+            c["image"] = (avant + apres) // 2 if apres - avant >= 2 * LONGUEUR_MIN else None
+            c["estimee"] = True
+    # jamais pire qu'avant : chapitres dans l'ordre, aucune place perdue, aucun chapitre trop court ; sinon on garde la lecture
+    images = [c.get("image") for c in chapitres]
+    perdues = sum(1 for c in chapitres if c.get("image") is None) > sum(1 for c in avant_verif if c.get("image") is None)
+    courts = lambda ims: sum(1 for a, b in zip(ims, ims[1:]) if b - a < long_min)
+    places = [im for im in images if im is not None]
+    places_avant = [c.get("image") for c in avant_verif if c.get("image") is not None]
+    if perdues or places != sorted(places) or courts(places) > courts(places_avant):
+        logger.info("Vérification par les pages d'ouverture écartée : placement peu plausible")
+        for c, a in zip(chapitres, avant_verif):
+            c.clear()
+            c.update(a)
+        return 0
+    return recales
+
+
+def _confirmer_ouvertures(chapitres, lire_page, nb_pages, page_sommaire) -> int:
+    """Chapitres placés par estimation (page du sommaire mal lue) : leur page d'ouverture est cherchée autour, d'après le numéro
+    qu'elle annonce ; trouvée, la place est sûre (plus « estimee »). Rend le nombre de chapitres confirmés."""
+    confirmes = 0
+    for k, c in enumerate(chapitres):
+        if not c.get("estimee") or c.get("num") is None or not float(c["num"]).is_integer() or c.get("image") is None:
+            continue
+        bas = max((chapitres[k - 1].get("image") or -1) + LONGUEUR_MIN if k else 0, (page_sommaire or 0) + 1, c["image"] - 5)
+        haut = min((chapitres[k + 1].get("image") or nb_pages) - LONGUEUR_MIN + 1 if k + 1 < len(chapitres) else nb_pages,
+                   c["image"] + 7, nb_pages)
+        trouve = _trouver_ouverture(int(c["num"]), sorted(range(bas, haut), key=lambda j: abs(j - c["image"])), lire_page)
+        if trouve is not None:
+            c["image"] = trouve
+            c.pop("estimee", None)
+            confirmes += 1
+    return confirmes
+
+
+_MOTS_SOMMAIRE = re.compile(r"(?i)sommaire|contents|chapitre|chapter|kapitel|table|[ée]pisode|dossier|trick|contents|index|sc[eè]ne|partie|acte|round|le[cç]on|lesson|histoire|#\s?\d")
 
 
 def _recit(texte: str) -> bool:
@@ -2077,7 +2560,7 @@ def _recit(texte: str) -> bool:
     return len(re.findall(r"[^\W\d_]{3,}", texte or "")) >= 25 and finissent < 3
 
 
-def _lire_avec(mode, vision, chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
+def _lire_avec(mode, vision, chemin, lire_page, nb_pages, noms=None, numeros=None, placer=True) -> dict:
     """{"chapitres": [{"num", "titre", "page" (imprimée), "image" (position dans le fichier ou None)}], "page_sommaire"}
     lire_page(i) → octets de l'image i. Sans sommaire trouvé : chapitres vide."""
     _LOCAL.mode = mode                                       # « tesseract » ou « moderne » : le lecteur de texte de cette lecture
@@ -2160,7 +2643,8 @@ def _lire_avec(mode, vision, chemin, lire_page, nb_pages, noms=None, numeros=Non
             for lecteur in (analyser_empile,                 # « Épisode 1 » / titre / « 005 » sur trois lignes
                             analyser_ordinaux,               # « PREMIER PRÉCEPTE : … 5 »
                             analyser_nus,                    # « 01 LE GRIM REAPER 001 »
-                            analyser_mot_appris):            # « 2e Quart-temps : Lundi … 063 »
+                            analyser_mot_appris,             # « 2e Quart-temps : Lundi … 063 »
+                            analyser_numero_avant):          # « 88º punch » / « Port de monstre 7 »
                 try:
                     essai = lecteur(textes[i])
                 except Exception as e:
@@ -2308,6 +2792,16 @@ def _lire_avec(mode, vision, chemin, lire_page, nb_pages, noms=None, numeros=Non
                 c["titre"] = titres[c["num"]]
         return {"chapitres": par_noms, "page_sommaire": page_sommaire, "decalage": None, "source": "noms des images",
                 **({"isbn": isbn} if isbn else {})}
+    if not placer:                                           # la place des chapitres se cherche une seule fois, sur la meilleure lecture
+        return {"chapitres": trouve, "page_sommaire": page_sommaire, "decalage": None, "_a_placer": True, "_textes": textes,
+                "_paysages": paysages, "_mode": mode, **({"isbn": isbn} if isbn else {})}
+    trouve, decalage = _placer(trouve, page_sommaire, textes, paysages, lire_page, nb_pages, noms)
+    return {"chapitres": trouve, "page_sommaire": page_sommaire, "decalage": decalage, **({"isbn": isbn} if isbn else {})}
+
+
+def _placer(trouve, page_sommaire, textes, paysages, lire_page, nb_pages, noms):
+    """Image où commence chaque chapitre lu dans le sommaire (voir _images) ; rend (chapitres, décalage du 1er)."""
+    paysages = list(paysages)
     for k in (10, 20, 30, 40, 50):                           # sommaire trouvé tôt : quelques images de plus pour juger
         if len(paysages) >= 8 or k >= nb_pages:
             break
@@ -2328,7 +2822,7 @@ def _lire_avec(mode, vision, chemin, lire_page, nb_pages, noms=None, numeros=Non
         images, decalage = _images(trouve, textes, page_sommaire, lire_page, nb_pages, noms)
     for c, image in zip(trouve, images):
         c["image"] = image if image is not None and image < nb_pages else None
-    return {"chapitres": trouve, "page_sommaire": page_sommaire, "decalage": decalage, **({"isbn": isbn} if isbn else {})}
+    return trouve, decalage
 
 
 def _qualite(r, numeros) -> tuple:
@@ -2339,29 +2833,77 @@ def _qualite(r, numeros) -> tuple:
     return (ecart, len(ch) - 0.5 * sum(1 for c in ch if c.get("estimee")))
 
 
-def lire(chemin, lire_page, nb_pages, noms=None, numeros=None) -> dict:
+def lire(chemin, lire_page, nb_pages, noms=None, numeros=None, suite_de=None) -> dict:
     """Lit le sommaire avec les deux lecteurs de texte (tesseract, réglé pendant des semaines sur les cas de la
     bibliothèque, et le lecteur moderne, bien meilleur sur les titres stylisés, en couleur ou sur fond chargé) et garde
-    le meilleur résultat ; à égalité, celui de tesseract. L'analyse d'image de Claude (clé payante) n'est tentée
-    qu'une fois, si aucun des deux n'a rien trouvé."""
+    le meilleur résultat ; à égalité, celui de tesseract. La place des chapitres n'est cherchée qu'une fois, pour la lecture
+    gardée. Sans sommaire, les pages d'ouverture des chapitres sont cherchées dans le tome lui-même (voir
+    chapitres_par_ouvertures). L'analyse d'image de Claude (clé payante) n'est tentée qu'en tout dernier.
+    numeros : chapitres que le tome contient d'après Internet, [] si on ne sait pas (édition spéciale : seuls comptent les numéros
+    imprimés) ; suite_de : dernier chapitre du tome précédent."""
+    _LOCAL.memo = {}                                          # lectures faites pour ce tome : jamais refaites (voir _run)
+    _LOCAL.budget_moderne = BUDGET_MODERNE
+    try:
+        return _lire_tome(chemin, _pages_en_memoire(lire_page), nb_pages, noms, numeros or [], suite_de)
+    finally:
+        _LOCAL.memo = None
+        _LOCAL.budget_moderne = None
+        _LOCAL.mode = "tesseract"                           # les autres lectures du fil (ISBN…) restent comme avant
+
+
+def _complet_et_sur(chapitres, numeros) -> bool:
+    """Lecture qu'un second lecteur de texte ne peut pas améliorer : aucune page estimée et, si on connaît les chapitres du tome,
+    tous lus ; sinon au moins 3 chapitres qui se suivent sans trou."""
+    if not chapitres or any(c.get("estimee") for c in chapitres):
+        return False
+    if numeros:
+        return len(chapitres) >= len(numeros)
+    nums = [c.get("num") for c in chapitres]
+    return len(nums) >= 3 and None not in nums and all(b - a == 1 for a, b in zip(nums, nums[1:]) if a == int(a) and b == int(b))
+
+
+def _lire_tome(chemin, lire_page, nb_pages, noms=None, numeros=None, suite_de=None) -> dict:
     tesseract = shutil.which("tesseract") is not None
     moderne = _moteur() is not None
     modes = [m for m, ok in (("tesseract", tesseract), ("moderne", moderne)) if ok] or ["tesseract"]
     meilleur = None
     for mode in modes:
         try:
-            r = _lire_avec(mode, False, chemin, lire_page, nb_pages, noms, numeros)
+            r = _lire_avec(mode, False, chemin, lire_page, nb_pages, noms, numeros, placer=False)
         except Exception as e:
             logger.info("Sommaire de %s (%s) : %s", chemin, mode, e.__class__.__name__)
             continue
         if meilleur is None or _qualite(r, numeros) > _qualite(meilleur, numeros):
             meilleur = r
-        ch = meilleur.get("chapitres") or []
-        if ch and numeros and len(ch) >= len(numeros) and not any(c.get("estimee") for c in ch):
+        if _complet_et_sur(meilleur.get("chapitres"), numeros):
             break                                            # complet et sûr : inutile de relire avec l'autre lecteur
-    _LOCAL.mode = "tesseract"                               # les autres lectures du fil (ISBN…) restent comme avant
     if meilleur is None:
         raise RuntimeError("lecture impossible")
+    if meilleur.pop("_a_placer", False):
+        _LOCAL.mode = meilleur["_mode"]                      # les pages déjà lues par ce lecteur servent à placer les chapitres
+        meilleur["chapitres"], meilleur["decalage"] = _placer(meilleur["chapitres"], meilleur["page_sommaire"], meilleur["_textes"],
+                                                              meilleur["_paysages"], lire_page, nb_pages, noms)
+    for cle in ("_textes", "_paysages", "_mode"):
+        meilleur.pop(cle, None)
+    _LOCAL.mode = "tesseract"
+    if meilleur.get("chapitres") and meilleur.get("source") != "noms des images":
+        try:                                                 # pages estimées : la page d'ouverture qui annonce le chapitre tranche
+            _confirmer_ouvertures(meilleur["chapitres"], lire_page, nb_pages, meilleur.get("page_sommaire"))
+            douteux = _a_verifier(meilleur["chapitres"], nb_pages)
+            if douteux or _verifier_leger(meilleur["chapitres"], lire_page):
+                # encore douteux : toutes les pages d'ouverture
+                _verifier_par_ouvertures(meilleur["chapitres"], lire_page, nb_pages, meilleur.get("page_sommaire"), douteux)
+        except Exception as e:
+            logger.info("Sommaire de %s (ouvertures à confirmer) : %s", chemin, e.__class__.__name__)
+    if not meilleur.get("chapitres"):
+        try:                                                 # pas de sommaire : les pages d'ouverture des chapitres
+            ouv = chapitres_par_ouvertures(lire_page, nb_pages, numeros, suite_de)
+        except Exception as e:
+            logger.info("Sommaire de %s (pages d'ouverture) : %s", chemin, e.__class__.__name__)
+            ouv = []
+        if ouv:
+            meilleur = {"chapitres": ouv, "page_sommaire": None, "decalage": None, "source": "pages d'ouverture",
+                        **({"isbn": meilleur["isbn"]} if meilleur.get("isbn") else {})}
     if not meilleur.get("chapitres") and cle_claude():
         try:
             return lire_vision(lire_page, nb_pages, cle_claude())
@@ -2437,7 +2979,7 @@ def numero_imprime(image_octets: bytes) -> int | None:
         bande = ImageOps.expand(bande.resize((bande.width * 2, bande.height * 2)), border=20, fill=255)
         buf = io.BytesIO()
         bande.save(buf, "PNG")
-        r = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "7",
+        r = _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", "7",
                             "-c", "tessedit_char_whitelist=0123456789"], input=buf.getvalue(), capture_output=True,
                            timeout=60, env=env)
         t = r.stdout.decode("utf-8", "replace").strip()
@@ -2524,8 +3066,21 @@ def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=N
                 if decalage is None:
                     decalage = ecart
                 continue
+        lu_d_abord = None
+        if par_nom is None and lire_page is not None and not c.get("estimee"):
+            # le numéro imprimé en bas des pages autour de l'estimation d'abord : il coûte bien moins cher que chercher le titre
+            # sur des pages entières, et c'est lui qui tranchait de toute façon (voir plus bas). Pas pour une page de sommaire
+            # estimée : seul le titre retrouvé sur la page d'ouverture dit alors où est le chapitre.
+            estimation = c["page"] + (ecart if ecart is not None else 1)
+            lu_d_abord = _ecart_imprime(lire_page, nb_pages, c["page"], estimation, page_sommaire)
+            if lu_d_abord is not None and (glob is not None and abs(lu_d_abord - glob) > 2 or
+                                           not (0 <= c["page"] + lu_d_abord < (nb_pages or 10 ** 6)
+                                                and c["page"] + lu_d_abord > max(page_sommaire, precedente))):
+                lu_d_abord = None
         if par_nom is not None:
             image = par_nom             # essayé : ajuster sur le titre des pages voisines accorde moins (23/45 contre 29/45)
+        elif lu_d_abord is not None:
+            image = c["page"] + lu_d_abord
         else:
             if ecart is None:
                 plage = sorted(textes) if (k == 0 and lire_page is None) else range(c["page"] - 2, c["page"] + 11)
@@ -2538,7 +3093,9 @@ def _images(chapitres, textes, page_sommaire, lire_page=None, nb_pages=0, noms=N
             if image is None and k == 0:                     # aucun titre lu : numéro du fichier en dernier recours
                 e = _decalage_par_nom(c["page"], noms, page_sommaire)
                 image = c["page"] + e if e is not None else None
-        if image is not None and lire_page is not None:
+        if lu_d_abord is not None:
+            confirme[k] = lu_d_abord
+        elif image is not None and lire_page is not None:
             ecart_lu = _ecart_imprime(lire_page, nb_pages, c["page"], image, page_sommaire)   # le numéro imprimé tranche
             if glob is not None and ecart_lu is not None and abs(ecart_lu - glob) > 2:
                 ecart_lu = None                              # numéro mal lu : une double page décale de 1 ou 2, pas plus
@@ -2602,7 +3159,7 @@ def occupation():
     return sum(1 for e in v if e.get("en_cours")) - attente, attente
 
 
-def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer, noms=None, numeros=None, urgent=False):
+def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer, noms=None, numeros=None, urgent=False, suite_de=None):
     """Lit le sommaire en arrière-plan ; enregistrer(resultat) le garde. Renvoie False si déjà en cours.
     urgent : demandé par la personne (fiche ouverte, bouton) : passe devant la file des lectures de fond."""
     cle = (serie, int(tome))
@@ -2620,7 +3177,7 @@ def lancer(serie, tome, chemin, lire_page, nb_pages, enregistrer, noms=None, num
         _LOCAL.cle = cle
         try:
             try:
-                r = lire(chemin, lire_page, nb_pages, noms, numeros)
+                r = lire(chemin, lire_page, nb_pages, noms, numeros, suite_de)
                 r["date"] = time.strftime("%Y-%m-%d")
                 r["version"] = VERSION
                 enregistrer(r)
@@ -2745,7 +3302,7 @@ def _pastilles(image_octets: bytes, inverse: bool = False) -> list[dict]:
         cmd = ["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", str(psm)]
         if liste_blanche:
             cmd += ["-c", "tessedit_char_whitelist=" + liste_blanche]
-        return subprocess.run(cmd, input=buf.getvalue(), capture_output=True, timeout=60,
+        return _run(cmd, input=buf.getvalue(), capture_output=True, timeout=60,
                               env=dict(os.environ, OMP_THREAD_LIMIT="1")).stdout.decode("utf-8", "replace").strip()
     lignes = []
     for r0, r1 in rangs:
@@ -3068,7 +3625,7 @@ def _feuille_barres(image_octets: bytes) -> list[dict]:
             img.save(buf, "PNG")
             for psm in (7, 13):
                 try:
-                    t = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", str(psm)],
+                    t = _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", str(psm)],
                                        input=buf.getvalue(), capture_output=True, timeout=60,
                                        env=dict(os.environ, OMP_THREAD_LIMIT="1")).stdout.decode("utf-8", "replace")
                 except Exception:
@@ -3118,7 +3675,7 @@ def _feuille_lignes(image_octets: bytes) -> list[dict]:
         buf = io.BytesIO()
         propre.save(buf, "PNG")
         for psm in (6, 4):
-            texte = subprocess.run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", str(psm)],
+            texte = _run(["nice", "-n", "10", "tesseract", "stdin", "stdout", "-l", "fra", "--psm", str(psm)],
                                    input=buf.getvalue(), capture_output=True, timeout=90,
                                    env=dict(os.environ, OMP_THREAD_LIMIT="1")).stdout.decode("utf-8", "replace")
             if re.search(r"(?i)inter-?\s*classe", texte):

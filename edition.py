@@ -30,9 +30,14 @@ def lire(dossier: Path) -> dict:
         return {}
 
 
+# Lire, modifier puis réécrire le fichier d'infos d'une série se fait sous ce verrou quand plusieurs tâches peuvent y toucher en même
+# temps (lecture des sommaires en fond, validation à la main, assemblage) : sinon la seconde écriture efface la première.
+VERROU = threading.RLock()
+
+
 def ecrire(dossier: Path, d: dict):
     f = Path(dossier) / FICHIER
-    tmp = f.with_name(f.name + ".tmp")
+    tmp = f.with_name(f"{f.name}.{os.getpid()}.{threading.get_ident()}.tmp")       # un fichier provisoire par tâche
     tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, f)
 
