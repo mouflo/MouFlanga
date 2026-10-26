@@ -11,11 +11,9 @@ MAX_TORRENTS = 40
 
 
 def tomes_couverts(r: dict, attendus) -> set:
-    """Tomes qu'un résultat apporte d'après son nom ; une intégrale sans numéros couvre tous les tomes attendus (si on les connaît)."""
-    t = suivi.tomes_du_titre(r.get("titre") or "")
-    if not t and "Intégrale" in (r.get("badges") or []) and attendus:
-        t = set(range(1, int(attendus) + 1))
-    return t
+    """Tomes qu'un résultat apporte d'après son nom ; une intégrale sans numéros couvre les tomes 1 à N (N dans son nom, sinon les
+    tomes attendus de la série). Même règle que la surveillance (`suivi.tomes_couverts`)."""
+    return suivi.tomes_couverts(r, attendus)
 
 
 def plan(resultats: list, possedes: set, attendus=None, info=None) -> dict:

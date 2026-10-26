@@ -4380,6 +4380,7 @@ def _infos_suivi(nom):
                 if str(k).isdigit() and str(v.get("origine") or "").startswith("Torrent : ")}
     scores = {tome: regles.score_titre(titre, nom) for tome, titre in origines.items()} if profil else {}
     return {"tomes": t, "source": source, "complete": complete, "en_cours": en_cours, "tomes_en_cours": tomes_en_cours,
+            "attendus": attendus or _volumes_attendus(nom),       # série encore vide : nombre de tomes d'AniList (série finie)
             "deja_pris": torrents.deja_pris(), "equipe": equipe, "equipe_tomes": equipe_tomes,
             "profil": profil is not None, "scores_tomes": scores, "arret": (profil or {}).get("score_arret"),
             "sources_tomes": d.get("sources_tomes") or {}}
@@ -4725,9 +4726,10 @@ def _annoter_possession(resultats, requete, serie=""):
         nom = next((n for n in _scan() if n != "(Sans série)" and regles._cle(n) == cle), None)
         if not nom:
             return None
-        possedes = _infos_suivi(nom)["tomes"]
+        i = _infos_suivi(nom)
+        possedes = i["tomes"]
         for x in resultats:
-            t = suivi.tomes_du_titre(x["titre"])
+            t = suivi.tomes_couverts(x, i.get("attendus"))
             if t:
                 x["tomes"], x["nouveaux"] = sorted(t), sorted(t - possedes)
                 x["deja"] = not x["nouveaux"]
@@ -4768,7 +4770,7 @@ def api_torrents_auto():
     info = _infos_suivi(nom)
     if info["en_cours"]:
         return jsonify({"ok": True, "torrents": [], "message": "Un téléchargement de toute la série (intégrale) est déjà en cours : attends qu'il soit fini ou raté."})
-    attendus = _volumes_attendus(nom) if _scan().get(nom) else None
+    attendus = info["attendus"]                     # aussi pour une série encore vide (AniList) : une intégrale peut tout apporter
     titres = list(dict.fromkeys([nom] + (suivi.lire()["series"].get(nom, {}).get("titres") or [])))[:2]
     resultats, vus = [], set()
     try:

@@ -118,6 +118,23 @@ def tomes_du_titre(titre: str) -> set:
     return {int(x) for x in re.findall(r"\b(?:t|tome|vol\.?|volume)\s?\.?\s?(\d{1,3})\b", t) if int(x) <= 300}
 
 
+def tomes_couverts(r: dict, attendus=None) -> set:
+    """Tomes qu'apporte un torrent : ceux que son nom annonce (« T01-T14 ») ; une intégrale qui ne les numérote pas (« Noritaka intégrale
+    18 tomes », « Toriko [INTEGRALE] ») apporte les tomes 1 à N, N lu dans son nom ou, à défaut, le nombre de tomes connu de la série."""
+    titre = r.get("titre") or ""
+    t = tomes_du_titre(titre)
+    if t:
+        return t
+    integrale = "Intégrale" in (r.get("badges") or []) or bool(re.search(r"int[ée]grale|\bcomplete\b", titre, re.I))
+    n = None
+    if integrale or re.search(r"\d\s*tomes\b", titre, re.I):
+        import edition
+        n = edition.volumes_du_titre(titre)
+    if not n and integrale and attendus:
+        n = int(attendus)
+    return set(range(1, n + 1)) if n and 1 < n <= 300 else set()
+
+
 def choisir(candidats, cle) -> list:
     """Un seul torrent par tome, comme Sonarr. candidats : [(résultat, tomes utiles)] ; on prend à chaque fois le meilleur d'après
     `cle(résultat, tomes encore à couvrir)`, puis on retire ses tomes des autres. Renvoie [(résultat, tomes qu'il apporte)]."""
@@ -145,7 +162,8 @@ def cle_torrent(r: dict, utiles: set, couverts=None) -> tuple:
 
 def propositions_pour(nom, info, resultats, deja):
     """info : {"tomes": set des tomes présents, "source": « Scan »…, "qualite": visée, "equipe": équipe principale,
-    "equipe_tomes": {tome: équipe}, "tomes_en_cours": tomes déjà en téléchargement, "deja_pris": torrents déjà envoyés}.
+    "equipe_tomes": {tome: équipe}, "tomes_en_cours": tomes déjà en téléchargement, "deja_pris": torrents déjà envoyés,
+    "attendus": nombre de tomes de la série s'il est connu (une intégrale sans numéros apporte alors les tomes 1 à N)}.
     deja : noms de torrents à ne plus proposer. Renvoie les propositions, un seul torrent par tome (le meilleur d'après le profil,
     la MÊME ÉQUIPE en premier ⭐), au plus MAX_PROPOSITIONS."""
     import provenance
@@ -163,7 +181,7 @@ def propositions_pour(nom, info, resultats, deja):
     for r in resultats:
         if r["titre"] in exclus or r.get("rejet") or ("🇫🇷 FR" not in r["badges"] and not r.get("profil")):
             continue
-        couverts = tomes_du_titre(r["titre"])
+        couverts = tomes_couverts(r, info.get("attendus"))
         couverts_de[id(r)] = couverts
         manquants = couverts - possedes
         la = (couverts & presents) - en_cours

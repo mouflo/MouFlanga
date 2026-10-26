@@ -50,6 +50,19 @@ class UnSeulChoixParTome(unittest.TestCase):
         self.assertEqual(sorted(x["titre"] for x in suivi.propositions_pour("Kaf", i, res, [])), ["Kaf.T30.FR", "Kaf.T31.FR"])
         self.assertEqual([x["titre"] for x in suivi.propositions_pour("Kaf", i, res[:2], [])], ["Kaf.T30.FR", "Kaf.T01-T32.FR"])
 
+    def test_serie_finie_ajoutee_l_integrale_sans_numeros_est_proposee(self):
+        i = info(tomes=set(), attendus=18)
+        p = suivi.propositions_pour("Noritaka", i, [r("Noritaka intégrale 18 tomes-JPEG", score=60, sources=1)], [])
+        self.assertEqual([(x["titre"], x["tomes"]) for x in p], [("Noritaka intégrale 18 tomes-JPEG", list(range(1, 19)))])
+        p = suivi.propositions_pour("Toriko", info(tomes=set(), attendus=43), [r("Toriko.[INTEGRALE].FR.[CBZ]-NOTAG", score=330)], [])
+        self.assertEqual(p[0]["tomes"], list(range(1, 41)))                 # 43 tomes (la fiche n'en affiche que 40)
+        self.assertEqual(suivi.tomes_couverts(r("Toriko.[INTEGRALE].FR"), None), set())     # nombre de tomes inconnu : on ne devine pas
+
+    def test_integrale_de_qualite_preferee_aux_tomes_un_par_un(self):
+        res = [r("Toriko.[INTEGRALE].FR.[CBZ]-NOTAG", score=330, sources=9)] + [r(f"Toriko.T{n:02d}.FR.[CBZ]-NOTAG", score=270, sources=20) for n in range(1, 44)]
+        p = suivi.propositions_pour("Toriko", info(tomes=set(), attendus=43), res, [])
+        self.assertEqual([x["titre"] for x in p], ["Toriko.[INTEGRALE].FR.[CBZ]-NOTAG"])
+
     def test_tomes_en_cours_et_torrents_deja_pris_ecartes(self):
         res = [r("Kaf.T04.FR"), r("Kaf.T05.FR"), r("Kaf.T06.FR")]
         p = suivi.propositions_pour("Kaf", info(tomes_en_cours={4}, deja_pris={"Kaf.T05.FR"}), res, [])
