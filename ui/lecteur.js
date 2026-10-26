@@ -16,7 +16,7 @@
   // Chapitres à l'intérieur d'un tome complet (un fichier = un tome) : [{num, titre, image, verifie}], image = page du fichier
   var interne = [], titreEntree = '';
   // 🎯 Vérification des pages des chapitres (administrateur, « &verif=1 ») : chapitre en cours et écarts des dernières corrections
-  var verif = q.get('verif') === '1' && document.body.classList.contains('admin'), vk = -1, ecartsVerif = [];
+  var verif = q.get('verif') === '1' && document.body.classList.contains('admin'), vk = -1, ecartsVerif = [], revue = false, tomeValide = false;
   function esc(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
 
   async function api(url, opts) {
@@ -54,7 +54,7 @@
     var ic = chapIci(), suivant = ic.liste.some(function (x) { return x.image > page; });
     $('prevCh').disabled = idx <= 0 && ic.k < 1; $('nextCh').disabled = (idx < 0 || idx >= chapters.length - 1) && !suivant;
     $('rChapter').textContent = titreEntree + (ic.k >= 0 ? ' · ' + nomChap(ic.liste[ic.k]) : '');
-    if ($('verifIci')) $('verifIci').textContent = page + 1;
+    majVerif();
   }
   function annoncer(t) {
     var an = $('annonce'); an.textContent = t; an.classList.add('show');
@@ -257,9 +257,9 @@
 
   // ---------- Chapitres d'un tome complet ----------
   async function chargerInternes(c) {
-    interne = [];
+    interne = []; tomeValide = false;
     if (c.tome != null && !c.nb) {
-      try { var r = await api('/api/lecteur/chapitres?s=' + encodeURIComponent(seriesId) + '&tome=' + encodeURIComponent(c.tome)); interne = r.chapitres || []; }
+      try { var r = await api('/api/lecteur/chapitres?s=' + encodeURIComponent(seriesId) + '&tome=' + encodeURIComponent(c.tome)); interne = r.chapitres || []; tomeValide = !!r.valide; }
       catch (e) { interne = []; }                        // hors ligne : le tome se lit quand même, sans ses chapitres
     }
     var memeFichier = chapters.filter(function (x) { return x.path === path; }).length > 1;
@@ -301,7 +301,7 @@
   }
   function demarrerVerif() {
     if (!interne.length) { showMsg('🎯 Pas de chapitres connus pour ce tome : saisis-les d\'abord sur sa fiche (✏️ Corriger les chapitres).'); return; }
-    ecartsVerif = [];
+    ecartsVerif = []; revue = false;
     vk = prochainAVerifier(0);
     afficherVerif(true);
   }
@@ -309,24 +309,36 @@
     var b = $('verif'); b.hidden = false;
     if (vk >= interne.length) {
       b.innerHTML = '<div class="verif-titre">🎯 Les ' + interne.length + ' chapitres de ce tome sont vérifiés.</div>' +
-        '<div class="verif-sous">Tout est enregistré. Valide le tome pour que l\'appli n\'y touche plus.</div>' +
-        '<div class="verif-boutons"><button class="rbtn ok" data-v="valider">✅ Valider le tome</button>' +
+        '<div class="verif-sous">' + (tomeValide ? '✅ Tome validé : l\'appli n\'y touche plus.' : 'Tout est enregistré. Valide le tome pour que l\'appli n\'y touche plus.') + '</div>' +
+        '<div class="verif-boutons">' + (tomeValide ? '' : '<button class="rbtn ok" data-v="valider">✅ Valider le tome</button>') +
         '<button class="rbtn" data-v="suivant">Tome suivant ▶</button><button class="rbtn" data-v="revoir">↺ Revoir</button>' +
         '<button class="rbtn" data-v="quitter">✖ Fermer</button></div>';
       return;
     }
     var x = interne[vk];
-    b.innerHTML = '<div class="verif-titre">🎯 ' + (vk + 1) + ' / ' + interne.length + ' · ' + esc(nomChap(x)) + '</div>' +
-      '<div class="verif-sous">' + (x.image != null ? 'Page enregistrée : ' + (x.image + 1) : 'Pas encore de page : va sur la première page du chapitre') +
+    b.innerHTML = '<div class="verif-titre">🎯 ' + (revue ? '↺ ' : '') + (vk + 1) + ' / ' + interne.length + ' · ' + esc(nomChap(x)) + '</div>' +
+      '<div class="verif-sous">' + (x.image != null ? '<button class="verif-lien" data-v="retour" title="Revenir sur cette page">Page ' +
+        (x.verifie ? 'vérifiée' : 'proposée') + ' : ' + (x.image + 1) + '</button>' : 'Pas encore de page : va sur la première page du chapitre') +
       ' · page affichée : <b id="verifIci">' + (page + 1) + '</b></div>' +
       '<div class="verif-boutons"><button class="rbtn" data-v="moins">− 1 page</button><button class="rbtn" data-v="plus">+ 1 page</button>' +
-      '<button class="rbtn principal" data-v="ici">📍 Le chapitre commence ici</button>' +
-      (x.image != null ? '<button class="rbtn ok" data-v="ok">✅ C\'est la bonne page</button>' : '') +
+      '<button class="rbtn principal" data-v="ici" id="verifPose"></button>' +
+      (x.image != null ? '<button class="rbtn ok" data-v="ok" id="verifOk"></button>' : '') +
       '<button class="rbtn" data-v="quitter" title="Quitter la vérification">✖</button></div>';
     if (aller) go(placeVerif(vk));
+    majVerif();
+  }
+  // Les boutons disent quelle page ils enregistrent : la page affichée (📍) ou la page déjà proposée (✅), où que tu sois
+  function majVerif() {
+    if ($('verifIci')) $('verifIci').textContent = page + 1;
+    var x = interne[vk], pose = $('verifPose'), ok = $('verifOk');
+    if (!x || !pose) return;
+    var ailleurs = x.image != null && page !== x.image;
+    pose.textContent = ailleurs ? '📍 Il commence page ' + (page + 1) : '📍 Le chapitre commence ici';
+    if (ok) ok.textContent = ailleurs ? '✅ Garder la page ' + (x.image + 1) : '✅ C\'est la bonne page';
   }
   function apresEnregistrement(r) {
     interne = r.chapitres || interne;
+    if (r.valide != null) tomeValide = r.valide;
     if (r.tomes_recales && window.MouToast) window.MouToast('📐 Série : les chapitres commencent ' + Math.abs(r.decalage) + ' page(s) ' +
       (r.decalage < 0 ? 'avant' : 'après') + ' la page trouvée par l\'appli. ' + r.tomes_recales + ' tome(s) lu(s) automatiquement recalé(s).', 'ok');
   }
@@ -336,11 +348,13 @@
     if (v === 'moins') { go(page - 1); return; }
     if (v === 'plus') { go(page + 1); return; }
     if (v === 'quitter') { verif = false; $('verif').hidden = true; history.replaceState(null, '', '/lire?s=' + encodeURIComponent(seriesId) + '&c=' + encodeURIComponent(cle)); return; }
-    if (v === 'revoir') { vk = 0; afficherVerif(true); return; }
+    if (v === 'revoir') { vk = 0; revue = true; ecartsVerif = []; afficherVerif(true); return; }      // tous les chapitres, même vérifiés
+    if (v === 'retour') { if (x && x.image != null) go(x.image); return; }
     if (v === 'valider') {
       var rv = await post('/api/tome/valider', {series: seriesId, tome: c.tome});
       if (!rv.ok) { MouAlert(rv.error || 'Impossible'); return; }
       if (window.MouToast) window.MouToast('✅ ' + rv.message, 'ok');
+      tomeValide = true; afficherVerif(false);
       return;
     }
     if (v === 'suivant') {
@@ -366,7 +380,7 @@
       if (!rd.ok) MouAlert(rd.error || 'Impossible'); else interne = rd.chapitres || interne;
       ecartsVerif = [];
     }
-    vk = prochainAVerifier(vk + 1);
+    vk = revue ? vk + 1 : prochainAVerifier(vk + 1);
     afficherVerif(true);
   });
 

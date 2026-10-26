@@ -6070,7 +6070,7 @@ def api_tome_chapitre_page():
     c = next((x for x in (lu or {}).get("chapitres") or [] if x.get("num") is not None and float(x["num"]) == num), None)
     if c is None:
         return jsonify({"ok": False, "error": "Chapitre inconnu dans ce tome."}), 400
-    _garder_places_auto(lu)
+    image = c.get("image")
     if body.get("image") is not None:
         try:
             image = int(body["image"])
@@ -6078,16 +6078,21 @@ def api_tome_chapitre_page():
             return jsonify({"ok": False, "error": "Page invalide"}), 400
         if image < 0 or (nb and image >= nb):
             return jsonify({"ok": False, "error": "Cette page n'existe pas dans le tome."}), 400
-        c["image"] = image
-    elif c.get("image") is None:
+    elif image is None:
         return jsonify({"ok": False, "error": "Ce chapitre n'a pas encore de page : place-toi sur sa première page."}), 400
+    if c.get("verifie") and c.get("image") == image:
+        # ↺ Revoir : chapitre déjà vérifié, rien ne change → rien n'est écrit (un tome validé reste validé)
+        return jsonify({"ok": True, "chapitres": _chapitres_pour_lecteur(name, tome, lu), "decalage": 0, "tomes_recales": 0,
+                        "valide": bool(lu.get("valide_le"))})
+    _garder_places_auto(lu)
+    c["image"] = image
     c["verifie"] = True
     c.pop("estimee", None)
     lu.update(manuel=True, saisie=True)
     lu.pop("valide_le", None)
     d, n = _appliquer_decalage_appris(name, infos)
     edition.ecrire(MANGA_DIR / name, infos)
-    return jsonify({"ok": True, "chapitres": _chapitres_pour_lecteur(name, tome, lu), "decalage": d, "tomes_recales": n})
+    return jsonify({"ok": True, "chapitres": _chapitres_pour_lecteur(name, tome, lu), "decalage": d, "tomes_recales": n, "valide": False})
 
 
 @app.route("/api/tome/chapitres_decaler", methods=["POST"])

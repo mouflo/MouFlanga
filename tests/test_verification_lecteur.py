@@ -63,6 +63,21 @@ class UnChapitreALaFois(Base):
         self.assertEqual(self.infos["sommaires"]["1"]["chapitres"][0]["image"], 8)
         self.assertTrue(self.infos["sommaires"]["1"]["chapitres"][0]["verifie"])
 
+    def test_revoir_sans_changement_rien_ecrit(self):
+        # ↺ Revoir un tome validé : « C'est la bonne page » ou la même page posée ne touchent à rien, il reste validé
+        lu = self.infos["sommaires"]["3"]
+        lu["chapitres"][0]["verifie"] = True
+        for corps in ({"num": 1}, {"num": 1, "image": 5}):
+            r = self.post("/api/tome/chapitre_page", dict(corps, series="Série", tome=3))
+            self.assertTrue(r["ok"] and r["valide"])
+        self.assertEqual(self.ecrit, [])
+        self.assertEqual(lu["valide_le"], "2026-10-20")
+        # Une vraie correction, elle, est enregistrée (et le tome est à revalider)
+        r = self.post("/api/tome/chapitre_page", {"series": "Série", "tome": 3, "num": 1, "image": 6})
+        self.assertTrue(r["ok"] and not r["valide"])
+        self.assertEqual((len(self.ecrit), lu["chapitres"][0]["image"]), (1, 6))
+        self.assertNotIn("valide_le", lu)
+
     def test_page_hors_du_tome_refusee(self):
         r = self.post("/api/tome/chapitre_page", {"series": "Série", "tome": 1, "num": 1, "image": 500})
         self.assertFalse(r["ok"])

@@ -64,6 +64,7 @@ body.rtl .foot input[type=range] { direction:rtl; }
 .verif[hidden] { display: none; }
 .verif-titre { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .verif-sous { color: #aaa; font-size: .85rem; margin: 2px 0 6px; }
+.verif-lien { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
 .verif-boutons { display: flex; flex-wrap: wrap; gap: 6px; }
 .verif-boutons .rbtn { font-size: .95rem; padding: 10px 12px; }
 .verif-boutons .principal { background: var(--accent); color: #0b0c0e; font-weight: 600; flex: 1 1 auto; }
