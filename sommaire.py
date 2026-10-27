@@ -48,7 +48,22 @@ def _coeurs() -> int:
         return os.cpu_count() or 1
 
 
-SIMULTANES = max(1, _coeurs() - 1)  # tomes lus en même temps : un par cœur, un cœur gardé libre pour l'appli
+def _memoire_go() -> float:
+    """Mémoire du conteneur, en Go (8 Go sur MouFluxer)."""
+    try:
+        with open("/proc/meminfo") as f:
+            for ligne in f:
+                if ligne.startswith("MemTotal:"):
+                    return int(ligne.split()[1]) / 1048576
+    except (OSError, ValueError, IndexError):
+        pass
+    return 8.0
+
+
+# Tomes lus en même temps : un par cœur (un cœur gardé libre pour l'appli), mais jamais plus d'un par 2 Go de mémoire : chaque lecture garde
+# des pages décodées et un moteur de reconnaissance de texte (jusqu'à 0,5 Go). Sept lectures à la fois ont fait monter l'appli à 4,5 Go
+# sur 8 Go le 27/10/2026 : avec le moindre autre travail, le conteneur a saturé et l'appli a été tuée.
+SIMULTANES = max(1, min(_coeurs() - 1, int(_memoire_go() // 2)))
 _FILE = threading.Semaphore(SIMULTANES)
 
 

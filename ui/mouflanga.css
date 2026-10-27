@@ -382,10 +382,10 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .dbl-grille { display:grid; grid-template-columns:repeat(2, 1fr); gap:6px; margin-top:8px; }
 .dbl-liste { display:grid; gap:6px; margin:6px 0; }
 .dbl-liste .mou-btn { text-align:left; }
-.dbl .dbl-tuile { position:relative; display:block; width:100%; padding:0; border:3px solid #333; border-radius:6px; background:#111 !important; color:#fff; cursor:pointer; overflow:hidden; }
+.reg .dbl-tuile { position:relative; display:block; width:100%; padding:0; border:3px solid #333; border-radius:6px; background:#111 !important; color:#fff; cursor:pointer; overflow:hidden; }
 .dbl-tuile img { display:block; width:100%; height:auto; }
 .dbl-tuile span { position:absolute; left:4px; bottom:4px; padding:1px 6px; border-radius:6px; background:rgba(0,0,0,.7); color:#fff; font-size:12px; }
-.dbl .dbl-tuile.garde { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 25%, var(--card)) !important; }
+.reg .dbl-tuile.garde { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 25%, var(--card)) !important; }
 .dbl-tuile.garde::after { content:"entière"; position:absolute; right:4px; top:4px; padding:1px 6px; border-radius:6px; background:var(--accent); color:#000; font-size:12px; }
 
 .dbl-point { display:inline-block; width:10px; height:10px; margin-right:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); vertical-align:middle; }
@@ -417,3 +417,34 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .dbl-tuile .asm-aj { position:absolute; top:6px; right:6px; display:flex; align-items:center; gap:6px; background:rgba(0,0,0,.65); color:#fff; border-radius:16px; padding:2px 6px; font-size:13px; direction:ltr; }
 .dbl-tuile .asm-aj i { font-style:normal; cursor:pointer; padding:6px 10px; font-size:16px; }
 .dbl-tuile .asm-aj b { min-width:48px; text-align:center; font-weight:600; }
+
+/* ✨ Améliorer : cartes de réglages (même présentation partout), onglets, uniformité */
+.reg { margin:10px 0; padding:10px 12px; border:1px solid var(--line, #333); border-radius:10px; }
+.reg h3 { margin:0 0 4px; font-size:1rem; display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.reg-valeur { font-size:.8rem; font-weight:600; color:var(--accent, #52b54b); white-space:nowrap; }
+.reg-aide { color:var(--muted); font-size:.85rem; line-height:1.4; margin:2px 0 8px; }
+.reg-champ { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:8px 0; }
+.reg-champ > span { flex:none; font-weight:600; }
+.reg-champ select { flex:1; min-width:0; font-size:16px; }
+.reg-boutons { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
+.reg details summary { cursor:pointer; padding:8px 0; color:var(--accent, #52b54b); }
+.reg .amel-ligne:first-of-type { margin-top:4px; }
+.onglets { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin:12px 0; position:sticky; top:0; z-index:2; padding:6px 0; background:var(--surface, #1e1f22); box-shadow:0 -16px 0 var(--surface, #1e1f22); }
+.onglets .mou-btn { padding:10px 4px; font-size:.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.all-tome { display:flex; gap:10px; align-items:center; margin:6px 0; }
+.all-tome input { width:22px; height:22px; flex:none; }
+.unif-flag { color:var(--warn, #e6a028); }
+.unif-bilan { padding:8px 10px; border-radius:8px; margin:6px 0; line-height:1.4; border:1px solid transparent; }
+.unif-bilan.ok { background:color-mix(in srgb, var(--accent, #52b54b) 12%, transparent); border-color:color-mix(in srgb, var(--accent, #52b54b) 40%, transparent); }
+.unif-bilan.attention { background:rgba(230, 160, 40, .12); border-color:rgba(230, 160, 40, .45); }
+.unif-groupes > div { margin:6px 0; font-size:.9rem; }
+.unif-liste { margin:8px 0; }
+.unif-ligne { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; padding:6px 0; border-top:1px solid var(--line, #333); font-size:.9rem; }
+.unif-ligne.signale .unif-nom { font-weight:700; }
+.unif-pastilles { display:inline-flex; gap:3px; }
+.unif-pastille { display:inline-block; width:18px; height:18px; border-radius:4px; border:1px solid #666; }
+.unif-nom { min-width:5.5em; }
+.dbl-tuile.asm-possible { border-style:dashed; border-color:var(--warn, #e6a028); }
+.dbl-tuile .asm-conf { position:absolute; left:4px; bottom:4px; max-width:calc(100% - 8px); padding:1px 6px; border-radius:6px; background:rgba(0,0,0,.7); color:#fff; font-size:12px; direction:ltr; }
+.dbl-tuile.asm-paire > span:not(.asm-duo):not(.asm-aj):not(.asm-conf) { bottom:auto; top:4px; }
+.dbl-tuile .asm-aj i { padding:6px 7px; }

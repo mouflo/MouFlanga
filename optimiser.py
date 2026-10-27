@@ -58,8 +58,9 @@ def est_couleur(im: Image.Image) -> bool:
     return float(np.mean(np.abs(petit[..., 0] - petit[..., 1]) + np.abs(petit[..., 1] - petit[..., 2]))) > 12
 
 
-# ✨ Amélioration des vieux scans : chaque réglage va de 0 (non) à 3 (fort), appliqué dans cet ordre
-AMELIORATIONS = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "agrandir")
+# ✨ Amélioration des vieux scans : chaque réglage va de 0 (non) à 3 (fort), appliqué dans cet ordre. « uniformiser » (0 ou 1) cale les
+# noirs, les blancs et la teinte du tome sur ceux des autres tomes de la série (voir uniformite.py) : il lui faut le calage du tome.
+AMELIORATIONS = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "agrandir", "uniformiser")
 
 
 def reglages_amelioration(x) -> dict | None:
@@ -74,7 +75,7 @@ def reglages_amelioration(x) -> dict | None:
     r = {}
     for k in AMELIORATIONS:
         try:
-            r[k] = max(0, min(3, int(x.get(k) or 0)))
+            r[k] = max(0, min(1 if k == "uniformiser" else 3, int(x.get(k) or 0)))
         except (TypeError, ValueError):
             r[k] = 0
     return r if any(r.values()) else None
@@ -89,7 +90,22 @@ def _traits(g, seuil=25.0):
     return cv2.GaussianBlur(m, (0, 0), 1.2)
 
 
-def ameliorer(im: Image.Image, reglages) -> Image.Image:
+def _caler(g, calage):
+    """Niveaux de gris recalés : le noir le plus sombre (b), le noir habituel (e) et le blanc (w) du tome deviennent ceux de la référence (indices 1),
+    en ligne droite entre ces repères (sans repère « e », une seule droite du noir au blanc)."""
+    x0 = [0.0, float(calage["b0"]), float(calage["w0"]), 255.0]
+    x1 = [0.0, float(calage["b1"]), float(calage["w1"]), 255.0]
+    if "e0" in calage and "e1" in calage:
+        x0.insert(2, float(calage["e0"]))
+        x1.insert(2, float(calage["e1"]))
+    for i in range(1, len(x0)):                           # des repères toujours croissants, sinon la courbe ne serait pas une courbe
+        x0[i] = max(x0[i], x0[i - 1] + 0.5)
+        x1[i] = max(x1[i], x1[i - 1] + 0.5)
+    lut = np.interp(np.arange(256, dtype=np.float32), x0, x1)
+    return cv2.LUT(g, np.clip(np.round(lut), 0, 255).astype(np.uint8))
+
+
+def ameliorer(im: Image.Image, reglages, calage=None) -> Image.Image:
     """Page noir et blanc d'un vieux scan, rendue plus propre (renvoyée en gris). Une page en couleur n'est pas touchée.
     « lisser » travaille sur la page doublée (il faut de la place pour arrondir) puis la ramène à sa taille : les bords
     restent lisses (anticrénelage) sans alourdir le fichier. « agrandir » garde la page doublée (petits scans de moins
@@ -97,9 +113,11 @@ def ameliorer(im: Image.Image, reglages) -> Image.Image:
     r = reglages_amelioration(reglages)
     if not r or est_couleur(im):
         return im
-    g = np.asarray(im.convert("L"))
+    g = np.asarray(im.convert("L"))                       # une teinte (page un peu violette ou jaune) disparaît ici : tout est rendu en gris
     h, w = g.shape
     echelle = max(1.0, (w * h) / 1.2e6)                   # les tailles suivent la résolution de la page
+    if r["uniformiser"] and calage:                       # d'abord : les niveaux d'origine sont ceux qui ont été mesurés
+        g = _caler(g, calage)
     if r["debruit"]:                                      # grain et petits carrés de la compression JPEG
         g = cv2.fastNlMeansDenoising(g, None, h=(0, 4, 7, 10)[r["debruit"]], templateWindowSize=7, searchWindowSize=21)
     if r["trames"]:                                       # aplats gris pointillés (trames) → gris uni, traits gardés
@@ -116,7 +134,12 @@ def ameliorer(im: Image.Image, reglages) -> Image.Image:
         fond = cv2.morphologyEx(petit, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
         fond = cv2.resize(cv2.GaussianBlur(fond, (0, 0), k / 2), (w, h), interpolation=cv2.INTER_LINEAR).astype(np.float32)
         encre = min(float(np.percentile(g, 0.5)), 90.0)      # le noir le plus sombre de la page reste le noir
-        fond = np.clip(fond, max(encre + 40, float(np.percentile(g, 90)) * 0.85), 255)
+        p90 = float(np.percentile(g, 90))
+        fond = np.clip(fond, max(encre + 40, p90 * 0.85), 255)
+        # Page presque toute noire (peu de papier visible) : le « fond » trouvé serait un gris foncé et tout serait éclairci à tort.
+        # Plus le papier visible est sombre (90e centile < 170), plus on retient le blanchiment ; sous 100, la page n'est pas touchée.
+        force = min(1.0, max(0.0, (p90 - 100) / 70))
+        fond = fond * force + 255 * (1 - force)
         blanc = (1, 0.975, 0.95, 0.91)[r["papier"]]          # fort : les gris les plus pâles deviennent blancs aussi
         g = np.clip((g.astype(np.float32) - encre) / ((fond - encre) * blanc) * 255, 0, 255).astype(np.uint8)
     if r["noirs"]:                                        # encre délavée : point noir relevé + légère courbe
@@ -168,7 +191,7 @@ def reduire(im: Image.Image, largeur_max) -> Image.Image:
     return im.resize((limite, round(im.height * limite / im.width)), Image.LANCZOS)
 
 
-def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite_forcee=None) -> dict:
+def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite_forcee=None, calage=None) -> dict:
     """Choisit la qualité d'un tome : {"qualite", "gain_estime" (0-1), "psnr_min", "taille"} (qualite None : rien à gagner).
     qualite_forcee : réglage manuel, seule cette qualité est essayée (sans seuil d'écart : c'est ton choix) ; None si elle ne gagne rien."""
     taille = chemin.stat().st_size
@@ -184,7 +207,7 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite
         im.load()
     eclairer = reglages_amelioration(eclairer)
     if eclairer:
-        images = {n: ameliorer(im, eclairer) for n, im in images.items()}
+        images = {n: ameliorer(im, eclairer, calage) for n, im in images.items()}
     images = {n: reduire(im, largeur_max) for n, im in images.items()}
     total = sum(len(b) for b in originaux.values())
     meilleur = {"qualite": None, "gain_estime": 0.0, "psnr_min": None, "taille": taille}
@@ -210,7 +233,7 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite
     return meilleur
 
 
-def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, destination: Path | None = None, comicinfo=None) -> int:
+def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, destination: Path | None = None, comicinfo=None, calage=None) -> int:
     """Écrit la version allégée (ou éclaircie) à côté, la relit, puis remplace. Renvoie le nombre d'octets gagnés.
     L'ancien fichier est renvoyé à l'appelant via un nom « .avant » (à mettre à la corbeille).
     Avec « destination » (fichier partagé par qBittorrent : le NAS refuse de le renommer), la version allégée est seulement
@@ -227,7 +250,7 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
             if qualite and Path(info.filename).suffix.lower() in _IMAGES:
                 im = Image.open(io.BytesIO(data))
                 im.load()
-                traitee = ameliorer(im, eclairer) if eclairer else im
+                traitee = ameliorer(im, eclairer, calage) if eclairer else im
                 im2 = reduire(traitee, largeur_max)
                 nouveau = _jpeg(im2, qualite)
                 if im2 is not im or len(nouveau) < len(data):
@@ -296,13 +319,13 @@ def echanger_dossier(chemin: Path, ecrire, vers_corbeille) -> bool:
     return True
 
 
-def reecrire_partage(chemin: Path, qualite: int, vers_corbeille, eclairer=False, largeur_max=None, comicinfo=None) -> int:
+def reecrire_partage(chemin: Path, qualite: int, vers_corbeille, eclairer=False, largeur_max=None, comicinfo=None, calage=None) -> int:
     """Tome partagé : version allégée écrite à part puis dossiers échangés (voir echanger_dossier). Renvoie les octets gagnés."""
     gagne = [0]
     eclairer = reglages_amelioration(eclairer)
 
     def ecrire(dest):
-        gagne[0] = reecrire(chemin, qualite, eclairer, largeur_max, destination=dest, comicinfo=comicinfo)
+        gagne[0] = reecrire(chemin, qualite, eclairer, largeur_max, destination=dest, comicinfo=comicinfo, calage=calage)
         return gagne[0] > 0 or bool(eclairer) or comicinfo is not None
     return gagne[0] if echanger_dossier(chemin, ecrire, vers_corbeille) else 0
 
@@ -323,9 +346,10 @@ def etat(serie):
         return dict(_ETAT.get(serie) or {})
 
 
-def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None, largeur_max=None, qualite_forcee=None, infos_de=None):
+def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None, largeur_max=None, qualite_forcee=None, infos_de=None, calages=None):
     """En arrière-plan : analyse (appliquer=False) ou allègement de chaque fichier de la liste.
-    « infos_de(fichier) » : fonction de ComicInfo (voir reecrire) ou None ; les infos du tome sont alors écrites dans la même passe."""
+    « infos_de(fichier) » : fonction de ComicInfo (voir reecrire) ou None ; les infos du tome sont alors écrites dans la même passe.
+    « calages » : {nom du fichier: calage} des noirs et blancs de chaque tome (réglage « uniformiser », voir uniformite.py)."""
     eclairer = reglages_amelioration(eclairer)
     with _VERROU:
         if (_ETAT.get(serie) or {}).get("en_cours"):
@@ -346,17 +370,20 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
                     if partage and not _dossier_a_lui(f, serie):
                         rapport.append({"fichier": f.name, "note": "partagé par qBittorrent et posé hors d'un dossier de tome : jamais modifié"})
                         continue
-                    a = analyser(f, eclairer=eclairer, largeur_max=largeur_max, qualite_forcee=qualite_forcee)
+                    calage = (calages or {}).get(f.name)
+                    a = analyser(f, eclairer=eclairer, largeur_max=largeur_max, qualite_forcee=qualite_forcee, calage=calage)
                     avant_total += a["taille"]
                     ligne = {"fichier": f.name, "taille_mo": round(a["taille"] / 1048576, 1), "qualite": a["qualite"],
                              "gain": a["gain_estime"], "psnr": a["psnr_min"]}
+                    if eclairer and eclairer.get("uniformiser") and not calage:
+                        ligne["alerte"] = "uniformisation ignorée : ce tome n'est pas encore mesuré"
                     comicinfo = infos_de(f) if (appliquer and infos_de) else None
                     if appliquer and (a["qualite"] or comicinfo):
                         if partage:
-                            g = reecrire_partage(f, a["qualite"], vers_corbeille, eclairer, largeur_max, comicinfo)
+                            g = reecrire_partage(f, a["qualite"], vers_corbeille, eclairer, largeur_max, comicinfo, calage)
                             ligne["note"] = "partagé par qBittorrent : version allégée à part, le torrent n'est pas touché"
                         else:
-                            g = reecrire(f, a["qualite"], eclairer, largeur_max, comicinfo=comicinfo)
+                            g = reecrire(f, a["qualite"], eclairer, largeur_max, comicinfo=comicinfo, calage=calage)
                             ancien = f.with_name(f.name + ".avant")
                             if ancien.exists():
                                 vers_corbeille(ancien)
@@ -395,15 +422,15 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
 _CACHE_COMPARAISON = {}
 
 
-def comparer(chemin: Path, index: int, qualite, eclairer=False, largeur_max=None, zoom=None) -> dict:
+def comparer(chemin: Path, index: int, qualite, eclairer=False, largeur_max=None, zoom=None, calage=None) -> dict:
     """Une page du tome AVANT / APRÈS, avec exactement ce que « Appliquer » écrirait (même qualité, même largeur, même éclaircissement).
     zoom = (fx, fy) entre 0 et 1 : un détail de 640 px à l'échelle réelle plutôt que la page entière.
     Renvoie {"avant", "apres" (JPEG), "avant_ko", "apres_ko", "page", "pages", "inchange", "dimensions": [avant, après]}."""
     eclairer = reglages_amelioration(eclairer)
-    cle = (str(chemin), chemin.stat().st_mtime_ns, index, qualite, tuple((eclairer or {}).values()), largeur_max, zoom)
+    cle = (str(chemin), chemin.stat().st_mtime_ns, index, qualite, tuple((eclairer or {}).values()), largeur_max, zoom, tuple(sorted((calage or {}).items())))
     with _VERROU_COMPARAISON:            # la page demande avant, après et infos en même temps : un seul calcul, les autres attendent
         if cle not in _CACHE_COMPARAISON:
-            res = _comparer(chemin, index, qualite, eclairer, largeur_max, zoom)
+            res = _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage)
             if len(_CACHE_COMPARAISON) >= 8:
                 _CACHE_COMPARAISON.pop(next(iter(_CACHE_COMPARAISON)))
             _CACHE_COMPARAISON[cle] = res
@@ -413,7 +440,7 @@ def comparer(chemin: Path, index: int, qualite, eclairer=False, largeur_max=None
 _VERROU_COMPARAISON = threading.Lock()
 
 
-def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom):
+def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage=None):
     with zipfile.ZipFile(chemin) as z:
         noms = _pages(z)
         if not noms:
@@ -423,7 +450,7 @@ def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom):
     im = Image.open(io.BytesIO(data))
     im.load()
     couleur = bool(eclairer) and est_couleur(im)
-    traitee = ameliorer(im, eclairer) if eclairer else im
+    traitee = ameliorer(im, eclairer, calage) if eclairer else im
     im2 = reduire(traitee, largeur_max)
     nouveau = _jpeg(im2, qualite) if qualite else data
     if qualite and not (im2 is not im or len(nouveau) < len(data)):
@@ -492,7 +519,7 @@ def apercu_page(chemin: Path, index: int, largeur=300) -> bytes:
     return _jpeg(im, 85)
 
 
-def apercu_paire(chemin: Path, index: int, sens_manga=True, largeur=900, ajust=0) -> bytes:
+def apercu_paire(chemin: Path, index: int, sens_manga=True, largeur=900, ajust=0, info=None) -> bytes:
     """La double page que donnerait l'assemblage des pages `index` et `index + 1`, calculée comme à l'assemblage (marges rognées,
     recalage), en JPEG réduit : c'est ce que montre la prévisualisation."""
     pages = []
@@ -501,9 +528,88 @@ def apercu_paire(chemin: Path, index: int, sens_manga=True, largeur=900, ajust=0
         im = Image.open(io.BytesIO(data))
         im.load()
         pages.append(im)
-    im = _coller(pages[0], pages[1], sens_manga, ajust)
+    im = _coller(pages[0], pages[1], sens_manga, ajust, info)
     im.thumbnail((largeur, largeur))
     return _jpeg(im, 85)
+
+
+# ---------------- 🔍 Repérer les paires de pages à assembler ----------------
+_HAUTEUR_PAIRES = 1400                  # hauteur des pages pour le repérage : plus bas, les raies de scan et les traits fins se perdent
+_PAIRES_CACHE = {}                      # (fichier, date, taille, sens) → paires repérées
+SEUIL_PAIRE_POSSIBLE = 0.5              # accord des deux bords : à vérifier (≈ 1 fausse alerte sur 100 paires de pages voisines)
+SEUIL_PAIRE_PROBABLE = 0.7              # ≈ 1 fausse alerte sur 200, un tiers des vraies paires
+
+
+def _bandes_de_bord(im, k=6):
+    """Les `k` colonnes de chaque bord d'une page (liserés de scan retirés), page réduite à _HAUTEUR_PAIRES : (bord gauche, bord droit)."""
+    im = im.convert("L")
+    if im.height > _HAUTEUR_PAIRES:
+        im = im.resize((max(1, round(im.width * _HAUTEUR_PAIRES / im.height)), _HAUTEUR_PAIRES), Image.BOX)
+    gauche, droite = _rogner_bord(im, "gauche"), _rogner_bord(im, "droite")
+    return np.asarray(gauche)[:, :k].astype(np.float32), np.asarray(droite)[:, -k:].astype(np.float32)
+
+
+def score_paire(cote_gauche, cote_droit, k=3):
+    """À quel point le dessin continue d'une page à l'autre : accord (de -1 à 1) entre les `k` colonnes qui se touchent (`cote_gauche` : bord droit de la page
+    de gauche, `cote_droit` : bord gauche de la page de droite), au meilleur décalage vertical de quelques pixels. Renvoie (accord, présence d'encre à la
+    jointure, contraste) : une jointure blanche ou unie n'est jamais retenue."""
+    a, b = cote_gauche[:, -k:].mean(axis=1), cote_droit[:, :k].mean(axis=1)
+    h = min(len(a), len(b))
+    a, b = a[:h], b[:h]
+    accord = float(_courbe_profils(a, b, max(10, round(0.03 * h))).max())
+    encre = min(float((cote_gauche[:, -k:] < 200).mean()), float((cote_droit[:, :k] < 200).mean()))
+    return accord, encre, float(min(a.std(), b.std()))
+
+
+def reperer_paires(chemin: Path, sens_manga=True, progres=None) -> list[dict]:
+    """Pages simples qui sont probablement les deux moitiés d'une double page coupée : [{"index", "accord", "niveau": "probable" | "possible"}], `index` = numéro
+    de la première page de la paire (celle qu'on touche dans la planche), sans paire qui se chevauche. Une double page a le dessin qui traverse la jointure :
+    c'est ce que mesure score_paire. Sur de vrais tomes (banc d'essai) : un tiers des vraies paires en « probable » pour une fausse alerte sur 200 paires de pages
+    voisines, la moitié en « possible » pour une sur 100. À toi de confirmer sur l'aperçu : rien n'est assemblé sans ton accord."""
+    chemin = Path(chemin)
+    st = chemin.stat()
+    cle = (str(chemin), st.st_mtime_ns, st.st_size, bool(sens_manga))
+    if cle in _PAIRES_CACHE:
+        return _PAIRES_CACHE[cle]
+    ordre = archives.pages(chemin)
+    bandes = []
+    with zipfile.ZipFile(chemin) as z:
+        for i, nom in enumerate(ordre):
+            b = None
+            if Path(nom).suffix.lower() in _COUPE_FORMATS:
+                try:
+                    im = Image.open(io.BytesIO(z.read(nom)))
+                    if im.width <= im.height * 1.1:                    # une page large est déjà une double
+                        if im.format == "JPEG" and im.height > 2 * _HAUTEUR_PAIRES:
+                            im.draft("L", (im.width // 2, im.height // 2))
+                        im.load()
+                        b = _bandes_de_bord(im)
+                except Exception as e:
+                    logger.info("Page %s de %s ignorée pour les paires : %s", nom, chemin.name, e)
+            bandes.append(b)
+            if progres:
+                progres(i + 1, len(ordre))
+    candidats = []
+    for i in range(len(ordre) - 1):
+        premiere, seconde = bandes[i], bandes[i + 1]
+        if premiere is None or seconde is None:
+            continue
+        # manga : la page i est à droite (son bord gauche touche), la page i+1 à gauche ; occidental : l'inverse
+        gauche, droite = (seconde, premiere) if sens_manga else (premiere, seconde)
+        accord, encre, contraste = score_paire(gauche[1], droite[0])
+        if accord >= SEUIL_PAIRE_POSSIBLE and encre >= 0.15 and contraste >= 12:
+            candidats.append((accord, i))
+    choisies, pris = [], set()
+    for accord, i in sorted(candidats, reverse=True):                  # les plus sûres d'abord, jamais deux paires qui se touchent
+        if i in pris or i + 1 in pris:
+            continue
+        pris.update((i, i + 1))
+        choisies.append({"index": i, "accord": round(accord, 2), "niveau": "probable" if accord >= SEUIL_PAIRE_PROBABLE else "possible"})
+    choisies.sort(key=lambda p: p["index"])
+    if len(_PAIRES_CACHE) > 64:
+        _PAIRES_CACHE.clear()
+    _PAIRES_CACHE[cle] = choisies
+    return choisies
 
 
 def _moities(im, sens_manga):
@@ -606,9 +712,10 @@ def couper(chemin: Path, indices, sens_manga=True, destination=None) -> dict:
     return res
 
 
-def _coller(premiere, seconde, sens_manga, ajust=0):
+def _coller(premiere, seconde, sens_manga, ajust=0, info=None):
     """Deux pages simples côte à côte en une double page. Manga : la première page à lire est à droite. Hauteurs différentes :
-    la plus petite est agrandie à la hauteur de l'autre (proportions gardées)."""
+    la plus petite est agrandie à la hauteur de l'autre (proportions gardées). `info` (dict, facultatif) reçoit l'estimation
+    de l'alignement : {"dy", "niveau", "score"} (voir estimer_decalage), sans la retouche à la main `ajust`."""
     for im in (premiere, seconde):
         im.load()
     h = max(premiere.height, seconde.height)
@@ -616,7 +723,10 @@ def _coller(premiere, seconde, sens_manga, ajust=0):
             for im in (premiere, seconde)]
     gauche, droite = (q, p) if sens_manga else (p, q)
     gauche, droite = _rogner_bord(gauche, "droite"), _rogner_bord(droite, "gauche")
-    decalage = _decalage_vertical(gauche, droite) + int(ajust or 0)         # `ajust` : retouche à la main, en pixels
+    estimation = estimer_decalage(gauche, droite)
+    if info is not None:
+        info.update(estimation)
+    decalage = estimation["dy"] + int(ajust or 0)                            # `ajust` : retouche à la main, en pixels
     if decalage:                                  # la page descend ou monte : la bande libérée prolonge le bord de la page (pas de bande blanche)
         a = np.asarray(droite)
         d = max(-h + 1, min(h - 1, decalage))
@@ -701,24 +811,97 @@ def _intersections(im, cote, ecart, profondeur=100):
     return cv2.GaussianBlur(hist.reshape(-1, 1), (1, 0), 1.5).ravel()
 
 
-def _decalage_vertical(gauche, droite, maxi=45, ecarts=(0, 10, 20, 30, 40), seuil=0.3):
-    """De combien de pixels descendre (ou monter) la page de droite pour que les traits continuent de part et d'autre de la jointure.
-    Les traits des 100 colonnes qui touchent la jointure sont prolongés en ligne droite jusqu'à elle ; la page de droite est décalée
-    jusqu'à ce que les deux séries de points d'arrivée se superposent le mieux, pour plusieurs largeurs perdues au milieu (le scan
-    mange souvent quelques pixels). 0 quand rien ne se superpose nettement (corrélation sous 0,3). Essayé sur 51 doubles pages
-    numériques coupées et décalées exprès : bon à 3 pixels près dans 8 cas sur 10 quand la corrélation dépasse 0,3."""
-    meilleur = (-1.0, 0)
+def _courbe_profils(L, R, maxi):
+    """Corrélation de deux profils (une valeur par rangée) pour chaque décalage de -maxi à +maxi pixels : R est le profil de la page
+    de droite telle qu'elle est, descendue de `dy` par rapport à celle de gauche quand le décalage de la courbe vaut -dy."""
+    n = len(L)
+    sortie = np.full(2 * maxi + 1, -1.0)
+    for k, dy in enumerate(range(-maxi, maxi + 1)):
+        lo, hi = max(0, dy), min(n, n + dy)
+        if hi - lo < max(50, n // 5):
+            continue
+        x, y = L[lo:hi], R[lo - dy:hi - dy]
+        x, y = x - x.mean(), y - y.mean()
+        sortie[k] = float((x * y).sum() / (np.sqrt((x * x).sum() * (y * y).sum()) + 1e-9))
+    return sortie
+
+
+def _bords(g, d, k, sigma=0.0, derive=False):
+    """Les `k` colonnes qui touchent la jointure, moyennées par rangée (flou vertical `sigma`, dérivée si `derive`)."""
+    h = min(g.shape[0], d.shape[0])
+    gauche, droite = g[:h, -k:].astype(np.float32).mean(axis=1), d[:h, :k].astype(np.float32).mean(axis=1)
+    if sigma:
+        gauche = cv2.GaussianBlur(gauche.reshape(-1, 1), (0, 0), sigma).ravel()
+        droite = cv2.GaussianBlur(droite.reshape(-1, 1), (0, 0), sigma).ravel()
+    return (np.gradient(gauche), np.gradient(droite)) if derive else (gauche, droite)
+
+
+def _courbe_lignes(g, d, maxi, ecarts):
+    """Pour chaque décalage, le meilleur accord (sur plusieurs largeurs perdues au milieu) des traits prolongés jusqu'à la jointure."""
+    gi, di = Image.fromarray(g), Image.fromarray(d)
+    meilleur = np.full(2 * maxi + 1, -1.0)
     for ecart in ecarts:
-        hg, hd = _intersections(gauche, "g", ecart), _intersections(droite, "d", ecart)
+        hg, hd = _intersections(gi, "g", ecart), _intersections(di, "d", ecart)
         n = min(len(hg), len(hd))
-        for dy in range(-maxi, maxi + 1):
-            x = hg[200:n - 200]
+        x = hg[200:n - 200]
+        x = x - x.mean()
+        for k, dy in enumerate(range(-maxi, maxi + 1)):
             y = np.roll(hd, dy)[200:n - 200]
-            x, y = x - x.mean(), y - y.mean()
-            c = float((x * y).sum() / (np.sqrt((x * x).sum() * (y * y).sum()) + 1e-9))
-            if c > meilleur[0]:
-                meilleur = (c, dy)
-    return meilleur[1] if meilleur[0] >= seuil else 0
+            y = y - y.mean()
+            meilleur[k] = max(meilleur[k], float((x * y).sum() / (np.sqrt((x * x).sum() * (y * y).sum()) + 1e-9)))
+    return meilleur
+
+
+def _pic(courbe, garde=3):
+    """(indice du maximum, valeur, avance sur le meilleur autre pic situé à plus de `garde` pixels)."""
+    k = int(np.argmax(courbe))
+    reste = np.ones(len(courbe), bool)
+    reste[max(0, k - garde):k + garde + 1] = False
+    return k, float(courbe[k]), float(courbe[k]) - (float(courbe[reste].max()) if reste.any() else -1.0)
+
+
+SEUIL_FIN = 0.8                 # accord des deux colonnes qui touchent la jointure : assez net pour décider seul
+SEUIL_GROSSIER = 0.8            # accord des traits prolongés + profils : en dessous, le décalage reste à 0 et on le dit
+
+
+def estimer_decalage(gauche, droite) -> dict:
+    """De combien de pixels descendre (+) ou monter (-) la page de droite pour que le dessin continue de part et d'autre de la jointure,
+    avec la confiance qu'on peut avoir : {"dy", "niveau": "sur" | "probable" | "incertain", "score"}. Deux étapes : une recherche
+    d'ensemble sur la page réduite (traits prolongés + profils de la jointure à trois largeurs : robuste à la trame, à la largeur perdue au milieu
+    et à la résolution), puis un affinage au pixel près sur les deux colonnes qui touchent la jointure, retenu quand elles se répondent
+    nettement (≥ 0,8) ET que la recherche d'ensemble tombe au même endroit. Quand rien ne se superpose assez (marges blanches, pas de dessin qui traverse), le décalage est 0 et le niveau « incertain » :
+    mieux vaut ne rien décaler que décaler à tort. Banc d'essai : outils/banc_alignement.py (vraies doubles pages coupées et décalées exprès)."""
+    g, d = np.asarray(gauche.convert("L")), np.asarray(droite.convert("L"))
+    h = min(g.shape[0], d.shape[0])
+    maxi = max(30, min(100, round(0.03 * h)))
+    f = max(1.0, h / 1400)
+    if f > 1:                                                       # recherche d'ensemble sur une page de 1400 px de haut
+        g1 = cv2.resize(g, (max(1, int(g.shape[1] / f)), int(g.shape[0] / f)), interpolation=cv2.INTER_AREA)
+        d1 = cv2.resize(d, (max(1, int(d.shape[1] / f)), int(d.shape[0] / f)), interpolation=cv2.INTER_AREA)
+    else:
+        g1, d1 = g, d
+    m1 = int(np.ceil(maxi / f))
+    courbe = _courbe_lignes(g1, d1, m1, (0, 4, 8, 14))
+    for k in (4, 12, 30):
+        courbe = courbe + _courbe_profils(*_bords(g1, d1, k, 1.5, True), m1) / 3
+    k, v, avance = _pic(courbe)
+    grossier, score = int(round((k - m1) * f)), v + avance
+    fin = (_courbe_profils(*_bords(g, d, 2), maxi) + _courbe_profils(*_bords(g, d, 1), maxi)) / 2
+    kf = int(np.argmax(fin))
+    r = int(np.ceil(f)) + 3
+    if fin[kf] >= SEUIL_FIN and 0 < kf < 2 * maxi and abs((kf - maxi) - grossier) <= 2 * r:     # les deux estimations se répondent
+        return {"dy": kf - maxi, "niveau": "sur", "score": round(float(fin[kf]), 2)}
+    if score >= SEUIL_GROSSIER and 0 < k < 2 * m1:
+        centre = grossier + maxi                                     # affinage autour de l'estimation d'ensemble
+        fenetre = fin[max(0, centre - r):centre + r + 1]
+        dy = max(0, centre - r) + int(np.argmax(fenetre)) - maxi if fenetre.size and fenetre.max() > 0.4 else grossier
+        return {"dy": int(dy), "niveau": "sur" if score >= 1.1 else "probable", "score": round(score, 2)}
+    return {"dy": 0, "niveau": "incertain", "score": round(score, 2)}
+
+
+def _decalage_vertical(gauche, droite):
+    """Le décalage à appliquer (0 quand l'estimation est incertaine). Voir estimer_decalage."""
+    return estimer_decalage(gauche, droite)["dy"]
 
 
 def carte_assemblage(avant: Path, apres: Path) -> dict:

@@ -900,51 +900,83 @@
     $('sAllege').addEventListener('click', function (e) { if (e.target.closest('#sAllegeVoir')) $('sAlleger').click(); });
     $('sAlleger').addEventListener('click', function () {
       fermerMenus();
-      $('infosTitre').textContent = '🪶 Alléger ou ✨ améliorer « ' + current.title + ' »';
-      $('infosCorps').innerHTML = '<div class="dem-sous">Chaque tome est recompressé à la qualité la plus légère qui reste invisible à l\'écran (vérifiée sur des pages d\'essai). ' +
-        'Les tomes encore partagés par qBittorrent sont allégés à part : le fichier du torrent n\'est jamais touché (la place n\'est rendue qu\'une fois le torrent supprimé). Les anciens fichiers vont à la corbeille (30 jours).</div>' +
-        '<div class="ident-actions"><label>Largeur des pages : <select id="allLargeur"><option value="">garder</option><option value="1600" selected>1600 px (tablette)</option><option value="1200">1200 px (téléphone)</option></select></label></div>' +
-        '<div class="amel"><div class="ident-actions"><label>✨ Améliorer l\'image (vieux scans) : <select id="allProfil">' + PROFILS_AMEL.map(function (p) { return '<option value="' + p[0] + '">' + p[1] + '</option>'; }).join('') + '<option value="perso">Personnalisée</option></select></label></div>' +
-        '<div class="dem-sous">Rien n\'est fait tout seul : choisis un niveau, regarde l\'aperçu, et seulement si ça te plaît, applique. Les pages en couleur ne sont jamais touchées.</div>' +
-        '<details id="allFin"><summary>Réglage fin</summary>' + REGLAGES_AMEL.map(function (r) {
-          return '<div class="amel-ligne"><label for="am_' + r[0] + '">' + r[1] + '<small>' + r[2] + '</small></label><select id="am_' + r[0] + '" data-am="' + r[0] + '">' +
-            (r[3] || ['Non', 'Léger', 'Moyen', 'Fort']).map(function (n, i) { return '<option value="' + i + '">' + n + '</option>'; }).join('') + '</select></div>';
-        }).join('') + '</details></div>' +
-        '<div class="ident-actions"><label>Qualité de l\'image : <select id="allQualMode"><option value="">Automatique (recommandé)</option><option value="m">Manuelle</option></select></label></div>' +
-        '<div id="allQualManuelle" hidden><input type="range" id="allQual" min="40" max="98" step="1" value="85" style="width:100%"> <div class="dem-sous"><b id="allQualVal">85</b> / 100 : 100 = identique à l\'original, plus bas = fichier plus léger. 90 et plus : aucune différence visible ; 80-88 : très léger, visible seulement en zoomant ; sous 70 : défauts qui se voient.</div></div>' +
-        '<div class="ident-actions"><button type="button" class="mou-btn" id="allComparer">👁 Comparer avant / après (en direct)</button></div>' +
-        '<div id="allCmp"></div>' +
-        '<div class="dbl"><div class="dem-titre">📖 Doubles pages en simples pages</div>' +
-        '<div class="dem-sous">Chaque image plus large que haute est coupée en deux pages (pour tout le monde, pas seulement à l\'écran). ' +
-        'Les vraies doubles (une seule grande image) restent entières : touche-les dans la planche pour les garder.</div>' +
-        '<div class="ident-actions"><label>Sens : <select id="dblSens"><option value="manga">manga (droite → gauche)</option><option value="occidental">occidental (gauche → droite)</option></select></label></div>' +
-        '<div class="ident-actions"><button type="button" class="mou-btn" id="dblVoir">🔍 Voir les doubles pages</button></div>' +
-        '<div id="dblPlanche"></div></div>' +
-        '<div class="dbl"><div class="dem-titre">🔗 Deux pages simples en une double page</div>' +
-        '<div class="dem-sous">L\'inverse : pour un scan où une double page a été coupée en deux. Choisis un tome, touche la <b>première</b> page de chaque paire à coller ' +
-        '(elle est collée à la suivante) : la double page s\'assemble aussitôt sous tes yeux. Le sens ci-dessus décide de l\'ordre (manga : les pages vont de droite à gauche).</div>' +
-        '<div class="ident-actions"><button type="button" class="mou-btn" id="asmVoir">🔍 Choisir un tome</button></div>' +
-        '<div id="asmPlanche"></div></div>' +
-        '<div class="dbl"><div class="dem-titre">Tomes à traiter</div><div id="allTomes" class="dem-sous">…</div></div>' +
-        '<div class="ident-actions"><label><input type="checkbox" id="allInfos" checked> 📝 Écrire aussi les infos du tome (résumé, chapitres, provenance, ISBN…) dans la même passe : pas besoin de « Réécrire les infos » ensuite</label></div>' +
-        '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser les tomes cochés (rien n\'est modifié)</button></div><div id="allRes"></div>';
+      $('infosTitre').textContent = '✨ Améliorer « ' + current.title + ' »';
+      var carte = function (titre, aide, corps, id) {              // même carte pour tous les réglages : titre, une phrase, les champs
+        return '<section class="reg"' + (id ? ' id="' + id + '"' : '') + '><h3>' + titre + '</h3>' + (aide ? '<div class="reg-aide">' + aide + '</div>' : '') + corps + '</section>';
+      };
+      var champ = function (etiquette, controle) { return '<label class="reg-champ"><span>' + etiquette + '</span>' + controle + '</label>'; };
+      $('infosCorps').innerHTML =
+        '<section class="reg" id="regTomes"><h3>📚 Tomes à traiter <span id="allCompte" class="reg-valeur"></span></h3>' +
+        '<div class="reg-aide">Pour l\'image et l\'uniformité. Les doubles pages se choisissent tome par tome.</div>' +
+        '<div class="reg-boutons"><button type="button" class="mou-btn ghost small" id="allTout">Tout cocher</button>' +
+        '<button type="button" class="mou-btn ghost small" id="allRien">Tout décocher</button>' +
+        '<button type="button" class="mou-btn ghost small" id="allUnif" hidden>🎨 Seulement ceux à uniformiser</button></div>' +
+        '<details id="allListe"><summary>Voir ou changer la sélection</summary><div id="allTomes" class="dem-sous">…</div></details></section>' +
+        '<div class="onglets" role="tablist">' + [['image', '✨ Image'], ['doubles', '📖 Doubles'], ['uniforme', '🎨 Uniformité']].map(function (o, i) {
+          return '<button type="button" class="mou-btn' + (i ? ' ghost' : '') + '" role="tab" data-onglet="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' +
+
+        '<div data-panneau="image">' +
+        carte('✨ Améliorer l\'image', 'Vieux scans : papier gris, trames, escaliers, noirs délavés. Rien n\'est fait tout seul : choisis un niveau, regarde l\'aperçu, puis applique. Les pages en couleur ne sont jamais touchées.',
+          champ('Niveau', '<select id="allProfil">' + PROFILS_AMEL.map(function (p) { return '<option value="' + p[0] + '">' + p[1] + '</option>'; }).join('') + '<option value="perso">Personnalisé</option></select>') +
+          '<details id="allFin"><summary>Réglage fin</summary>' + REGLAGES_AMEL.map(function (r) {
+            return '<div class="amel-ligne"><label for="am_' + r[0] + '">' + r[1] + '<small>' + r[2] + '</small></label><select id="am_' + r[0] + '" data-am="' + r[0] + '">' +
+              (r[3] || ['Non', 'Léger', 'Moyen', 'Fort']).map(function (n, i) { return '<option value="' + i + '">' + n + '</option>'; }).join('') + '</select></div>';
+          }).join('') + '</details>') +
+        carte('📐 Taille des pages', 'Une page plus large que l\'écran qui la lit est réduite : fichier bien plus léger.',
+          champ('Largeur', '<select id="allLargeur"><option value="">Garder la largeur d\'origine</option><option value="1600" selected>1600 px (tablette)</option><option value="1200">1200 px (téléphone)</option></select>')) +
+        carte('🗜 Compression', 'Chaque tome est recompressé à la qualité la plus légère qui reste invisible à l\'écran (vérifiée sur des pages d\'essai). Les tomes encore partagés par qBittorrent sont allégés à part : le torrent n\'est jamais touché. Anciens fichiers à la corbeille 30 jours.',
+          champ('Qualité', '<select id="allQualMode"><option value="">Automatique (recommandé)</option><option value="m">Réglage fin</option></select>') +
+          '<div id="allQualManuelle" hidden><input type="range" id="allQual" min="40" max="98" step="1" value="85" style="width:100%"><div class="dem-sous"><b id="allQualVal">85</b> / 100 : 100 = identique à l\'original. 90 et plus : aucune différence visible ; 80-88 : visible seulement en zoomant ; sous 70 : défauts qui se voient.</div></div>') +
+        '<div class="ident-actions"><button type="button" class="mou-btn" id="allComparer">👁 Comparer avant / après (en direct)</button></div><div id="allCmp"></div>' +
+        '<div class="ident-actions"><label><input type="checkbox" id="allInfos" checked> 📝 Écrire aussi les infos du tome (résumé, chapitres, provenance, ISBN…) dans la même passe</label></div>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser les tomes cochés (rien n\'est modifié)</button></div><div id="allRes"></div>' +
+        '</div>' +
+
+        '<div data-panneau="doubles" hidden>' +
+        carte('📖 Sens de lecture', 'Décide de l\'ordre des deux moitiés d\'une double page (manga : la page qu\'on lit en premier est à droite).',
+          champ('Sens', '<select id="dblSens"><option value="manga">Manga (droite → gauche)</option><option value="occidental">Occidental (gauche → droite)</option></select>')) +
+        carte('✂️ Couper les doubles pages', 'Chaque image plus large que haute est coupée en deux pages (pour tout le monde, pas seulement à l\'écran). Les vraies doubles (une seule grande image) restent entières : touche-les dans la planche pour les garder.',
+          '<div class="ident-actions"><button type="button" class="mou-btn" id="dblVoir">🔍 Voir les doubles pages</button></div><div id="dblPlanche"></div>') +
+        carte('🔗 Assembler deux pages simples', 'L\'inverse, pour un scan où une double page a été coupée en deux : choisis un tome, laisse l\'appli 🔎 repérer les paires (ou touche la première page de chaque paire) ; la double page s\'assemble sous tes yeux, alignée automatiquement, avec la confiance de l\'alignement.',
+          '<div class="ident-actions"><button type="button" class="mou-btn" id="asmVoir">🔍 Choisir un tome</button></div><div id="asmPlanche"></div>') +
+        '</div>' +
+
+        '<div data-panneau="uniforme" hidden>' +
+        carte('🎨 Uniformité des tomes', 'Mesure le noir, le blanc et la teinte de chaque tome, repère ceux qui ne ressemblent pas aux autres (noirs moins profonds, papier gris, léger ton violet ou jaune) et propose le réglage qui les ramène au même niveau.',
+          '<div id="unifZone" class="dem-sous">…</div>') +
+        '</div>';
       $('infosVue').hidden = false;
-      api('/api/optimiser/fichiers?series=' + encodeURIComponent(current.id)).then(function (r) {
+      try { var sens = localStorage.getItem('mfDblSens'); if (sens) $('dblSens').value = sens; } catch (e) {}
+      Promise.all([api('/api/optimiser/fichiers?series=' + encodeURIComponent(current.id)), api('/api/uniformite?series=' + encodeURIComponent(current.id))]).then(function (rs) {
         var z = $('allTomes'); if (!z) return;
-        var f = r.fichiers || [];
-        z.innerHTML = f.length ? '<div class="ident-actions"><button type="button" class="mou-btn ghost" id="allTout">Tout cocher</button> ' +
-          '<button type="button" class="mou-btn ghost" id="allRien">Tout décocher</button></div>' +
-          f.map(function (x) {
-            return '<label class="all-tome" style="display:flex;gap:10px;align-items:center;margin:6px 0"><input type="checkbox" class="all-coche" value="' + esc(x.nom) + '"' +
-              (x.hors ? '' : ' checked') + ' style="width:22px;height:22px;flex:none"><span>' + esc(x.libelle) + ' <small>(' + String(x.taille_mo).replace('.', ',') + ' Mo' +
-              (x.hors ? ' · hors série, décoché d\'avance' : '') + ')</small></span></label>';
+        var f = rs[0].fichiers || [];
+        unif = rs[1] && !rs[1].error ? rs[1] : null;
+        var signales = {};
+        ((unif && unif.tomes) || []).forEach(function (t) { if (t.a_uniformiser) signales[t.fichier] = t.ecarts.join(', '); });
+        z.innerHTML = f.length ? f.map(function (x) {
+            return '<label class="all-tome"><input type="checkbox" class="all-coche" value="' + esc(x.nom) + '"' + (x.hors ? '' : ' checked') + '><span>' + esc(x.libelle) +
+              ' <small>(' + String(x.taille_mo).replace('.', ',') + ' Mo' + (x.hors ? ' · hors série, décoché d\'avance' : '') + ')</small>' +
+              (signales[x.nom] ? ' <small class="unif-flag" title="' + esc(signales[x.nom]) + '">🎨 ' + esc(signales[x.nom]) + '</small>' : '') + '</span></label>';
           }).join('') : 'Aucun tome à alléger.';
+        majCompteTomes();
+        unifDessiner();
       });
       suivreAllegement();
     });
+    function majCompteTomes() {
+      var cs = [].slice.call(document.querySelectorAll('.all-coche')), n = cs.filter(function (c) { return c.checked; }).length;
+      if ($('allCompte')) $('allCompte').textContent = n + ' sur ' + cs.length + ' cochés';
+    }
+    function ongletAmelioration(nom) {
+      document.querySelectorAll('[data-onglet]').forEach(function (b) { b.classList.toggle('ghost', b.dataset.onglet !== nom); });
+      document.querySelectorAll('[data-panneau]').forEach(function (p) { p.hidden = p.dataset.panneau !== nom; });
+      if ($('regTomes')) $('regTomes').hidden = nom === 'doubles';          // les doubles pages se choisissent tome par tome
+      if (nom === 'uniforme') unifCharger();
+    }
     // ✨ Profils d'amélioration (ordre d'optimiser.AMELIORATIONS ; 0 = non … 3 = fort)
-    var PROFILS_AMEL = [['0,0,0,0,0,0,0,0', 'Non (image d\'origine)'], ['1,1,1,1,0,1,0,0', 'Légère (scan un peu gris)'],
-      ['2,2,2,1,1,2,0,0', 'Vieux scan (papier gris, trames, escaliers)'], ['3,3,3,2,2,3,0,0', 'Très abîmé (crado, délavé)']];
+    var PROFILS_AMEL = [['0,0,0,0,0,0,0,0,0', 'Non (image d\'origine)'], ['1,1,1,1,0,1,0,0,0', 'Légère (scan un peu gris)'],
+      ['2,2,2,1,1,2,0,0,0', 'Vieux scan (papier gris, trames, escaliers)'], ['3,3,3,2,2,3,0,0,0', 'Très abîmé (crado, délavé)'],
+      ['0,0,0,0,0,0,0,0,1', '🎨 Uniformiser (même noir et même blanc que les autres tomes)']];
     var REGLAGES_AMEL = [['debruit', '🌫 Enlever le grain', 'le grain et les petits carrés de compression'],
       ['trames', '▦ Adoucir les trames', 'aplats gris pointillés → gris uni ; fort = textures fines aussi lissées'],
       ['papier', '🧼 Blanchir le papier', 'fond gris ou jauni, bulles comprises ; fort = gris très pâles effacés'],
@@ -952,7 +984,8 @@
       ['taches', '🧽 Effacer les poussières', 'petits points isolés sur le papier'],
       ['lisser', '〰 Lisser les traits', 'fini l\'effet escalier (bords arrondis), même taille de page'],
       ['nettete', '🔪 Plus net', 'à éviter avec « Lisser » ; fort = peut faire des contours'],
-      ['agrandir', '🔍 Agrandir ×2', 'petits scans seulement : plus fin en zoomant, mais fichier 2 à 3 fois plus lourd', ['Non', '×2']]];
+      ['agrandir', '🔍 Agrandir ×2', 'petits scans seulement : plus fin en zoomant, mais fichier 2 à 3 fois plus lourd', ['Non', '×2']],
+      ['uniformiser', '🎨 Aligner sur les autres tomes', 'même noir, même blanc, sans teinte ; demande la mesure de l\'onglet 🎨 Uniformité', ['Non', 'Oui']]];
     function amelioration() {
       return REGLAGES_AMEL.map(function (r) { var e = $('am_' + r[0]); return e ? e.value : '0'; }).join(',');
     }
@@ -969,7 +1002,7 @@
       var r = await api('/api/optimiser?series=' + encodeURIComponent(current.id));
       if (!$('allRes')) return;
       var lignes = (r.rapport || []).map(function (x) {
-        return '<li>' + esc(x.fichier) + (!r.appliquer && !r.en_cours && x.qualite ? ' <button type="button" class="tog" data-comparer="' + esc(x.fichier) + '" title="Comparer avant / après">👁</button>' : '') + ' <small>' + (x.note ? esc(x.note) : (x.taille_mo + ' Mo · ' + (x.gagne_mo != null ? (x.gagne_mo >= 0 ? '−' : '+') + Math.abs(x.gagne_mo) + ' Mo' : '≈ ' + (x.gain >= 0 ? '−' : '+') + Math.abs(Math.round(x.gain * 100)) + ' %') + ' (qualité JPEG ' + x.qualite + '/100, écart ' + x.psnr + ' dB)')) + '</small></li>';
+        return '<li>' + esc(x.fichier) + (!r.appliquer && !r.en_cours && x.qualite ? ' <button type="button" class="tog" data-comparer="' + esc(x.fichier) + '" title="Comparer avant / après">👁</button>' : '') + ' <small>' + (x.alerte ? '⚠ ' + esc(x.alerte) + ' · ' : '') + (x.note ? esc(x.note) : (x.taille_mo + ' Mo · ' + (x.gagne_mo != null ? (x.gagne_mo >= 0 ? '−' : '+') + Math.abs(x.gagne_mo) + ' Mo' : '≈ ' + (x.gain >= 0 ? '−' : '+') + Math.abs(Math.round(x.gain * 100)) + ' %') + ' (qualité JPEG ' + x.qualite + '/100, écart ' + x.psnr + ' dB)')) + '</small></li>';
       }).join('');
       $('allRes').innerHTML = (r.en_cours ? '<div class="dem-sous">' + esc(r.message || '') + ' ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' tomes · ça continue en arrière-plan, tu peux fermer cette fenêtre : une notification arrive à la fin.</div>' +
           '<progress max="' + (r.total || 1) + '" value="' + (r.fait || 0) + '" style="width:100%"></progress>' : (r.message ? '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' : '')) +
@@ -1038,7 +1071,7 @@
         var al = $('cmpAller'); if (al && al.options.length !== i.pages + 1) { al.innerHTML = pagesCmp(); }
         var nu = $('cmpNum'); if (nu) { nu.max = i.pages; nu.value = i.page + 1; }
         var gain = i.avant_ko ? Math.round(100 * (1 - i.apres_ko / i.avant_ko)) : 0;
-        $('cmpInfo').textContent = (i.couleur ? '🎨 Page en couleur : l\'amélioration ne la touche pas. ' : i.ameliore ? '✨ Amélioration appliquée. ' : '') + (i.inchange ? 'Cette page garde ses octets d\'origine (' + i.avant_ko + ' Ko) : rien à gagner à ce réglage.'
+        $('cmpInfo').textContent = (i.uniformise === false ? '⚠ Ce tome n\'est pas encore mesuré : l\'alignement des noirs est ignoré (onglet 🎨 Uniformité → Mesurer). ' : '') + (i.couleur ? '🎨 Page en couleur : l\'amélioration ne la touche pas. ' : i.ameliore ? '✨ Amélioration appliquée. ' : '') + (i.inchange ? 'Cette page garde ses octets d\'origine (' + i.avant_ko + ' Ko) : rien à gagner à ce réglage.'
           : 'Qualité ' + i.qualite + '/100 (' + (i.auto ? 'choisie automatiquement' : 'manuelle') + ') · Avant ' + i.avant_ko + ' Ko (' + i.dimensions[0][0] + '×' + i.dimensions[0][1] + ') → Après ' + i.apres_ko + ' Ko (' + i.dimensions[1][0] + '×' + i.dimensions[1][1] + ') · ' + (gain >= 0 ? '−' : '+') + Math.abs(gain) + ' % sur cette page');
       });
     }
@@ -1154,6 +1187,85 @@
         dessinerComparaison();
       }
     });
+    // 🎨 Uniformité : noir, blanc et teinte de chaque tome mesurés, groupes, référence, tomes à uniformiser
+    var unif = null, suiviUnif = null, unifAttend = false;
+    function plagesDeTomes(libelles) {                                  // « Tome 01 … Tome 04, Tome 06 » → « 1-4, 6 »
+      var n = libelles.map(function (l) { var m = /(\d+)\s*$/.exec(l); return m ? parseInt(m[1], 10) : null; });
+      if (n.some(function (x) { return x === null; })) return libelles.join(', ');
+      n.sort(function (a, b) { return a - b; });
+      var out = [], i = 0;
+      while (i < n.length) { var j = i; while (j + 1 < n.length && n[j + 1] === n[j] + 1) j++; out.push(j > i ? n[i] + '-' + n[j] : '' + n[i]); i = j + 1; }
+      return 'tomes ' + out.join(', ');
+    }
+    async function unifCharger() {
+      clearTimeout(suiviUnif);
+      if (!$('unifZone') || !current) return;
+      var r = await api('/api/uniformite?series=' + encodeURIComponent(current.id));
+      if (!$('unifZone')) return;
+      if (r.error) { $('unifZone').textContent = r.error; return; }
+      unif = r; unifDessiner();
+      var e = r.etat || {};
+      if (e.en_cours) suiviUnif = setTimeout(unifCharger, 2000);
+      else if (unifAttend && e.message) { unifAttend = false; window.MouToast && window.MouToast('🎨 ' + e.message, 'ok'); }
+    }
+    function unifDessiner() {
+      var z = $('unifZone'), u = unif; if (!z || !u) return;
+      var e = u.etat || {}, h = '';
+      var boutonMesure = function (txt) { return '<div class="ident-actions"><button type="button" class="mou-btn" id="unifMesurer">' + txt + '</button></div>'; };
+      if (e.en_cours) {
+        z.innerHTML = '<div class="dem-sous">' + esc(e.message || 'Mesure…') + ' ' + (e.fait || 0) + ' / ' + (e.total || '?') + ' tomes · tu peux fermer cette fenêtre, la mesure continue.</div>' +
+          '<progress max="' + (e.total || 1) + '" value="' + (e.fait || 0) + '" style="width:100%"></progress>';
+      } else if (!u.tomes.length) {
+        z.innerHTML = '<div class="dem-sous">Aucun tome mesuré. Environ une seconde par tome, rien n\'est modifié.</div>' + boutonMesure('📊 Mesurer les tomes');
+      } else {
+        var nb = u.tomes.length, fl = u.a_uniformiser.length;
+        h += '<div class="unif-bilan ' + (fl ? 'attention' : 'ok') + '">' + (fl ? '⚠ ' + esc(u.proposition) : '✅ Les ' + nb + ' tomes mesurés se ressemblent (même noir, même blanc, pas de teinte) : rien à uniformiser.') + '</div>';
+        if (u.mesures < u.tomes_total) h += '<div class="dem-sous">' + u.mesures + ' tomes mesurés sur ' + u.tomes_total + '.</div>' + boutonMesure('📊 Mesurer les ' + (u.tomes_total - u.mesures) + ' autres');
+        if (u.groupes.length > 1 && u.groupes[1].tomes.length >= 0.6 * u.groupes[0].tomes.length) h += '<div class="dem-sous">⚖ Deux familles de tomes de taille proche : choisis ci-dessous celle qui sert de référence.</div>';
+        h += '<label class="reg-champ"><span>Référence</span><select id="unifRef">' + u.groupes.map(function (g) {
+          return '<option value="groupe:' + g.id + '"' + (u.reference && u.reference.ref === 'groupe:' + g.id ? ' selected' : '') + '>Groupe ' + g.id + ' (' + g.tomes.length + ' tomes) : ' + esc(g.resume) + '</option>'; }).join('') +
+          '<optgroup label="Un tome précis">' + u.tomes.map(function (t) {
+            return '<option value="tome:' + esc(t.fichier) + '"' + (u.reference && u.reference.ref === 'tome:' + t.fichier ? ' selected' : '') + '>' + esc(t.libelle) + '</option>'; }).join('') + '</optgroup></select></label>';
+        var lib = {}; u.tomes.forEach(function (t) { lib[t.fichier] = t.libelle; });
+        h += '<div class="unif-groupes">' + u.groupes.map(function (g) {
+          return '<div><b>Groupe ' + g.id + '</b> · ' + g.tomes.length + ' tome' + (g.tomes.length > 1 ? 's' : '') + ' · ' + esc(g.resume) + '<br><small>' + esc(plagesDeTomes(g.tomes.map(function (n) { return lib[n]; }))) + '</small></div>'; }).join('') + '</div>';
+        h += '<div class="unif-liste">' + u.tomes.map(function (t) {
+          return '<div class="unif-ligne' + (t.a_uniformiser ? ' signale' : '') + '"><span class="unif-pastilles"><i class="unif-pastille" style="background:' + t.couleur_encre + '" title="encre"></i>' +
+            '<i class="unif-pastille" style="background:' + t.couleur_papier + '" title="papier"></i></span><span class="unif-nom">' + esc(t.libelle) + '</span>' +
+            '<small>noir ' + Math.round(t.encre) + ' · blanc ' + Math.round(t.blanc) + ' · ' + esc(t.teinte) + '</small>' +
+            (t.a_uniformiser ? '<small class="unif-flag">⚠ ' + esc(t.ecarts.join(', ')) + '</small>' : '') + '</div>'; }).join('') + '</div>';
+        if (fl) h += '<div class="ident-actions"><button type="button" class="mou-btn" id="unifAppliquer">✨ Uniformiser les ' + fl + ' tome' + (fl > 1 ? 's' : '') + ' signalé' + (fl > 1 ? 's' : '') + '</button></div>' +
+          '<div class="dem-sous">Ça coche ces tomes, choisit le niveau « 🎨 Uniformiser » et ouvre l\'aperçu avant / après : rien n\'est modifié avant que tu appuies sur « Appliquer ».</div>';
+        z.innerHTML = h;
+      }
+      var b = $('allUnif'); if (b) { var n = u.a_uniformiser ? u.a_uniformiser.length : 0; b.hidden = !n; b.textContent = '🎨 Seulement ceux à uniformiser (' + n + ')'; }
+      document.querySelectorAll('.all-tome').forEach(function (l) {           // les tomes signalés portent leur pastille dans la liste du haut
+        var c = l.querySelector('.all-coche'), t = u.tomes.filter(function (x) { return x.fichier === (c && c.value); })[0];
+        var f = l.querySelector('.unif-flag'); if (f) f.remove();
+        if (t && t.a_uniformiser) l.querySelector('span').insertAdjacentHTML('beforeend', ' <small class="unif-flag">🎨 ' + esc(t.ecarts.join(', ')) + '</small>');
+      });
+    }
+    $('infosCorps').addEventListener('click', async function (e) {
+      if (e.target.closest('#unifMesurer')) {
+        var r = await post('/api/uniformite', {series: current.id, action: 'analyser'});
+        if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
+        unifAttend = true; setTimeout(unifCharger, 600); return;
+      }
+      if (e.target.closest('#unifAppliquer')) {
+        var f = (unif && unif.a_uniformiser) || []; if (!f.length) return;
+        [].forEach.call(document.querySelectorAll('.all-coche'), function (c) { c.checked = f.indexOf(c.value) >= 0; });
+        majCompteTomes();
+        ongletAmelioration('image');
+        $('allProfil').value = '0,0,0,0,0,0,0,0,1';
+        $('allProfil').dispatchEvent(new Event('change', {bubbles: true}));
+        ouvrirComparaison(f[0]);
+      }
+    });
+    $('infosCorps').addEventListener('change', async function (e) {
+      if (e.target.id !== 'unifRef') return;
+      var r = await post('/api/uniformite', {series: current.id, action: 'reference', ref: e.target.value});
+      if (r && r.tomes) { r.etat = (unif && unif.etat) || {}; unif = r; unifDessiner(); if (cmp) majComparaison(); }
+    });
     // 📖 Doubles pages : un tome à la fois ; planche de vignettes, tout est coupé par défaut, on touche les vraies doubles pour les garder
     var dblGardees = {}, dblTomes = [], dblCourant = '', dblCol = 2;
     try { dblCol = Math.max(1, Math.min(3, parseInt(localStorage.getItem('mfDblCol'), 10) || 2)); } catch (e) {}
@@ -1203,7 +1315,8 @@
         '<button type="button" class="mou-btn" id="dblCouper">✂️ Découper ce tome en simples pages</button>';
     }
     $('infosCorps').addEventListener('change', function (e) {
-      if (e.target.id === 'dblSens') { asmGrille(); return; }
+      if (e.target.id === 'dblSens') { try { localStorage.setItem('mfDblSens', e.target.value); } catch (x) {} asmGrille(); return; }
+      if (e.target.classList && e.target.classList.contains('all-coche')) { majCompteTomes(); return; }
       if (e.target.id !== 'dblCols') return;
       dblCol = parseInt(e.target.value, 10) || 2;
       try { localStorage.setItem('mfDblCol', String(dblCol)); } catch (x) {}
@@ -1241,7 +1354,7 @@
       window.addEventListener('popstate', function () { if (enquete) envoyer('popstate, état=' + JSON.stringify(history.state) + ', hash=' + location.hash); });
       window.addEventListener('pagehide', function () { if (enquete) envoyer('la page se décharge'); });
     })();
-    var asmTomes = [], asmCourant = '', asmPaires = {}, asmAjust = {}, aRedessiner = false;
+    var asmTomes = [], asmCourant = '', asmPaires = {}, asmAjust = {}, asmPossibles = {}, asmInfo = {}, aRedessiner = false;
     new MutationObserver(function () {                                // fiche remise à jour une fois la fenêtre des doubles pages fermée
       if ($('infosVue').hidden && aRedessiner) { aRedessiner = false; if (current) rafraichirSerie(current.id); }
     }).observe($('infosVue'), {attributes: true, attributeFilter: ['hidden']});
@@ -1265,10 +1378,11 @@
         if (asmPaires[i]) {                                           // paire : les deux pages déjà collées, comme elles seront
           h += '<button type="button" class="dbl-tuile garde asm-paire" style="grid-column:span ' + Math.min(2, dblCol) + '" data-asm-tuile="' + i + '" title="Touche pour défaire">' +
             '<span class="asm-duo"><img alt="" src="/api/doubles/paire?series=' + dblSerie() + '&fichier=' + encodeURIComponent(t.fichier) + '&n=' + i + '&sens=' + (manga ? 'manga' : 'occidental') + '&a=' + (asmAjust[i] || 0) + '&w=' + (w * 2) + '"></span><span>' + (i + 1) + '–' + (i + 2) + ' 🔗 (touche pour défaire)</span>' +
-            '<span class="asm-aj"><i data-asm-aj="' + i + '" data-pas="-3">▲</i><b>' + ((asmAjust[i] || 0) > 0 ? '+' : '') + (asmAjust[i] || 0) + ' px</b><i data-asm-aj="' + i + '" data-pas="3">▼</i></span></button>';
+            '<span class="asm-aj"><i data-asm-aj="' + i + '" data-pas="-5" title="5 px plus haut">⏫</i><i data-asm-aj="' + i + '" data-pas="-1" title="1 px plus haut">▲</i><b>' + ((asmAjust[i] || 0) > 0 ? '+' : '') + (asmAjust[i] || 0) + ' px</b><i data-asm-aj="' + i + '" data-pas="1" title="1 px plus bas">▼</i><i data-asm-aj="' + i + '" data-pas="5" title="5 px plus bas">⏬</i></span>' +
+            '<span class="asm-conf" data-asm-conf="' + i + '">' + asmPastille(asmInfo[i]) + '</span></button>';
           i++;
         } else {
-          h += '<button type="button" class="dbl-tuile" data-asm-tuile="' + i + '">' + img(i, w) + '<span>' + (i + 1) + '</span></button>';
+          h += '<button type="button" class="dbl-tuile' + (asmPossibles[i] ? ' asm-possible' : '') + '" data-asm-tuile="' + i + '">' + img(i, w) + '<span>' + (i + 1) + (asmPossibles[i] ? ' · paire possible ?' : '') + '</span></button>';
         }
       }
       $('asmGrille').style.direction = manga ? 'rtl' : 'ltr';        // manga : la page 1 est à droite, comme dans le livre
@@ -1277,16 +1391,45 @@
       var n = Object.keys(asmPaires).length;
       $('asmBilan').innerHTML = '<div class="dem-sous">Touche une page pour la coller à la suivante : elles s\'assemblent tout de suite. ' + n + ' paire(s).</div>' +
         (n ? '<button type="button" class="mou-btn" id="asmGo">🔗 Assembler ces pages</button>' : '');
+      Object.keys(asmPaires).forEach(function (k) { asmInfoPaire(parseInt(k, 10)); });
+    }
+    function asmPastille(i) {                                         // la confiance de l'alignement automatique, à côté de l'aperçu
+      if (!i) return '⏳ alignement…';
+      var dy = (i.dy > 0 ? '+' : '') + i.dy + ' px';
+      return i.niveau === 'sur' ? '✅ alignement sûr (auto ' + dy + ')' : i.niveau === 'probable' ? '🟡 alignement à vérifier (auto ' + dy + ')' : '🔴 alignement incertain : laissé à 0, ajuste avec ▲ ▼';
+    }
+    async function asmInfoPaire(i) {
+      var t = asmTome(); if (!t) return;
+      var cle = t.fichier + '|' + i + '|' + $('dblSens').value;
+      if (asmInfo[i] && asmInfo[i].cle === cle) return;
+      var r = await api('/api/doubles/paire?info=1&series=' + dblSerie() + '&fichier=' + encodeURIComponent(t.fichier) + '&n=' + i + '&sens=' + ($('dblSens').value === 'manga' ? 'manga' : 'occidental') + '&w=300');
+      if (!r || r.dy === undefined) return;
+      r.cle = cle; asmInfo[i] = r;
+      var el = document.querySelector('[data-asm-conf="' + i + '"]'); if (el) el.textContent = asmPastille(r);
+    }
+    async function asmRepererPaires() {
+      var t = asmTome(); if (!t || !$('asmRepere')) return;
+      $('asmRepere').innerHTML = '<div class="dem-sous">Recherche des paires dans ' + t.pages + ' pages… (quelques secondes)</div>';
+      var r = await api('/api/doubles/paires?series=' + dblSerie() + '&fichier=' + encodeURIComponent(t.fichier) + '&sens=' + ($('dblSens').value === 'manga' ? 'manga' : 'occidental'));
+      if (!$('asmRepere') || asmCourant !== t.fichier) return;
+      if (r.error) { $('asmRepere').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
+      var np = 0, nq = 0;
+      (r.paires || []).forEach(function (p) {
+        if (p.niveau === 'probable') { asmPaires[p.index] = true; delete asmPossibles[p.index]; np++; } else if (!asmPaires[p.index]) { asmPossibles[p.index] = true; nq++; }
+      });
+      $('asmRepere').innerHTML = '<div class="dem-sous">' + (np + nq ? '🔎 ' + np + ' paire(s) probable(s) déjà collées, ' + nq + ' possible(s) au contour pointillé (touche-les pour les coller). Regarde chaque aperçu avant d\'assembler : le repérage peut se tromper.' : 'Aucune paire repérée : touche les pages à la main.') + '</div>';
+      asmGrille();
     }
     function asmOuvrir(fichier) {
-      asmCourant = fichier; asmPaires = {}; asmAjust = {};
+      asmCourant = fichier; asmPaires = {}; asmAjust = {}; asmPossibles = {}; asmInfo = {};
       document.querySelectorAll('[data-asm-tome]').forEach(function (b) {
         b.classList.toggle('ghost', b.dataset.asmTome !== fichier);
         if (b.dataset.asmTome === fichier) { b.insertAdjacentElement('afterend', $('asmTome')); setTimeout(function () { b.scrollIntoView({block: 'start', behavior: 'smooth'}); }, 50); }
       });
       $('asmTome').innerHTML = '<div class="ident-actions"><label>Vignettes par ligne : <select id="dblCols">' +
         [1, 2, 3].map(function (n) { return '<option value="' + n + '"' + (n === dblCol ? ' selected' : '') + '>' + n + '</option>'; }).join('') +
-        '</select></label></div><div class="dbl-grille" id="asmGrille"></div><div class="ident-actions" id="asmBilan"></div>';
+        '</select></label> <button type="button" class="mou-btn ghost small" id="asmRepererBtn">🔎 Repérer les paires</button></div><div id="asmRepere"></div>' +
+        '<div class="dbl-grille" id="asmGrille"></div><div class="ident-actions" id="asmBilan"></div>';
       asmGrille();
     }
     async function suivreAssemblage() {
@@ -1308,10 +1451,11 @@
     }
     $('infosCorps').addEventListener('click', async function (e) {
       if (e.target.closest('#asmVoir')) { asmListe(); return; }
+      if (e.target.closest('#asmRepererBtn')) { asmRepererPaires(); return; }
       var tm = e.target.closest('[data-asm-tome]');
       if (tm) { asmOuvrir(tm.dataset.asmTome); return; }
       var aj = e.target.closest('[data-asm-aj]');
-      if (aj) {                                                      // retouche à la main : la page de droite monte ou descend de 3 px
+      if (aj) {                                                      // retouche à la main : la page de droite monte ou descend de 1 ou 5 px
         var k = parseInt(aj.dataset.asmAj, 10);
         asmAjust[k] = Math.max(-80, Math.min(80, (asmAjust[k] || 0) + parseInt(aj.dataset.pas, 10)));
         asmGrille(); return;
@@ -1322,7 +1466,7 @@
         if (asmPaires[i]) delete asmPaires[i];
         else if (i >= tome.pages - 1) { MouAlert('La dernière page n\'a pas de suivante à coller.'); return; }
         else if (asmPaires[i + 1]) { MouAlert('La page suivante est déjà dans une paire : défais-la d\'abord.'); return; }
-        else asmPaires[i] = true;
+        else { asmPaires[i] = true; delete asmPossibles[i]; }
         asmGrille(); return;
       }
       if (e.target.closest('#asmGo')) {
@@ -1357,9 +1501,14 @@
         else { $('dblTome').innerHTML = '<div class="dem-sous">🎉 Dernier tome traité.</div>'; }
       }
     }
-    $('infosCorps').addEventListener('click', function (e) {          // cocher / décocher tous les tomes à alléger
-      var t = e.target.closest('#allTout, #allRien'); if (!t) return;
-      [].forEach.call(document.querySelectorAll('.all-coche'), function (c) { c.checked = t.id === 'allTout'; });
+    $('infosCorps').addEventListener('click', function (e) {          // cocher / décocher tous les tomes, ne garder que ceux à uniformiser, changer d'onglet
+      var o = e.target.closest('[data-onglet]');
+      if (o) { ongletAmelioration(o.dataset.onglet); return; }
+      var t = e.target.closest('#allTout, #allRien, #allUnif'); if (!t) return;
+      var signales = {};
+      ((unif && unif.tomes) || []).forEach(function (x) { if (x.a_uniformiser) signales[x.fichier] = true; });
+      [].forEach.call(document.querySelectorAll('.all-coche'), function (c) { c.checked = t.id === 'allTout' ? true : t.id === 'allRien' ? false : !!signales[c.value]; });
+      majCompteTomes();
     });
     $('infosCorps').addEventListener('click', async function (e) {
       var b = e.target.closest('[data-alleger]'); if (!b) return;

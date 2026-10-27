@@ -1814,6 +1814,11 @@ def _fichiers_a_alleger(name):
     return [f for f in (_scan().get(name) or []) if f.suffix.lower() in (".cbz", ".zip") and not _a_importer(f)]
 
 
+def _libelle_tome(f, name):
+    m = re.match(r"Tome (\d+)$", f.parent.name)
+    return f"Tome {int(m.group(1)):02d}" if m else (f.parent.name if f.parent.name != name else f.stem)
+
+
 @app.route("/api/optimiser/fichiers")
 def api_optimiser_fichiers():
     """Fichiers de la série qu'on peut alléger (un par tome), pour choisir lesquels traiter. Les hors-série (autre qualité)
@@ -1831,7 +1836,7 @@ def api_optimiser_fichiers():
         hors = bool(re.search(r"hors[\s_.-]*(?:s[ée]rie|tome)|\bHS\b|\bomake\b|\bartbook\b|\bbonus\b", f.parent.name + " " + f.name, re.I)) \
             or (f.parent.name != name and not m)
         out.append({"nom": f.name, "tome": int(m.group(1)) if m else None, "hors": hors, "taille_mo": taille,
-                    "libelle": f"Tome {int(m.group(1)):02d}" if m else (f.parent.name if f.parent.name != name else f.stem)})
+                    "libelle": _libelle_tome(f, name)})
     out.sort(key=lambda x: (x["tome"] is None, x["tome"] or 0, x["nom"]))
     return jsonify({"fichiers": out})
 
@@ -1892,7 +1897,8 @@ def api_optimiser():
                 chapitres = None
             infos = _infos_tome(name, tome)
             return lambda ancien: signets._xml(ancien, chapitres, infos)
-    if not optimiser.lancer(name, fichiers, appliquer, _vers_corbeille, eclairer, fini, largeur, manuelle, infos_de):
+    calages = _calages_uniformite(name, fichiers) if eclairer and eclairer.get("uniformiser") else None
+    if not optimiser.lancer(name, fichiers, appliquer, _vers_corbeille, eclairer, fini, largeur, manuelle, infos_de, calages):
         return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
     return jsonify({"ok": True, "message": "Allègement lancé…" if appliquer else "Analyse lancée…"})
 
@@ -1927,19 +1933,20 @@ def api_optimiser_comparer():
     largeur = int(request.args["largeur"]) if request.args.get("largeur", "").isdigit() and int(request.args["largeur"]) >= 800 else None
     eclairer = optimiser.reglages_amelioration(request.args.get("am", "")) or optimiser.reglages_amelioration(request.args.get("eclairer") == "1")
     q = request.args.get("q", "")
+    calage = (_calages_uniformite(name, [chemin]) or {}).get(chemin.name) if eclairer and eclairer.get("uniformiser") else None
     try:
         if q.isdigit() and 30 <= int(q) <= 98:
             qualite, auto = int(q), False
         else:                                                # automatique : même choix que l'analyse (mis en mémoire)
-            cle = (str(chemin), chemin.stat().st_mtime_ns, tuple((eclairer or {}).values()), largeur)
+            cle = (str(chemin), chemin.stat().st_mtime_ns, tuple((eclairer or {}).values()), largeur, tuple(sorted((calage or {}).items())))
             with _VERROU_QUALITE_AUTO:                       # avant, après et infos arrivent ensemble : un seul calcul
                 if cle not in _QUALITE_AUTO:
                     if len(_QUALITE_AUTO) > 64:
                         _QUALITE_AUTO.clear()
                     # 3 pages d'essai suffisent pour l'aperçu (l'analyse de la série en prend 8)
-                    _QUALITE_AUTO[cle] = optimiser.analyser(chemin, nb_essai=3, eclairer=eclairer, largeur_max=largeur)["qualite"]
+                    _QUALITE_AUTO[cle] = optimiser.analyser(chemin, nb_essai=3, eclairer=eclairer, largeur_max=largeur, calage=calage)["qualite"]
             qualite, auto = _QUALITE_AUTO[cle], True
-        r = optimiser.comparer(chemin, page, qualite, eclairer, largeur, zoom)
+        r = optimiser.comparer(chemin, page, qualite, eclairer, largeur, zoom, calage)
     except Exception as e:
         logger.warning("Comparaison %s : %s", chemin.name, e)
         return jsonify({"error": f"Comparaison impossible : {e}"}), 500
@@ -1948,7 +1955,73 @@ def api_optimiser_comparer():
         return Response(r[cote], mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
     info = {k: v for k, v in r.items() if k not in ("avant", "apres")}
     info.update(fichier=chemin.name, tomes=[f.name for f in tomes], qualite=qualite, auto=auto)
+    if eclairer and eclairer.get("uniformiser"):
+        info["uniformise"] = bool(calage)
     return jsonify(info)
+
+
+# ---------------- 🎨 Uniformité des tomes d'une série (admin) ----------------
+import uniformite
+
+
+def _fichier_uniformite():
+    return Path(DATA_DIR) / "uniformite.json"
+
+
+def _tomes_mesurables(name):
+    return [f for f in _fichiers_a_alleger(name) if zipfile.is_zipfile(f)]
+
+
+def _analyse_uniformite(name):
+    """Analyse d'après les mesures déjà faites (aucune image lue ici) : groupes, référence, tomes à uniformiser."""
+    fichiers = _tomes_mesurables(name)
+    cache = _fichier_uniformite()
+    stats = uniformite.stats_en_memoire(cache, fichiers)
+    libelles = {f.name: _libelle_tome(f, name) for f in fichiers}
+    analyse = uniformite.resumer(stats, libelles, uniformite.reference_choisie(cache, name))
+    analyse["mesures"] = len(stats)
+    analyse["tomes_total"] = len(fichiers)
+    return analyse, stats
+
+
+def _calages_uniformite(name, fichiers):
+    """{nom du fichier: calage} des tomes mesurés, d'après la référence choisie pour la série (voir uniformite.calage_du_tome)."""
+    cache = _fichier_uniformite()
+    stats = uniformite.stats_en_memoire(cache, _tomes_mesurables(name))
+    ref = uniformite.reference_choisie(cache, name)
+    sortie = {}
+    for f in fichiers:
+        c = uniformite.calage_du_tome(stats, Path(f).name, ref)
+        if c:
+            sortie[Path(f).name] = c
+    return sortie
+
+
+@app.route("/api/uniformite", methods=["GET", "POST"])
+def api_uniformite():
+    """GET ?series= : les tomes mesurés, les groupes, la référence et les tomes à uniformiser (+ l'avancement d'une mesure en cours).
+    POST {series, action: "analyser"} : mesure en arrière-plan les tomes pas encore mesurés ;
+    POST {series, action: "reference", ref: "groupe:B" | "tome:<fichier>" | ""} : choisit le tome ou le groupe qui sert de référence."""
+    if request.method == "GET":
+        name = request.args.get("series", "")
+        if name not in _scan() or name == "(Sans série)":
+            return jsonify({"error": "Série introuvable."}), 404
+        analyse, _ = _analyse_uniformite(name)
+        analyse["etat"] = uniformite.etat(name)
+        return jsonify(analyse)
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if body.get("action") == "reference":
+        uniformite.choisir_reference(_fichier_uniformite(), name, str(body.get("ref") or ""))
+        analyse, _ = _analyse_uniformite(name)
+        return jsonify(dict(analyse, ok=True))
+    if _en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours"):
+        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    if not uniformite.lancer(name, _tomes_mesurables(name), _fichier_uniformite()):
+        return jsonify({"ok": False, "error": "Mesure déjà en cours pour cette série."}), 409
+    return jsonify({"ok": True, "message": "Mesure lancée…"})
 
 
 # ---------------- 📖 Doubles pages : découpe en simples pages (admin) ----------------
@@ -2006,11 +2079,28 @@ def api_doubles_paire():
         return Response("Introuvable", status=404)
     try:
         largeur = max(300, min(1400, int(request.args.get("w", "900"))))
+        estimation = {}
         jpeg = optimiser.apercu_paire(f, int(request.args.get("n", "0")), request.args.get("sens", "manga") != "occidental", largeur,
-                                     max(-80, min(80, int(request.args.get("a", "0")))))
+                                     max(-80, min(80, int(request.args.get("a", "0")))), estimation)
     except (ValueError, archives.ArchiveError) as e:
         return Response(str(e), status=404)
+    if request.args.get("info"):                      # l'alignement trouvé (décalage, confiance) plutôt que l'image
+        return jsonify(estimation)
     return Response(jpeg, mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
+
+
+@app.route("/api/doubles/paires")
+def api_doubles_paires():
+    """Paires de pages qui sont probablement une double page coupée en deux : {"paires": [{"index", "accord", "niveau"}]}.
+    Lecture de toutes les pages du tome (quelques secondes) : le résultat est gardé en mémoire tant que le tome ne change pas."""
+    name = request.args.get("series", "")
+    f = next((x for x in _fichiers_a_alleger(name) if x.name == request.args.get("fichier", "")), None) if name in _scan() else None
+    if f is None or not zipfile.is_zipfile(f):
+        return jsonify({"error": "Tome introuvable."}), 404
+    try:
+        return jsonify({"paires": optimiser.reperer_paires(f, request.args.get("sens", "manga") != "occidental")})
+    except (ValueError, archives.ArchiveError, zipfile.BadZipFile, OSError) as e:
+        return jsonify({"error": f"Lecture impossible : {e}"}), 500
 
 
 @app.route("/api/doubles/etat")
@@ -4014,6 +4104,7 @@ def _travaux_en_cours():
     import optimiser
     with optimiser._VERROU:
         raisons += [f"allègement de {n}" for n, e in optimiser._ETAT.items() if e.get("en_cours")]
+        raisons += [f"découpe ou assemblage de pages de {n}" for n, e in optimiser._COUPES_ETAT.items() if e.get("en_cours")]
     raisons += [f"conversion de {n}" for n, e in list(_CONVERSION.items()) if e.get("en_cours")]
     raisons += [f"lecture des ISBN de {n}" for n, e in list(_ISBN_SERIE.items()) if e.get("en_cours")]
     return raisons
