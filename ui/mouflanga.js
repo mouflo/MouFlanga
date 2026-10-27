@@ -976,6 +976,8 @@
       lignes.push('📐 Taille : ' + (l ? 'pages plus larges que ' + l + ' px réduites' : 'inchangée'));
       var q = $('allQualMode').value;
       lignes.push('🗜 Compression : ' + (q === 'o' ? 'même qualité que l\'original, poids à peu près identique' : q === 'm' ? 'qualité fixée à ' + $('allQual').value + ' / 100' : 'automatique, le poids des fichiers va changer (en général plus léger)'));
+      var touche = l || q === '' || q === 'm';                      // ce qui peut encore s'appliquer à une page en couleur
+      lignes.push('🌈 Pages en couleur : elles restent en couleur, jamais améliorées ni passées en gris' + (touche ? ' ; seuls ' + (l ? 'la réduction' + (q !== 'o' ? ' et ' : '') : '') + (q !== 'o' ? 'l\'allègement' : '') + ' leur sont appliqués' : ' ; rien ne leur est fait'));
       z.innerHTML = '<h3>📝 Ce qui sera fait sur les ' + n + ' tome' + (n > 1 ? 's' : '') + ' cochés</h3><ul class="reg-recap"><li>' + lignes.join('</li><li>') + '</li></ul>';
     }
     function majCompteTomes() {

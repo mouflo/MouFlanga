@@ -21,13 +21,13 @@ import numpy as np
 from PIL import Image
 
 import archives
+import optimiser
 
 logger = logging.getLogger("mouflanga")
 
 VERSION = 1                      # change quand les mesures changent : les anciennes ne sont plus reprises
 HAUTEUR = 600                    # les pages sont mesurées réduites à cette hauteur
 NB_PAGES = 14                    # pages mesurées par tome, réparties sur tout le tome
-SEUIL_COULEUR = 12               # même seuil qu'optimiser.est_couleur
 # Écarts à partir desquels deux tomes ne se ressemblent plus à l'écran
 ECART_ENCRE = 10                 # niveaux de gris (0-255) entre deux encres
 ECART_BLANC = 8                  # entre deux papiers
@@ -41,12 +41,12 @@ _VERROU_CACHE = threading.Lock()
 # ---------------- mesure ----------------
 def mesurer_page(im: Image.Image) -> dict | None:
     """Noir, encre, blanc et teinte d'une page noir et blanc ; None pour une page en couleur ou sans assez de noir et de blanc à mesurer."""
+    if optimiser.est_couleur(im):                         # même détection que pour les améliorations : une page en couleur n'est jamais mesurée ni touchée
+        return None
     im = im.convert("RGB")
     if im.height > HAUTEUR:
         im = im.resize((max(1, round(im.width * HAUTEUR / im.height)), HAUTEUR), Image.BOX)
     a = np.asarray(im, dtype=np.float32)
-    if float(np.mean(np.abs(a[..., 0] - a[..., 1]) + np.abs(a[..., 1] - a[..., 2]))) > SEUIL_COULEUR:
-        return None
     lum = a[..., 0] * 0.299 + a[..., 1] * 0.587 + a[..., 2] * 0.114
     sombre, clair = lum < 70, lum > 200
     n = lum.size

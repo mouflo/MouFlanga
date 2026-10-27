@@ -191,6 +191,80 @@ class QualiteOrigineTest(unittest.TestCase):
                 self.assertNotIn("PSNR", msg)
 
 
+def page_avec_tache_de_couleur(part=0.03):
+    """Une page noir et blanc dont une petite zone (un titre, un dessin) est franchement en couleur : 3 % de sa surface."""
+    a = np.asarray(page_bd(NOIR)).copy()
+    h = int(a.shape[0] * 0.2)
+    larg = int(a.shape[1] * part * a.shape[0] / h)
+    a[10:10 + h, 10:10 + larg] = (220, 40, 40)
+    return Image.fromarray(a)
+
+
+class PagesEnCouleurTest(unittest.TestCase):
+    """Une page en couleur reste en couleur : jamais passée en gris, jamais recompressée sans allègement demandé."""
+
+    def test_detection_des_zones_colorees(self):
+        self.assertTrue(optimiser.est_couleur(page_avec_tache_de_couleur(0.03)))              # 3 % de la page : l'ancien test (écart moyen) disait « noir et blanc »
+        self.assertTrue(optimiser.est_couleur(page_avec_tache_de_couleur(0.006)))
+        self.assertFalse(optimiser.est_couleur(page_bd(NOIR)))
+        self.assertFalse(optimiser.est_couleur(page_bd(VIOLACE)))                               # un scan un peu violet reste du noir et blanc
+        self.assertTrue(optimiser.est_couleur(Image.new("RGB", (100, 150), (200, 30, 30))))
+        self.assertFalse(optimiser.est_couleur(Image.new("L", (100, 150), 128)))
+
+    def test_page_partiellement_coloree_jamais_touchee_par_les_filtres(self):
+        page = page_avec_tache_de_couleur(0.03)
+        calage = uniformite.calage(_s(33, noir=26), _s(5, noir=3))
+        for reglage in ("0,0,0,0,0,0,0,0,1", "3,3,3,3,3,3,3,1,1"):
+            self.assertIs(optimiser.ameliorer(page, reglage, calage), page)                      # même objet : pas un pixel changé, toujours en couleur
+
+    def test_une_page_en_couleur_n_est_pas_mesuree_pour_l_uniformite(self):
+        self.assertIsNone(uniformite.mesurer_page(page_avec_tache_de_couleur(0.03)))
+
+    def test_seulement_uniformiser_laisse_les_octets_des_pages_en_couleur(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "S - Tome 01.cbz"
+            bw, couleur = io.BytesIO(), io.BytesIO()
+            page_bd(VIOLACE).save(bw, "JPEG", quality=88)
+            page_avec_tache_de_couleur(0.03).save(couleur, "JPEG", quality=88)
+            with zipfile.ZipFile(f, "w") as z:
+                for i in range(4):
+                    z.writestr(f"c0001.00-p{i:03d}.jpg", bw.getvalue())
+                z.writestr("c0001.00-p004.jpg", couleur.getvalue())
+            calage = uniformite.calage(_s(33, noir=26, teinte=(2.0, -1.7, -0.4)), _s(5, noir=3))
+            a = optimiser.analyser(f, eclairer="0,0,0,0,0,0,0,0,1", qualite_forcee=optimiser.QUALITE_ORIGINE, calage=calage)
+            optimiser.reecrire(f, a["qualite"], "0,0,0,0,0,0,0,0,1", None, calage=calage, garder_inchangees=True)
+            with zipfile.ZipFile(f) as z:
+                self.assertEqual(z.read("c0001.00-p004.jpg"), couleur.getvalue())                # page en couleur : octets d'origine, identiques
+                self.assertNotEqual(z.read("c0001.00-p000.jpg"), bw.getvalue())                   # page noir et blanc : alignée
+                self.assertEqual(Image.open(io.BytesIO(z.read("c0001.00-p004.jpg"))).mode, "RGB")
+
+    def test_allegement_et_taille_s_appliquent_a_la_couleur_sans_la_passer_en_gris(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "S - Tome 01.cbz"
+            with zipfile.ZipFile(f, "w") as z:
+                b = io.BytesIO()
+                page_avec_tache_de_couleur(0.03).resize((1000, 1400)).save(b, "JPEG", quality=95)
+                for i in range(3):
+                    z.writestr(f"c0001.00-p{i:03d}.jpg", b.getvalue())
+            optimiser.reecrire(f, 80, "0,0,0,0,0,0,0,0,1", 800, calage=uniformite.calage(_s(33, noir=26), _s(5, noir=3)))
+            with zipfile.ZipFile(f) as z:
+                im = Image.open(io.BytesIO(z.read("c0001.00-p000.jpg")))
+            self.assertEqual(im.width, 800)                                                       # réduite
+            self.assertEqual(im.mode, "RGB")                                                      # et toujours en couleur
+            self.assertGreater(np.asarray(im)[30:60, 30:60, 0].mean() - np.asarray(im)[30:60, 30:60, 1].mean(), 100)   # le rouge est resté rouge
+
+    def test_comparaison_d_une_page_en_couleur_sans_allegement(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "S - Tome 01.cbz"
+            b = io.BytesIO()
+            page_avec_tache_de_couleur(0.03).save(b, "JPEG", quality=88)
+            with zipfile.ZipFile(f, "w") as z:
+                z.writestr("c0001.00-p000.jpg", b.getvalue())
+            r = optimiser.comparer(f, 0, 88, "0,0,0,0,0,0,0,0,1", None, None, None, True)
+            self.assertTrue(r["inchange"])                                                        # « Après » = les octets d'origine
+            self.assertTrue(r["couleur"])
+
+
 class AmelioreTest(unittest.TestCase):
     def test_reglage_uniformiser(self):
         r = optimiser.reglages_amelioration("0,0,0,0,0,0,0,0,1")

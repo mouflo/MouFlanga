@@ -1950,7 +1950,7 @@ def api_optimiser_comparer():
                     # 3 pages d'essai suffisent pour l'aperçu (l'analyse de la série en prend 8)
                     _QUALITE_AUTO[cle] = optimiser.analyser(chemin, nb_essai=3, eclairer=eclairer, largeur_max=largeur, calage=calage)["qualite"]
             qualite, auto = _QUALITE_AUTO[cle], True
-        r = optimiser.comparer(chemin, page, qualite, eclairer, largeur, zoom, calage)
+        r = optimiser.comparer(chemin, page, qualite, eclairer, largeur, zoom, calage, q == "o")
     except Exception as e:
         logger.warning("Comparaison %s : %s", chemin.name, e)
         return jsonify({"error": f"Comparaison impossible : {e}"}), 500
