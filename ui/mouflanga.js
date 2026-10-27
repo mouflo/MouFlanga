@@ -924,7 +924,7 @@
           }).join('') + '</details>') +
         carte('📐 Taille des pages', 'Par défaut les pages gardent leur taille. Pour alléger, on peut réduire les pages plus larges que l\'écran (une page déjà plus étroite ne change pas).',
           champ('Largeur', '<select id="allLargeur"><option value="" selected>Garder la largeur d\'origine</option><option value="1600">Réduire à 1600 px (tablette)</option><option value="1200">Réduire à 1200 px (téléphone)</option></select>')) +
-        carte('🗜 Compression', 'Toute modification réécrit les images. « Automatique » choisit la qualité la plus légère qui reste invisible (le poids du tome change, souvent en mieux) ; « Même qualité que l\'original » garde le poids à peu près identique. Les tomes encore partagés par qBittorrent sont traités à part : le torrent n\'est jamais touché. Anciens fichiers à la corbeille : ' + corb() + '.',
+        carte('🗜 Compression', 'Toute modification réécrit les images. « Automatique » choisit la qualité la plus légère qui reste invisible (le poids du tome change, souvent en mieux) ; « Même qualité que l\'original » garde le poids à peu près identique. Les tomes encore partagés par qBittorrent sont traités à part : le torrent n\'est jamais touché. Anciens fichiers à la corbeille — ' + corb() + '.',
           champ('Qualité', '<select id="allQualMode"><option value="">Automatique : plus léger</option><option value="o">Même qualité que l\'original</option><option value="m">Réglage fin (curseur)</option></select>') +
           '<div id="allQualManuelle" hidden><input type="range" id="allQual" min="40" max="98" step="1" value="85" style="width:100%"><div class="dem-sous"><b id="allQualVal">85</b> / 100 : 100 = identique à l\'original. 90 et plus : aucune différence visible ; 80-88 : visible seulement en zoomant ; sous 70 : défauts qui se voient.</div></div>') +
         '<section class="reg" id="allRecap"></section>' +
@@ -965,6 +965,16 @@
       majRecap();
       suivreAllegement();
     });
+    function actionsAmelioration() {                                // ce qui sera fait, en groupes de mots courts (aussi pour la confirmation)
+      var am = amelioration(), uniq = $('am_uniformiser') && $('am_uniformiser').value === '1';
+      var autres = REGLAGES_AMEL.some(function (r) { return r[0] !== 'uniformiser' && $('am_' + r[0]) && $('am_' + r[0]).value !== '0'; });
+      var l = $('allLargeur').value, q = $('allQualMode').value, parts = [];
+      if (am !== PROFILS_AMEL[0][0]) parts.push(uniq && !autres ? 'uniformiser les noirs et les blancs' : 'améliorer l\'image' + (uniq ? ' et uniformiser les noirs et les blancs' : ''));
+      if (l) parts.push('réduire les pages plus larges que ' + l + ' px');
+      if (q === 'm') parts.push('recompresser à la qualité ' + $('allQual').value + ' / 100');
+      else if (q === '') parts.push('alléger (recompression automatique)');
+      return {parts: parts, fidele: q === 'o'};
+    }
     function majRecap() {                                           // « ce qui va être fait », en toutes lettres, avant d'appuyer sur quoi que ce soit
       var z = $('allRecap'); if (!z) return;
       var n = document.querySelectorAll('.all-coche:checked').length, am = amelioration(), prof = PROFILS_AMEL.filter(function (p) { return p[0] === am; })[0];
@@ -1061,7 +1071,7 @@
         if (r && r.en_cours) { setTimeout(boucle, 4000); return; }
         delete veilleAllege[id];
         if (r && r.message) {
-          window.MouToast('🪶 ' + id + ' : ' + (r.appliquer ? 'allègement terminé. ' : 'analyse prête. ') + r.message, 'ok');
+          window.MouToast('🪶 ' + id + ' : ' + (r.appliquer ? 'traitement terminé. ' : 'analyse prête. ') + r.message, 'ok');
           if (current && current.id === id && !$('infosVue').hidden) suivreAllegement();
           else if (current && current.id === id) rafraichirSerie(id);
           majLigneAllege(id, r);
@@ -1551,7 +1561,10 @@
       var opt = optionsAllegement();
       if (opt.fichiers && !opt.fichiers.length) { MouAlert('Coche au moins un tome.'); return; }
       var nb = opt.fichiers ? opt.fichiers.length : null;
-      if (appliquer && !await MouConfirm('Alléger ' + (nb ? nb + ' tome' + (nb > 1 ? 's' : '') : 'tous les tomes') + ' de « ' + current.title + ' » avec ces réglages ? Les anciens fichiers vont à la corbeille (' + corb() + ').')) return;
+      var quoi = actionsAmelioration();
+      if (appliquer && !await MouConfirm('Appliquer à ' + (nb ? nb + ' tome' + (nb > 1 ? 's' : '') : 'tous les tomes') + ' de « ' + current.title + ' » : ' + (quoi.parts.length ? quoi.parts.join(', ') : 'rien à changer') + ' ?' +
+        (quoi.fidele ? '\n\nLa taille et la qualité des pages sont gardées (une page en couleur n\'est pas touchée).' : '') +
+        '\n\nLes anciens fichiers vont à la corbeille (' + corb() + ').')) return;
       var r = await post('/api/optimiser', Object.assign({series: current.id, appliquer: appliquer}, opt));
       if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
       if (appliquer) { cmp = null; if ($('allCmp')) $('allCmp').innerHTML = ''; }
@@ -2032,7 +2045,7 @@
       if (e.target.closest('#chapEditer')) { $('chapEdition').hidden = false; $('chapEditer').hidden = true; $('chapTexte').focus(); return; }
       var w = e.target.closest('#chapEcrire');
       if (w) {                                                              // 📝 chapitres écrits dans le .cbz (partage de la série)
-        if (!await MouConfirm('Écrire les infos du tome (résumé, chapitres, provenance…) dans son fichier ? Le fichier est réécrit (l\'ancien va à la corbeille : ' + corb() + ').')) return;
+        if (!await MouConfirm('Écrire les infos du tome (résumé, chapitres, provenance…) dans son fichier ? Le fichier est réécrit (l\'ancien va à la corbeille — ' + corb() + ').')) return;
         w.disabled = true;
         var rr = await post('/api/tome/chapitres/ecrire', {series: current.id, tome: w.dataset.tome});
         if (!rr.ok) { w.disabled = false; MouAlert(rr.error || 'Impossible'); return; }

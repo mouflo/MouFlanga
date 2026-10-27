@@ -405,7 +405,7 @@ async function loadCorb() {
     const r = await api('/api/corbeille');
     if (r.error) return;
     $('corbMode').value = r.mode; $('corbValeur').value = r.valeur; $('corbUnite').value = r.unite; corbAffiche();
-    $('corbInfo').textContent = 'Les anciens fichiers sont ' + r.duree_texte + '.';
+    $('corbInfo').textContent = 'Réglage actuel : ' + r.duree_texte + '.';
 }
 $('corbMode').addEventListener('change', corbAffiche);
 $('corbSave').addEventListener('click', async () => {
@@ -417,7 +417,7 @@ $('corbTaille').addEventListener('click', async () => {
     const r = await api('/api/corbeille?taille=1');
     if (r.error) { $('corbInfo').textContent = r.error; return; }
     const lignes = (r.jours_gardes || []).map(j => j.jour.split('-').reverse().join('/') + ' : ' + _go(j.octets)).join('\n');
-    $('corbInfo').innerHTML = esc('Les anciens fichiers sont ' + r.duree_texte + '. La corbeille contient ' + _go(r.octets || 0) + (r.plus_ancien ? ', le plus ancien date du ' + r.plus_ancien.split('-').reverse().join('/') : '') +
+    $('corbInfo').innerHTML = esc('Réglage actuel : ' + r.duree_texte + '. La corbeille contient ' + _go(r.octets || 0) + (r.plus_ancien ? ', le plus ancien date du ' + r.plus_ancien.split('-').reverse().join('/') : '') +
         (r.jours === null ? '.' : '. Un nettoyage effacerait ' + _go(r.a_effacer || 0) + '.')) + (lignes ? '<pre style="white-space:pre-wrap;margin:6px 0 0">' + esc(lignes) + '</pre>' : '');
 });
 $('corbVider').addEventListener('click', async () => {

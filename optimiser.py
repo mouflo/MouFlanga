@@ -410,7 +410,7 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
     with _VERROU:
         if (_ETAT.get(serie) or {}).get("en_cours"):
             return False
-        _ETAT[serie] = {"en_cours": True, "fait": 0, "total": len(fichiers), "message": "Analyse…" if not appliquer else "Allègement…",
+        _ETAT[serie] = {"en_cours": True, "fait": 0, "total": len(fichiers), "message": "Analyse…" if not appliquer else "Traitement…",
                         "rapport": [], "appliquer": appliquer, "eclairer": eclairer, "largeur": largeur_max, "qualite_manuelle": qualite_forcee}
 
     def travail():

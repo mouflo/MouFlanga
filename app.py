@@ -1870,7 +1870,7 @@ def api_optimiser():
             edition.invalider(MANGA_DIR / name)              # résolution et source refaites d'après les nouveaux fichiers
         try:                                                 # Telegram + notification du téléphone : on n'a pas à rester sur la page
             import notifier
-            ok, msg = notifier.envoyer(f"🪶 MouFlanga : {'allègement terminé' if appliquer else 'analyse terminée'} pour « {name} » : "
+            ok, msg = notifier.envoyer(f"🪶 MouFlanga : {'traitement terminé' if appliquer else 'analyse terminée'} pour « {name} » : "
                                        f"{optimiser.etat(name).get('message', '')}" + ("" if appliquer else " Ouvre la série : la ligne 🪶 en haut permet de comparer avant / après puis d'appliquer."))
             if not ok:
                 logger.info("Telegram (fin d'allègement) : %s", msg)
@@ -1902,7 +1902,7 @@ def api_optimiser():
     calages = _calages_uniformite(name, fichiers) if eclairer and eclairer.get("uniformiser") else None
     if not optimiser.lancer(name, fichiers, appliquer, _vers_corbeille, eclairer, fini, largeur, manuelle, infos_de, calages):
         return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
-    return jsonify({"ok": True, "message": "Allègement lancé…" if appliquer else "Analyse lancée…"})
+    return jsonify({"ok": True, "message": "Traitement lancé…" if appliquer else "Analyse lancée…"})
 
 
 _QUALITE_AUTO = {}
@@ -2392,7 +2392,7 @@ def api_parasites_page():
         return jsonify({"ok": False, "error": res.get("note", "Fichier non modifié.")}), 409
     _apres_nettoyage(name, f, res["carte"])
     logger.info("Page %d retirée à la main de %s", index + 1, f)
-    return jsonify({"ok": True, "pages": res["pages"], "message": f"Page retirée (l'ancien fichier est dans la corbeille : {_corbeille_phrase()})."})
+    return jsonify({"ok": True, "pages": res["pages"], "message": f"Page retirée (l'ancien fichier est dans la corbeille — {_corbeille_phrase()})."})
 
 
 def _nettoyer_nouveaux_tomes():
@@ -2954,14 +2954,15 @@ def _corbeille_jours(reglage=None):
 
 
 def _corbeille_phrase(reglage=None) -> str:
-    """Ce que l'écran dit de la conservation : « gardé 30 jours, puis effacé »."""
+    """Ce que l'écran dit de la conservation, en groupe nominal (il suit « corbeille » dans une phrase, au singulier comme au pluriel) :
+    « durée de conservation : 30 jours », « conservation sans limite de durée », « effacement aussitôt, sans retour possible »."""
     r = reglage or _corbeille_reglage()
     if r["mode"] == "jamais":
-        return "gardé sans limite de durée"
+        return "conservation sans limite de durée"
     if r["valeur"] == 0:
-        return "effacé aussitôt, sans retour possible"
+        return "effacement aussitôt, sans retour possible"
     unite = "mois" if r["unite"] == "mois" else ("jour" if r["valeur"] == 1 else "jours")
-    return f"gardé {r['valeur']} {unite}, puis effacé"
+    return f"durée de conservation : {r['valeur']} {unite}"
 
 
 def _vider_corbeille(mesurer=False) -> dict:
@@ -3021,7 +3022,7 @@ def api_corbeille():
         _write_json(_fichier_corbeille(), {"mode": mode, "valeur": valeur, "unite": unite})
         r = _corbeille_reglage()
         logger.info("Conservation de la corbeille : %s", _corbeille_phrase(r))
-        return jsonify({"ok": True, "message": "Enregistré : les anciens fichiers sont " + _corbeille_phrase(r) + ".", "duree_texte": _corbeille_phrase(r)})
+        return jsonify({"ok": True, "message": "Enregistré : " + _corbeille_phrase(r) + ".", "duree_texte": _corbeille_phrase(r)})
     r = _corbeille_reglage()
     sortie = dict(r, duree_texte=_corbeille_phrase(r), jours=_corbeille_jours(r))
     if request.args.get("taille"):
@@ -4129,7 +4130,7 @@ def _travail_rescan():
                 rapport = None
             notifier.envoyer(rapport or f"🔄 MouFlanga : « {g['serie']} » importé depuis {g['nom'][:80]}\n{fin or ''}".strip())
             resume = ", ".join(x for x in (f"{len(nouveaux)} tome(s) ajouté(s)" if nouveaux else "",
-                                           f"{len(deja)} remplacé(s) (anciens à la corbeille : {_corbeille_phrase()})" if remplacer else "") if x)
+                                           f"{len(deja)} remplacé(s) (anciens à la corbeille — {_corbeille_phrase()})" if remplacer else "") if x)
             with _RESCAN_VERROU:
                 _RESCAN["faits"].append(f"✅ {g['serie']} ← {g['nom']}" + (f" : {resume}" if resume else ""))
         except Exception as e:
@@ -5507,7 +5508,7 @@ def api_renommer():
                         + (f" {doublons} fichier(s) déjà présents mis à la corbeille." if doublons else "")})
     logger.info("Série renommée : « %s » → « %s »", name, nouveau)
     if mode == "serie":
-        return jsonify({"ok": True, "id": nouveau, "message": f"« {nouveau} » remplacée par « {name} » (l'ancienne est dans la corbeille : {_corbeille_phrase()})."})
+        return jsonify({"ok": True, "id": nouveau, "message": f"« {nouveau} » remplacée par « {name} » (l'ancienne est dans la corbeille — {_corbeille_phrase()})."})
     return jsonify({"ok": True, "id": nouveau, "message": "Série renommée."})
 
 

@@ -40,20 +40,20 @@ class CorbeilleTest(unittest.TestCase):
     def test_par_defaut_trente_jours(self):
         self.assertEqual(m._corbeille_reglage(), {"mode": "duree", "valeur": 30, "unite": "jours"})
         self.assertEqual(m._corbeille_jours(), 30)
-        self.assertEqual(m._corbeille_phrase(), "gardé 30 jours, puis effacé")
+        self.assertEqual(m._corbeille_phrase(), "durée de conservation : 30 jours")
 
     def test_mois_jamais_et_zero(self):
         self._regler(mode="duree", valeur=2, unite="mois")
         self.assertEqual(m._corbeille_jours(), 60)
-        self.assertEqual(m._corbeille_phrase(), "gardé 2 mois, puis effacé")
+        self.assertEqual(m._corbeille_phrase(), "durée de conservation : 2 mois")
         self._regler(mode="jamais", valeur=7, unite="jours")
         self.assertIsNone(m._corbeille_jours())
-        self.assertIn("sans limite", m._corbeille_phrase())
+        self.assertEqual(m._corbeille_phrase(), "conservation sans limite de durée")
         self._regler(mode="duree", valeur=0, unite="jours")
         self.assertEqual(m._corbeille_jours(), 0)
-        self.assertIn("aussitôt", m._corbeille_phrase())
+        self.assertEqual(m._corbeille_phrase(), "effacement aussitôt, sans retour possible")
         self._regler(mode="duree", valeur=1, unite="jours")
-        self.assertEqual(m._corbeille_phrase(), "gardé 1 jour, puis effacé")
+        self.assertEqual(m._corbeille_phrase(), "durée de conservation : 1 jour")
 
     def test_fichier_abime_ou_valeurs_absurdes_reviennent_au_defaut(self):
         (self.racine / "corbeille.json").write_text("pas du json", encoding="utf-8")
@@ -110,7 +110,7 @@ class CorbeilleTest(unittest.TestCase):
             self.assertEqual(d["octets"], 2500)
             self.assertEqual(d["a_effacer"], 2000)
             self.assertEqual(len(d["jours_gardes"]), 2)
-            self.assertEqual(d["duree_texte"], "gardé 30 jours, puis effacé")
+            self.assertEqual(d["duree_texte"], "durée de conservation : 30 jours")
             self._regler(mode="jamais")
             r = self.c.post("/api/corbeille", json={"action": "vider"}).get_json()
             self.assertIn("rien n'a été effacé", r["message"])
