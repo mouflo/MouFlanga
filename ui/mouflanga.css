@@ -448,3 +448,6 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .dbl-tuile .asm-conf { position:absolute; left:4px; bottom:4px; max-width:calc(100% - 8px); padding:1px 6px; border-radius:6px; background:rgba(0,0,0,.7); color:#fff; font-size:12px; direction:ltr; }
 .dbl-tuile.asm-paire > span:not(.asm-duo):not(.asm-aj):not(.asm-conf) { bottom:auto; top:4px; }
 .dbl-tuile .asm-aj i { padding:6px 7px; }
+.reg-recap { margin:4px 0 2px; padding-left:20px; line-height:1.5; font-size:.92rem; }
+.reg-recap li { margin:2px 0; }
+#allRecap { border-color:color-mix(in srgb, var(--accent, #52b54b) 45%, var(--line, #333)); }

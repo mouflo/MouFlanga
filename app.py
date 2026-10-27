@@ -1857,6 +1857,8 @@ def api_optimiser():
     eclairer = optimiser.reglages_amelioration(str(body.get("amelio", ""))) or optimiser.reglages_amelioration(bool(body.get("eclairer")))
     q = str(body.get("qualite", ""))
     manuelle = int(q) if q.isdigit() and 30 <= int(q) <= 98 else None        # réglage manuel ; vide = automatique
+    if q == "o":                                             # « même qualité que l'original » : chaque tome garde la sienne
+        manuelle = optimiser.QUALITE_ORIGINE
 
     def fini():
         if appliquer:
@@ -1937,6 +1939,8 @@ def api_optimiser_comparer():
     try:
         if q.isdigit() and 30 <= int(q) <= 98:
             qualite, auto = int(q), False
+        elif q == "o":                                       # même qualité que l'original
+            qualite, auto = optimiser.qualite_origine(chemin), False
         else:                                                # automatique : même choix que l'analyse (mis en mémoire)
             cle = (str(chemin), chemin.stat().st_mtime_ns, tuple((eclairer or {}).values()), largeur, tuple(sorted((calage or {}).items())))
             with _VERROU_QUALITE_AUTO:                       # avant, après et infos arrivent ensemble : un seul calcul
@@ -1954,7 +1958,7 @@ def api_optimiser_comparer():
     if cote in ("avant", "apres"):
         return Response(r[cote], mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
     info = {k: v for k, v in r.items() if k not in ("avant", "apres")}
-    info.update(fichier=chemin.name, tomes=[f.name for f in tomes], qualite=qualite, auto=auto)
+    info.update(fichier=chemin.name, tomes=[f.name for f in tomes], qualite=qualite, auto=auto, origine=(q == "o"))
     if eclairer and eclairer.get("uniformiser"):
         info["uniformise"] = bool(calage)
     return jsonify(info)

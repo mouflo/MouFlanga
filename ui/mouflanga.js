@@ -922,11 +922,12 @@
             return '<div class="amel-ligne"><label for="am_' + r[0] + '">' + r[1] + '<small>' + r[2] + '</small></label><select id="am_' + r[0] + '" data-am="' + r[0] + '">' +
               (r[3] || ['Non', 'Léger', 'Moyen', 'Fort']).map(function (n, i) { return '<option value="' + i + '">' + n + '</option>'; }).join('') + '</select></div>';
           }).join('') + '</details>') +
-        carte('📐 Taille des pages', 'Une page plus large que l\'écran qui la lit est réduite : fichier bien plus léger.',
-          champ('Largeur', '<select id="allLargeur"><option value="">Garder la largeur d\'origine</option><option value="1600" selected>1600 px (tablette)</option><option value="1200">1200 px (téléphone)</option></select>')) +
-        carte('🗜 Compression', 'Chaque tome est recompressé à la qualité la plus légère qui reste invisible à l\'écran (vérifiée sur des pages d\'essai). Les tomes encore partagés par qBittorrent sont allégés à part : le torrent n\'est jamais touché. Anciens fichiers à la corbeille 30 jours.',
-          champ('Qualité', '<select id="allQualMode"><option value="">Automatique (recommandé)</option><option value="m">Réglage fin</option></select>') +
+        carte('📐 Taille des pages', 'Par défaut les pages gardent leur taille. Pour alléger, on peut réduire les pages plus larges que l\'écran (une page déjà plus étroite ne change pas).',
+          champ('Largeur', '<select id="allLargeur"><option value="" selected>Garder la largeur d\'origine</option><option value="1600">Réduire à 1600 px (tablette)</option><option value="1200">Réduire à 1200 px (téléphone)</option></select>')) +
+        carte('🗜 Compression', 'Toute modification réécrit les images. « Automatique » choisit la qualité la plus légère qui reste invisible (le poids du tome change, souvent en mieux) ; « Même qualité que l\'original » garde le poids à peu près identique. Les tomes encore partagés par qBittorrent sont traités à part : le torrent n\'est jamais touché. Anciens fichiers à la corbeille 30 jours.',
+          champ('Qualité', '<select id="allQualMode"><option value="">Automatique : plus léger</option><option value="o">Même qualité que l\'original</option><option value="m">Réglage fin (curseur)</option></select>') +
           '<div id="allQualManuelle" hidden><input type="range" id="allQual" min="40" max="98" step="1" value="85" style="width:100%"><div class="dem-sous"><b id="allQualVal">85</b> / 100 : 100 = identique à l\'original. 90 et plus : aucune différence visible ; 80-88 : visible seulement en zoomant ; sous 70 : défauts qui se voient.</div></div>') +
+        '<section class="reg" id="allRecap"></section>' +
         '<div class="ident-actions"><button type="button" class="mou-btn" id="allComparer">👁 Comparer avant / après (en direct)</button></div><div id="allCmp"></div>' +
         '<div class="ident-actions"><label><input type="checkbox" id="allInfos" checked> 📝 Écrire aussi les infos du tome (résumé, chapitres, provenance, ISBN…) dans la même passe</label></div>' +
         '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser les tomes cochés (rien n\'est modifié)</button></div><div id="allRes"></div>' +
@@ -961,12 +962,30 @@
         majCompteTomes();
         unifDessiner();
       });
+      majRecap();
       suivreAllegement();
     });
+    function majRecap() {                                           // « ce qui va être fait », en toutes lettres, avant d'appuyer sur quoi que ce soit
+      var z = $('allRecap'); if (!z) return;
+      var n = document.querySelectorAll('.all-coche:checked').length, am = amelioration(), prof = PROFILS_AMEL.filter(function (p) { return p[0] === am; })[0];
+      var lignes = [];
+      var uniq = $('am_uniformiser') && $('am_uniformiser').value === '1';
+      var autres = REGLAGES_AMEL.some(function (r) { return r[0] !== 'uniformiser' && $('am_' + r[0]) && $('am_' + r[0]).value !== '0'; });
+      lignes.push('✨ Image : ' + (am === PROFILS_AMEL[0][0] ? 'aucune amélioration' : uniq && !autres ? 'seulement les noirs et blancs alignés sur la référence (la teinte disparaît)' : (prof ? prof[1].toLowerCase() : 'réglage personnalisé') + (uniq ? ', noirs et blancs alignés' : '')));
+      var l = $('allLargeur').value;
+      lignes.push('📐 Taille : ' + (l ? 'pages plus larges que ' + l + ' px réduites' : 'inchangée'));
+      var q = $('allQualMode').value;
+      lignes.push('🗜 Compression : ' + (q === 'o' ? 'même qualité que l\'original, poids à peu près identique' : q === 'm' ? 'qualité fixée à ' + $('allQual').value + ' / 100' : 'automatique, le poids des fichiers va changer (en général plus léger)'));
+      z.innerHTML = '<h3>📝 Ce qui sera fait sur les ' + n + ' tome' + (n > 1 ? 's' : '') + ' cochés</h3><ul class="reg-recap"><li>' + lignes.join('</li><li>') + '</li></ul>';
+    }
     function majCompteTomes() {
       var cs = [].slice.call(document.querySelectorAll('.all-coche')), n = cs.filter(function (c) { return c.checked; }).length;
       if ($('allCompte')) $('allCompte').textContent = n + ' sur ' + cs.length + ' cochés';
+      majRecap();
     }
+    ['change', 'input', 'click'].forEach(function (ev) {            // le « ce qui sera fait » suit chaque réglage et chaque case cochée
+      $('infosCorps').addEventListener(ev, function () { setTimeout(majRecap, 0); });
+    });
     function ongletAmelioration(nom) {
       document.querySelectorAll('[data-onglet]').forEach(function (b) { b.classList.toggle('ghost', b.dataset.onglet !== nom); });
       document.querySelectorAll('[data-panneau]').forEach(function (p) { p.hidden = p.dataset.panneau !== nom; });
@@ -991,7 +1010,7 @@
     }
     function optionsAllegement() {
       var coches = [].slice.call(document.querySelectorAll('.all-coche'));
-      var o = {largeur: $('allLargeur').value, amelio: amelioration(), qualite: $('allQualMode').value === 'm' ? $('allQual').value : ''};
+      var o = {largeur: $('allLargeur').value, amelio: amelioration(), qualite: $('allQualMode').value === 'm' ? $('allQual').value : $('allQualMode').value === 'o' ? 'o' : ''};
       o.infos = !!($('allInfos') && $('allInfos').checked);
       if (coches.length) o.fichiers = coches.filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
       return o;
@@ -1001,8 +1020,18 @@
       if ($('infosVue').hidden || !$('allRes')) return;
       var r = await api('/api/optimiser?series=' + encodeURIComponent(current.id));
       if (!$('allRes')) return;
+      var mo = function (n) { return String(Math.round(n * 10) / 10).replace('.', ','); };
       var lignes = (r.rapport || []).map(function (x) {
-        return '<li>' + esc(x.fichier) + (!r.appliquer && !r.en_cours && x.qualite ? ' <button type="button" class="tog" data-comparer="' + esc(x.fichier) + '" title="Comparer avant / après">👁</button>' : '') + ' <small>' + (x.alerte ? '⚠ ' + esc(x.alerte) + ' · ' : '') + (x.note ? esc(x.note) : (x.taille_mo + ' Mo · ' + (x.gagne_mo != null ? (x.gagne_mo >= 0 ? '−' : '+') + Math.abs(x.gagne_mo) + ' Mo' : '≈ ' + (x.gain >= 0 ? '−' : '+') + Math.abs(Math.round(x.gain * 100)) + ' %') + ' (qualité JPEG ' + x.qualite + '/100, écart ' + x.psnr + ' dB)')) + '</small></li>';
+        var detail;
+        if (x.note) detail = esc(x.note);
+        else {
+          var apres = x.gagne_mo != null ? x.taille_mo - x.gagne_mo : x.taille_mo * (1 - x.gain);
+          var pct = x.taille_mo ? Math.round(100 * (apres - x.taille_mo) / x.taille_mo) : 0;
+          detail = mo(x.taille_mo) + ' Mo → ' + (r.appliquer || x.gagne_mo != null ? '' : 'environ ') + mo(apres) + ' Mo (' + (pct > 0 ? '+' : pct < 0 ? '−' : '') + Math.abs(pct) + ' %)' +
+            (x.qualite ? ' · enregistré en qualité ' + x.qualite + '/100' : '');
+        }
+        return '<li>' + esc(x.fichier.replace(/\.(cbz|zip)$/i, '')) + (!r.appliquer && !r.en_cours && x.qualite ? ' <button type="button" class="tog" data-comparer="' + esc(x.fichier) + '" title="Comparer avant / après">👁</button>' : '') +
+          ' <small>' + (x.alerte ? '⚠ ' + esc(x.alerte) + ' · ' : '') + detail + '</small></li>';
       }).join('');
       $('allRes').innerHTML = (r.en_cours ? '<div class="dem-sous">' + esc(r.message || '') + ' ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' tomes · ça continue en arrière-plan, tu peux fermer cette fenêtre : une notification arrive à la fin.</div>' +
           '<progress max="' + (r.total || 1) + '" value="' + (r.fait || 0) + '" style="width:100%"></progress>' : (r.message ? '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' : '')) +
@@ -1060,8 +1089,9 @@
       }, 350);
     }
     function chargerInfoCmp() {
+      var cible = cmp.fichier;                                      // une réponse arrivée après un changement de tome n'est pas la bonne : on l'ignore
       api(urlCmp('info')).then(function (i) {
-        if (!$('cmpInfo') || !cmp) return;
+        if (!$('cmpInfo') || !cmp || cmp.fichier !== cible) return;
         if (i.error) { $('cmpInfo').textContent = i.error; return; }
         cmp.pages = i.pages; cmp.fichier = i.fichier; cmp.tomes = i.tomes;
         var sel = $('cmpTome');
@@ -1072,7 +1102,7 @@
         var nu = $('cmpNum'); if (nu) { nu.max = i.pages; nu.value = i.page + 1; }
         var gain = i.avant_ko ? Math.round(100 * (1 - i.apres_ko / i.avant_ko)) : 0;
         $('cmpInfo').textContent = (i.uniformise === false ? '⚠ Ce tome n\'est pas encore mesuré : l\'alignement des noirs est ignoré (onglet 🎨 Uniformité → Mesurer). ' : '') + (i.couleur ? '🎨 Page en couleur : l\'amélioration ne la touche pas. ' : i.ameliore ? '✨ Amélioration appliquée. ' : '') + (i.inchange ? 'Cette page garde ses octets d\'origine (' + i.avant_ko + ' Ko) : rien à gagner à ce réglage.'
-          : 'Qualité ' + i.qualite + '/100 (' + (i.auto ? 'choisie automatiquement' : 'manuelle') + ') · Avant ' + i.avant_ko + ' Ko (' + i.dimensions[0][0] + '×' + i.dimensions[0][1] + ') → Après ' + i.apres_ko + ' Ko (' + i.dimensions[1][0] + '×' + i.dimensions[1][1] + ') · ' + (gain >= 0 ? '−' : '+') + Math.abs(gain) + ' % sur cette page');
+          : 'Qualité ' + i.qualite + '/100 (' + (i.origine ? 'comme l\'original' : i.auto ? 'choisie automatiquement' : 'manuelle') + ') · Avant ' + i.avant_ko + ' Ko (' + i.dimensions[0][0] + '×' + i.dimensions[0][1] + ') → Après ' + i.apres_ko + ' Ko (' + i.dimensions[1][0] + '×' + i.dimensions[1][1] + ') · ' + (gain >= 0 ? '−' : '+') + Math.abs(gain) + ' % sur cette page');
       });
     }
     function pagesCmp() {                                         // liste déroulante de toutes les pages du tome
@@ -1155,6 +1185,9 @@
       else if (e.target.id === 'allProfil') {
         if (e.target.value !== 'perso') { var v = e.target.value.split(','); REGLAGES_AMEL.forEach(function (r, i) { $('am_' + r[0]).value = v[i]; }); }
         else $('allFin').open = true;
+        if (e.target.value === PROFILS_AMEL[PROFILS_AMEL.length - 1][0]) {        // « seulement uniformiser » : ni la taille ni le poids ne bougent
+          $('allLargeur').value = ''; $('allQualMode').value = 'o'; $('allQualManuelle').hidden = true;
+        }
         if (!cmp) ouvrirComparaison(''); else majComparaison();
       }
       else if (e.target.dataset && e.target.dataset.am) {

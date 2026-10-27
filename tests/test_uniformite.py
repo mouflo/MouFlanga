@@ -141,6 +141,56 @@ class SerieTest(unittest.TestCase):
             self.assertIsNone(uniformite.reference_choisie(cache, "S"))
 
 
+class QualiteOrigineTest(unittest.TestCase):
+    def test_qualite_d_un_jpeg_retrouvee(self):
+        rng = np.random.default_rng(2)
+        a = Image.fromarray((rng.random((200, 160, 3)) * 255).astype("uint8"))
+        for q in (60, 75, 85, 92):
+            b = io.BytesIO()
+            a.save(b, "JPEG", quality=q)
+            self.assertEqual(optimiser.qualite_jpeg(Image.open(io.BytesIO(b.getvalue()))), q)
+        b = io.BytesIO()
+        a.save(b, "PNG")
+        self.assertIsNone(optimiser.qualite_jpeg(Image.open(io.BytesIO(b.getvalue()))))
+
+    def test_meme_qualite_que_l_original_garde_poids_et_taille(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "S - Tome 01.cbz"
+            with zipfile.ZipFile(f, "w") as z:
+                for i in range(6):
+                    b = io.BytesIO()
+                    page_bd(VIOLACE, graine=i).save(b, "JPEG", quality=88)
+                    z.writestr(f"c0001.00-p{i:03d}.jpg", b.getvalue())
+            self.assertEqual(optimiser.qualite_origine(f), 88)
+            calage = uniformite.calage(_s(33, noir=26, teinte=(2.0, -1.7, -0.4)), _s(5, noir=3))
+            a = optimiser.analyser(f, eclairer="0,0,0,0,0,0,0,0,1", qualite_forcee=optimiser.QUALITE_ORIGINE, calage=calage)
+            self.assertEqual(a["qualite"], 88)                                       # la qualité d'origine, pas la plus légère possible
+            avant = f.stat().st_size
+            optimiser.reecrire(f, a["qualite"], "0,0,0,0,0,0,0,0,1", None, calage=calage)
+            with zipfile.ZipFile(f) as z:
+                im = Image.open(io.BytesIO(z.read(z.namelist()[0])))
+                self.assertEqual(im.size, (500, 700))                                # la taille des pages ne bouge pas
+                self.assertEqual(optimiser.qualite_jpeg(im), 88)
+            self.assertLess(f.stat().st_size, avant * 1.05)                          # pas plus lourd (la page passe de RVB à gris : un peu plus léger)
+            self.assertGreater(f.stat().st_size, avant * 0.4)                        # et pas écrasé non plus
+
+    def test_comptes_rendus_en_clair(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = tome(d, "S - Tome 01.cbz", VIOLACE, pages=6)
+            calage = uniformite.calage(_s(33, noir=26, teinte=(2.0, -1.7, -0.4)), _s(5, noir=3))
+            for appliquer, attendu in ((False, "Rien n'a encore été modifié"), (True, "1 tome(s) traité(s)")):
+                optimiser.lancer("Clair", [f], appliquer, lambda p: None, "0,0,0,0,0,0,0,0,1", None, None, optimiser.QUALITE_ORIGINE, None, {f.name: calage})
+                import time
+                for _ in range(600):
+                    if not optimiser.etat("Clair").get("en_cours"):
+                        break
+                    time.sleep(0.05)
+                msg = optimiser.etat("Clair")["message"]
+                self.assertIn(attendu, msg)
+                self.assertIn(" → ", msg)
+                self.assertNotIn("PSNR", msg)
+
+
 class AmelioreTest(unittest.TestCase):
     def test_reglage_uniformiser(self):
         r = optimiser.reglages_amelioration("0,0,0,0,0,0,0,0,1")

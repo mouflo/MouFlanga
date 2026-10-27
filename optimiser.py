@@ -46,8 +46,39 @@ def _jpeg(im: Image.Image, q: int) -> bytes:
     return out.getvalue()
 
 
+_QUANT_Q50 = np.sort(np.array([16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55, 14, 13, 16, 24, 40, 57, 69, 56, 14, 17, 22, 29, 51, 87, 80, 62,
+                               18, 22, 37, 56, 68, 109, 103, 77, 24, 35, 55, 64, 81, 104, 113, 92, 49, 64, 78, 87, 103, 121, 120, 101, 72, 92, 95, 98, 112,
+                               100, 103, 99], dtype=np.float64))     # table de luminosité standard à la qualité 50 (libjpeg)
+
+
+def qualite_jpeg(im: Image.Image):
+    """Qualité (de 1 à 100) avec laquelle un JPEG a été enregistré, retrouvée dans sa table de quantification ; None si ce n'est pas un JPEG."""
+    tables = getattr(im, "quantization", None)
+    if not tables or 0 not in tables or len(tables[0]) < 64:
+        return None
+    echelle = float(np.median(np.sort(np.array(tables[0][:64], dtype=np.float64)) / _QUANT_Q50)) * 100
+    q = (200 - echelle) / 2 if echelle <= 100 else 5000 / echelle
+    return int(max(1, min(100, round(q))))
+
+
+QUALITE_ORIGINE = "origine"       # qualite_forcee : réenregistrer chaque tome à la qualité qu'il avait déjà (sans l'alléger)
+
+
 def _pages(z: zipfile.ZipFile):
     return [n for n in z.namelist() if Path(n).suffix.lower() in _IMAGES]
+
+
+def qualite_origine(chemin: Path, nb_essai=5) -> int:
+    """Qualité d'enregistrement habituelle des pages d'un tome (médiane sur quelques pages) ; 90 si on ne peut pas la lire."""
+    with zipfile.ZipFile(chemin) as z:
+        noms = _pages(z)
+        pas = max(1, len(noms) // nb_essai)
+        trouvees = []
+        for n in noms[::pas][:nb_essai]:
+            q = qualite_jpeg(Image.open(io.BytesIO(z.read(n))))
+            if q:
+                trouvees.append(q)
+    return max(60, min(98, int(np.median(trouvees)))) if trouvees else 90
 
 
 def est_couleur(im: Image.Image) -> bool:
@@ -205,6 +236,9 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite
     images = {n: Image.open(io.BytesIO(b)) for n, b in originaux.items()}
     for im in images.values():
         im.load()
+    if qualite_forcee == QUALITE_ORIGINE:               # « même qualité que l'original » : la médiane de ce que disent les pages d'essai
+        trouvees = [q for q in (qualite_jpeg(im) for im in images.values()) if q]
+        qualite_forcee = max(60, min(98, int(np.median(trouvees)))) if trouvees else 90
     eclairer = reglages_amelioration(eclairer)
     if eclairer:
         images = {n: ameliorer(im, eclairer, calage) for n, im in images.items()}
@@ -394,7 +428,7 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
                     elif a["qualite"]:
                         gagne += int(a["taille"] * a["gain_estime"])
                     if not a["qualite"]:
-                        ligne["note"] = "déjà léger ou fragile : images laissées telles quelles" + (", infos écrites" if ligne.get("infos") else "")
+                        ligne["note"] = "rien à changer sur ce tome (images laissées telles quelles)" + (", infos écrites" if ligne.get("infos") else "")
                     rapport.append(ligne)
                 except Exception as e:
                     logger.warning("Allègement de %s : %s", f, e)
@@ -402,12 +436,14 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
                 with _VERROU:
                     _ETAT[serie]["fait"] += 1
                     _ETAT[serie]["rapport"] = list(rapport)
-            if gagne >= 0:
-                verbe = "gagnés" if appliquer else "à gagner (estimation)"
-                msg = f"{gagne / 1073741824:.2f} Go {verbe} sur {avant_total / 1073741824:.2f} Go"
-            else:                                         # une amélioration peut alourdir les tomes : on le dit
-                msg = (f"{-gagne / 1073741824:.2f} Go de plus" + ("" if appliquer else " (estimation)") +
-                       f" sur {avant_total / 1073741824:.2f} Go (amélioration de l'image)")
+            go = lambda n: f"{n / 1048576:.0f} Mo" if abs(n) < 1073741824 else f"{n / 1073741824:.2f}".replace(".", ",") + " Go"
+            traites = sum(1 for x in rapport if x.get("taille_mo") is not None)
+            apres = avant_total - gagne
+            if appliquer:
+                msg = f"{traites} tome(s) traité(s) : {go(avant_total)} → {go(apres)}" + ("" if gagne == 0 else f" ({'−' if gagne > 0 else '+'}{go(abs(gagne))})")
+            else:
+                msg = (f"Analyse de {traites} tome(s) : {go(avant_total)} → environ {go(apres)}" + ("" if gagne == 0 else f" ({'−' if gagne > 0 else '+'}{go(abs(gagne))})") +
+                       ". Rien n'a encore été modifié.")
         except Exception as e:
             msg = f"Erreur : {e}"
         with _VERROU:
