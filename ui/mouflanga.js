@@ -738,7 +738,7 @@
       if (d) {
         e.stopPropagation();
         var ch = current.chapters.find(function (x) { return x.key === d.dataset.del; });
-        if (!await MouConfirm('Supprimer « ' + ch.title + ' » ?\n\nLe fichier va dans la corbeille du dossier des mangas (effacé pour de bon après 30 jours).')) return;
+        if (!await MouConfirm('Supprimer « ' + ch.title + ' » ?\n\nLe fichier va dans la corbeille du dossier des mangas (' + corb() + ').')) return;
         var r = await post('/api/delete', {series: current.id, path: ch.key});
         if (!r.ok) { note('sMsg', r.error); return; }
         if (current.chapters.length <= 1) { history.pushState({}, '', location.pathname); showList(); }
@@ -924,7 +924,7 @@
           }).join('') + '</details>') +
         carte('📐 Taille des pages', 'Par défaut les pages gardent leur taille. Pour alléger, on peut réduire les pages plus larges que l\'écran (une page déjà plus étroite ne change pas).',
           champ('Largeur', '<select id="allLargeur"><option value="" selected>Garder la largeur d\'origine</option><option value="1600">Réduire à 1600 px (tablette)</option><option value="1200">Réduire à 1200 px (téléphone)</option></select>')) +
-        carte('🗜 Compression', 'Toute modification réécrit les images. « Automatique » choisit la qualité la plus légère qui reste invisible (le poids du tome change, souvent en mieux) ; « Même qualité que l\'original » garde le poids à peu près identique. Les tomes encore partagés par qBittorrent sont traités à part : le torrent n\'est jamais touché. Anciens fichiers à la corbeille 30 jours.',
+        carte('🗜 Compression', 'Toute modification réécrit les images. « Automatique » choisit la qualité la plus légère qui reste invisible (le poids du tome change, souvent en mieux) ; « Même qualité que l\'original » garde le poids à peu près identique. Les tomes encore partagés par qBittorrent sont traités à part : le torrent n\'est jamais touché. Anciens fichiers à la corbeille : ' + corb() + '.',
           champ('Qualité', '<select id="allQualMode"><option value="">Automatique : plus léger</option><option value="o">Même qualité que l\'original</option><option value="m">Réglage fin (curseur)</option></select>') +
           '<div id="allQualManuelle" hidden><input type="range" id="allQual" min="40" max="98" step="1" value="85" style="width:100%"><div class="dem-sous"><b id="allQualVal">85</b> / 100 : 100 = identique à l\'original. 90 et plus : aucune différence visible ; 80-88 : visible seulement en zoomant ; sous 70 : défauts qui se voient.</div></div>') +
         '<section class="reg" id="allRecap"></section>' +
@@ -975,7 +975,7 @@
       var l = $('allLargeur').value;
       lignes.push('📐 Taille : ' + (l ? 'pages plus larges que ' + l + ' px réduites' : 'inchangée'));
       var q = $('allQualMode').value;
-      lignes.push('🗜 Compression : ' + (q === 'o' ? 'même qualité que l\'original, poids à peu près identique' : q === 'm' ? 'qualité fixée à ' + $('allQual').value + ' / 100' : 'automatique, le poids des fichiers va changer (en général plus léger)'));
+      lignes.push('🗜 Compression : ' + (q === 'o' ? 'chaque page garde sa qualité d\'origine (une double page assemblée est en 95, les autres pages en 70, par exemple) : le poids reste à peu près le même, et peut baisser un peu quand la teinte retirée pesait dans le fichier' : q === 'm' ? 'qualité fixée à ' + $('allQual').value + ' / 100' : 'automatique, le poids des fichiers va changer (en général plus léger)'));
       var touche = l || q === '' || q === 'm';                      // ce qui peut encore s'appliquer à une page en couleur
       lignes.push('🌈 Pages en couleur : elles restent en couleur, jamais améliorées ni passées en gris' + (touche ? ' ; seuls ' + (l ? 'la réduction' + (q !== 'o' ? ' et ' : '') : '') + (q !== 'o' ? 'l\'allègement' : '') + ' leur sont appliqués' : ' ; rien ne leur est fait'));
       z.innerHTML = '<h3>📝 Ce qui sera fait sur les ' + n + ' tome' + (n > 1 ? 's' : '') + ' cochés</h3><ul class="reg-recap"><li>' + lignes.join('</li><li>') + '</li></ul>';
@@ -1030,7 +1030,7 @@
           var apres = x.gagne_mo != null ? x.taille_mo - x.gagne_mo : x.taille_mo * (1 - x.gain);
           var pct = x.taille_mo ? Math.round(100 * (apres - x.taille_mo) / x.taille_mo) : 0;
           detail = mo(x.taille_mo) + ' Mo → ' + (r.appliquer || x.gagne_mo != null ? '' : 'environ ') + mo(apres) + ' Mo (' + (pct > 0 ? '+' : pct < 0 ? '−' : '') + Math.abs(pct) + ' %)' +
-            (x.qualite ? ' · enregistré en qualité ' + x.qualite + '/100' : '');
+            (x.fidele ? ' · qualité de chaque page conservée' : x.qualite ? ' · enregistré en qualité ' + x.qualite + '/100' : '');
         }
         return '<li>' + esc(x.fichier.replace(/\.(cbz|zip)$/i, '')) + (!r.appliquer && !r.en_cours && x.qualite ? ' <button type="button" class="tog" data-comparer="' + esc(x.fichier) + '" title="Comparer avant / après">👁</button>' : '') +
           ' <small>' + (x.alerte ? '⚠ ' + esc(x.alerte) + ' · ' : '') + detail + '</small></li>';
@@ -1372,7 +1372,7 @@
         var indices = tome.pages.filter(function (pg) { return !dblGardees[tome.fichier + '|' + pg.index]; }).map(function (pg) { return pg.index; });
         if (!indices.length) { MouAlert('Toutes les doubles sont gardées entières : rien à couper.'); return; }
         enquete = true;
-        if (!await MouConfirm('Couper ' + indices.length + ' double(s) en deux dans « ' + tome.fichier + ' » ? L\'ancien fichier va à la corbeille (30 jours).')) { enquete = false; return; }
+        if (!await MouConfirm('Couper ' + indices.length + ' double(s) en deux dans « ' + tome.fichier + ' » ? L\'ancien fichier va à la corbeille (' + corb() + ').')) { enquete = false; return; }
         var r = await post('/api/doubles/couper', {series: current.id, sens: $('dblSens').value, plan: [{fichier: tome.fichier, indices: indices}]});
         if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
         enquete = true; suivreDoubles();
@@ -1508,7 +1508,7 @@
         var tm2 = asmTome(), indices = Object.keys(asmPaires).map(Number).sort(function (a, b) { return a - b; });
         if (!tm2 || !indices.length) return;
         enquete = true;
-        if (!await MouConfirm('Coller ' + indices.length + ' paire(s) de pages en doubles pages dans « ' + tm2.fichier + ' » ? L\'ancien fichier va à la corbeille (30 jours).')) { enquete = false; return; }
+        if (!await MouConfirm('Coller ' + indices.length + ' paire(s) de pages en doubles pages dans « ' + tm2.fichier + ' » ? L\'ancien fichier va à la corbeille (' + corb() + ').')) { enquete = false; return; }
         var r = await post('/api/doubles/assembler', {series: current.id, sens: $('dblSens').value, plan: [{fichier: tm2.fichier, indices: indices, ajust: asmAjust}]});
         if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
         enquete = true; suivreAssemblage();
@@ -1551,7 +1551,7 @@
       var opt = optionsAllegement();
       if (opt.fichiers && !opt.fichiers.length) { MouAlert('Coche au moins un tome.'); return; }
       var nb = opt.fichiers ? opt.fichiers.length : null;
-      if (appliquer && !await MouConfirm('Alléger ' + (nb ? nb + ' tome' + (nb > 1 ? 's' : '') : 'tous les tomes') + ' de « ' + current.title + ' » avec ces réglages ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
+      if (appliquer && !await MouConfirm('Alléger ' + (nb ? nb + ' tome' + (nb > 1 ? 's' : '') : 'tous les tomes') + ' de « ' + current.title + ' » avec ces réglages ? Les anciens fichiers vont à la corbeille (' + corb() + ').')) return;
       var r = await post('/api/optimiser', Object.assign({series: current.id, appliquer: appliquer}, opt));
       if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
       if (appliquer) { cmp = null; if ($('allCmp')) $('allCmp').innerHTML = ''; }
@@ -1674,7 +1674,7 @@
       parSerie = current.id; parCoches = {};
       $('infosTitre').textContent = '🧹 Pages parasites';
       $('infosCorps').innerHTML = '<div class="dem-sous">Les pages qui reviennent à l\'identique dans plusieurs chapitres (crédits de l\'équipe, « on recrute », pubs) ' +
-        'sont regroupées. Coche les groupes à jeter : ils sont retirés de tous les tomes, l\'ancien fichier part à la corbeille (30 jours), ' +
+        'sont regroupées. Coche les groupes à jeter : ils sont retirés de tous les tomes, l\'ancien fichier part à la corbeille (' + corb() + '), ' +
         'et les prochains tomes de la série seront nettoyés tout seuls.</div><div id="parZone"><div class="dem-sous">…</div></div>';
       $('infosVue').hidden = false;
       suivreParasites(true);
@@ -1745,7 +1745,7 @@
       if (e.target.closest('#parRetirer')) {
         var choisies = Object.keys(parCoches).filter(function (k) { return parCoches[k]; });
         var n = 0; parGroupes.forEach(function (x) { if (parCoches[x.empreinte]) n += x.nb; });
-        if (!choisies.length || !await MouConfirm('Retirer ' + n + ' page(s) parasite(s) des tomes ? Les anciens fichiers vont à la corbeille (30 jours).')) return;
+        if (!choisies.length || !await MouConfirm('Retirer ' + n + ' page(s) parasite(s) des tomes ? Les anciens fichiers vont à la corbeille (' + corb() + ').')) return;
         var r = await post('/api/parasites/retirer', {series: parSerie, empreintes: choisies});
         if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
         setTimeout(function () { suivreParasites(false); }, 1000);
@@ -2032,7 +2032,7 @@
       if (e.target.closest('#chapEditer')) { $('chapEdition').hidden = false; $('chapEditer').hidden = true; $('chapTexte').focus(); return; }
       var w = e.target.closest('#chapEcrire');
       if (w) {                                                              // 📝 chapitres écrits dans le .cbz (partage de la série)
-        if (!await MouConfirm('Écrire les infos du tome (résumé, chapitres, provenance…) dans son fichier ? Le fichier est réécrit (l\'ancien va à la corbeille 30 jours).')) return;
+        if (!await MouConfirm('Écrire les infos du tome (résumé, chapitres, provenance…) dans son fichier ? Le fichier est réécrit (l\'ancien va à la corbeille : ' + corb() + ').')) return;
         w.disabled = true;
         var rr = await post('/api/tome/chapitres/ecrire', {series: current.id, tome: w.dataset.tome});
         if (!rr.ok) { w.disabled = false; MouAlert(rr.error || 'Impossible'); return; }
@@ -2214,7 +2214,7 @@
       var exclus = (etat.exclus || []).map(function (x) { return x.fichier + ' (' + x.raison + ')'; });
       var question = 'Convertir ' + etat.total + ' fichier(s) .cbr de « ' + current.title + ' » en .cbz ?\n\n' +
         'Les pages sont recopiées telles quelles, puis comparées une à une avant tout remplacement. Ta progression de lecture est gardée.\n' +
-        'L\'ancien fichier part à la corbeille (30 jours). Un fichier partagé par qBittorrent est copié à part : le torrent n\'est pas touché.' +
+        'L\'ancien fichier part à la corbeille (' + corb() + '). Un fichier partagé par qBittorrent est copié à part : le torrent n\'est pas touché.' +
         (exclus.length ? '\n\nNon convertis : ' + exclus.join(', ') + '.' : '') + '\n\nLe travail continue même si tu fermes la page.';
       if (!await MouConfirm(question)) return;
       var r = await post('/api/serie/convertir', {series: current.id});
@@ -2230,7 +2230,7 @@
       var exclus = (etat.exclus || []).map(function (x) { return 'tome ' + x.tome + ' (' + x.raison + ')'; });
       var question = 'Réécrire DANS LE FICHIER de ' + etat.total + ' tome(s) de « ' + current.title + ' » ?\n\n' +
         'Pour chaque tome : le résumé, la date de sortie, la provenance, l\'état du sommaire et les chapitres lus sont écrits dans le fichier du tome.\n' +
-        'Chaque fichier est réécrit ; l\'ancien part à la corbeille (30 jours).\n' +
+        'Chaque fichier est réécrit ; l\'ancien part à la corbeille (' + corb() + ').\n' +
         'Les fichiers partagés par qBittorrent ne sont pas touchés dans le torrent.' +
         (exclus.length ? '\n\nNon réécrits : ' + exclus.join(', ') + '.' : '') + '\n\nLe travail continue même si tu fermes la page.';
       if (!await MouConfirm(question)) return;
@@ -2337,7 +2337,7 @@
     ['menuCover', 'menuMore'].forEach(function (m) { $(m).addEventListener('click', function () { setTimeout(fermerMenus, 0); }); });
     $('sDelete').addEventListener('click', async function () {
       var n = current.chapters.length;
-      if (!await MouConfirm('Supprimer toute la série « ' + current.title + ' » (' + n + ' chapitre' + (n > 1 ? 's' : '') + ') ?\n\nLes fichiers vont dans la corbeille du dossier des mangas (effacés pour de bon après 30 jours).')) return;
+      if (!await MouConfirm('Supprimer toute la série « ' + current.title + ' » (' + n + ' chapitre' + (n > 1 ? 's' : '') + ') ?\n\nLes fichiers vont dans la corbeille du dossier des mangas (' + corb() + ').')) return;
       var r = await post('/api/delete', {series: current.id, all: true});
       if (!r.ok) { note('sMsg', r.error); return; }
       history.pushState({}, '', location.pathname); showList();

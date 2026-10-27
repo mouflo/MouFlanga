@@ -241,10 +241,13 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite
     images = {n: Image.open(io.BytesIO(b)) for n, b in originaux.items()}
     for im in images.values():
         im.load()
-    garder = qualite_forcee == QUALITE_ORIGINE           # sans allègement demandé, une page que rien ne touche garde ses octets d'origine
-    if qualite_forcee == QUALITE_ORIGINE:               # « même qualité que l'original » : la médiane de ce que disent les pages d'essai
-        trouvees = [q for q in (qualite_jpeg(im) for im in images.values()) if q]
-        qualite_forcee = max(60, min(98, int(np.median(trouvees)))) if trouvees else 90
+    fidele = qualite_forcee == QUALITE_ORIGINE           # « même qualité que l'original » : chaque page garde SA qualité, et une page que rien ne touche garde ses octets
+    qpage = {}
+    if fidele:
+        qpage = {n: qualite_jpeg(im) for n, im in images.items()}
+        trouvees = [q for q in qpage.values() if q]
+        qualite_forcee = max(60, min(98, int(np.median(trouvees)))) if trouvees else 90      # pour une page dont la qualité n'est pas lisible
+        qpage = {n: (q or qualite_forcee) for n, q in qpage.items()}
     eclairer = reglages_amelioration(eclairer)
     inchangees = set(images)
     if eclairer:
@@ -252,7 +255,7 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite
         inchangees = {n for n in images if traitees[n] is images[n]}
         images = traitees
     reduites = {n: reduire(im, largeur_max) for n, im in images.items()}
-    inchangees = {n for n in inchangees if reduites[n] is images[n]} if garder else set()
+    inchangees = {n for n in inchangees if reduites[n] is images[n]} if fidele else set()
     images = reduites
     total = sum(len(b) for b in originaux.values())
     meilleur = {"qualite": None, "gain_estime": 0.0, "psnr_min": None, "taille": taille}
@@ -262,7 +265,7 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite
             if n in inchangees:                           # page en couleur ou non concernée : ses octets d'origine, rien de recompressé
                 nouveaux += len(originaux[n])
                 continue
-            b = _jpeg(im, qualite_forcee)
+            b = _jpeg(im, qpage.get(n, qualite_forcee))
             psnrs.append(_psnr(im, Image.open(io.BytesIO(b))))
             nouveaux += min(len(b), len(originaux[n])) if not (eclairer or largeur_max) else len(b)
         gain = 1 - nouveaux / total
@@ -282,15 +285,16 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite
 
 
 def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, destination: Path | None = None, comicinfo=None, calage=None,
-             garder_inchangees=False) -> int:
+             fidele=False) -> int:
     """Écrit la version allégée (ou éclaircie) à côté, la relit, puis remplace. Renvoie le nombre d'octets gagnés.
     L'ancien fichier est renvoyé à l'appelant via un nom « .avant » (à mettre à la corbeille).
     Avec « destination » (fichier partagé par qBittorrent : le NAS refuse de le renommer), la version allégée est seulement
     écrite là, relue, et l'original n'est pas touché : l'appelant échange les dossiers.
     « comicinfo » : fonction (ancien ComicInfo.xml ou None) -> nouveau ComicInfo.xml, pour écrire les infos du tome dans la
     même passe ; le fichier est alors remplacé même sans gain. « qualite » vide : les images sont recopiées telles quelles.
-    « garder_inchangees » : une page que les filtres n'ont pas touchée (une page en couleur) et qui n'est pas réduite garde ses octets d'origine,
-    sans nouvelle compression (pour « seulement uniformiser » : la couleur ne subit aucun traitement)."""
+    « fidele » (mode « même qualité que l'original ») : chaque page est réenregistrée à SA qualité d'origine (une double page assemblée est en 95, les
+    autres pages d'un tome en 70 : « qualite » ne sert que pour une page dont la qualité n'est pas lisible), et une page que les filtres n'ont pas touchée
+    (une page en couleur) et qui n'est pas réduite garde ses octets d'origine, sans nouvelle compression."""
     eclairer = reglages_amelioration(eclairer)
     tmp = destination if destination is not None else chemin.with_name("." + chemin.name + ".allege")
     vu_comicinfo = False
@@ -303,8 +307,8 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
                 im.load()
                 traitee = ameliorer(im, eclairer, calage) if eclairer else im
                 im2 = reduire(traitee, largeur_max)
-                if not (garder_inchangees and im2 is im):
-                    nouveau = _jpeg(im2, qualite)
+                if not (fidele and im2 is im):
+                    nouveau = _jpeg(im2, (qualite_jpeg(im) or qualite) if fidele else qualite)
                     if im2 is not im or len(nouveau) < len(data):
                         data = nouveau
             elif comicinfo is not None and info.filename == COMICINFO:
@@ -371,13 +375,13 @@ def echanger_dossier(chemin: Path, ecrire, vers_corbeille) -> bool:
     return True
 
 
-def reecrire_partage(chemin: Path, qualite: int, vers_corbeille, eclairer=False, largeur_max=None, comicinfo=None, calage=None, garder_inchangees=False) -> int:
+def reecrire_partage(chemin: Path, qualite: int, vers_corbeille, eclairer=False, largeur_max=None, comicinfo=None, calage=None, fidele=False) -> int:
     """Tome partagé : version allégée écrite à part puis dossiers échangés (voir echanger_dossier). Renvoie les octets gagnés."""
     gagne = [0]
     eclairer = reglages_amelioration(eclairer)
 
     def ecrire(dest):
-        gagne[0] = reecrire(chemin, qualite, eclairer, largeur_max, destination=dest, comicinfo=comicinfo, calage=calage, garder_inchangees=garder_inchangees)
+        gagne[0] = reecrire(chemin, qualite, eclairer, largeur_max, destination=dest, comicinfo=comicinfo, calage=calage, fidele=fidele)
         return gagne[0] > 0 or bool(eclairer) or comicinfo is not None
     return gagne[0] if echanger_dossier(chemin, ecrire, vers_corbeille) else 0
 
@@ -423,20 +427,20 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
                         rapport.append({"fichier": f.name, "note": "partagé par qBittorrent et posé hors d'un dossier de tome : jamais modifié"})
                         continue
                     calage = (calages or {}).get(f.name)
-                    garder = qualite_forcee == QUALITE_ORIGINE
+                    fidele = qualite_forcee == QUALITE_ORIGINE
                     a = analyser(f, eclairer=eclairer, largeur_max=largeur_max, qualite_forcee=qualite_forcee, calage=calage)
                     avant_total += a["taille"]
-                    ligne = {"fichier": f.name, "taille_mo": round(a["taille"] / 1048576, 1), "qualite": a["qualite"],
+                    ligne = {"fichier": f.name, "taille_mo": round(a["taille"] / 1048576, 1), "qualite": a["qualite"], "fidele": fidele,
                              "gain": a["gain_estime"], "psnr": a["psnr_min"]}
                     if eclairer and eclairer.get("uniformiser") and not calage:
                         ligne["alerte"] = "uniformisation ignorée : ce tome n'est pas encore mesuré"
                     comicinfo = infos_de(f) if (appliquer and infos_de) else None
                     if appliquer and (a["qualite"] or comicinfo):
                         if partage:
-                            g = reecrire_partage(f, a["qualite"], vers_corbeille, eclairer, largeur_max, comicinfo, calage, garder)
+                            g = reecrire_partage(f, a["qualite"], vers_corbeille, eclairer, largeur_max, comicinfo, calage, fidele)
                             ligne["note"] = "partagé par qBittorrent : version allégée à part, le torrent n'est pas touché"
                         else:
-                            g = reecrire(f, a["qualite"], eclairer, largeur_max, comicinfo=comicinfo, calage=calage, garder_inchangees=garder)
+                            g = reecrire(f, a["qualite"], eclairer, largeur_max, comicinfo=comicinfo, calage=calage, fidele=fidele)
                             ancien = f.with_name(f.name + ".avant")
                             if ancien.exists():
                                 vers_corbeille(ancien)
@@ -477,15 +481,15 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
 _CACHE_COMPARAISON = {}
 
 
-def comparer(chemin: Path, index: int, qualite, eclairer=False, largeur_max=None, zoom=None, calage=None, garder_inchangees=False) -> dict:
+def comparer(chemin: Path, index: int, qualite, eclairer=False, largeur_max=None, zoom=None, calage=None, fidele=False) -> dict:
     """Une page du tome AVANT / APRÈS, avec exactement ce que « Appliquer » écrirait (même qualité, même largeur, même éclaircissement).
     zoom = (fx, fy) entre 0 et 1 : un détail de 640 px à l'échelle réelle plutôt que la page entière.
     Renvoie {"avant", "apres" (JPEG), "avant_ko", "apres_ko", "page", "pages", "inchange", "dimensions": [avant, après]}."""
     eclairer = reglages_amelioration(eclairer)
-    cle = (str(chemin), chemin.stat().st_mtime_ns, index, qualite, tuple((eclairer or {}).values()), largeur_max, zoom, tuple(sorted((calage or {}).items())), garder_inchangees)
+    cle = (str(chemin), chemin.stat().st_mtime_ns, index, qualite, tuple((eclairer or {}).values()), largeur_max, zoom, tuple(sorted((calage or {}).items())), fidele)
     with _VERROU_COMPARAISON:            # la page demande avant, après et infos en même temps : un seul calcul, les autres attendent
         if cle not in _CACHE_COMPARAISON:
-            res = _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage, garder_inchangees)
+            res = _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage, fidele)
             if len(_CACHE_COMPARAISON) >= 8:
                 _CACHE_COMPARAISON.pop(next(iter(_CACHE_COMPARAISON)))
             _CACHE_COMPARAISON[cle] = res
@@ -495,7 +499,7 @@ def comparer(chemin: Path, index: int, qualite, eclairer=False, largeur_max=None
 _VERROU_COMPARAISON = threading.Lock()
 
 
-def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage=None, garder_inchangees=False):
+def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage=None, fidele=False):
     with zipfile.ZipFile(chemin) as z:
         noms = _pages(z)
         if not noms:
@@ -507,7 +511,8 @@ def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage=None, 
     couleur = bool(eclairer) and est_couleur(im)
     traitee = ameliorer(im, eclairer, calage) if eclairer else im
     im2 = reduire(traitee, largeur_max)
-    nouveau = _jpeg(im2, qualite) if qualite and not (garder_inchangees and im2 is im) else data
+    q_page = (qualite_jpeg(im) or qualite) if fidele else qualite                  # mode « même qualité » : celle de CETTE page
+    nouveau = _jpeg(im2, q_page) if qualite and not (fidele and im2 is im) else data
     if qualite and not (im2 is not im or len(nouveau) < len(data)):
         nouveau = data                                   # une page qui ne gagne rien garde ses octets d'origine
     apres = Image.open(io.BytesIO(nouveau))
@@ -524,7 +529,7 @@ def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage=None, 
         sortie = [_jpeg(avant, 100), nouveau]
     res = {"avant": sortie[0], "apres": sortie[1], "avant_ko": round(len(data) / 1024), "apres_ko": round(len(nouveau) / 1024),
            "page": index, "pages": len(noms), "inchange": nouveau is data, "dimensions": [list(im.size), list(apres.size)],
-           "ameliore": traitee is not im, "couleur": couleur}
+           "ameliore": traitee is not im, "couleur": couleur, "qualite_page": q_page if qualite else None}
     return res
 
 

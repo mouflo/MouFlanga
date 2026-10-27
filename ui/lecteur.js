@@ -81,7 +81,7 @@
   // 🗑 (administrateur) : la page affichée est retirée du tome, puis le chapitre est rouvert à la même place
   if ($('optRetirer')) $('optRetirer').addEventListener('click', async function () {
     if (!count || !path) return;
-    if (!await MouConfirm('Retirer la page ' + (page + 1) + ' de ce tome ? (crédits, pub d\'équipe…) L\'ancien fichier va à la corbeille (30 jours).')) return;
+    if (!await MouConfirm('Retirer la page ' + (page + 1) + ' de ce tome ? (crédits, pub d\'équipe…) L\'ancien fichier va à la corbeille (' + corb() + ').')) return;
     var r = await post('/api/parasites/page', {series: seriesId, fichier: path, index: debut + page});
     if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
     setPref('mfV:' + path, String(Date.now()));

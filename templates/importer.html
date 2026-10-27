@@ -43,12 +43,13 @@
 
     <div class="panel">
         <h2>📦 Archives déposées dans le dossier des mangas</h2>
-        <div class="sub">Chaque archive (.rar, .zip, .7z) devient une série : un dossier, un fichier par tome, les chapitres quand ils sont séparés. Vérifie les noms proposés (l'appli apprend de tes corrections), puis importe une série ou tout d'un coup. L'import se fait une série à la fois, en arrière-plan : tu peux fermer cette page, un message Telegram arrive à la fin. Les archives d'origine vont à la corbeille (30 jours) une fois importées.</div>
+        <div class="sub">Chaque archive (.rar, .zip, .7z) devient une série : un dossier, un fichier par tome, les chapitres quand ils sont séparés. Vérifie les noms proposés (l'appli apprend de tes corrections), puis importe une série ou tout d'un coup. L'import se fait une série à la fois, en arrière-plan : tu peux fermer cette page, un message Telegram arrive à la fin. Les archives d'origine vont à la corbeille (durée réglable dans ⚙️ Réglages) une fois importées.</div>
         <div class="row" style="margin:10px 0"><button class="btn" id="toutImporter" hidden>📥 Tout importer</button></div>
         <div id="importMsg"></div>
         <div id="groupes" class="groupes"><div class="tabsinfo">Chargement…</div></div>
     </div>
 </div>
+<script src="/ui/corbeille.js?v={{ version|urlencode }}"></script>
 <script src="/ui/importer.js?v={{ version|urlencode }}"></script>
 </body>
 </html>

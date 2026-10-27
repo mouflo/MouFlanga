@@ -93,7 +93,7 @@
         const dec = e.target.closest("[data-decider]");
         if (dec) {
             const choix = dec.dataset.remplacer, bloc = dec.closest(".tor-choix");
-            if (choix === "1" && !await MouConfirm("Les tomes actuels iront à la corbeille (30 jours). Continuer ?")) return;
+            if (choix === "1" && !await MouConfirm("Les tomes actuels iront à la corbeille (" + corb() + "). Continuer ?")) return;
             bloc.querySelectorAll("button").forEach(b => b.disabled = true);
             const remplacer = choix === "ignorer" ? "ignorer" : choix === "1";
             const r = await (await fetch("/api/torrents/decider", {method: "POST", headers: {"Content-Type": "application/json"},

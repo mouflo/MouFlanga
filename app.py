@@ -1790,7 +1790,7 @@ def api_decouper():
         edition.invalider(MANGA_DIR / name)
         try:
             _vers_corbeille(f)
-            return "Le fichier d'origine est dans la corbeille (30 jours)."
+            return f"Le fichier d'origine est dans la corbeille ({_corbeille_phrase()})."
         except OSError:
             return ("Le fichier d'origine est encore partagé par qBittorrent : supprime le torrent dans qBittorrent, "
                     "puis supprime-le ici avec 🗑.")
@@ -1958,7 +1958,7 @@ def api_optimiser_comparer():
     if cote in ("avant", "apres"):
         return Response(r[cote], mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
     info = {k: v for k, v in r.items() if k not in ("avant", "apres")}
-    info.update(fichier=chemin.name, tomes=[f.name for f in tomes], qualite=qualite, auto=auto, origine=(q == "o"))
+    info.update(fichier=chemin.name, tomes=[f.name for f in tomes], qualite=(r.get("qualite_page") or qualite) if q == "o" else qualite, auto=auto, origine=(q == "o"))
     if eclairer and eclairer.get("uniformiser"):
         info["uniformise"] = bool(calage)
     return jsonify(info)
@@ -2392,7 +2392,7 @@ def api_parasites_page():
         return jsonify({"ok": False, "error": res.get("note", "Fichier non modifié.")}), 409
     _apres_nettoyage(name, f, res["carte"])
     logger.info("Page %d retirée à la main de %s", index + 1, f)
-    return jsonify({"ok": True, "pages": res["pages"], "message": "Page retirée (l'ancien fichier est dans la corbeille 30 jours)."})
+    return jsonify({"ok": True, "pages": res["pages"], "message": f"Page retirée (l'ancien fichier est dans la corbeille : {_corbeille_phrase()})."})
 
 
 def _nettoyer_nouveaux_tomes():
@@ -2930,19 +2930,129 @@ def _vers_corbeille(p: Path):
     shutil.move(str(p), str(dest))
 
 
-def _vider_corbeille():
-    """Efface les jours de corbeille plus vieux que CORBEILLE_JOURS."""
+def _fichier_corbeille():
+    return Path(DATA_DIR) / "corbeille.json"
+
+
+def _corbeille_reglage() -> dict:
+    """Combien de temps garder les anciens fichiers : {"mode": "duree" | "jamais", "valeur": nombre, "unite": "jours" | "mois"}.
+    Chacun a ses besoins (le temps de contrôler le résultat, ou pas) : réglable dans ⚙️ Réglages → Corbeille. Par défaut 30 jours."""
+    d = _read_json(_fichier_corbeille(), {})
+    d = d if isinstance(d, dict) else {}
+    try:
+        valeur = max(0, min(3650, int(d.get("valeur", CORBEILLE_JOURS))))
+    except (TypeError, ValueError):
+        valeur = CORBEILLE_JOURS
+    return {"mode": d.get("mode") if d.get("mode") in ("duree", "jamais") else "duree", "valeur": valeur,
+            "unite": d.get("unite") if d.get("unite") in ("jours", "mois") else "jours"}
+
+
+def _corbeille_jours(reglage=None):
+    """La durée de conservation en jours (un mois = 30 jours) ; None = jamais effacé automatiquement."""
+    r = reglage or _corbeille_reglage()
+    return None if r["mode"] == "jamais" else r["valeur"] * (30 if r["unite"] == "mois" else 1)
+
+
+def _corbeille_phrase(reglage=None) -> str:
+    """Ce que l'écran dit de la conservation : « gardé 30 jours, puis effacé »."""
+    r = reglage or _corbeille_reglage()
+    if r["mode"] == "jamais":
+        return "gardé sans limite de durée"
+    if r["valeur"] == 0:
+        return "effacé aussitôt, sans retour possible"
+    unite = "mois" if r["unite"] == "mois" else ("jour" if r["valeur"] == 1 else "jours")
+    return f"gardé {r['valeur']} {unite}, puis effacé"
+
+
+def _vider_corbeille(mesurer=False) -> dict:
+    """Efface les jours de corbeille plus vieux que la durée choisie (rien du tout si « jamais »). Rend {"jours": nombre de dossiers effacés,
+    "octets": place rendue (seulement si `mesurer`, car il faut parcourir les fichiers)}."""
     import shutil
+    bilan = {"jours": 0, "octets": 0}
     racine = MANGA_DIR / CORBEILLE
-    if not racine.is_dir():
-        return
-    limite = time.time() - CORBEILLE_JOURS * 86400
+    jours = _corbeille_jours()
+    if jours is None or not racine.is_dir():
+        return bilan
+    limite = time.time() - jours * 86400
     for d in racine.iterdir():
         try:
             if d.is_dir() and datetime.strptime(d.name, "%Y-%m-%d").timestamp() < limite:
+                if mesurer:
+                    bilan["octets"] += _taille_dossier(d)
                 shutil.rmtree(d, ignore_errors=True)
+                bilan["jours"] += 1
         except ValueError:
             continue
+    return bilan
+
+
+def _taille_dossier(d: Path) -> int:
+    total = 0
+    for racine, _, fichiers in os.walk(d):
+        for f in fichiers:
+            try:
+                total += os.lstat(os.path.join(racine, f)).st_size
+            except OSError:
+                pass
+    return total
+
+
+@app.route("/api/corbeille", methods=["GET", "POST"])
+def api_corbeille():
+    """GET : le réglage de conservation et sa phrase (+ avec ?taille=1 : ce que contient la corbeille, jour par jour, et ce qu'un nettoyage effacerait).
+    POST {mode: "duree" | "jamais", valeur, unite: "jours" | "mois"} : enregistre le réglage. POST {action: "vider"} : nettoie maintenant, selon ce réglage."""
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        if body.get("action") == "vider":
+            if _corbeille_jours() is None:
+                return jsonify({"ok": True, "message": "Réglage « ne jamais effacer » : rien n'a été effacé."})
+            b = _vider_corbeille(mesurer=True)
+            logger.info("Corbeille nettoyée à la demande : %d jour(s), %.1f Go", b["jours"], b["octets"] / 1073741824)
+            return jsonify({"ok": True, "message": (f"{b['jours']} jour(s) de corbeille effacé(s), {b['octets'] / 1073741824:.1f} Go rendus." if b["jours"]
+                                                    else "Rien à effacer : tout est plus récent que la durée choisie.")})
+        mode = str(body.get("mode", "duree"))
+        unite = str(body.get("unite", "jours"))
+        try:
+            valeur = int(body.get("valeur", CORBEILLE_JOURS))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "La durée doit être un nombre entier."}), 400
+        if mode not in ("duree", "jamais") or unite not in ("jours", "mois") or not 0 <= valeur <= 3650:
+            return jsonify({"ok": False, "error": "Réglage invalide (durée de 0 à 3 650, en jours ou en mois)."}), 400
+        _write_json(_fichier_corbeille(), {"mode": mode, "valeur": valeur, "unite": unite})
+        r = _corbeille_reglage()
+        logger.info("Conservation de la corbeille : %s", _corbeille_phrase(r))
+        return jsonify({"ok": True, "message": "Enregistré : les anciens fichiers sont " + _corbeille_phrase(r) + ".", "duree_texte": _corbeille_phrase(r)})
+    r = _corbeille_reglage()
+    sortie = dict(r, duree_texte=_corbeille_phrase(r), jours=_corbeille_jours(r))
+    if request.args.get("taille"):
+        racine = MANGA_DIR / CORBEILLE
+        lignes, a_effacer = [], 0
+        limite = None if sortie["jours"] is None else time.time() - sortie["jours"] * 86400
+        for d in (sorted(racine.iterdir()) if racine.is_dir() else []):
+            try:
+                quand = datetime.strptime(d.name, "%Y-%m-%d").timestamp()
+            except ValueError:
+                continue
+            if d.is_dir():
+                o = _taille_dossier(d)
+                lignes.append({"jour": d.name, "octets": o})
+                if limite is not None and quand < limite:
+                    a_effacer += o
+        sortie.update(octets=sum(x["octets"] for x in lignes), jours_gardes=lignes, plus_ancien=lignes[0]["jour"] if lignes else "", a_effacer=a_effacer)
+    return jsonify(sortie)
+
+
+def _boucle_corbeille():
+    """Une fois par jour (la première fois 10 minutes après le démarrage) : efface ce qui dépasse la durée de conservation choisie."""
+    time.sleep(600)
+    while True:
+        try:
+            b = _vider_corbeille()
+            if b["jours"]:
+                logger.info("Corbeille : %d jour(s) plus vieux que la durée choisie effacé(s) (%s)", b["jours"], _corbeille_phrase())
+        except Exception as e:
+            logger.warning("Nettoyage de la corbeille : %s", e)
+        time.sleep(86400)
 
 
 @app.route("/api/delete", methods=["POST"])
@@ -3002,7 +3112,7 @@ def api_delete():
                         p["page"] = 0
                 _write_json(_pf, data)
     _vider_corbeille()
-    return jsonify({"ok": True, "supprimes": len(retires), "jours": CORBEILLE_JOURS})
+    return jsonify({"ok": True, "supprimes": len(retires), "jours": _corbeille_jours()})
 
 
 # ============================================================================
@@ -3452,7 +3562,7 @@ def _appliquer_rangement(j, remplacer):
         n += _remplacer_tomes(j["serie"], {t})
         c.parent.mkdir(parents=True, exist_ok=True)
         s.rename(c)
-    return f"{n} tome(s) remplacé(s) ; les anciens sont dans la corbeille (30 jours)."
+    return f"{n} tome(s) remplacé(s) ; les anciens sont dans la corbeille ({_corbeille_phrase()})."
 
 
 REGLES_IMPORT = DATA_DIR / "regles-import.json"     # choix retenus par série : remplacer / manquants / ignorer
@@ -4019,7 +4129,7 @@ def _travail_rescan():
                 rapport = None
             notifier.envoyer(rapport or f"🔄 MouFlanga : « {g['serie']} » importé depuis {g['nom'][:80]}\n{fin or ''}".strip())
             resume = ", ".join(x for x in (f"{len(nouveaux)} tome(s) ajouté(s)" if nouveaux else "",
-                                           f"{len(deja)} remplacé(s) (anciens à la corbeille 30 jours)" if remplacer else "") if x)
+                                           f"{len(deja)} remplacé(s) (anciens à la corbeille : {_corbeille_phrase()})" if remplacer else "") if x)
             with _RESCAN_VERROU:
                 _RESCAN["faits"].append(f"✅ {g['serie']} ← {g['nom']}" + (f" : {resume}" if resume else ""))
         except Exception as e:
@@ -5397,7 +5507,7 @@ def api_renommer():
                         + (f" {doublons} fichier(s) déjà présents mis à la corbeille." if doublons else "")})
     logger.info("Série renommée : « %s » → « %s »", name, nouveau)
     if mode == "serie":
-        return jsonify({"ok": True, "id": nouveau, "message": f"« {nouveau} » remplacée par « {name} » (l'ancienne est dans la corbeille 30 jours)."})
+        return jsonify({"ok": True, "id": nouveau, "message": f"« {nouveau} » remplacée par « {name} » (l'ancienne est dans la corbeille : {_corbeille_phrase()})."})
     return jsonify({"ok": True, "id": nouveau, "message": "Série renommée."})
 
 
@@ -7461,6 +7571,7 @@ if __name__ == "__main__":
     import notifier
     redemarrage.verifier(BASE_DIR, "MouFlanga", DATA_DIR / "mouflanga.log", lambda t: notifier.envoyer(t))
     threading.Thread(target=_boucle_generiques, daemon=True).start()
+    threading.Thread(target=_boucle_corbeille, daemon=True, name="corbeille").start()
     threading.Thread(target=_boucle_parasites, daemon=True).start()
     threading.Thread(target=_boucle_relecture_sommaires, daemon=True, name="relecture-sommaires").start()
     threading.Thread(target=_boucle_equipes, daemon=True).start()

@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="/ui/lecteur.css?v={{ version|urlencode }}">
 <script src="/ui/hors-ligne.js?v={{ version|urlencode }}" defer></script>
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+<script src="/ui/corbeille.js?v={{ version|urlencode }}"></script>
 <script src="/ui/lecteur.js?v={{ version|urlencode }}" defer></script>
 <link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
 </head>
@@ -43,7 +44,7 @@
             <li><b>↕ / ↔</b> : la page entière dans l'écran, ou la largeur de l'écran (on fait défiler la page vers le bas).</li>
             <li><b>⇆ / ◫ / ▭</b> : doubles pages. ⇆ = la double page prend toute la hauteur et se fait glisser au doigt pour voir tous les détails (on tourne la page en glissant encore une fois une fois au bord) ; ◫ = découpée en deux moitiés ; ▭ = entière. Tourne le téléphone en paysage pour voir la double page entière.</li>
             <li><b>⛶</b> : plein écran.</li>
-            {% if role == 'admin' %}<li><b>🗑</b> (en bas) : retirer la page affichée du tome (page parasite d'une équipe de scan). L'ancien fichier va à la corbeille (30 jours).</li>{% endif %}
+            {% if role == 'admin' %}<li><b>🗑</b> (en bas) : retirer la page affichée du tome (page parasite d'une équipe de scan). L'ancien fichier va à la corbeille (durée réglable dans ⚙️ Réglages).</li>{% endif %}
             <li><b>13 / 172</b> : page actuelle du chapitre ; la barre du bas permet d'aller directement à une page.</li>
             <li><b>⏮ ⏭</b> (en bas) : chapitre précédent ou suivant, même à l'intérieur d'un tome complet quand ses chapitres sont connus.</li>
             <li><b>☰</b> : la liste des chapitres du tome, pour aller directement à l'un d'eux. Le chapitre en cours est écrit en haut.</li>

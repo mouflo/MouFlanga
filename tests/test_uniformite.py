@@ -174,6 +174,32 @@ class QualiteOrigineTest(unittest.TestCase):
             self.assertLess(f.stat().st_size, avant * 1.05)                          # pas plus lourd (la page passe de RVB à gris : un peu plus léger)
             self.assertGreater(f.stat().st_size, avant * 0.4)                        # et pas écrasé non plus
 
+    def test_chaque_page_garde_sa_qualite_une_double_assemblee_reste_en_95(self):
+        """Régression (27/10) : la qualité médiane du tome (70) était appliquée à toutes les pages, donc les doubles pages assemblées par l'appli
+        (enregistrées en 95) perdaient de la qualité et le tome s'allégeait de 14 à 18 % alors que « Même qualité » promettait le contraire."""
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "S - Tome 01.cbz"
+            qualites = [70, 70, 70, 95, 70, 70]
+            avant = {}
+            with zipfile.ZipFile(f, "w") as z:
+                for i, q in enumerate(qualites):
+                    b = io.BytesIO()
+                    page_bd(VIOLACE, graine=i).save(b, "JPEG", quality=q)
+                    avant[f"c0001.00-p{i:03d}.jpg"] = len(b.getvalue())
+                    z.writestr(f"c0001.00-p{i:03d}.jpg", b.getvalue())
+            calage = uniformite.calage(_s(33, noir=26, teinte=(2.0, -1.7, -0.4)), _s(5, noir=3))
+            a = optimiser.analyser(f, nb_essai=6, eclairer="0,0,0,0,0,0,0,0,1", qualite_forcee=optimiser.QUALITE_ORIGINE, calage=calage)
+            self.assertEqual(a["qualite"], 70)                                        # la médiane, utilisée seulement pour une page illisible
+            optimiser.reecrire(f, a["qualite"], "0,0,0,0,0,0,0,0,1", None, calage=calage, fidele=True)
+            with zipfile.ZipFile(f) as z:
+                q_apres = {n: optimiser.qualite_jpeg(Image.open(io.BytesIO(z.read(n)))) for n in avant}
+                poids = {n: len(z.read(n)) for n in avant}
+            self.assertEqual(q_apres["c0001.00-p003.jpg"], 95)                         # la page en 95 reste en 95
+            self.assertEqual(q_apres["c0001.00-p000.jpg"], 70)
+            self.assertGreater(poids["c0001.00-p003.jpg"], 0.5 * avant["c0001.00-p003.jpg"])        # (la page passe de RVB teinté à gris : un peu plus légère à qualité égale)
+            comparaison = optimiser.comparer(f, 3, 70, None, None, None, None, True)   # l'aperçu dit la qualité de CETTE page
+            self.assertEqual(comparaison["qualite_page"], 95)
+
     def test_comptes_rendus_en_clair(self):
         with tempfile.TemporaryDirectory() as d:
             f = tome(d, "S - Tome 01.cbz", VIOLACE, pages=6)
@@ -232,7 +258,7 @@ class PagesEnCouleurTest(unittest.TestCase):
                 z.writestr("c0001.00-p004.jpg", couleur.getvalue())
             calage = uniformite.calage(_s(33, noir=26, teinte=(2.0, -1.7, -0.4)), _s(5, noir=3))
             a = optimiser.analyser(f, eclairer="0,0,0,0,0,0,0,0,1", qualite_forcee=optimiser.QUALITE_ORIGINE, calage=calage)
-            optimiser.reecrire(f, a["qualite"], "0,0,0,0,0,0,0,0,1", None, calage=calage, garder_inchangees=True)
+            optimiser.reecrire(f, a["qualite"], "0,0,0,0,0,0,0,0,1", None, calage=calage, fidele=True)
             with zipfile.ZipFile(f) as z:
                 self.assertEqual(z.read("c0001.00-p004.jpg"), couleur.getvalue())                # page en couleur : octets d'origine, identiques
                 self.assertNotEqual(z.read("c0001.00-p000.jpg"), bw.getvalue())                   # page noir et blanc : alignée

@@ -68,7 +68,7 @@ function blocChoix(g, i) {
     return `<div class="rescan-choix">
         <div class="rescan-alerte">⚠ ${deja.length} tome${deja.length > 1 ? 's' : ''} déjà dans la bibliothèque (${esc(listeTomes(deja))})${nouveaux.length ? ` · ${nouveaux.length} nouveau${nouveaux.length > 1 ? 'x' : ''} (${esc(listeTomes(nouveaux))})` : ' · aucun nouveau tome'}</div>
         ${radio('manquants', '➕ Ajouter seulement les manquants', nouveaux.length ? 'les tomes déjà là ne sont pas touchés' : 'rien à ajouter : ce choix ne change rien')}
-        ${radio('remplacer', '♻️ Remplacer les tomes en double', `les ${deja.length} tome${deja.length > 1 ? 's' : ''} déjà là vont à la corbeille (30 jours), les nouveaux sont ajoutés`)}
+        ${radio('remplacer', '♻️ Remplacer les tomes en double', `les ${deja.length} tome${deja.length > 1 ? 's' : ''} déjà là vont à la corbeille (${corb()}), les nouveaux sont ajoutés`)}
         ${radio('ignorer', '⛔ Ne rien faire', 'cet élément est laissé de côté')}
         <label class="choix-toujours"><input type="checkbox" class="rescan-toujours"> Retenir ce choix pour cette série${g.regle ? ' (déjà retenu : ' + esc({remplacer: 'remplacer', manquants: 'ajouter les manquants', ignorer: 'ne rien faire'}[g.regle] || g.regle) + ')' : ''}</label>
     </div>`;
@@ -138,7 +138,7 @@ $('rescanGo').addEventListener('click', async () => {
     if (!choisis.length) { say('rescanMsg', 'Coche au moins un élément.', false); return; }
     const remplace = choisis.filter(c => c.choix === 'remplacer').length;
     if (!await MouConfirm(`Importer ${choisis.length} élément${choisis.length > 1 ? 's' : ''} ?` +
-        (remplace ? `\n\n♻️ ${remplace} avec remplacement des tomes en double (les anciens vont à la corbeille 30 jours).` : '') +
+        (remplace ? `\n\n♻️ ${remplace} avec remplacement des tomes en double (les anciens vont à la corbeille : ${corb()}).` : '') +
         '\nTu recevras un message Telegram à la fin.')) return;
     const r = await post('/api/import/torrents', {elements: choisis});
     say('rescanMsg', r.message || r.error, r.ok);

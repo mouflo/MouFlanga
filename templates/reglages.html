@@ -67,6 +67,22 @@
     </div>
 
     <div class="panel" data-onglet="Général">
+        <h2>🗑 Corbeille</h2>
+        <div class="sub">Quand l'appli réécrit un tome (alléger, améliorer, assembler des doubles pages…), l'ancien fichier n'est pas effacé : il va dans la corbeille du dossier des mangas, pour pouvoir revenir en arrière. Choisis combien de temps le garder avant de l'effacer pour de bon : chacun a ses besoins, le temps de contrôler le résultat, ou pas.</div>
+        <div class="field"><label for="corbMode">Conservation</label>
+            <select id="corbMode"><option value="duree">Garder pendant une durée, puis effacer</option><option value="jamais">Ne jamais effacer automatiquement</option></select></div>
+        <div class="field" id="corbDuree"><label for="corbValeur">Durée de conservation</label>
+            <div class="row nowrap"><input type="number" id="corbValeur" min="0" max="3650" inputmode="numeric" style="max-width:7em">
+            <select id="corbUnite" style="max-width:9em"><option value="jours">jours</option><option value="mois">mois (30 jours)</option></select></div>
+            <div class="state" style="margin-top:6px">0 = effacer dès le prochain nettoyage, sans retour possible. Le nettoyage se fait une fois par jour.</div></div>
+        <div class="row"><button class="btn" id="corbSave" type="button">Enregistrer</button>
+            <button class="btn ghost" id="corbTaille" type="button">📏 Voir ce qu'elle contient</button>
+            <button class="btn ghost" id="corbVider" type="button">🧹 Nettoyer maintenant</button></div>
+        <div id="corbInfo" class="state" style="margin-top:8px"></div>
+        <div id="corbMsg"></div>
+    </div>
+
+    <div class="panel" data-onglet="Général">
         <h2>🔁 Choix retenus pour les tomes en double</h2>
         <div class="sub">Quand tu coches « Toujours faire ce choix » dans Télécharger, l'appli l'applique toute seule à la série la fois suivante (torrent ou rangement). Supprime une règle pour qu'elle te redemande.</div>
         <div id="reglesImport"></div>
@@ -382,6 +398,34 @@ $('reglesImport').addEventListener('click', async e => {
     say('reglesImportMsg', r.message || r.error, r.ok); loadReglesImport();
 });
 loadReglesImport();
+// ---------- 🗑 Corbeille : combien de temps garder les anciens fichiers ----------
+const _go = o => (o / 1073741824).toFixed(1).replace('.', ',') + ' Go';
+function corbAffiche() { $('corbDuree').hidden = $('corbMode').value === 'jamais'; }
+async function loadCorb() {
+    const r = await api('/api/corbeille');
+    if (r.error) return;
+    $('corbMode').value = r.mode; $('corbValeur').value = r.valeur; $('corbUnite').value = r.unite; corbAffiche();
+    $('corbInfo').textContent = 'Les anciens fichiers sont ' + r.duree_texte + '.';
+}
+$('corbMode').addEventListener('change', corbAffiche);
+$('corbSave').addEventListener('click', async () => {
+    const r = await post('/api/corbeille', {mode: $('corbMode').value, valeur: $('corbValeur').value, unite: $('corbUnite').value});
+    say('corbMsg', r.message || r.error, r.ok); if (r.ok) loadCorb();
+});
+$('corbTaille').addEventListener('click', async () => {
+    $('corbInfo').textContent = 'Calcul en cours (quelques secondes)…';
+    const r = await api('/api/corbeille?taille=1');
+    if (r.error) { $('corbInfo').textContent = r.error; return; }
+    const lignes = (r.jours_gardes || []).map(j => j.jour.split('-').reverse().join('/') + ' : ' + _go(j.octets)).join('\n');
+    $('corbInfo').innerHTML = esc('Les anciens fichiers sont ' + r.duree_texte + '. La corbeille contient ' + _go(r.octets || 0) + (r.plus_ancien ? ', le plus ancien date du ' + r.plus_ancien.split('-').reverse().join('/') : '') +
+        (r.jours === null ? '.' : '. Un nettoyage effacerait ' + _go(r.a_effacer || 0) + '.')) + (lignes ? '<pre style="white-space:pre-wrap;margin:6px 0 0">' + esc(lignes) + '</pre>' : '');
+});
+$('corbVider').addEventListener('click', async () => {
+    if (!await MouConfirm('Effacer maintenant ce qui dépasse la durée choisie dans la corbeille ?\n\nC\'est définitif : ces fichiers ne pourront pas être récupérés.')) return;
+    const r = await post('/api/corbeille', {action: 'vider'});
+    say('corbMsg', r.message || r.error, r.ok); loadCorb();
+});
+loadCorb();
 const PREFS = {dir: ['mfDir', 'rtl'], mode: ['mfMode', 'page'], fit: ['mfFit', 'height'], nav: ['mfNavStyle', 'bas'], auto: ['mfAutoGenerique', '1']};
 function getPref(k) { try { return localStorage.getItem(PREFS[k][0]) || PREFS[k][1]; } catch (e) { return PREFS[k][1]; } }
 for (const k of Object.keys(PREFS)) {

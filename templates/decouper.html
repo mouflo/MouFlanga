@@ -25,6 +25,7 @@
     </style>
 <link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+<script src="/ui/corbeille.js?v={{ version|urlencode }}"></script>
 </head>
 <body>
 <div class="container">
@@ -105,7 +106,7 @@ $('go') && $('go').addEventListener('click', async () => {
     const corps = {id: NOM, f: $('fichier').value, debuts: Object.fromEntries(numeros())};
     let r = await (await fetch('/api/decouper', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(corps)})).json();
     if (!r.ok && r.existants) {
-        if (!await MouConfirm(r.error + '\n\nLes remplacer ? Les anciens tomes vont à la corbeille (30 jours).')) return;
+        if (!await MouConfirm(r.error + '\n\nLes remplacer ? Les anciens tomes vont à la corbeille (' + corb() + ').')) return;
         corps.remplacer = true;
         r = await (await fetch('/api/decouper', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(corps)})).json();
     }
