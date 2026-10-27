@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 🌙 Lectures de fond la nuit seulement (27 octobre 2026)
+- **Les relectures de fond ne tournent que de minuit à 6 h, heure de Paris** : relecture des sommaires anciens (tâche de 6 h) et préparation automatique des séries. Hors de cette plage elles attendent et reprennent toutes seules, sans rien perdre (`plage.py`).
+- **Les actions lancées à la main restent immédiates** : ouvrir une fiche, « Lire le sommaire », « Préparer » demandé à la main.
+- Le rattrapage des sommaires en cours (Kenshin et autres) s'arrête donc à la fin de la lecture en cours, et reprend à minuit.
+
 ## 🗑 Corbeille réglable, et « Même qualité » qui garde vraiment la qualité (27 octobre 2026)
 - **La confirmation dit ce qui va réellement être fait** : « Appliquer à 18 tomes de « Air Gear » : uniformiser les noirs et les blancs ? La taille et la qualité des pages sont gardées (une page en couleur n'est pas touchée). Les anciens fichiers vont à la corbeille (conservation sans limite de durée). » Avant, elle disait « Alléger 18 tomes… » même pour une uniformisation seule. Les messages de fin (notification, Telegram) disent « traitement terminé » au lieu d'« allègement terminé », et la durée de conservation est dite en groupe nominal (« durée de conservation : 30 jours », « conservation sans limite de durée »).
 - **Réglage de la corbeille** (⚙️ Réglages → 🗑 Corbeille) : combien de temps garder les anciens fichiers avant de les effacer pour de bon, **au choix de chacun** : un nombre de **jours** ou de **mois** (0 = effacer dès le prochain nettoyage), ou **« Ne jamais effacer automatiquement »**. Par défaut 30 jours, comme avant. Tous les messages de l'appli qui parlaient de « 30 jours » disent maintenant la durée choisie (« durée de conservation : 2 mois »). Deux boutons : « 📏 Voir ce qu'elle contient » (taille totale, jour par jour, ce qu'un nettoyage effacerait) et « 🧹 Nettoyer maintenant » (avec confirmation). Le nettoyage se fait **une fois par jour** (avant, il ne se faisait que lors de la suppression d'une série). Réglage gardé dans `data/corbeille.json`. Sur ce serveur il est mis sur « jamais » pendant la phase de test : rien n'est effacé.

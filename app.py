@@ -50,6 +50,7 @@ except ImportError:
     pass  # python-dotenv absent : variables d'environnement du système seulement
 
 import archives
+import plage
 import reseau
 import tomes
 import tomes_cbz
@@ -5862,6 +5863,7 @@ def _relire_sommaires_perimes(nom) -> int:
         e = _tome_complet(nom, t)
         if not e:
             continue
+        plage.attendre_la_plage()                 # relecture de fond : seulement de minuit à 6 h (voir plage.py)
         _lire_sommaire(nom, t, e, urgent=False)
         if sommaire.etat(nom, t).get("en_cours"):
             en_lecture.append(t)

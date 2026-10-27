@@ -14,6 +14,8 @@ import threading
 import time
 from pathlib import Path
 
+import plage
+
 logger = logging.getLogger("mouflanga")
 
 VERSION = 7                      # monte quand la préparation fait plus de choses : les séries sont refaites une fois
@@ -140,6 +142,11 @@ def _travail():
                 attendu += 15
             with _VERROU:
                 _ETAT["detail"] = ""
+
+            while not _ETAT["manuel"] and not plage.dans_la_plage():     # automatique : seulement de minuit à 6 h
+                with _VERROU:
+                    _ETAT["detail"] = "en pause jusqu'à minuit (lecture de fond)"
+                time.sleep(300)
 
             def progression(texte):
                 with _VERROU:
