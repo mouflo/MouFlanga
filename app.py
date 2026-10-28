@@ -4717,7 +4717,7 @@ def api_suivies():
         if "anglais" in (trouve.get("rejet") or ""):
             return jsonify({"ok": False, "error": "Ce torrent est marqué en anglais : jamais pris."}), 400
         try:
-            torrents.lancer(trouve["lien"], trouve["titre"], nom, p["type"] in ("meilleur", "equipe"), str(trouve.get("page", ""))[:600])
+            torrents.lancer(trouve["lien"], trouve["titre"], nom, p["type"] in ("meilleur", "equipe"), str(trouve.get("page", ""))[:600], manuel=True)
         except Exception as e:
             return jsonify({"ok": False, "error": f"qBittorrent : {e}"}), 502
         with suivi._verrou:
@@ -5078,7 +5078,7 @@ def api_torrents():
     if proche and not body.get("confirme"):       # « Breaker » alors que « CØDE BREAKER » existe : on demande
         return jsonify({"ok": False, "proche": proche, "error": f"Une série au nom proche existe déjà : « {proche} »."}), 409
     try:
-        torrents.lancer(lien, titre, serie, remplacer, str(body.get("page", ""))[:600])
+        torrents.lancer(lien, titre, serie, remplacer, str(body.get("page", ""))[:600], manuel=True)
         if body.get("proposition"):               # proposition de la surveillance : marquée « vue »
             with suivi._verrou:
                 d = suivi.lire()

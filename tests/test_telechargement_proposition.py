@@ -39,7 +39,7 @@ class TelechargerPropositionTest(unittest.TestCase):
     def test_nouveau_ajoute_seulement_les_manquants_et_marque_telecharge(self):
         r, l = self.poste("p1")
         self.assertEqual(r.status_code, 200)
-        l.assert_called_once_with("http://prowlarr/dl?apikey=secret", "Kaf.T04.FR", "Kaf", False, "https://c411.org/t/1")
+        l.assert_called_once_with("http://prowlarr/dl?apikey=secret", "Kaf.T04.FR", "Kaf", False, "https://c411.org/t/1", manuel=True)
         self.assertEqual(suivi.lire()["series"]["Kaf"]["propositions"][0]["statut"], "telecharge")
         self.assertNotIn("secret", r.get_data(as_text=True))                     # le lien de Prowlarr ne revient jamais au navigateur
 

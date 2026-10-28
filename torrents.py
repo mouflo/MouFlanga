@@ -342,7 +342,7 @@ def _forcer_demarrage(q, jid):
             return
 
 
-def lancer(lien: str, titre: str, serie: str, remplacer: bool | None = None, page: str = "") -> dict:
+def lancer(lien: str, titre: str, serie: str, remplacer: bool | None = None, page: str = "", manuel: bool = False) -> dict:
     r = reglages()
     q = Qbit()
     q.preparer_categorie()
@@ -350,7 +350,7 @@ def lancer(lien: str, titre: str, serie: str, remplacer: bool | None = None, pag
     q.appel("torrents/add", urls=lien, category=CATEGORIE, tags=f"mouflanga,mf-{jid}", savepath=r["nok"], autoTMM="false")
     _forcer_demarrage(q, jid)
     j = {"id": jid, "titre": titre, "serie": serie, "remplacer": remplacer, "etat": "telechargement", "progression": 0, "debut": datetime.now().strftime("%Y-%m-%d %H:%M"),
-         "message": "Envoyé à qBittorrent", **({"page": page} if str(page).startswith("https://") and len(page) <= 600 else {})}
+         "message": "Envoyé à qBittorrent", **({"manuel": True} if manuel else {}), **({"page": page} if str(page).startswith("https://") and len(page) <= 600 else {})}
     with _verrou:
         d = _lire()
         d.append(j)
@@ -495,7 +495,7 @@ def adopter(q):
             remplacer = True if _ETAT.get("remplacer_auto") and _ETAT["remplacer_auto"](nom, t.get("name") or "") else None
             d.append({"id": jid, "titre": t.get("name") or "?", "serie": nom, "remplacer": remplacer, "etat": "telechargement",
                       "progression": round((t.get("progress") or 0) * 100), "debut": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                      "message": "Ajouté à la main dans qBittorrent"})
+                      "manuel": True, "message": "Ajouté à la main dans qBittorrent"})
             _ecrire(d)
         logger.info("Torrent ajouté à la main repris : %s → série « %s »", t.get("name"), nom)
 
@@ -517,6 +517,8 @@ def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
                 t = infos[0]
                 if t.get("progress", 0) < 1:
                     garder, bloque = suivre_avance(j, t, datetime.now())
+                    if bloque and j.get("manuel"):      # ajouté à la main : jamais retiré pour lenteur, c'est son choix
+                        bloque, garder = "", {}
                     if bloque:
                         rater(q, j, t, bloque)
                         rates.append({**j, "raison": bloque, "chercher": True})

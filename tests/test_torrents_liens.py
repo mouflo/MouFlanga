@@ -65,7 +65,7 @@ class RoutesTest(unittest.TestCase):
         pub = torrents.publier(RESULTATS)
         rep, lancer = self.poster({"resultat": pub[0]["id"], "titre": "Wind.Breaker.T07.FR.CBZ", "serie": "Wind Breaker", "page": RESULTATS[0]["page"]})
         self.assertTrue(rep.get_json()["ok"])
-        lancer.assert_called_once_with(PROWLARR, "Wind.Breaker.T07.FR.CBZ", "Wind Breaker", None, RESULTATS[0]["page"])
+        lancer.assert_called_once_with(PROWLARR, "Wind.Breaker.T07.FR.CBZ", "Wind Breaker", None, RESULTATS[0]["page"], manuel=True)
 
     def test_un_lien_http_envoye_par_le_navigateur_est_refuse(self):
         rep, lancer = self.poster({"lien": "http://192.168.1.133:9696/10/download?apikey=AUTRE", "titre": "t", "serie": "S"})
@@ -99,3 +99,16 @@ class RoutesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ManuelNeStagnePasTest(unittest.TestCase):
+    def test_torrent_manuel_jamais_retire_pour_lenteur(self):
+        from unittest import mock
+        q = mock.Mock()
+        q.info.return_value = [{"progress": 0, "state": "stalledDL", "hash": "h", "category": torrents.CATEGORIE}]
+        j = {"id": "x", "titre": "T", "serie": "S", "etat": "telechargement", "manuel": True,
+             "avance": 0, "avance_le": "2000-01-01 00:00", "debut": "2000-01-01 00:00"}
+        with mock.patch.object(torrents, "_maj") as maj, mock.patch.object(torrents, "rater") as rater:
+            torrents.traiter(q, [j], None, lambda m: None, None)
+        rater.assert_not_called()
+        self.assertNotEqual(maj.call_args.kwargs.get("etat"), "rate")
