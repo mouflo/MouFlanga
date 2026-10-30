@@ -78,7 +78,7 @@
             <div class="cv-tome">{{ l.nom }}{% if l.remplacee %}<br><span class="cv-langue">remplacée (à la main ou en ligne)</span>{% endif %}</div>
             <div class="cv-paires">
                 <div class="cv-case">
-                    <img src="/api/tome/couverture?id={{ nom|urlencode }}&tome={{ l.tome }}&grand=1" alt="Actuelle, {{ l.nom }}" loading="lazy">
+                    <img src="/api/tome/couverture?id={{ nom|urlencode }}&tome={{ l.tome }}&grand=1&l=360" alt="Actuelle, {{ l.nom }}" loading="lazy">
                     Actuelle
                     {% if l.remplacee %}
                     <form class="cv-retirer" method="post" action="/couvertures/retirer">

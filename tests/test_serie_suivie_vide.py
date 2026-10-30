@@ -166,3 +166,17 @@ class SerieSuivieVideTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SerieSuivieRenommeeTest(SerieSuivieVideTest):
+    """Une série suivie renommée pour une autre fiche garde-t-elle l'ancien choix d'AniList ? Non : le nom décide."""
+
+    def test_le_choix_d_ajout_ne_survit_pas_a_un_renommage_vers_une_autre_fiche(self):
+        suivi.ajouter("Basilisk: Ouka Ninpouchou", {"titre": "Basilisk: Ouka Ninpouchou", "titres": ["Basilisk: Ouka Ninpouchou"], "anilist": 110644})
+        suivi.renommer("Basilisk: Ouka Ninpouchou", "Basilisk: Kouga Ninpou-chou")
+        self.assertIsNone(self.m._anilist_choisi("Basilisk: Kouga Ninpou-chou"))
+
+    def test_un_nom_proche_garde_le_choix(self):
+        suivi.ajouter("Basilisk: Kouga Ninpouchou", {"titres": ["Basilisk: Kouga Ninpouchou"], "anilist": 30221})
+        suivi.renommer("Basilisk: Kouga Ninpouchou", "Basilisk: Kouga Ninpou-chou")
+        self.assertEqual(self.m._anilist_choisi("Basilisk: Kouga Ninpou-chou"), 30221)

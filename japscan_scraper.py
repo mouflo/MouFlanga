@@ -618,7 +618,7 @@ async def attendre_captcha(page, alerter: bool = True) -> bool:
 logger = logging.getLogger("japscan_scraper")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-JAPSCAN_URL = "https://www.japscan.foo"
+JAPSCAN_URL = "https://japscan.st"
 
 PROFIL = Path(os.environ.get("JAPSCAN_PROFIL", Path(__file__).resolve().parent / "data" / "navigateur"))
 _VERROU = threading.Lock()

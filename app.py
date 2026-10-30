@@ -677,7 +677,7 @@ def _entrees_calculees(files):
         total = sum(c["nb"] for c in chapitres) or 1
         for c in chapitres:
             out.append({"key": f"#{c['num']:g}", "path": rel, "num": c["num"],
-                        "title": f"Chapitre {c['num']:g}" + (f" : {c['titre']}" if c["titre"] else ""),
+                        "title": (c["titre"] if c["num"] == 0 and c["titre"] else f"Chapitre {c['num']:g}" + (f" : {c['titre']}" if c["titre"] else "")),
                         "groupe": tomes_cbz.dossier_tome(info.get("tome")), "debut": c["debut"], "nb": c["nb"],
                         "groupe_titre": titre_tome(f.relative_to(MANGA_DIR).parts[0], info.get("tome")) or "",
                         "titre_ch": c["titre"],
@@ -1661,7 +1661,20 @@ def api_tome_couverture():
         return Response(status=404)
     remplace = couvertures_tomes.remplacement(MANGA_DIR / name, tome)
     if remplace:                                    # image choisie à la main ou trouvée en ligne (le fichier CBZ n'est pas touché)
-        r = Response(remplace.read_bytes(), mimetype="image/jpeg")
+        try:
+            largeur = max(0, min(int(request.args.get("l", "0")), 1200))
+        except ValueError:
+            largeur = 0
+        octets = remplace.read_bytes()
+        if largeur:                                 # petite version réduite proprement (le navigateur réduit mal une grande image : crénelé)
+            from PIL import Image
+            with Image.open(io.BytesIO(octets)) as im:
+                if im.width > largeur:
+                    im = im.convert("RGB").resize((largeur, round(im.height * largeur / im.width)), Image.LANCZOS)
+                    sortie = io.BytesIO()
+                    im.save(sortie, "JPEG", quality=90)
+                    octets = sortie.getvalue()
+        r = Response(octets, mimetype="image/jpeg")
         r.headers["Cache-Control"] = "no-cache"
         return r
     groupe = tomes_cbz.dossier_tome(tome)
@@ -1678,8 +1691,19 @@ def _titres_serie(name):
     return [name, st.get("titre"), st.get("titre_en"), fi.get("romaji"), fi.get("titre_original")]
 
 
+def _numero_du_tome_d_une_entree(e):
+    """Numéro du tome d'une entrée : champ « tome » (un fichier = un tome), sinon le dossier « Tome 03 » d'un chapitre rangé dans un
+    fichier de tome (série découpée en chapitres : ces entrées n'ont pas de champ « tome »)."""
+    if e.get("a_importer"):
+        return None
+    if e.get("tome") is not None:
+        return int(e["tome"])
+    m = re.fullmatch(r"Tome (\d+)", e.get("groupe") or "")
+    return int(m.group(1)) if m else None
+
+
 def _tomes_presents(name):
-    return sorted({int(e["tome"]) for e in _entrees(_scan().get(name) or []) if e.get("tome") is not None and not e.get("a_importer")})
+    return sorted({n for n in map(_numero_du_tome_d_une_entree, _entrees(_scan().get(name) or [])) if n is not None})
 
 
 def _hs_presents(name):
@@ -4477,6 +4501,30 @@ def _placer_hors_series(nom):
                 _relier_univers(nom, x)
 
 
+def _noter_page_du_torrent(dossier, titre):
+    """Torrent lancé depuis l'appli : la page de son tracker donne le synopsis (français), l'auteur, l'éditeur et le genre, gardés dans les
+    infos de la série (« nfo_infos », comme un NFO). Seulement ce qui manque : rien n'est remplacé. Une page illisible ne bloque rien."""
+    titre = str(titre or "").lower()
+    page = next((j.get("page") for j in reversed(torrents._lire()) if j.get("page") and str(j.get("titre", "")).lower() == titre), "")
+    if not page:
+        return {}
+    try:
+        lue = page_tracker.lire(page)
+    except page_tracker.PageIllisible as e:
+        logger.info("Page du torrent « %s » non lue : %s", titre[:60], e.message)
+        return {}
+    import edition
+    trouve = {k: v for k, v in (lue.get("infos") or {}).items() if k in ("synopsis", "auteur", "editeur", "genre") and v}
+    d = edition.lire(dossier)
+    nfo = d.setdefault("nfo_infos", {})
+    ajoute = {k: v for k, v in trouve.items() if not nfo.get(k)}
+    if ajoute:
+        nfo.update(ajoute)
+        edition.ecrire(dossier, d)
+        logger.info("Page du torrent lue sur %s : %s ajouté(s) à « %s »", lue.get("tracker"), ", ".join(ajoute), Path(dossier).name)
+    return ajoute
+
+
 def _importer_torrent(nom, source, remplacer=False):
     """Contenu d'un torrent → bibliothèque, sans jamais renommer ni effacer ses fichiers (le NAS le refuse tant que
     qBittorrent partage) : un tome complet est placé directement sous « Tome NN/<série> - Tome NN.cbz », un chapitre
@@ -4525,6 +4573,10 @@ def _importer_torrent(nom, source, remplacer=False):
         edition.noter_import(dossier, Path(source).name, dossier / ".torrent")
     except Exception as e:
         logger.warning("Infos de l'édition du torrent (%s) : %s", nom, e)
+    try:
+        _noter_page_du_torrent(dossier, Path(source).name)
+    except Exception as e:
+        logger.warning("Page du torrent (%s) : %s", nom, e)
     zip_images = _zip_images_du_torrent(Path(source), fichiers, dossier / ".torrent")
     if zip_images:                                   # torrent fait de dossiers d'images : un zip, importé comme une archive
         lots.append(zip_images)
@@ -5365,10 +5417,16 @@ def _anilist_choisi(serie):
     choisi = _anilist_infos(serie).get("anilist_choisi")
     if choisi:
         return choisi
+    entree = suivi.lire()["series"].get(serie) or {}
     try:
-        return int((suivi.lire()["series"].get(serie) or {}).get("anilist") or 0) or None
+        ident = int(entree.get("anilist") or 0) or None
     except (TypeError, ValueError):
         return None
+    cle = lambda t: tomes._simple(t).replace(" ", "")
+    titres = [cle(t) for t in entree.get("titres") or [] if t]
+    if ident and titres and not any(cle(serie) == t or cle(serie) in t or t in cle(serie) for t in titres):
+        return None          # série renommée pour une autre fiche (« Ouka » devenue « Kouga ») : l'ancien choix ne vaut plus, on cherche d'après le nom
+    return ident
 
 
 tomes.ID_CHOISI = _anilist_choisi
@@ -6160,7 +6218,11 @@ def api_tome_valider():
         _apprendre_chiffres(name, tome)
     except Exception as e:
         logger.info("Chiffres du sommaire de %s : %s", name, e.__class__.__name__)
-    return jsonify({"ok": True, "message": f"{_nom_tome(name, tome)} : chapitres validés, l'appli n'y touchera plus."})
+    e = _tome_complet(name, tome)
+    ranger = bool(e and e["path"].lower().endswith(".cbz") and tomes_cbz.lire_info(MANGA_DIR / e["path"]) is None
+                  and _chapitres_a_ranger(name, tome, MANGA_DIR / e["path"], lu))
+    return jsonify({"ok": True, "ranger_possible": ranger,
+                    "message": f"{_nom_tome(name, tome)} : chapitres validés, l'appli n'y touchera plus."})
 
 
 # ---------------- 📖 Chapitres d'un tome complet dans le lecteur, et 🎯 vérification des pages au lecteur ----------------
@@ -6337,15 +6399,31 @@ def api_tome_chapitres_decaler():
 _SIGNETS = {}              # (série, tome) → {"en_cours", "message", "ok"} : écriture des chapitres dans le .cbz
 
 
-def _ecrire_fichier_tome(name, tome, chemin, chapitres, infos, partage):
-    """Écrit chapitres et infos DANS le fichier du tome (fichier partagé : version à part et échange de dossiers)."""
+def _chapitres_a_ranger(name, tome, chemin, lu=None):
+    """Chapitres du tome VALIDÉ à la main dont chaque page de début est connue et cohérente : le tome peut alors être rangé
+    par chapitre (pages renommées, il se déroule en chapitres). None sinon (tome non validé, chapitres douteux)."""
+    import edition
+    import signets
+    lu = lu if lu is not None else (edition.lire(MANGA_DIR / name).get("sommaires") or {}).get(str(tome)) or {}
+    if not lu.get("valide_le") or not signets.nb_signets(lu.get("chapitres") or []):
+        return None
+    try:
+        return lu["chapitres"] if signets.plan_chapitres(archives.pages(chemin), lu["chapitres"]) else None
+    except (OSError, archives.ArchiveError):
+        return None
+
+
+def _ecrire_fichier_tome(name, tome, chemin, chapitres, infos, partage, ranger=False):
+    """Écrit chapitres et infos DANS le fichier du tome (fichier partagé : version à part et échange de dossiers).
+    ranger : les pages sont aussi renommées par chapitre (le tome se déroule en chapitres, comme ceux assemblés par l'appli)."""
     import optimiser
     import signets
+    r = (name, tome) if ranger else None
     if partage:
-        optimiser.echanger_dossier(chemin, lambda dest: bool(signets.ecrire(chemin, chapitres, dest, infos)), _vers_corbeille)
+        optimiser.echanger_dossier(chemin, lambda dest: bool(signets.ecrire(chemin, chapitres, dest, infos, r)), _vers_corbeille)
     else:
         tmp = chemin.with_name("." + chemin.name + ".signets")
-        signets.ecrire(chemin, chapitres, tmp, infos)
+        signets.ecrire(chemin, chapitres, tmp, infos, r)
         ancien = chemin.with_name(chemin.name + ".avant")
         chemin.rename(ancien)
         tmp.rename(chemin)
@@ -6405,7 +6483,9 @@ def api_tomes_infos_ecrire():
                     chapitres = lu.get("chapitres") or []
                     if not signets.nb_signets(chapitres):
                         chapitres = None
-                    _ecrire_fichier_tome(name, tome, chemin, chapitres, _infos_tome(name, tome), chemin.stat().st_nlink > 1)
+                    a_ranger = _chapitres_a_ranger(name, tome, chemin, lu)
+                    _ecrire_fichier_tome(name, tome, chemin, a_ranger or chapitres, _infos_tome(name, tome), chemin.stat().st_nlink > 1,
+                                         bool(a_ranger))
                     _ECRITURE_SERIE[name]["fait"] += 1
                 except Exception as ex:
                     logger.warning("Infos écrites dans %s : %s", chemin, ex)
@@ -6549,6 +6629,9 @@ def api_tome_chapitres_ecrire():
     if not signets.nb_signets(chapitres):
         chapitres = None                                 # pas de chapitres avec page : seules les infos du tome sont écrites
     infos = _infos_tome(name, tome)
+    a_ranger = _chapitres_a_ranger(name, tome, chemin, lu) if donnees.get("ranger", True) else None
+    if a_ranger:
+        chapitres = a_ranger
     partage = chemin.stat().st_nlink > 1
     import optimiser
     if partage and not optimiser._dossier_a_lui(chemin, name):
@@ -6559,9 +6642,10 @@ def api_tome_chapitres_ecrire():
 
     def travail():
         try:
-            _ecrire_fichier_tome(name, tome, chemin, chapitres, infos, partage)
+            _ecrire_fichier_tome(name, tome, chemin, chapitres, infos, partage, bool(a_ranger))
             n = signets.nb_signets(chapitres or [])
             _SIGNETS[cle] = {"en_cours": False, "ok": True, "message": f"{_nom_tome(name, tome)} : infos écrites dans le fichier" + (f" ({n} chapitres)." if n else ".")
+                             + (" Les pages sont rangées par chapitre : le tome se déroule en chapitres." if a_ranger else "")
                              + (" Le fichier du torrent n'est pas touché." if partage else "")}
         except Exception as ex:
             logger.warning("Chapitres écrits dans %s : %s", chemin, ex)
@@ -7312,7 +7396,7 @@ def _diag_dns():
         lignes.append("IPv6 du serveur : oui")
     except OSError:
         lignes.append("IPv6 du serveur : NON (brunhild.challenges.cloudflare.com n'existe qu'en IPv6 : redirigé vers IPv4 par l'appli)")
-    for nom in ("www.japscan.foo", "challenges.cloudflare.com", "brunhild.challenges.cloudflare.com",
+    for nom in ("japscan.st", "challenges.cloudflare.com", "brunhild.challenges.cloudflare.com",
                 "turnstile.cloudflare.com", "cloudflare.com"):
         try:
             ip = socket.getaddrinfo(nom, 443)[0][4][0]

@@ -1,5 +1,12 @@
 # Historique des versions
 
+## 🖼 Couvertures des tomes, fiches de torrents, séries renommées (30 octobre 2026)
+- **« Couverture des tomes » ne trouvait rien pour une série découpée en chapitres** (Buyuden : zéro tome, Air Gear : tomes manquants) : les tomes dont le fichier contient des chapitres n'avaient pas de numéro de tome pour cette page ; ils sont maintenant reconnus par leur dossier « Tome NN ».
+- **Aperçu « Actuelle » net** : l'image pleine taille était réduite d'un coup par le navigateur (crénelé) ; la page demande maintenant une version réduite proprement. Le fichier enregistré reste en pleine taille.
+- **La page d'un torrent lancé depuis l'appli est lue au rangement** : résumé en français, auteur, éditeur et genre sont gardés dans les infos de la série (seulement ce qui manque, rien n'est remplacé) ; le résumé français prend la place d'un résumé anglais d'AniList. Une page illisible ne bloque pas le rangement.
+- **Série suivie renommée pour une autre fiche** : l'ancien choix d'AniList fait à l'ajout est ignoré quand le nouveau nom ne correspond plus à la fiche (cas de deux séries aux fiches croisées) ; l'identification cherche d'après le nom.
+- **Découpage d'un gros fichier** : barre de progression qui reste visible, nom de la couleur du style dans l'explication ; **rangement des pages par chapitre** (`signets.plan_chapitres`) seulement sur demande, pour un tome dont les chapitres sont validés à la main ; adresse de Japscan mise à jour.
+
 ## 🌙 Lectures de fond la nuit seulement (27 octobre 2026)
 - **Les relectures de fond ne tournent que de minuit à 6 h, heure de Paris** : relecture des sommaires anciens (tâche de 6 h) et préparation automatique des séries. Hors de cette plage elles attendent et reprennent toutes seules, sans rien perdre (`plage.py`).
 - **Les actions lancées à la main restent immédiates** : ouvrir une fiche, « Lire le sommaire », « Préparer » demandé à la main.

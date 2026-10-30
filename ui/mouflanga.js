@@ -2039,13 +2039,24 @@
       var r = await post('/api/tome/valider', {series: current.id, tome: v.dataset.valider});
       if (!r.ok) { v.disabled = false; MouAlert(r.error || 'Impossible'); return; }
       window.MouToast('✅ ' + r.message, 'ok');
+      if (r.ranger_possible && await MouConfirm('Chapitres validés. Ranger ce tome par chapitre et écrire ses infos dans le fichier ? Les pages sont renommées (le tome se déroule en chapitres, comme Buyuden), rien n\'est perdu. Le fichier est réécrit : l\'ancien va à la corbeille — ' + corb() + '.')) {
+        var rg = await post('/api/tome/chapitres/ecrire', {series: current.id, tome: v.dataset.valider});
+        if (!rg.ok) MouAlert(rg.error || 'Impossible');
+        else (async function suivre() {
+          var st = await api('/api/tome/chapitres/ecrire?series=' + encodeURIComponent(current.id) + '&tome=' + v.dataset.valider);
+          if (st && st.en_cours) { setTimeout(suivre, 2000); return; }
+          if (st && st.message) window.MouToast((st.ok ? '📑 ' : '⚠️ ') + st.message, st.ok ? 'ok' : 'err');
+          afficherTome(v.dataset.valider, false);
+        })();
+        return;
+      }
       afficherTome(v.dataset.valider, false);
     });
     $('infosCorps').addEventListener('click', async function (e) {         // ✏️ corriger la liste des chapitres à la main
       if (e.target.closest('#chapEditer')) { $('chapEdition').hidden = false; $('chapEditer').hidden = true; $('chapTexte').focus(); return; }
       var w = e.target.closest('#chapEcrire');
       if (w) {                                                              // 📝 chapitres écrits dans le .cbz (partage de la série)
-        if (!await MouConfirm('Écrire les infos du tome (résumé, chapitres, provenance…) dans son fichier ? Le fichier est réécrit (l\'ancien va à la corbeille — ' + corb() + ').')) return;
+        if (!await MouConfirm('Écrire les infos du tome (résumé, chapitres, provenance…) dans son fichier ? Si ses chapitres sont validés, les pages sont aussi rangées par chapitre (le tome se déroule en chapitres). Le fichier est réécrit (l\'ancien va à la corbeille — ' + corb() + ').')) return;
         w.disabled = true;
         var rr = await post('/api/tome/chapitres/ecrire', {series: current.id, tome: w.dataset.tome});
         if (!rr.ok) { w.disabled = false; MouAlert(rr.error || 'Impossible'); return; }

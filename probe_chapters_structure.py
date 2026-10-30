@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 async def diagnose():
     """Analyse la structure HTML d'une page série."""
 
-    manga_url = "https://www.japscan.foo/manga/dandadan/"
+    manga_url = "https://japscan.st/manga/dandadan/"
     logger.info(f"Diagnostic de {manga_url}")
 
     async with async_playwright() as p:

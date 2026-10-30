@@ -136,3 +136,14 @@ class CouverturesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTomesPresentsEnChapitres(unittest.TestCase):
+    """Série découpée en chapitres : les entrées n'ont pas de champ « tome », seulement le dossier « Tome NN »."""
+
+    def test_numero_du_tome_d_une_entree(self):
+        import app as A
+        self.assertEqual(A._numero_du_tome_d_une_entree({"tome": 4, "groupe": "Tome 04"}), 4)
+        self.assertEqual(A._numero_du_tome_d_une_entree({"num": 7.0, "groupe": "Tome 03"}), 3)
+        self.assertIsNone(A._numero_du_tome_d_une_entree({"num": 7.0, "groupe": None}))
+        self.assertIsNone(A._numero_du_tome_d_une_entree({"groupe": "Tome 03", "a_importer": True}))

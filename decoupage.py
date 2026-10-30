@@ -81,6 +81,8 @@ def decouper(chemin: Path, dossier: Path, serie: str, debuts: dict, plan=None, f
             ordre = sorted(debuts.items(), key=lambda x: x[1])
             for k, (tome, debut) in enumerate(ordre):
                 fin = ordre[k + 1][1] if k + 1 < len(ordre) else nb
+                with _VERROU:
+                    _ETAT[cle]["tome"] = tome
                 cible = tomes_cbz.fichier_tome(dossier, serie, tome)
                 cible.parent.mkdir(parents=True, exist_ok=True)
                 chapitres = [c for c in (plan or []) if c["tome"] == tome]

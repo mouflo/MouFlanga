@@ -22,13 +22,20 @@
         .msg.ok { background: #14291a; color: #9be3a6; border: 1px solid #2f6b3a; }
         .msg.err { background: #2a1416; color: #ffb4b4; border: 1px solid #6b2f35; }
         select, input[type=number] { font-size: 16px; padding: 8px; border-radius: 8px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; }
-    </style>
+        #progres { position: sticky; top: 0; z-index: 50; display: none; margin: 0 0 10px; padding: 10px 12px; border-radius: 10px;
+        background: var(--card, #1c1c1c); border: 2px solid var(--accent); box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+    #progres b { display: block; margin-bottom: 6px; }
+    #progres .barre { height: 12px; border-radius: 6px; background: rgba(128,128,128,.3); overflow: hidden; }
+    #progres .barre i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+    #progres.fini { border-color: var(--accent); }
+</style>
 <link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
 <script src="/ui/corbeille.js?v={{ version|urlencode }}"></script>
 </head>
 <body>
 <div class="container">
+    <div id="progres"><b id="progres-txt"></b><div class="barre"><i id="progres-barre"></i></div></div>
     <div class="dc-tete">
         <a href="/#{{ nom|urlencode }}" class="back">← Retour à la série</a>
         <h1 style="margin:0">✂️ Découper en tomes</h1>
@@ -37,7 +44,7 @@
     {% if not fichiers %}
         <div class="msg err">Aucun gros fichier à découper dans cette série (plus de 300 Mo ou 400 pages, pas déjà rangé en tomes).</div>
     {% else %}
-    <p class="note">Touche la <b>première page de chaque tome</b> : elle passe en vert avec son numéro. Touche-la de nouveau pour l'enlever. Quand un sommaire est intégré au fichier, les tomes sont déjà placés (avec leurs chapitres) : vérifie seulement. Le fichier d'origine n'est jamais modifié ; il va à la corbeille une fois les tomes écrits.</p>
+    <p class="note">Touche la <b>première page de chaque tome</b> : elle passe en <b id="nomCouleur">vert</b> avec son numéro. Touche-la de nouveau pour l'enlever. Quand un sommaire est intégré au fichier, les tomes sont déjà placés (avec leurs chapitres) : vérifie seulement. Le fichier d'origine n'est jamais modifié ; il va à la corbeille une fois les tomes écrits.</p>
     <div class="field"><label for="fichier">Fichier</label>
         <select id="fichier">{% for f in fichiers %}<option value="{{ f.rel }}" {% if f.rel == choisi %}selected{% endif %}>{{ f.nom }}</option>{% endfor %}</select></div>
     <div class="field"><label for="premier">Numéro du premier tome</label> <input type="number" id="premier" min="1" value="1" style="width:90px"></div>
@@ -51,6 +58,20 @@
 <script>
 const $ = id => document.getElementById(id);
 const NOM = {{ nom|tojson }};
+/* Nom de la couleur d'accent du style choisi (vert, violet, bleu…), lu dans la page : suit aussi les couleurs personnalisées. */
+function nomDeCouleur(css) {
+  const c = document.createElement('canvas').getContext('2d'); c.fillStyle = '#000'; c.fillStyle = css;
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(c.fillStyle); if (!m) return 'colorée';
+  const r = parseInt(m[1], 16) / 255, g = parseInt(m[2], 16) / 255, b = parseInt(m[3], 16) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, l = (mx + mn) / 2;
+  if (d < 0.08) return l > 0.75 ? 'blanc' : l < 0.25 ? 'noir' : 'gris';
+  let h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h = (h * 60 + 360) % 360;
+  const s = d / (1 - Math.abs(2 * l - 1));
+  if (h >= 15 && h < 45 && l < 0.4) return 'marron';
+  if ((h >= 330 || h < 15) && l > 0.7 && s > 0.3) return 'rose';
+  return h < 15 || h >= 345 ? 'rouge' : h < 40 ? 'orange' : h < 65 ? 'jaune' : h < 160 ? 'vert' : h < 200 ? 'turquoise' : h < 255 ? 'bleu' : h < 290 ? 'violet' : 'rose';
+}
+try { $('nomCouleur').textContent = nomDeCouleur(getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#52b54b'); } catch (e) {}
 let debuts = [], nbPages = 0, infos = {};
 function say(t, ok) { $('msg').innerHTML = t ? '<div class="msg ' + (ok ? 'ok' : 'err') + '">' + t.replace(/</g, '&lt;') + '</div>' : ''; }
 function numeros() { const p = Math.max(1, parseInt($('premier').value) || 1); return debuts.slice().sort((a, b) => a - b).map((page, i) => [p + i, page]); }
@@ -95,11 +116,26 @@ $('grille') && $('grille').addEventListener('click', e => {
 });
 $('premier') && $('premier').addEventListener('input', dessiner);
 $('fichier') && $('fichier').addEventListener('change', charger);
+function progres(txt, pct, fini) {
+    const el = $('progres'); el.style.display = 'block'; el.classList.toggle('fini', !!fini);
+    $('progres-txt').textContent = txt; $('progres-barre').style.width = Math.max(3, pct) + '%';
+    if (!fini) window.scrollTo({top: 0, behavior: 'smooth'});
+}
 async function suivre() {
     const f = $('fichier').value;
-    const r = await (await fetch('/api/decouper/etat?f=' + encodeURIComponent(f))).json();
-    if (r.en_cours) { say('✂️ Découpage : ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' tome(s)…', true); setTimeout(suivre, 3000); return; }
-    if (r.message) say(r.message, r.message.startsWith('✅'));
+    let r = {};
+    try { r = await (await fetch('/api/decouper/etat?f=' + encodeURIComponent(f))).json(); } catch (e) { setTimeout(suivre, 4000); return; }
+    if (r.en_cours) {
+        const total = r.total || 1, fait = r.fait || 0;
+        $('go').disabled = true; $('go').textContent = '⏳ Découpage en cours…';
+        progres('✂️ Découpage en cours : ' + fait + ' tome(s) sur ' + total + ' écrits' + (r.tome ? ' · tome ' + r.tome + ' en écriture' : '') + ' (' + Math.round(100 * fait / total) + ' %). Tu peux laisser cette page ouverte.', 100 * fait / total);
+        setTimeout(suivre, 2000); return;
+    }
+    if (r.message) {
+        const bon = r.message.startsWith('✅');
+        progres(r.message, 100, true); say(r.message, bon);
+        $('go').textContent = bon ? '✅ Terminé' : '✂️ Découper'; $('go').disabled = bon;
+    }
 }
 $('go') && $('go').addEventListener('click', async () => {
     if (!debuts.length) return say('Touche la première page de chaque tome.');
@@ -111,7 +147,7 @@ $('go') && $('go').addEventListener('click', async () => {
         r = await (await fetch('/api/decouper', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(corps)})).json();
     }
     if (!r.ok) return say(r.error);
-    say(r.message, true); $('go').disabled = true; setTimeout(suivre, 2000);
+    say(r.message, true); $('go').disabled = true; $('go').textContent = '⏳ Découpage en cours…'; progres('✂️ Découpage lancé…', 3); setTimeout(suivre, 1000);
 });
 if ($('fichier')) charger();
 </script>

@@ -2,8 +2,8 @@
 
 Les chapitres vont dans le ComicInfo.xml standard (balises <Pages><Page Image="63" Bookmark="2. La valeur de la vie"/>),
 lu par Komga, Kavita, etc., et relu par MouFlanga chez la personne qui reçoit le fichier. Les pages ne sont pas
-retouchées : elles sont recopiées telles quelles (même compression). On n'ajoute jamais chapitres.json, réservé aux
-tomes que MouFlanga assemble lui-même chapitre par chapitre.
+retouchées : elles sont recopiées telles quelles (même compression). chapitres.json et le renommage des pages par chapitre
+(c0001.00-p001.jpg) ne sont ajoutés que sur demande (« ranger »), pour un tome dont les chapitres sont VALIDÉS à la main.
 """
 import io
 import re
@@ -109,17 +109,62 @@ def nb_signets(chapitres: list[dict]) -> int:
     return sum(1 for c in chapitres if c.get("image") is not None)
 
 
-def ecrire(chemin: Path, chapitres: list[dict] | None, destination: Path, infos: dict | None = None) -> int:
+def plan_chapitres(noms: list[str], chapitres: list[dict] | None):
+    """Rangement des pages par chapitre d'après le début de chacun : [(nom de page, numéro de chapitre, rang dans le chapitre)],
+    ou None si le plan n'est pas sûr (un chapitre sans page, pages qui ne montent pas, numéro 0 ou en double).
+    Les pages d'avant le premier chapitre (couverture, sommaire imprimé) forment le « chapitre 0 »."""
+    if not chapitres or not noms or any(c.get("image") is None for c in chapitres):
+        return None
+    suite = sorted(chapitres, key=lambda c: int(c["image"]))
+    images = [int(c["image"]) for c in suite]
+    nums = [float(c["num"]) for c in suite]
+    if len(set(images)) != len(images) or len(set(nums)) != len(nums) or min(nums) <= 0 or images[0] < 0 or images[-1] >= len(noms):
+        return None
+    if any(n2 < n1 for n1, n2 in zip(nums, nums[1:])):               # les numéros doivent monter avec les pages
+        return None
+    debuts = ([(0.0, 0)] if images[0] > 0 else []) + list(zip(nums, images))
+    plan, rang = [], {}
+    for i, nom in enumerate(noms):
+        num = [n for n, d in debuts if d <= i][-1]
+        rang[num] = rang.get(num, 0) + 1
+        plan.append((nom, num, rang[num]))
+    return plan
+
+
+def ecrire(chemin: Path, chapitres: list[dict] | None, destination: Path, infos: dict | None = None, ranger=None) -> int:
     """Écrit à « destination » une copie de « chemin » avec les signets et les infos du tome ; relit et vérifie.
-    Renvoie le nombre de signets (1 s'il n'y a que des infos)."""
+    Renvoie le nombre de signets (1 s'il n'y a que des infos).
+    ranger = (série, tome) : les pages sont en plus renommées par chapitre (c0001.00-p001.jpg…) avec chapitres.json, comme
+    les tomes assemblés par MouFlanga (le tome se déroule alors en chapitres). Même ordre de pages, aucune page perdue."""
+    import json
+    import archives
+    import tomes_cbz
+    plan = None
+    if ranger:
+        plan = plan_chapitres(archives.pages(chemin), chapitres)
+        if plan is None:
+            raise RuntimeError("chapitres pas assez sûrs pour renommer les pages")
+    nouveaux = {}
+    if plan:
+        for nom, num, k in plan:
+            ext = Path(nom).suffix.lstrip(".").lower() or "jpg"
+            nouveaux[nom] = tomes_cbz.nom_page(num, k, ext=ext)
     with zipfile.ZipFile(chemin) as src, zipfile.ZipFile(destination, "w") as dst:
         ancien = src.read(COMICINFO) if COMICINFO in src.namelist() else None
         for info in src.infolist():
-            if info.filename == COMICINFO:
+            if info.filename == COMICINFO or (plan and (info.is_dir() or info.filename == tomes_cbz.INFO)):
                 continue
-            copie = zipfile.ZipInfo(info.filename, date_time=info.date_time)
+            copie = zipfile.ZipInfo(nouveaux.get(info.filename, info.filename), date_time=info.date_time)
             copie.compress_type = info.compress_type
             dst.writestr(copie, src.read(info.filename))
+        if plan:
+            titres = {f"{float(c['num']):g}": c.get("titre") or "" for c in chapitres}
+            if any(n == 0 for _, n, _ in plan):
+                titres["0"] = "Couverture et début"
+            i = zipfile.ZipInfo(tomes_cbz.INFO, date_time=__import__("time").localtime()[:6])
+            i.compress_type = zipfile.ZIP_DEFLATED
+            dst.writestr(i, json.dumps({"serie": ranger[0], "tome": ranger[1], "titres": dict(sorted(titres.items(), key=lambda x: float(x[0])))},
+                                       ensure_ascii=False, indent=1))
         c = zipfile.ZipInfo(COMICINFO, date_time=__import__("time").localtime()[:6])
         c.compress_type = zipfile.ZIP_DEFLATED
         dst.writestr(c, _xml(ancien, chapitres, infos))
@@ -127,9 +172,27 @@ def ecrire(chemin: Path, chapitres: list[dict] | None, destination: Path, infos:
         if z.testzip() is not None:
             destination.unlink()
             raise RuntimeError("archive illisible après écriture")
-        if sorted(z.namelist()) != sorted(set(o.namelist()) | {COMICINFO}):
+        if plan:
+            attendu = sorted(set(nouveaux.values()) | {COMICINFO, tomes_cbz.INFO}
+                             | {n for n in o.namelist() if n not in nouveaux and not n.endswith("/") and n not in (COMICINFO, tomes_cbz.INFO)})
+            if sorted(z.namelist()) != attendu:
+                destination.unlink()
+                raise RuntimeError("pages différentes après renommage")
+            for nom, nouveau in nouveaux.items():              # chaque page recopiée à l'identique
+                if z.read(nouveau) != o.read(nom):
+                    destination.unlink()
+                    raise RuntimeError("page différente après renommage")
+        elif sorted(z.namelist()) != sorted(set(o.namelist()) | {COMICINFO}):
             destination.unlink()
             raise RuntimeError("pages différentes après écriture")
+    if plan:
+        lus = [(c["num"], c["nb"]) for c in tomes_cbz.chapitres(destination)]
+        voulus = {}
+        for _, num, _ in plan:
+            voulus[num] = voulus.get(num, 0) + 1
+        if lus != sorted(voulus.items()):
+            destination.unlink()
+            raise RuntimeError("chapitres mal relus après renommage")
     return nb_signets(chapitres or []) or (1 if infos else 0)
 
 
