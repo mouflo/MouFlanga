@@ -203,12 +203,20 @@ def _cle(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
+def _mots(s: str) -> list:
+    """Les mots d'un texte, en minuscules : les lettres d'un côté, les chiffres de l'autre (« kaf01 » → « kaf », « 01 »)."""
+    return [_cle(m) for m in re.findall(r"[^\W\d_]+|\d+", (s or "").lower()) if _cle(m)]
+
+
 def _resolue(serie: str) -> str:
-    """La série visée par une recherche : le plus long nom connu (bibliothèque, séries suivies, séries des profils) contenu dans le texte.
-    « Gantz : Osaka T03 » → « Gantz : Osaka » et non « Gantz » ; « Air Gear intégrale » → « Air Gear » et non « Air Gear Unlimited »."""
+    """La série visée par une recherche : le plus long nom connu (bibliothèque, séries suivies, séries des profils) formé de mots entiers
+    dans le texte. « Gantz : Osaka T03 » → « Gantz : Osaka » et non « Gantz » ; « Air Gear intégrale » → « Air Gear » et non « Air Gear Unlimited » ;
+    « Terra formars » ne vise pas « MAR » (« mar » n'est pas un mot de « terraformars »)."""
     q = _cle(serie or "")
+    mots = _mots(serie)
+    fenetres = {"".join(mots[i:j]) for i in range(len(mots)) for j in range(i + 1, len(mots) + 1)}
     connues = {_cle(n) for n in SERIES_CONNUES()} | {_cle(x) for p in profils() for x in p.get("series") or []}
-    return max((k for k in connues if k and k in q), key=len, default=q)
+    return max((k for k in connues if k and k in fenetres), key=len, default=q)
 
 
 def _concerne(profil: dict, serie: str, resolue: str | None = None) -> bool:
