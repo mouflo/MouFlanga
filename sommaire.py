@@ -2859,11 +2859,23 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None, suite_de=None) ->
     _LOCAL.memo = {}                                          # lectures faites pour ce tome : jamais refaites (voir _run)
     _LOCAL.budget_moderne = BUDGET_MODERNE
     try:
-        return _lire_tome(chemin, _pages_en_memoire(lire_page), nb_pages, noms, numeros or [], suite_de)
+        return _sans_faux_titres(_lire_tome(chemin, _pages_en_memoire(lire_page), nb_pages, noms, numeros or [], suite_de))
     finally:
         _LOCAL.memo = None
         _LOCAL.budget_moderne = None
         _LOCAL.mode = "tesseract"                           # les autres lectures du fil (ISBN…) restent comme avant
+
+
+_FAUX_TITRE = re.compile(r"[0-9ODIGSBZTl|]{1,4}")
+
+
+def _sans_faux_titres(res):
+    """Un « titre » de 1 à 4 signes qui ressemblent tous à des chiffres (« OOG », « DID » : le numéro 006 ou 010 relu en lettres,
+    dans un sommaire qui n'imprime que « TRICK : 006 ») n'est pas un titre : le chapitre n'en a pas."""
+    for c in (res or {}).get("chapitres") or []:
+        if c.get("titre") and _FAUX_TITRE.fullmatch(c["titre"].strip()):
+            c["titre"] = ""
+    return res
 
 
 def _complet_et_sur(chapitres, numeros) -> bool:
