@@ -168,3 +168,44 @@ class MadaraTest(unittest.TestCase):
         with mock.patch.object(S.CLIENT, "get", return_value=PAGES_MADARA):
             a = self.s.adresses_des_pages("https://exemple.test/manga/ma-serie/chapitre-1/")
         self.assertEqual(a, ["https://img.exemple.test/0.jpg", "https://img.exemple.test/1.jpg"])
+
+
+FICHE_PIZZA = json.dumps({"comic": {"adult": 0, "chapters": [
+    {"chapter": 12, "subchapter": 5, "language": "fr", "full_title": "Ch.12.5 - Bonus", "url": "/read/ma-serie/fr/ch/12/sub/5"},
+    {"chapter": 12, "subchapter": None, "language": "fr", "full_title": "Ch.12", "url": "/read/ma-serie/fr/ch/12"},
+    {"chapter": 12, "language": "en", "url": "/read/ma-serie/en/ch/12"},
+    {"chapter": 11, "language": "fr", "hidden": 1, "url": "/read/ma-serie/fr/ch/11"},
+    {"chapter": 10, "language": "fr", "licensed": 1, "url": "/read/ma-serie/fr/ch/10"}]}})
+
+
+class PizzaReaderTest(unittest.TestCase):
+    def setUp(self):
+        self.s = S.PizzaReader("exemple", "Exemple", "https://exemple.test")
+
+    def test_recherche_sans_les_series_adultes_ni_cachees(self):
+        rep = json.dumps({"comics": [{"title": "Bien", "slug": "bien", "adult": 0}, {"title": "Adulte", "slug": "x", "adult": 1},
+                                     {"title": "Cachee", "slug": "y", "hidden": 1}]})
+        with mock.patch.object(S.CLIENT, "get", return_value=rep):
+            r = self.s.rechercher("bien")
+        self.assertEqual([m["title"] for m in r], ["Bien"])
+        self.assertEqual(r[0]["url"], "https://exemple.test/comics/bien")
+
+    def test_chapitres_francais_publies_seulement(self):
+        with mock.patch.object(S.CLIENT, "get", return_value=FICHE_PIZZA):
+            c = self.s.chapitres("https://exemple.test/comics/ma-serie")
+        self.assertEqual([x["chapter_id"] for x in c], ["12.5", "12"])
+
+    def test_serie_adulte_sans_chapitre(self):
+        with mock.patch.object(S.CLIENT, "get", return_value=json.dumps({"comic": {"adult": 1, "chapters": [{"chapter": 1, "url": "/read/a/fr/ch/1"}]}})):
+            self.assertEqual(self.s.chapitres("https://exemple.test/comics/a"), [])
+
+    def test_pages_par_l_api(self):
+        appelees = []
+
+        def faux(url, **kw):
+            appelees.append(url)
+            return json.dumps({"chapter": {"pages": ["https://img.exemple.test/1.png", "/storage/2.png"]}})
+        with mock.patch.object(S.CLIENT, "get", side_effect=faux):
+            a = self.s.adresses_des_pages("https://exemple.test/read/ma-serie/fr/ch/12")
+        self.assertEqual(appelees, ["https://exemple.test/api/read/ma-serie/fr/ch/12"])
+        self.assertEqual(a, ["https://img.exemple.test/1.png", "https://exemple.test/storage/2.png"])

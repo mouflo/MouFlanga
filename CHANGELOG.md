@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 🌐 Moteur PizzaReader : Bluesolo et FMTeam (3 novembre 2026)
+- **Deux sites de plus dans « Télécharger »** : Bluesolo et FMTeam, qui offrent une liste ouverte de leurs séries (moteur « PizzaReader »). Même règles que les autres sources : sans navigateur, `robots.txt` respecté, une requête par seconde, jamais de chapitre à trous.
+- **Jamais de séries pour adultes** (elles ne sont pas proposées), ni de chapitres cachés, sous licence ou dans une autre langue que le français.
+- Pas encore essayé : un vrai téléchargement complet (recherche, chapitres et pages vérifiés en lecture seule).
+
 ## 🌐 Moteur Madara : Harmony-Scan et Pantheon-Scan (3 novembre 2026)
 - **Deux sites de plus dans « Télécharger »** : Harmony-Scan et Pantheon-Scan, qui utilisent le même moteur WordPress (« Madara »). Même fonctionnement que Sushi-Scan : sans navigateur, `robots.txt` respecté, une requête par seconde, une pause d'une heure si le site refuse, jamais de chapitre à trous.
 - Tous les autres sites qui utilisent ce moteur s'ajoutent maintenant en une ligne dans `sources_fr.py`.

@@ -15,7 +15,7 @@ import re
 import threading
 import time
 from html import unescape
-from urllib.parse import quote_plus, urljoin, urlparse
+from urllib.parse import quote, quote_plus, urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
 import requests
@@ -314,11 +314,68 @@ class Madara(Source):
         return pages
 
 
+class PizzaReader(Source):
+    """Moteur « PizzaReader » (API JSON ouverte du site) : recherche `/api/search/<texte>`, fiche `/api/comics/<série>`,
+    pages `/api/read/<série>/<langue>/vol/<v>/ch/<c>[/sub/<s>]`. Les séries pour adultes ne sont jamais proposées."""
+
+    def __init__(self, id, nom, base, langue="fr"):
+        self.id, self.nom, self.base, self.langue = id, nom, base.rstrip("/"), langue
+
+    def _json(self, chemin):
+        try:
+            return json.loads(CLIENT.get(self.base + chemin))
+        except ValueError:
+            raise SourceErreur(f"{self.nom} a répondu autre chose que des données lisibles : {chemin}")
+
+    def rechercher(self, texte):
+        texte = (texte or "").strip()[:80]
+        if len(texte) < 2:
+            return []
+        out = []
+        for c in self._json("/api/search/" + quote(texte, safe="")).get("comics") or []:
+            if c.get("adult") or c.get("hidden") or not c.get("slug"):
+                continue
+            out.append({"title": (c.get("title") or c["slug"]).strip(), "url": f"{self.base}/comics/{c['slug']}", "type": "",
+                        "id": f"{self.id}-{c['slug']}"[:80]})
+        return out
+
+    def chapitres(self, adresse):
+        slug = urlparse(adresse).path.rstrip("/").rsplit("/", 1)[-1]
+        fiche = self._json(f"/api/comics/{quote(slug, safe='')}").get("comic") or {}
+        if fiche.get("adult"):
+            return []
+        out, vus = [], set()
+        for ch in fiche.get("chapters") or []:
+            if ch.get("hidden") or ch.get("licensed") or (ch.get("language") or self.langue) != self.langue or not ch.get("url"):
+                continue
+            url = self.base + ch["url"]
+            if url in vus:
+                continue
+            vus.add(url)
+            n = str(ch.get("chapter") if ch.get("chapter") is not None else "")
+            if ch.get("subchapter") not in (None, "", 0, "0"):
+                n += "." + str(ch["subchapter"])
+            if not _nombre(n):
+                continue
+            titre = (ch.get("full_title") or f"Chapitre {n}").strip()
+            out.append({"title": titre[:120], "url": url, "chapter_id": _nombre(n)})
+        return out
+
+    def adresses_des_pages(self, adresse_chapitre):
+        chemin = urlparse(adresse_chapitre).path
+        if not chemin.startswith("/read/"):
+            raise SourceErreur(f"adresse de chapitre inattendue : {adresse_chapitre}")
+        pages = (self._json("/api" + chemin).get("chapter") or {}).get("pages") or []
+        return [urljoin(self.base + "/", u) for u in pages if u]
+
+
 SOURCES = {s.id: s for s in (
     MangaThemesia("sushiscan", "Sushi-Scan", "https://sushiscan.net"),
     MangaThemesia("lelmanga", "LelManga", "https://www.lelmanga.com", dossier_series="/manga"),
     Madara("harmonyscan", "Harmony-Scan", "https://harmony-scan.fr"),
     Madara("pantheon", "Pantheon-Scan", "https://pantheon-scan.com"),
+    PizzaReader("bluesolo", "Bluesolo", "https://bluesolo.org"),
+    PizzaReader("fmteam", "FMTeam", "https://fmteam.fr"),
 )}
 
 
