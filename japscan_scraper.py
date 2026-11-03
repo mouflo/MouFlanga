@@ -232,6 +232,7 @@ _JS_ZONES_VISIBLES = r"""() => [...document.querySelectorAll('.list_chapters')].
 
 # Le lecteur demande-t-il un captcha ? Oui si le script de la page le dit et qu'aucune page n'est encore affichée
 _JS_CAPTCHA_PRESENT = r"""() => {
+  if (document.querySelector('.cf-turnstile, [data-cf-turnstile], iframe[src*="challenges.cloudflare.com"]') && !document.querySelector('img[data-page-img]')) return true;
   const demande = [...document.querySelectorAll('script:not([src])')].some(s => /__captcha\s*=\s*\{\s*needed\s*:\s*true/.test(s.textContent || ''));
   if (!demande) return false;
   const pageVisible = [...document.querySelectorAll('canvas')].some(c => c.getBoundingClientRect().height > 100)
@@ -561,7 +562,7 @@ async def attendre_cloudflare(page, secondes: int = 25, humain: bool = False) ->
 async def _pages_annoncees(page) -> int:
     """Nombre de pages que le lecteur annonce (liste déroulante des pages), 0 si inconnu."""
     try:
-        return int(await page.evaluate("() => (document.querySelector('select#pages') || {options: []}).options.length") or 0)
+        return int(await page.evaluate("() => (document.querySelector('select[data-page-select], select#pages') || {options: []}).options.length") or 0)
     except Exception:
         return 0
 
@@ -1387,6 +1388,11 @@ class JapscanScraper:
                         return []
                     await asyncio.sleep(5)   # même attente après un captcha résolu au rechargement
 
+            # Nouveau lecteur (nov. 2026) : une liste déroulante des pages (une adresse par page) et une image par page
+            par_pages = await self._lire_page_par_page(context, page, chapter_url)
+            if par_pages:
+                return par_pages
+
             # Défilement progressif vers le bas pour forcer le chargement de toutes les pages
             logger.info("Défilement de la page pour forcer le lazy-loading...")
             for _ in range(15):
@@ -1473,6 +1479,51 @@ class JapscanScraper:
         images_bytes = [captured_images[u] for u in urls]
         logger.info(f"✓ {len(images_bytes)} pages capturées sur le réseau.")
         return images_bytes
+
+    async def _lire_page_par_page(self, context, page, chapter_url: str) -> list[bytes]:
+        """Nouveau lecteur de Japscan : `select[data-page-select]` liste une adresse par page, `img[data-page-img]` porte l'image de la page.
+        Chaque image est lue avec la session du navigateur (cookies de la vérification) et l'adresse de sa page comme origine, posément.
+        Rend [] si cette présentation n'est pas là (l'ancienne méthode prend alors le relais) ; une page manquante annule tout (jamais de
+        tome à trous)."""
+        try:
+            adresses = await page.evaluate("""() => [...document.querySelectorAll('select[data-page-select] option')]
+                .map(o => o.value).filter(Boolean)""")
+        except Exception:
+            return []
+        if not adresses:
+            return []
+        adresses = [urljoin(page.url, a) for a in adresses]
+        logger.info(f"Lecteur par pages : {len(adresses)} page(s) annoncée(s) pour {chapter_url}")
+        images = []
+        for i, adresse in enumerate(adresses, 1):
+            try:
+                if i == 1 and adresse.rstrip("/") == page.url.rstrip("/"):
+                    pass                                     # la première page est déjà ouverte
+                else:
+                    await page.goto(adresse, wait_until="domcontentloaded", timeout=30000)
+                    if not await attendre_captcha(page, alerter=False):
+                        raise RuntimeError("vérification non passée")
+                src = None
+                for _ in range(10):                          # l'image apparaît un instant après le chargement
+                    src = await page.evaluate("() => (document.querySelector('img[data-page-img]') || {}).src || ''")
+                    if src:
+                        break
+                    await asyncio.sleep(0.5)
+                if not src:
+                    raise RuntimeError("image introuvable")
+                rep = await context.request.get(src, headers={"Referer": adresse}, timeout=60000)
+                corps = await rep.body()
+                if rep.status != 200 or len(corps) < 2000:
+                    raise RuntimeError(f"image refusée (statut {rep.status}, {len(corps)} octets)")
+                images.append(corps)
+            except Exception as e:
+                logger.warning(f"Lecteur par pages : page {i}/{len(adresses)} impossible ({e}) : chapitre abandonné, aucun fichier partiel")
+                _noter(f"  lecteur par pages : page {i} impossible ({e})")
+                return []
+            await asyncio.sleep(0.4)
+        _noter(f"  lecteur par pages : {len(images)} page(s) lues sur {len(adresses)}")
+        logger.info(f"✓ {len(images)} pages lues une à une.")
+        return images
 
     def create_cbz(self, pages: list[bytes], output_path: Path) -> bool:
         """Combine les pages capturées dans un fichier .cbz (Archive Zip)."""
