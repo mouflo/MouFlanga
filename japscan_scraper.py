@@ -1024,8 +1024,20 @@ class JapscanScraper:
                 return []
 
     async def get_chapters(self, manga_url: str) -> list[dict]:
-        """Récupère la liste des chapitres d'un manga."""
+        """Récupère la liste des chapitres d'un manga. Si le site ne connaît plus l'adresse (série renommée), cherche la nouvelle."""
         manga_url = self.extract_manga_root_url(manga_url)
+        res = await self._chapitres_de_la_fiche(manga_url)
+        if res is not None:
+            return res
+        neuve = await self._adresse_actuelle(manga_url)
+        if neuve and neuve != manga_url:
+            logger.info(f"Adresse Japscan changée : {manga_url} → {neuve}")
+            return await self._chapitres_de_la_fiche(neuve, permettre_recherche=False) or []
+        logger.warning(f"Adresse Japscan inconnue et aucune série proche trouvée : {manga_url}")
+        return []
+
+    async def _chapitres_de_la_fiche(self, manga_url: str, permettre_recherche: bool = True):
+        """Liste des chapitres lus sur la fiche ; None si le site a répondu par une page de recherche (adresse inconnue)."""
         logger.info(f"Chargement de la fiche série : {manga_url}")
 
         async with async_playwright() as p:
@@ -1076,6 +1088,9 @@ class JapscanScraper:
                     pass
                 html = await page.content()
                 logger.info(f"Fiche série chargée : titre={title!r}, {len(html)} caractères")
+                if permettre_recherche and (title or "").lower().startswith("recherche"):
+                    await browser.close()            # le site ne connaît plus cette adresse : il montre une page de recherche
+                    return None
 
                 # Dump de debug pour analyse hors-ligne
                 try:
@@ -1222,6 +1237,31 @@ class JapscanScraper:
                 logger.error(f"Erreur lors de la récupération des chapitres : {e}")
                 await browser.close()
                 return []
+
+    async def _adresse_actuelle(self, ancienne: str) -> str:
+        """Adresse d'une série dont l'ancienne adresse n'existe plus : recherche par les mots de l'ancienne, la série qui en partage le plus
+        (à égalité la plus courte). Rien n'est choisi si aucune ne partage au moins deux mots (ou tous, si l'ancienne n'en a qu'un)."""
+        m = re.search(r"/(manga|manhua|manhwa)/([^/]+)", ancienne)
+        if not m:
+            return ""
+        mots = [w for w in m.group(2).split("-") if w]
+        for requete in (" ".join(mots), " ".join(mots[:2])):
+            if len(requete) < 2:
+                continue
+            try:
+                trouves = await self.rechercher(requete)
+            except Exception as e:
+                logger.warning(f"Recherche de la nouvelle adresse impossible : {e}")
+                return ""
+            meilleur, score = None, (0, 0)
+            for r in trouves:
+                slug = (_ADRESSE_SERIE.search(r["url"]) or [None, None, ""])[2]
+                communs = len(set(slug.split("-")) & set(mots))
+                if communs >= min(2, len(mots)) and (communs, -len(slug)) > score:
+                    meilleur, score = r, (communs, -len(slug))
+            if meilleur:
+                return meilleur["url"].rstrip("/")
+        return ""
 
     async def download_chapter_pages(self, chapter_url: str, session=None, reporter_captcha: bool = False,
                                      alerter: bool = True) -> list[bytes]:
