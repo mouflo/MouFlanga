@@ -1389,6 +1389,7 @@ class JapscanScraper:
                     await asyncio.sleep(5)   # même attente après un captcha résolu au rechargement
 
             # Nouveau lecteur (nov. 2026) : une liste déroulante des pages (une adresse par page) et une image par page
+            self._annoncees_par_pages = 0
             par_pages = await self._lire_page_par_page(context, page, chapter_url)
             if par_pages:
                 return par_pages
@@ -1476,7 +1477,18 @@ class JapscanScraper:
         _noter(f"  pages : {len(urls)} capturées"
                f"{f' sur {attendues} annoncées' if attendues else ''} · triées par ordre de demande"
                f" · {decalees} arrivée(s) dans un autre ordre que la demande")
-        images_bytes = [captured_images[u] for u in urls]
+        images_bytes, vus = [], set()
+        for u in urls:
+            h = hashlib.md5(captured_images[u]).hexdigest()
+            if h not in vus:                                 # la même image reçue sous deux adresses = une seule page
+                vus.add(h)
+                images_bytes.append(captured_images[u])
+        if len(images_bytes) < len(urls):
+            logger.info(f"  {len(urls) - len(images_bytes)} image(s) en double écartée(s)")
+        annoncees = getattr(self, "_annoncees_par_pages", 0)
+        if annoncees and len(images_bytes) != annoncees:
+            logger.warning(f"Repli réseau : {len(images_bytes)} pages différentes pour {annoncees} annoncées : chapitre abandonné, aucun fichier partiel")
+            return []
         logger.info(f"✓ {len(images_bytes)} pages capturées sur le réseau.")
         return images_bytes
 
@@ -1493,32 +1505,41 @@ class JapscanScraper:
         if not adresses:
             return []
         adresses = [urljoin(page.url, a) for a in adresses]
+        self._annoncees_par_pages = len(adresses)
         logger.info(f"Lecteur par pages : {len(adresses)} page(s) annoncée(s) pour {chapter_url}")
         images = []
         for i, adresse in enumerate(adresses, 1):
-            try:
-                if i == 1 and adresse.rstrip("/") == page.url.rstrip("/"):
-                    pass                                     # la première page est déjà ouverte
-                else:
-                    await page.goto(adresse, wait_until="domcontentloaded", timeout=30000)
-                    if not await attendre_captcha(page, alerter=False):
-                        raise RuntimeError("vérification non passée")
-                src = None
-                for _ in range(10):                          # l'image apparaît un instant après le chargement
-                    src = await page.evaluate("() => (document.querySelector('img[data-page-img]') || {}).src || ''")
-                    if src:
-                        break
-                    await asyncio.sleep(0.5)
-                if not src:
-                    raise RuntimeError("image introuvable")
-                rep = await context.request.get(src, headers={"Referer": adresse}, timeout=60000)
-                corps = await rep.body()
-                if rep.status != 200 or len(corps) < 2000:
-                    raise RuntimeError(f"image refusée (statut {rep.status}, {len(corps)} octets)")
-                images.append(corps)
-            except Exception as e:
-                logger.warning(f"Lecteur par pages : page {i}/{len(adresses)} impossible ({e}) : chapitre abandonné, aucun fichier partiel")
-                _noter(f"  lecteur par pages : page {i} impossible ({e})")
+            erreur = None
+            for essai in range(1, 4):                        # une page qui coince (vérification, image tardive) est retentée
+                try:
+                    if essai == 1 and i == 1 and adresse.rstrip("/") == page.url.rstrip("/"):
+                        pass                                 # la première page est déjà ouverte
+                    else:
+                        await page.goto(adresse, wait_until="domcontentloaded", timeout=30000)
+                        if not await attendre_captcha(page, alerter=False):
+                            raise RuntimeError("vérification non passée")
+                    src = None
+                    for _ in range(10):                      # l'image apparaît un instant après le chargement
+                        src = await page.evaluate("() => (document.querySelector('img[data-page-img]') || {}).src || ''")
+                        if src:
+                            break
+                        await asyncio.sleep(0.5)
+                    if not src:
+                        raise RuntimeError("image introuvable")
+                    rep = await context.request.get(src, headers={"Referer": adresse}, timeout=60000)
+                    corps = await rep.body()
+                    if rep.status != 200 or len(corps) < 2000:
+                        raise RuntimeError(f"image refusée (statut {rep.status}, {len(corps)} octets)")
+                    images.append(corps)
+                    erreur = None
+                    break
+                except Exception as e:
+                    erreur = e
+                    logger.info(f"Lecteur par pages : page {i}/{len(adresses)}, essai {essai}/3 raté ({e})")
+                    await asyncio.sleep(3 * essai)
+            if erreur is not None:
+                logger.warning(f"Lecteur par pages : page {i}/{len(adresses)} impossible ({erreur}) : chapitre abandonné, aucun fichier partiel")
+                _noter(f"  lecteur par pages : page {i} impossible ({erreur})")
                 return []
             await asyncio.sleep(0.4)
         _noter(f"  lecteur par pages : {len(images)} page(s) lues sur {len(adresses)}")
