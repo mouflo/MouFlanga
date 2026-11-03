@@ -58,6 +58,7 @@ import importer
 import deux_tomes
 import diag
 import japscan_scraper
+import concurrent.futures
 import sources_fr
 
 _VERROU_SOMMAIRES = __import__("edition").VERROU      # le même verrou que la validation à la main, l'assemblage… (voir edition.VERROU)
@@ -7014,29 +7015,15 @@ def api_sources():
     return jsonify({"ok": True, "sources": sources_fr.liste()})
 
 
-@app.route("/api/japscan/recherche", methods=["POST"])
-def japscan_recherche():
-    """Recherche dans tout le catalogue de Japscan (ouvre le navigateur : 10 à 30 secondes)."""
-    corps = request.get_json(silent=True) or {}
-    texte = str(corps.get("q", "")).strip()[:80]
-    if len(texte) < 2:
-        return jsonify({"ok": False, "error": "Tape au moins 2 lettres."}), 400
-    autre = _source_autre(corps.get("source"))
-    if autre is False:
-        return jsonify({"ok": False, "error": "Source inconnue."}), 400
+def _chercher_dans(autre, texte):
+    """Résultats d'une recherche sur UN site (autre = source de sources_fr, ou None pour Japscan), gardés 1 heure."""
     cle = (autre.id + ":" if autre else "") + texte.lower()
     ancien = _RECHERCHES.get(cle)
     if ancien and time.time() - ancien[0] < 3600:
-        return jsonify({"ok": True, "mangas": ancien[1]})
-    try:
-        resultats = autre.rechercher(texte) if autre else japscan_scraper.JapscanScraper(MANGA_DIR).rechercher_sync(texte)
-    except Exception as e:
-        logger.error(f"Recherche {autre.nom if autre else 'Japscan'} impossible : {e}")
-        return jsonify({"ok": False, "error": f"Recherche impossible : {e}"}), 500
+        return ancien[1]
+    resultats = autre.rechercher(texte) if autre else japscan_scraper.JapscanScraper(MANGA_DIR).rechercher_sync(texte)
     _RECHERCHES[cle] = (time.time(), resultats)
-    if autre:
-        return jsonify({"ok": True, "mangas": resultats})
-    if resultats:                                          # elles restent ensuite dans la liste
+    if not autre and resultats:                            # elles restent ensuite dans la liste de Japscan
         try:
             gardees = json.loads(TROUVES.read_text(encoding="utf-8")).get("mangas", []) if TROUVES.exists() else []
         except (OSError, ValueError):
@@ -7044,7 +7031,49 @@ def japscan_recherche():
         connues = {m["url"] for m in gardees}
         gardees += [{"title": m["title"], "url": m["url"]} for m in resultats if m["url"] not in connues]
         TROUVES.write_text(json.dumps({"mangas": gardees}, ensure_ascii=False), encoding="utf-8")
+    return resultats
+
+
+@app.route("/api/japscan/recherche", methods=["POST"])
+def japscan_recherche():
+    """Recherche sur un site : tout le catalogue de Japscan (ouvre le navigateur : 10 à 30 secondes) ou une autre source."""
+    corps = request.get_json(silent=True) or {}
+    texte = str(corps.get("q", "")).strip()[:80]
+    if len(texte) < 2:
+        return jsonify({"ok": False, "error": "Tape au moins 2 lettres."}), 400
+    autre = _source_autre(corps.get("source"))
+    if autre is False:
+        return jsonify({"ok": False, "error": "Source inconnue."}), 400
+    try:
+        resultats = _chercher_dans(autre, texte)
+    except Exception as e:
+        logger.error(f"Recherche {autre.nom if autre else 'Japscan'} impossible : {e}")
+        return jsonify({"ok": False, "error": f"Recherche impossible : {e}"}), 500
     return jsonify({"ok": True, "mangas": resultats})
+
+
+@app.route("/api/sources/recherche", methods=["POST"])
+def sources_recherche():
+    """Recherche sur TOUS les sites à la fois. Chaque site répond à part : une panne chez l'un ne cache jamais les autres
+    (elle est dite, pas prise pour « rien trouvé »). Rend [{source, nom, mangas, erreur}] dans l'ordre des sites."""
+    corps = request.get_json(silent=True) or {}
+    texte = str(corps.get("q", "")).strip()[:80]
+    if len(texte) < 2:
+        return jsonify({"ok": False, "error": "Tape au moins 2 lettres."}), 400
+    sites = [(None, "japscan", "Japscan")] + [(src, src.id, src.nom) for src in sources_fr.SOURCES.values()]
+
+    def un_site(site):
+        autre, identifiant, nom = site
+        try:
+            mangas = [dict(m, source=identifiant) for m in _chercher_dans(autre, texte)]
+            return {"source": identifiant, "nom": nom, "mangas": mangas, "erreur": ""}
+        except Exception as e:
+            logger.warning(f"Recherche globale : {nom} n'a pas répondu ({e})")
+            return {"source": identifiant, "nom": nom, "mangas": [], "erreur": str(e)[:200]}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(sites)) as pool:
+        resultats = list(pool.map(un_site, sites))
+    return jsonify({"ok": True, "resultats": resultats})
 
 
 @app.route("/api/japscan/chapters/<manga_id>", methods=["POST"])

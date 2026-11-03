@@ -8,9 +8,10 @@ let selectedChapters = [];
 let currentJobId = null;
 
 // Source choisie (Japscan ou un autre site) : gardée d'une visite à l'autre
-let sourceId = "japscan";
-let sources = [{id: "japscan", nom: "Japscan"}];
-try { sourceId = localStorage.getItem("mouflanga-source") || "japscan"; } catch (e) { /* stockage indisponible */ }
+const TOUS = {id: "tous", nom: "🔎 Tous les sites"};
+let sourceId = "tous";
+let sources = [TOUS, {id: "japscan", nom: "Japscan"}];
+try { sourceId = localStorage.getItem("mouflanga-source") || "tous"; } catch (e) { /* stockage indisponible */ }
 const nomSource = () => (sources.find(s => s.id === sourceId) || sources[0]).nom;
 
 // État
@@ -48,9 +49,9 @@ $$(".tab").forEach(tab => {
 async function chargerSources() {
     try {
         const d = await (await fetch("/api/sources")).json();
-        if (d.ok && d.sources.length) sources = d.sources;
+        if (d.ok && d.sources.length) sources = [TOUS, ...d.sources];
     } catch (e) { /* on garde Japscan seul */ }
-    if (!sources.some(s => s.id === sourceId)) sourceId = "japscan";
+    if (!sources.some(s => s.id === sourceId)) sourceId = "tous";
     const choix = $("source-choix");
     choix.innerHTML = sources.map(s => `<option value="${echapper(s.id)}"${s.id === sourceId ? " selected" : ""}>${echapper(s.nom)}</option>`).join("");
     choix.hidden = sources.length < 2;
@@ -74,6 +75,7 @@ function appliquerSource() {
     $("liste-note").hidden = !japscan;
     $("sous-titre-liste").textContent = japscan
         ? "Séries mises à jour récemment sur Japscan. Appuie sur un nom pour voir ses chapitres."
+        : sourceId === "tous" ? "Tape le nom d'une série puis valide : la recherche se fait sur tous les sites à la fois."
         : `Tape le nom d'une série puis valide : la recherche se fait sur ${nomSource()}.`;
     boutonRecherche();
 }
@@ -83,7 +85,7 @@ async function loadMangas(forcer) {
     if (sourceId !== "japscan") {
         state.mangas = [];
         $("manga-lettres").innerHTML = "";
-        list.innerHTML = `<div class="loading">🔍 Cherche une série sur ${echapper(nomSource())}.</div>`;
+        list.innerHTML = `<div class="loading">🔍 ${sourceId === "tous" ? "Cherche une série : tous les sites sont interrogés d'un coup." : `Cherche une série sur ${echapper(nomSource())}.`}</div>`;
         ouvrirDepuisLien();
         return;
     }
@@ -119,7 +121,7 @@ const TYPES = {manhwa: "manhwa", manhua: "manhua"};
 function boutonRecherche() {
     const t = $("manga-search").value.trim(), b = $("btn-recherche-japscan");
     b.hidden = t.length < 2;
-    b.textContent = sourceId === "japscan" ? `🔎 Chercher « ${t} » dans tout Japscan` : `🔎 Chercher « ${t} » sur ${nomSource()}`;
+    b.textContent = sourceId === "japscan" ? `🔎 Chercher « ${t} » dans tout Japscan` : sourceId === "tous" ? `🔎 Chercher « ${t} » sur tous les sites` : `🔎 Chercher « ${t} » sur ${nomSource()}`;
 }
 
 // Recherche dans tout le catalogue de Japscan (le navigateur du serveur s'ouvre : 10 à 30 secondes)
@@ -129,6 +131,7 @@ async function rechercherJapscan() {
     const list = $("manga-list");
     $("manga-lettres").innerHTML = "";
     list.innerHTML = `<div class="loading">⏳ Recherche de « ${echapper(t)} » sur ${echapper(nomSource())}…${sourceId === "japscan" ? " (10 à 30 secondes)" : ""}</div>`;
+    if (sourceId === "tous") { await rechercherPartout(t); return; }
     try {
         const resp = await fetch("/api/japscan/recherche", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({q: t, source: sourceId})});
         const data = await resp.json();
@@ -138,6 +141,26 @@ async function rechercherJapscan() {
             + (data.mangas.length ? data.mangas.map(ligneSerie).join("") : `<div class="loading">Aucun manga trouvé sur ${echapper(nomSource())}.</div>`)
             + `<button type="button" class="mou-btn secondary" id="btn-retour-recentes" style="margin-top:12px">← Revenir aux séries récentes</button>`;
         $("btn-retour-recentes").addEventListener("click", () => { $("manga-search").value = ""; boutonRecherche(); renderMangas(); });
+    } catch (e) {
+        list.innerHTML = `<div class="loading" style="color: #ff6b6b;">Erreur : ${echapper(e.message)}</div>`;
+    }
+}
+
+// Recherche sur tous les sites à la fois : un bloc par site, une panne chez l'un est dite sans cacher les autres
+async function rechercherPartout(t) {
+    const list = $("manga-list");
+    try {
+        const resp = await fetch("/api/sources/recherche", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({q: t})});
+        const data = await resp.json();
+        if (!data.ok) { list.innerHTML = `<div class="loading" style="color: #ff6b6b;">${echapper(data.error || "Recherche impossible")}</div>`; return; }
+        state.recherche = data.resultats.flatMap(r => r.mangas);
+        const total = state.recherche.length;
+        list.innerHTML = `<div class="lettre-titre">${total} résultat(s) pour « ${echapper(t)} » sur ${data.resultats.length} sites</div>`
+            + data.resultats.map(r => `<div class="lettre-titre">${echapper(r.nom)}${r.erreur ? "" : ` · ${r.mangas.length}`}</div>`
+                + (r.erreur ? `<div class="loading" style="color:#ff6b6b">⚠ ${echapper(r.nom)} n'a pas répondu : ${echapper(r.erreur)}</div>`
+                    : r.mangas.length ? r.mangas.map(ligneSerie).join("") : `<div class="loading">Rien trouvé sur ${echapper(r.nom)}.</div>`)).join("")
+            + `<button type="button" class="mou-btn secondary" id="btn-retour-recentes" style="margin-top:12px">← Effacer la recherche</button>`;
+        $("btn-retour-recentes").addEventListener("click", () => { $("manga-search").value = ""; boutonRecherche(); loadMangas(); });
     } catch (e) {
         list.innerHTML = `<div class="loading" style="color: #ff6b6b;">Erreur : ${echapper(e.message)}</div>`;
     }
@@ -248,7 +271,7 @@ async function loadChapters() {
         const resp = await fetch(`/api/japscan/chapters/${selectedManga.id}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: selectedManga.url, title: selectedManga.title, source: sourceId })
+            body: JSON.stringify({ url: selectedManga.url, title: selectedManga.title, source: selectedManga.source || sourceId })
         });
 
         const data = await resp.json();
@@ -381,7 +404,7 @@ async function startDownload() {
             body: JSON.stringify({
                 title: selectedManga.title,
                 chapters: selectedChapters,
-                source: sourceId
+                source: selectedManga.source || sourceId
             })
         });
 

@@ -1,5 +1,12 @@
 # Historique des versions
 
+## 🔎 Une seule recherche pour tous les sites (3 novembre 2026)
+- **« 🔎 Tous les sites »** est maintenant le premier choix de « Télécharger » (et le choix par défaut). Tu tapes le nom une seule fois : tous les sites sont interrogés en même temps, et les résultats sont rangés **par site**, avec le nombre trouvé pour chacun.
+- Un clic sur une série ouvre ses chapitres sur le bon site, sans rien changer d'autre.
+- **Une panne n'est jamais « rien trouvé »** : si un site ne répond pas, son bloc le dit (⚠), les autres s'affichent quand même.
+- Japscan fait partie de la recherche globale ; comme il ouvre un navigateur, il peut mettre 10 à 30 secondes à répondre.
+- Constat du jour : « Golden Kamuy » n'existe sur aucun des 6 autres sites (la recherche marche : elle trouve bien d'autres titres chez eux).
+
 ## 🌐 Moteur PizzaReader : Bluesolo et FMTeam (3 novembre 2026)
 - **Deux sites de plus dans « Télécharger »** : Bluesolo et FMTeam, qui offrent une liste ouverte de leurs séries (moteur « PizzaReader »). Même règles que les autres sources : sans navigateur, `robots.txt` respecté, une requête par seconde, jamais de chapitre à trous.
 - **Jamais de séries pour adultes** (elles ne sont pas proposées), ni de chapitres cachés, sous licence ou dans une autre langue que le français.
