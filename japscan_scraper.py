@@ -804,6 +804,28 @@ def _resultats_de_la_page(brut, texte):
 
 
 
+def _chapitres_de_la_page(soup, slug, type_url):
+    """Liste des chapitres (ou volumes) de la fiche d'une série, présentation de novembre 2026 : des liens portant « data-chapter-slug »,
+    adresse /<type>/<série>/<numéro>/1, texte « Volume 22 … » ou « Chapitre 12 … ». Un volume = un tome."""
+    out, vus = [], set()
+    for a in soup.find_all("a", href=True):
+        n = a.get("data-chapter-slug")
+        m = re.search(r"/(?:manga|manhua|manhwa)/([^/]+)/([\w.\-]+)/\d+/?$", a["href"])
+        if n is None or not m or (slug and m.group(1) != slug) or not re.search(r"\d", n):
+            continue
+        url = urljoin(JAPSCAN_URL, a["href"])
+        if url in vus:
+            continue
+        vus.add(url)
+        txt = re.sub(r"\s+", " ", a.get_text(" ", strip=True).replace("\u200b", "")).strip()
+        c = {"title": txt[:120] or f"Chapitre {n}", "url": url, "chapter_id": n}
+        mv = re.match(r"volume\s+(\d+)", txt, re.I)
+        if mv:
+            c["volume"] = int(mv.group(1))
+        out.append(c)
+    return out
+
+
 class JapscanScraper:
     """Scraper Japscan v2.0 avec interception réseau pour contourner Cloudflare."""
 
@@ -1158,6 +1180,11 @@ class JapscanScraper:
                         seen_urls.add(full_url)
                         chapters.append({"title": txt.split("\n")[0][:120], "url": full_url, "chapter_id": cid})
                         break
+                if not chapters:                     # nouvelle présentation (nov. 2026) : une liste de liens « Volume N » / « Chapitre N » → /<type>/<série>/N/1
+                    chapters = _chapitres_de_la_page(soup, slug, type_url)
+                    seen_urls.update(c["url"] for c in chapters)
+                    if chapters:
+                        logger.info(f"Chapitres lus dans la liste de la page : {len(chapters)}")
                 if chapters:
                     logger.info(f"Chapitres lus depuis les zones visibles : {len(chapters)}")
                 for item in ([] if chapters else soup.find_all("a", href=True)):

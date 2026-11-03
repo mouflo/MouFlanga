@@ -21,3 +21,15 @@ class ResultatsPageTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChapitresDeLaPageTest(unittest.TestCase):
+    def test_liste_de_volumes_de_la_nouvelle_presentation(self):
+        from bs4 import BeautifulSoup
+        html = ('<a href="/manga/terra-formars/1/1">Commencer la lecture</a>'
+                '<ul><li><a data-chapter-slug="22" href="/manga/terra-formars/22/1">Volume 22 27 novembre 2021 · 208 p.</a></li>'
+                '<li><a data-chapter-slug="1" href="/manga/terra-formars/1/1">Volume 1 27 novembre 2021 · 214 p.</a></li>'
+                '<li><a data-chapter-slug="1" href="/manga/autre/1/1">Volume 1</a></li></ul>')
+        r = J._chapitres_de_la_page(BeautifulSoup(html, "html.parser"), "terra-formars", "manga")
+        self.assertEqual([(c["volume"], c["url"]) for c in r],
+                         [(22, "https://japscan.st/manga/terra-formars/22/1"), (1, "https://japscan.st/manga/terra-formars/1/1")])
