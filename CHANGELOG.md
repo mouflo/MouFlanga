@@ -1,5 +1,11 @@
 # Historique des versions
 
+## 🌐 Moteur Madara : Harmony-Scan et Pantheon-Scan (3 novembre 2026)
+- **Deux sites de plus dans « Télécharger »** : Harmony-Scan et Pantheon-Scan, qui utilisent le même moteur WordPress (« Madara »). Même fonctionnement que Sushi-Scan : sans navigateur, `robots.txt` respecté, une requête par seconde, une pause d'une heure si le site refuse, jamais de chapitre à trous.
+- Tous les autres sites qui utilisent ce moteur s'ajoutent maintenant en une ligne dans `sources_fr.py`.
+- Un test a trouvé et fait corriger une erreur : le chapitre 12.5 était lu comme le chapitre 12 (le numéro est lu dans le titre, pas dans l'adresse).
+- Pas encore essayé : un vrai téléchargement complet depuis ces deux sites (recherche, liste des chapitres et pages vérifiées en lecture seule).
+
 ## ⚙️ Lecteur : un vrai menu de réglages (3 novembre 2026)
 - **Un bouton « ⚙️ Menu »** remplace les petits boutons du haut (page, sens, ajustement, doubles pages). Il ouvre une fenêtre où chaque réglage a un titre, une phrase qui explique ce qu'il fait, et de gros boutons à toucher.
 - **Filtre lumière bleue** (teinte chaude réglable de 0 à 100 %), **luminosité** et **contraste** de l'image, **noir et blanc**, **couleurs inversées** (mode nuit). Quand on glisse un curseur, le menu devient presque transparent pour voir l'effet sur la page.

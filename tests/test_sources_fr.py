@@ -125,3 +125,46 @@ class TelechargementTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+LISTE_MADARA = """<ul class="main version-chap"><li class="wp-manga-chapter"><a href="https://exemple.test/manga/ma-serie/chapitre-12-5/"> Chapitre 12.5 </a></li>
+<li class="wp-manga-chapter"><a href="https://exemple.test/manga/ma-serie/chapitre-12/">Chapitre 12</a></li>
+<li class="wp-manga-chapter"><a href="#">Lien vide</a></li></ul>"""
+
+RECHERCHE_MADARA = """<div class="c-tabs-item__content"><div class="post-title"><h3><a href="https://exemple.test/manga/ma-serie/">Ma S&eacute;rie</a></h3></div></div>"""
+
+PAGES_MADARA = """<div class="reading-content">
+<img id="image-0" data-src="
+   https://img.exemple.test/0.jpg" class="wp-manga-chapter-img">
+<img id="image-1" data-src="https://img.exemple.test/1.jpg" class="wp-manga-chapter-img">
+<img src="data:image/gif;base64,AAAA"></div>"""
+
+
+class MadaraTest(unittest.TestCase):
+    def setUp(self):
+        self.s = S.Madara("exemple", "Exemple", "https://exemple.test")
+
+    def test_recherche(self):
+        with mock.patch.object(S.CLIENT, "get", return_value=RECHERCHE_MADARA):
+            r = self.s.rechercher("ma série")
+        self.assertEqual([m["title"] for m in r], ["Ma Série"])
+        self.assertEqual(r[0]["url"], "https://exemple.test/manga/ma-serie/")
+
+    def test_chapitres_par_la_liste_ajax(self):
+        rep = mock.Mock(status_code=200, text=LISTE_MADARA)
+        with mock.patch.object(S.CLIENT, "autorise", return_value=True), mock.patch.object(S.CLIENT, "_attendre"), \
+                mock.patch.object(S.CLIENT.session, "post", return_value=rep):
+            c = self.s.chapitres("https://exemple.test/manga/ma-serie/")
+        self.assertEqual([x["chapter_id"] for x in c], ["12.5", "12"])
+        self.assertTrue(all("volume" not in x for x in c))
+
+    def test_chapitres_repli_sur_la_fiche(self):
+        rep = mock.Mock(status_code=404, text="")
+        with mock.patch.object(S.CLIENT, "autorise", return_value=True), mock.patch.object(S.CLIENT, "_attendre"), \
+                mock.patch.object(S.CLIENT.session, "post", return_value=rep), mock.patch.object(S.CLIENT, "get", return_value=LISTE_MADARA):
+            self.assertEqual(len(self.s.chapitres("https://exemple.test/manga/ma-serie/")), 2)
+
+    def test_pages_sans_les_images_de_remplissage(self):
+        with mock.patch.object(S.CLIENT, "get", return_value=PAGES_MADARA):
+            a = self.s.adresses_des_pages("https://exemple.test/manga/ma-serie/chapitre-1/")
+        self.assertEqual(a, ["https://img.exemple.test/0.jpg", "https://img.exemple.test/1.jpg"])

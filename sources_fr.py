@@ -242,9 +242,83 @@ class MangaThemesia(Source):
         return pages
 
 
+class Madara(Source):
+    """Moteur WordPress « Madara », très répandu chez les scantrads : recherche `/?s=…&post_type=wp-manga`, fiche `/manga/<série>/`,
+    liste des chapitres demandée à `…/ajax/chapters/` (à défaut lue dans la fiche), images dans `div.reading-content`."""
+
+    def __init__(self, id, nom, base):
+        self.id, self.nom, self.base = id, nom, base.rstrip("/")
+
+    def rechercher(self, texte):
+        texte = (texte or "").strip()[:80]
+        if len(texte) < 2:
+            return []
+        soupe = BeautifulSoup(CLIENT.get(f"{self.base}/?s={quote_plus(texte)}&post_type=wp-manga"), "html.parser")
+        out, vus = [], set()
+        for bloc in soupe.select(".c-tabs-item__content"):
+            a = bloc.select_one(".post-title a")
+            if not a or not a.get("href"):
+                continue
+            url = urljoin(self.base + "/", a["href"])
+            if url in vus:
+                continue
+            vus.add(url)
+            out.append({"title": unescape(re.sub(r"\s+", " ", a.get_text(" ", strip=True))), "url": url, "type": "",
+                        "id": f"{self.id}-" + re.sub(r"[^a-z0-9]+", "-", urlparse(url).path.lower()).strip("-")[-60:]})
+        return out
+
+    def _liste(self, adresse):
+        """La liste des chapitres : la requête `ajax/chapters/` (comme le fait le site), sinon la fiche elle-même."""
+        base = adresse if adresse.endswith("/") else adresse + "/"
+        try:
+            CLIENT._attendre(urlparse(adresse).netloc)
+            r = CLIENT.session.post(base + "ajax/chapters/", timeout=30)
+            if r.status_code == 200 and "wp-manga-chapter" in r.text:
+                return BeautifulSoup(r.text, "html.parser")
+        except requests.RequestException:
+            pass
+        return BeautifulSoup(CLIENT.get(adresse), "html.parser")
+
+    def chapitres(self, adresse):
+        if not CLIENT.autorise(adresse):
+            raise SourceErreur("page interdite par le robots.txt du site : non lue")
+        out, vus = [], set()
+        for li in self._liste(adresse).select("li.wp-manga-chapter"):
+            a = li.find("a", href=True)
+            if not a or a["href"].strip() in ("#", ""):
+                continue
+            url = urljoin(self.base + "/", a["href"].strip())
+            if url in vus:
+                continue
+            vus.add(url)
+            nom = re.sub(r"\s+", " ", a.get_text(" ", strip=True)).strip()
+            n = _nombre(nom) or _nombre(re.sub(r"(?<=\d)-(?=\d)", ".", urlparse(url).path.rstrip("/").rsplit("/", 1)[-1]))
+            if n is None:
+                continue
+            c = {"title": nom[:120] or f"Chapitre {n}", "url": url, "chapter_id": n}
+            if re.match(r"(volume|tome|vol\.?)\b", nom, re.I):
+                try:
+                    c["volume"] = int(float(n))
+                except ValueError:
+                    pass
+            out.append(c)
+        return out
+
+    def adresses_des_pages(self, adresse_chapitre):
+        soupe = BeautifulSoup(CLIENT.get(adresse_chapitre), "html.parser")
+        pages = []
+        for img in soupe.select("div.reading-content img"):
+            u = (img.get("data-src") or img.get("data-lazy-src") or img.get("src") or "").strip()
+            if u and not u.startswith("data:"):
+                pages.append(urljoin(self.base + "/", u))
+        return pages
+
+
 SOURCES = {s.id: s for s in (
     MangaThemesia("sushiscan", "Sushi-Scan", "https://sushiscan.net"),
     MangaThemesia("lelmanga", "LelManga", "https://www.lelmanga.com", dossier_series="/manga"),
+    Madara("harmonyscan", "Harmony-Scan", "https://harmony-scan.fr"),
+    Madara("pantheon", "Pantheon-Scan", "https://pantheon-scan.com"),
 )}
 
 
