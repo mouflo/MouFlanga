@@ -1419,15 +1419,30 @@ class JapscanScraper:
                 reponses = []
 
                 async def sur_reponse(r):
-                    if r.url.rstrip("/").endswith("/ls"):
-                        try:
-                            reponses.append(json.loads(await r.text()))
-                        except Exception:
-                            pass
+                    # ancienne réponse « /ls », ou toute réponse JSON du site qui est une liste d'œuvres (nouvelle page /catalogue)
+                    if "japscan" not in r.url or "json" not in (r.headers.get("content-type") or "") and not r.url.rstrip("/").endswith("/ls"):
+                        return
+                    try:
+                        donnees = json.loads(await r.text())
+                    except Exception:
+                        return
+                    if isinstance(donnees, dict):
+                        donnees = next((v for v in donnees.values() if isinstance(v, list) and v and isinstance(v[0], dict)), [])
+                    liste = [{"name": x.get("name") or x.get("title") or x.get("titre"), "url": x.get("url") or x.get("href") or x.get("link")}
+                             for x in donnees if isinstance(x, dict)]
+                    liste = [x for x in liste if x["name"] and x["url"]]
+                    if liste:
+                        reponses.append(liste)
                 page.on("response", sur_reponse)
                 await self._chauffer(page)
+                try:                                 # le site a une page « Catalogue » avec sa case « Rechercher un manga, un auteur… »
+                    await page.goto(JAPSCAN_URL + "/catalogue", wait_until="domcontentloaded", timeout=30000)
+                    await attendre_cloudflare(page, humain=True)
+                    await asyncio.sleep(2)
+                except Exception as e:
+                    logger.warning(f"Page catalogue non chargée : {e}")
                 try:
-                    champ = await page.wait_for_selector("#searchInput", timeout=20000)
+                    champ = await page.wait_for_selector("#searchInput, input[placeholder*='echercher'], input[type='search']", timeout=20000)
                 except Exception:
                     try:                             # case de recherche absente : on note ce que la page montre vraiment (adresse, titre, champs)
                         champs = await page.evaluate("""() => [...document.querySelectorAll('input')].map(i =>
@@ -1446,6 +1461,11 @@ class JapscanScraper:
                         await asyncio.sleep(1)       # laisser arriver la réponse au texte complet
                         break
                 resultats = reponses[-1] if reponses else []
+                if not resultats:                    # pas de réponse JSON lisible : les œuvres affichées sous la case
+                    resultats = [{"name": nom.split("\n")[0], "url": href} for href, nom in await page.evaluate("""() =>
+                        [...document.querySelectorAll('a')].map(a => [a.getAttribute('href') || '',
+                        (a.innerText || a.title || (a.querySelector('img') || {}).alt || '').trim()])
+                        .filter(x => /^(https?:\\/\\/[^/]+)?\\/(manga|manhua|manhwa)\\/[^/]+\\/?$/.test(x[0]) && x[1])""")]
             finally:
                 await browser.close()
         out = []
