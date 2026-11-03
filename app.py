@@ -4373,6 +4373,7 @@ def _relier_univers(mere, fille):
     """Met la série dérivée dans l'univers de la série mère (créé au nom de la mère s'il n'existe pas). Un univers choisi
     à la main n'est jamais changé."""
     import edition
+    (MANGA_DIR / mere).mkdir(parents=True, exist_ok=True)     # série mère neuve (torrent qui l'apporte avec son spin-off) : pas encore de dossier
     dm, df = edition.lire(MANGA_DIR / mere), edition.lire(MANGA_DIR / fille)
     univers = dm.get("univers") or df.get("univers") or mere
     if df.get("univers") and df["univers"] != univers:
