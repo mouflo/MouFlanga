@@ -27,16 +27,13 @@ command -v xvfb-run >/dev/null || apt-get install -y -qq xvfb >/dev/null 2>&1 ||
 ./venv/bin/python -m patchright install chromium || echo "⚠️ Chromium (Patchright) non installé"
 
 mkdir -p data
-chmod +x deploy.sh setup-cronjob.sh set-login.sh set-secret.sh
+chmod +x set-login.sh set-secret.sh
 
 echo "⚙️  Service systemd..."
 cp mouflanga.service /etc/systemd/system/mouflanga.service
 systemctl daemon-reload
 systemctl enable mouflanga >/dev/null 2>&1
 systemctl restart mouflanga
-
-echo "⏱️  Mise à jour automatique (cronjob, ajoutée sans toucher aux autres)..."
-bash "$REPO_DIR/setup-cronjob.sh"
 
 echo ""
 echo "✅ Installation terminée !"
