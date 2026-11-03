@@ -3081,6 +3081,27 @@ def _boucle_corbeille():
         time.sleep(86400)
 
 
+import veille_japscan
+veille_japscan.FICHIER = DATA_DIR / "veille_japscan.json"
+veille_japscan.LIRE = _read_json
+veille_japscan.ECRIRE = _write_json
+
+
+@app.route("/api/veille-japscan", methods=["GET", "POST"])
+def api_veille_japscan():
+    """GET : l'état de la veille de l'extension Japscan (coché ou non, dernier commit vu, dernière vérification).
+    POST {actif: true|false} : coche ou décoche. POST {action: "verifier"} : vérifie maintenant."""
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        if body.get("action") == "verifier":
+            msg = veille_japscan.verifier(lambda t: notifier.envoyer(t))
+            return jsonify(dict(veille_japscan.etat(), ok=True, message=msg))
+        veille_japscan.regler(bool(body.get("actif")))
+        return jsonify(dict(veille_japscan.etat(), ok=True,
+                            message="Veille activée : une vérification par jour." if body.get("actif") else "Veille désactivée."))
+    return jsonify(veille_japscan.etat())
+
+
 @app.route("/api/delete", methods=["POST"])
 def api_delete():
     """Met à la corbeille un chapitre (path) ou toute une série (all)."""
@@ -7660,6 +7681,7 @@ if __name__ == "__main__":
     redemarrage.verifier(BASE_DIR, "MouFlanga", DATA_DIR / "mouflanga.log", lambda t: notifier.envoyer(t))
     threading.Thread(target=_boucle_generiques, daemon=True).start()
     threading.Thread(target=_boucle_corbeille, daemon=True, name="corbeille").start()
+    threading.Thread(target=veille_japscan.boucle, args=(lambda t: notifier.envoyer(t),), daemon=True, name="veille-japscan").start()
     threading.Thread(target=_boucle_parasites, daemon=True).start()
     threading.Thread(target=_boucle_relecture_sommaires, daemon=True, name="relecture-sommaires").start()
     threading.Thread(target=_boucle_equipes, daemon=True).start()

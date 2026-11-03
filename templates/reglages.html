@@ -83,6 +83,16 @@
     </div>
 
     <div class="panel" data-onglet="Général">
+        <h2>👀 Veille de l'extension Japscan</h2>
+        <div class="sub">Les applis de lecture Android ont une extension pour Japscan, mise à jour dès que le site change. Quand elle change, MouFlanga t'envoie un message sur Telegram : c'est un signe que Japscan a peut-être modifié son site. La vérification se fait une fois par jour auprès de GitHub seulement : <b>jamais auprès de Japscan, donc aucune vérification Cloudflare à faire</b>. Rien n'est modifié tout seul.</div>
+        <div class="field"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="veilleActif" style="width:22px;height:22px;flex:none;margin-top:2px"><span>Me prévenir quand l'extension Japscan change</span></label></div>
+        <div class="row"><button class="btn" id="veilleSave" type="button">Enregistrer</button>
+            <button class="btn ghost" id="veilleVerif" type="button">🔎 Vérifier maintenant</button></div>
+        <div id="veilleInfo" class="state" style="margin-top:8px"></div>
+        <div id="veilleMsg"></div>
+    </div>
+
+    <div class="panel" data-onglet="Général">
         <h2>🔁 Choix retenus pour les tomes en double</h2>
         <div class="sub">Quand tu coches « Toujours faire ce choix » dans Télécharger, l'appli l'applique toute seule à la série la fois suivante (torrent ou rangement). Supprime une règle pour qu'elle te redemande.</div>
         <div id="reglesImport"></div>
@@ -398,6 +408,23 @@ $('reglesImport').addEventListener('click', async e => {
     say('reglesImportMsg', r.message || r.error, r.ok); loadReglesImport();
 });
 loadReglesImport();
+// ---------- 👀 Veille de l'extension Japscan ----------
+async function loadVeille() {
+    const r = await api('/api/veille-japscan');
+    if (r.error) return;
+    $('veilleActif').checked = !!r.actif;
+    $('veilleInfo').textContent = r.verifie_le ? 'Dernière vérification : ' + r.verifie_le + '. ' + (r.message || '') : 'Pas encore vérifié.';
+}
+$('veilleSave').addEventListener('click', async () => {
+    const r = await post('/api/veille-japscan', {actif: $('veilleActif').checked});
+    say('veilleMsg', r.message || r.error, r.ok); if (r.ok) loadVeille();
+});
+$('veilleVerif').addEventListener('click', async () => {
+    $('veilleInfo').textContent = 'Vérification en cours…';
+    const r = await post('/api/veille-japscan', {action: 'verifier'});
+    say('veilleMsg', r.message || r.error, r.ok); loadVeille();
+});
+loadVeille();
 // ---------- 🗑 Corbeille : combien de temps garder les anciens fichiers ----------
 const _go = o => (o / 1073741824).toFixed(1).replace('.', ',') + ' Go';
 function corbAffiche() { $('corbDuree').hidden = $('corbMode').value === 'jamais'; }

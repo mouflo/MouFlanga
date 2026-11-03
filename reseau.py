@@ -120,6 +120,7 @@ SERVICES = {s.nom: s for s in (
     Service("openlibrary", "Open Library", 1.0, ["openlibrary.org"], pause_429=300),
     Service("kitsu", "Kitsu", 1.0, ["kitsu.io"]),
     Service("jikan", "MyAnimeList (Jikan)", 1.2, ["api.jikan.moe"], pause_429=60),
+    Service("github", "GitHub (API)", 1.0, ["api.github.com"], pause_429=3600),
     Service("web", "Autres sites", 1.0),
     # Trackers de torrents (pages de présentation, voir page_tracker.py) : le rythme de chacun est celui qu'il demande
     Service("prowlarr", "Prowlarr", 0.2),
