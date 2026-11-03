@@ -2866,7 +2866,7 @@ def lire(chemin, lire_page, nb_pages, noms=None, numeros=None, suite_de=None) ->
         _LOCAL.mode = "tesseract"                           # les autres lectures du fil (ISBN…) restent comme avant
 
 
-_FAUX_TITRE = re.compile(r"[0-9ODIGSBZTl|]{1,4}")
+_FAUX_TITRE = re.compile(r"[0-9ODIGSBZl|]{1,4}")          # sans T : « T1 » est un numéro de chapitre, pas un faux titre
 
 
 def _sans_faux_titres(res):

@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 🔧 Recherche de torrents plus juste, faux titres de sommaire, déploiement retiré (3 novembre 2026)
+- **Une recherche ne se rattache plus à une série par hasard de lettres** : « Terra formars » était pris pour la série « MAR » (« mar » se trouve dans « terraformars »), donc les torrents étaient marqués « Déjà dans ta bibliothèque ». Un nom de série ne compte maintenant que s'il forme des mots entiers de la recherche (`regles._resolue`, tests dans `tests/test_resolue.py`).
+- **Un faux titre de chapitre n'est plus gardé** : « OOG » ou « DID » (un numéro de chapitre relu en lettres dans le sommaire) ne sont plus des titres. « T1 » reste un numéro (`sommaire._sans_faux_titres`, tests dans `tests/test_faux_titres.py`).
+- **Plus de mise à jour automatique depuis GitHub** : la ligne de cron `deploy.sh` est retirée, ainsi que `deploy.sh` et `setup-cronjob.sh` du dépôt. Les corrections se font sur le serveur, puis on pousse sur GitHub.
+
 ## 🖼 Couvertures des tomes, fiches de torrents, séries renommées (30 octobre 2026)
 - **« Couverture des tomes » ne trouvait rien pour une série découpée en chapitres** (Buyuden : zéro tome, Air Gear : tomes manquants) : les tomes dont le fichier contient des chapitres n'avaient pas de numéro de tome pour cette page ; ils sont maintenant reconnus par leur dossier « Tome NN ».
 - **Aperçu « Actuelle » net** : l'image pleine taille était réduite d'un coup par le navigateur (crénelé) ; la page demande maintenant une version réduite proprement. Le fichier enregistré reste en pleine taille.
