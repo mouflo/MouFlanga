@@ -1426,7 +1426,17 @@ class JapscanScraper:
                             pass
                 page.on("response", sur_reponse)
                 await self._chauffer(page)
-                champ = await page.wait_for_selector("#searchInput", timeout=20000)
+                try:
+                    champ = await page.wait_for_selector("#searchInput", timeout=20000)
+                except Exception:
+                    try:                             # case de recherche absente : on note ce que la page montre vraiment (adresse, titre, champs)
+                        champs = await page.evaluate("""() => [...document.querySelectorAll('input')].map(i =>
+                            [i.id, i.name, i.type, i.placeholder, !!(i.offsetWidth || i.offsetHeight)].join('|')).slice(0, 8)""")
+                        logger.warning("Page de recherche Japscan sans « #searchInput » : adresse %s, titre « %s », champs %s",
+                                       page.url, await page.title(), champs)
+                    except Exception:
+                        pass
+                    raise
                 await champ.click()
                 await champ.fill("")
                 await page.keyboard.type(texte, delay=80)
