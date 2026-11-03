@@ -244,6 +244,7 @@ class MangaThemesia(Source):
 
 SOURCES = {s.id: s for s in (
     MangaThemesia("sushiscan", "Sushi-Scan", "https://sushiscan.net"),
+    MangaThemesia("lelmanga", "LelManga", "https://www.lelmanga.com", dossier_series="/manga"),
 )}
 
 

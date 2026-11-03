@@ -1,7 +1,7 @@
 # Historique des versions
 
 ## 🌐 Autres sites que Japscan : Sushi-Scan en premier (3 novembre 2026)
-- **Un choix de site** en haut de « Télécharger » (liste déroulante, retenue d'une visite à l'autre) : Japscan, ou Sushi-Scan. Les autres sites suivront sur le même modèle (`sources_fr.py`) : un site = quelques lignes quand il utilise un moteur déjà connu (MangaThemesia aujourd'hui ; Madara, PizzaReader… ensuite).
+- **Un choix de site** en haut de « Télécharger » (liste déroulante, retenue d'une visite à l'autre) : Japscan, Sushi-Scan ou LelManga. Les autres sites suivront sur le même modèle (`sources_fr.py`) : un site = quelques lignes quand il utilise un moteur déjà connu (MangaThemesia aujourd'hui ; Madara, PizzaReader… ensuite).
 - **Sans navigateur ni captcha** : ces sites sont lus comme le ferait un lecteur (en-tête honnête `MouFlanga/1.0`, `robots.txt` respecté, une requête par seconde et par site). Un site qui répond « refusé » ou « un instant » est mis en pause une heure et signalé : rien n'est contourné.
 - **Les volumes de Sushi-Scan sont de vrais tomes** : « Volume 2 » est rangé comme un tome complet, jamais par-dessus un tome déjà présent (même protection que pour Japscan, `_ranger_pages` est commun).
 - **Aucun tome à trous** : si une seule page manque ou n'est pas une image, le chapitre n'est pas écrit.
