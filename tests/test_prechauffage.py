@@ -6,8 +6,17 @@ from pathlib import Path
 
 import prechauffage as P
 
+PAUSE_REELLE = time.sleep              # les tests remplacent time.sleep : l'attente, elle, doit vraiment attendre
+
 
 class PrechauffageTest(unittest.TestCase):
+    def _attendre(self):
+        """Attend la fin du fil de préparation (10 s au plus) ; sans cette attente, les tests se gênent entre eux."""
+        fin = time.monotonic() + 10
+        while P.etat()["en_cours"] and time.monotonic() < fin:
+            PAUSE_REELLE(0.01)
+        self.assertFalse(P.etat()["en_cours"], "la préparation n'est pas terminée après 10 s")
+
     def setUp(self):
         # la préparation automatique ne tourne que de minuit à 6 h : ces tests vérifient la logique, pas l'heure
         patch = unittest.mock.patch.object(P.plage, "dans_la_plage", return_value=True)
@@ -28,10 +37,7 @@ class PrechauffageTest(unittest.TestCase):
                     unittest.mock.patch.object(P.time, "sleep", lambda s: None):
                 P._ETAT["manuel"] = False
                 P.demander(["A"])
-                for _ in range(100):
-                    if not P.etat()["en_cours"]:
-                        break
-                    time.sleep(0.05)
+                self._attendre()                          # le fil de préparation tourne pendant cette attente
             self.assertEqual(faits, ["A"])
 
     def test_prepare_une_fois_puis_seulement_si_les_fichiers_changent(self):
@@ -42,10 +48,7 @@ class PrechauffageTest(unittest.TestCase):
                          lambda n, prog: faits.append(n), lambda: [])
             self.assertEqual(sorted(P.a_preparer()), ["A", "B"])
             P.demander(["A", "B"])
-            for _ in range(100):
-                if not P.etat()["en_cours"]:
-                    break
-                time.sleep(0.05)
+            self._attendre()
             self.assertEqual(sorted(faits), ["A", "B"])
             self.assertEqual(P.a_preparer(), [])
             sig["B"] = "2"
