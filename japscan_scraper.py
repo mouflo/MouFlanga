@@ -772,6 +772,11 @@ class _Session:
 download_jobs = {}
 
 
+def _plat_recherche(t):
+    t = unicodedata.normalize("NFD", str(t).lower())
+    return re.sub(r"[^a-z0-9]+", " ", "".join(c for c in t if unicodedata.category(c) != "Mn")).strip()
+
+
 _ETIQUETTES_SITE = {"en cours", "terminé", "termine", "manga", "manhua", "manhwa", "nouveau", "vf", "pause", "abandonné"}
 
 
@@ -1446,6 +1451,13 @@ class JapscanScraper:
                 _surveiller(page)
                 reponses = []
 
+                vues = []
+
+                def noter(r):
+                    if "japscan" in r.url and r.request.resource_type in ("xhr", "fetch", "document"):
+                        vues.append((r.status, r.url[:120]))
+                page.on("response", noter)
+
                 async def sur_reponse(r):
                     # ancienne réponse « /ls », ou toute réponse JSON du site qui est une liste d'œuvres (nouvelle page /catalogue)
                     if "japscan" not in r.url or "json" not in (r.headers.get("content-type") or "") and not r.url.rstrip("/").endswith("/ls"):
@@ -1483,17 +1495,25 @@ class JapscanScraper:
                 await champ.click()
                 await champ.fill("")
                 await page.keyboard.type(texte, delay=80)
-                for _ in range(20):                  # la réponse arrive en général en moins d'une seconde
+                mot = (_plat_recherche(texte).split() or [""])[0]
+                js_trouve = "(m) => [...document.querySelectorAll('a')].some(a => /^(https?:\\/\\/[^/]+)?\\/(manga|manhua|manhwa)\\//.test(a.getAttribute('href') || '') && (a.getAttribute('href') || '').toLowerCase().includes(m))"
+                for essai in range(24):              # la liste de la page se met à jour, ou une réponse JSON arrive
                     await asyncio.sleep(0.5)
                     if reponses:
                         await asyncio.sleep(1)       # laisser arriver la réponse au texte complet
                         break
+                    if mot and await page.evaluate(js_trouve, mot):
+                        await asyncio.sleep(1)
+                        break
+                    if essai == 8:                   # rien après 4 s : la page attend peut-être la touche Entrée
+                        await page.keyboard.press("Enter")
                 resultats = reponses[-1] if reponses else []
                 if not resultats:                    # pas de réponse JSON lisible : les œuvres affichées sous la case
                     brut = await page.evaluate("""() => [...document.querySelectorAll('a')].map(a => {
                         const lignes = (a.innerText || '').split('\\n').map(x => x.trim()).filter(Boolean);
                         return [a.getAttribute('href') || '', a.title || (a.querySelector('img') || {}).alt || '', lignes];
                     }).filter(x => /^(https?:\\/\\/[^/]+)?\\/(manga|manhua|manhwa)\\/[^/]+\\/?$/.test(x[0]))""")
+                    logger.info("Recherche Japscan, adresse %s, réponses du site : %s", page.url, vues[-6:])
                     logger.info("Recherche Japscan, liens lus dans la page : %d, début : %s", len(brut), [b[:2] + [b[2][:3]] for b in brut[:4]])
                     resultats = _resultats_de_la_page(brut, texte)
             finally:
