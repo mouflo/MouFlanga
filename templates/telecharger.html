@@ -26,7 +26,7 @@
         <!-- Onglets -->
         <div class="tabs">
             <button class="tab active" data-tab="browse">
-                📚 Japscan
+                📚 Télécharger
             </button>
             <button class="tab" data-tab="torrents">
                 🧲 Torrents
@@ -41,7 +41,8 @@
             <!-- Étape 1: Liste des mangas -->
             <div id="step-list" class="step">
                 <h2>Étape 1: Choisir un manga</h2>
-                <p class="sub">Séries mises à jour récemment sur Japscan. Appuie sur un nom pour voir ses chapitres.</p>
+                <p class="sub" id="sous-titre-liste">Séries mises à jour récemment sur Japscan. Appuie sur un nom pour voir ses chapitres.</p>
+                <p class="sub"><select id="source-choix" aria-label="Site" hidden style="width:100%;font-size:16px;padding:10px"></select></p>
                 <div class="recherche-manga"><input type="search" id="manga-search" placeholder="🔍 Chercher un manga…" autocomplete="off" spellcheck="false" enterkeyhint="search">
                     <button class="mou-btn secondary" id="btn-recherche-japscan" type="button" hidden></button></div>
                 <div class="lettres" id="manga-lettres"></div>

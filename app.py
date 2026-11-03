@@ -58,6 +58,7 @@ import importer
 import deux_tomes
 import diag
 import japscan_scraper
+import sources_fr
 
 _VERROU_SOMMAIRES = __import__("edition").VERROU      # le même verrou que la validation à la main, l'assemblage… (voir edition.VERROU)
 
@@ -6997,22 +6998,44 @@ def _marquer_deja(chapters, titre):
 _RECHERCHES = {}                # texte -> (heure, résultats) : gardés 1 heure
 
 
+def _source_autre(identifiant):
+    """None = Japscan (son propre lecteur) ; la source de sources_fr demandée ; False si elle n'existe pas."""
+    if not identifiant or identifiant == "japscan":
+        return None
+    try:
+        return sources_fr.source(str(identifiant))
+    except KeyError:
+        return False
+
+
+@app.route("/api/sources")
+def api_sources():
+    """Les sites où chercher des mangas (Japscan en premier)."""
+    return jsonify({"ok": True, "sources": sources_fr.liste()})
+
+
 @app.route("/api/japscan/recherche", methods=["POST"])
 def japscan_recherche():
     """Recherche dans tout le catalogue de Japscan (ouvre le navigateur : 10 à 30 secondes)."""
-    texte = str((request.get_json(silent=True) or {}).get("q", "")).strip()[:80]
+    corps = request.get_json(silent=True) or {}
+    texte = str(corps.get("q", "")).strip()[:80]
     if len(texte) < 2:
         return jsonify({"ok": False, "error": "Tape au moins 2 lettres."}), 400
-    cle = texte.lower()
+    autre = _source_autre(corps.get("source"))
+    if autre is False:
+        return jsonify({"ok": False, "error": "Source inconnue."}), 400
+    cle = (autre.id + ":" if autre else "") + texte.lower()
     ancien = _RECHERCHES.get(cle)
     if ancien and time.time() - ancien[0] < 3600:
         return jsonify({"ok": True, "mangas": ancien[1]})
     try:
-        resultats = japscan_scraper.JapscanScraper(MANGA_DIR).rechercher_sync(texte)
+        resultats = autre.rechercher(texte) if autre else japscan_scraper.JapscanScraper(MANGA_DIR).rechercher_sync(texte)
     except Exception as e:
-        logger.error(f"Recherche Japscan impossible : {e}")
+        logger.error(f"Recherche {autre.nom if autre else 'Japscan'} impossible : {e}")
         return jsonify({"ok": False, "error": f"Recherche impossible : {e}"}), 500
     _RECHERCHES[cle] = (time.time(), resultats)
+    if autre:
+        return jsonify({"ok": True, "mangas": resultats})
     if resultats:                                          # elles restent ensuite dans la liste
         try:
             gardees = json.loads(TROUVES.read_text(encoding="utf-8")).get("mangas", []) if TROUVES.exists() else []
@@ -7033,12 +7056,14 @@ def japscan_chapters(manga_id: str):
         if not manga_url:
             return jsonify({"ok": False, "error": "URL manquante"}), 400
 
+        autre = _source_autre(body.get("source"))
+        if autre is False:
+            return jsonify({"ok": False, "error": "Source inconnue."}), 400
         with _CHAPITRES_VERROU:
             ancien = _CHAPITRES_CACHE.get(manga_url)
             if ancien and time.time() - ancien[0] < CHAPITRES_DUREE and not body.get("rafraichir"):
                 return jsonify({"ok": True, "chapters": _marquer_deja(ancien[1], body.get("title"))})
-            scraper = japscan_scraper.JapscanScraper(MANGA_DIR)
-            chapters = scraper.get_chapters_sync(manga_url)
+            chapters = autre.chapitres(manga_url) if autre else japscan_scraper.JapscanScraper(MANGA_DIR).get_chapters_sync(manga_url)
             if chapters:
                 _CHAPITRES_CACHE[manga_url] = (time.time(), chapters)
         return jsonify({"ok": True, "chapters": _marquer_deja(chapters, body.get("title"))})
@@ -7063,10 +7088,13 @@ def japscan_download():
         job_id = str(uuid.uuid4())[:12]
         output_dir = _dossier_serie(manga_title)
 
+        autre = _source_autre(body.get("source"))
+        if autre is False:
+            return jsonify({"ok": False, "error": "Source inconnue."}), 400
         # Lance le téléchargement en arrière-plan
         thread = threading.Thread(
-            target=japscan_scraper.download_manga_background,
-            args=(job_id, manga_title, chapters, output_dir),
+            target=japscan_scraper.download_depuis_source if autre else japscan_scraper.download_manga_background,
+            args=(job_id, manga_title, chapters, output_dir) + ((autre,) if autre else ()),
             kwargs={"preparer": lambda: _preparer_tomes(output_dir.name)},
             daemon=True
         )

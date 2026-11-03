@@ -1711,6 +1711,36 @@ class JapscanScraper:
     def get_chapters_sync(self, manga_url: str) -> list[dict]:
         return asyncio.run(self.get_chapters(manga_url))
 
+    async def _ranger_pages(self, job: dict, chapter: dict, idx: int, titre: str, pages: list[bytes]):
+        """Écrit les pages d'un chapitre (ou d'un volume) au bon endroit de la bibliothèque : fichier de son tome, tome complet, ou un
+        .cbz par chapitre. Commun à Japscan et aux autres sources : les protections des tomes déjà là sont donc les mêmes partout."""
+        n = _numero(chapter)
+        if chapter.get("volume") is not None:
+            # Volume complet : un fichier de tome ordinaire (jamais par-dessus un tome déjà là)
+            fichier = tomes_cbz.fichier_tome(self.output_dir, self.output_dir.name, int(chapter["volume"]))
+            if fichier.exists():
+                logger.info(f"{fichier.name} existe déjà : volume non réécrit")
+                job["failed"].append(titre + " (tome déjà présent)")
+            elif self.create_cbz(pages, fichier):
+                job["downloaded"].append(str(fichier))
+            else:
+                job["failed"].append(titre)
+        elif self.tomes_info is not None and n is not None:
+            # Rangé dans le fichier de son tome (ou « Hors tome » s'il n'est pas encore sorti)
+            propre = tomes_cbz.nettoyer_titre(titre) or self.tomes_info.get("titres", {}).get(n, "")
+            t = tomes.tome_de(n, self.tomes_info)
+            fichier = await asyncio.to_thread(tomes_cbz.ajouter, self.output_dir, self.output_dir.name,
+                                              t, n, propre, pages)
+            logger.info(f"✓ Chapitre {n:g} rangé dans {tomes_cbz.dossier_tome(t)} ({len(pages)} pages)")
+            job["downloaded"].append(str(fichier))
+        else:
+            num = int(chapter.get("num") or idx + 1)
+            fichier = self.output_dir / f"{num:03d} - {nom_sur(titre)}.cbz"
+            if self.create_cbz(pages, fichier):
+                job["downloaded"].append(str(fichier))
+            else:
+                job["failed"].append(titre)
+
     async def _telecharger_chapitres(self, job: dict, chapters: list[dict], progress_callback=None):
         """Télécharge les chapitres un par un avec UN SEUL navigateur (plus rapide, moins de vérifications)."""
         job_id = job["id"]
@@ -1736,32 +1766,7 @@ class JapscanScraper:
                             echecs["de_suite"] += 1
                         else:
                             echecs["de_suite"] = 0
-                            n = _numero(chapter)
-                            if chapter.get("volume") is not None:
-                                # Volume complet : un fichier de tome ordinaire (jamais par-dessus un tome déjà là)
-                                fichier = tomes_cbz.fichier_tome(self.output_dir, self.output_dir.name, int(chapter["volume"]))
-                                if fichier.exists():
-                                    logger.info(f"{fichier.name} existe déjà : volume non réécrit")
-                                    job["failed"].append(titre + " (tome déjà présent)")
-                                elif self.create_cbz(pages, fichier):
-                                    job["downloaded"].append(str(fichier))
-                                else:
-                                    job["failed"].append(titre)
-                            elif self.tomes_info is not None and n is not None:
-                                # Rangé dans le fichier de son tome (ou « Hors tome » s'il n'est pas encore sorti)
-                                propre = tomes_cbz.nettoyer_titre(titre) or self.tomes_info.get("titres", {}).get(n, "")
-                                t = tomes.tome_de(n, self.tomes_info)
-                                fichier = await asyncio.to_thread(tomes_cbz.ajouter, self.output_dir, self.output_dir.name,
-                                                                  t, n, propre, pages)
-                                logger.info(f"✓ Chapitre {n:g} rangé dans {tomes_cbz.dossier_tome(t)} ({len(pages)} pages)")
-                                job["downloaded"].append(str(fichier))
-                            else:
-                                num = int(chapter.get("num") or idx + 1)
-                                fichier = self.output_dir / f"{num:03d} - {nom_sur(titre)}.cbz"
-                                if self.create_cbz(pages, fichier):
-                                    job["downloaded"].append(str(fichier))
-                                else:
-                                    job["failed"].append(titre)
+                            await self._ranger_pages(job, chapter, idx, titre, pages)
                     except CaptchaReporte:
                         return False
                     except Exception as e:
@@ -1874,6 +1879,59 @@ class JapscanScraper:
             logger.error(f"Erreur téléchargement : {e}")
 
         job["ended"] = datetime.now().isoformat()
+
+
+class SourceScraper(JapscanScraper):
+    """Téléchargement depuis une autre source (sources_fr) : pas de navigateur, un chapitre après l'autre, rangés comme ceux de Japscan
+    (`_ranger_pages`). Même fiche de suivi (`download_jobs`) : l'écran « En cours » et l'annulation marchent à l'identique."""
+
+    def __init__(self, output_dir: Path, source):
+        super().__init__(output_dir)
+        self.source = source
+
+    async def _telecharger_chapitres(self, job: dict, chapters: list[dict], progress_callback=None):
+        de_suite = 0
+        for idx, chapter in enumerate(chapters):
+            if job.get("annule"):
+                break
+            titre = chapter.get("title") or f"Chapitre {idx + 1}"
+            job["en_cours"] = titre
+            try:
+                pages = await asyncio.to_thread(self.source.pages, chapter["url"])
+                if not pages:
+                    logger.warning(f"Aucune page pour {titre} ({self.source.nom})")
+                    job["failed"].append(titre)
+                    de_suite += 1
+                else:
+                    de_suite = 0
+                    await self._ranger_pages(job, chapter, idx, titre, pages)
+            except Exception as e:
+                logger.error(f"Erreur chapitre {titre} : {e}")
+                job["failed"].append(titre)
+                job["error"] = str(e)
+                de_suite += 1
+            job["progress"] = job.get("progress", 0) + 1
+            if progress_callback:
+                progress_callback(job)
+            if de_suite >= 3:
+                job["status"] = "error"
+                job["error"] = f"3 chapitres de suite sans aucune page : arrêt du téléchargement ({self.source.nom} refuse ou a changé)."
+                logger.error(job["error"])
+                return
+            if idx < len(chapters) - 1 and not job.get("annule"):
+                import random
+                job["en_cours"] = "(pause avant le chapitre suivant)"
+                await asyncio.sleep(random.uniform(2.0, 5.0))
+        if job.get("annule") and job["status"] == "running":
+            job["status"] = "annule"
+        elif job["status"] == "running":
+            job["status"] = "completed"
+            logger.info(f"Téléchargement terminé : {job['id']}")
+
+
+def download_depuis_source(job_id: str, manga_title: str, chapters: list[dict], output_dir: Path, source, preparer=None):
+    """Comme `download_manga_background`, pour une source autre que Japscan (dans un thread)."""
+    SourceScraper(output_dir, source).download_manga_sync(job_id, manga_title, chapters, preparer=preparer)
 
 
 def download_manga_background(job_id: str, manga_title: str, chapters: list[dict], output_dir: Path, preparer=None):
