@@ -14,6 +14,7 @@ import shutil
 import socket
 import threading
 import time
+import unicodedata
 import zipfile
 from pathlib import Path
 from urllib.parse import urljoin
@@ -771,6 +772,33 @@ class _Session:
 download_jobs = {}
 
 
+_ETIQUETTES_SITE = {"en cours", "terminé", "termine", "manga", "manhua", "manhwa", "nouveau", "vf", "pause", "abandonné"}
+
+
+def _resultats_de_la_page(brut, texte):
+    """Œuvres lues dans les liens de la page de recherche : [adresse, titre/alt, lignes de texte]. Le titre est le titre du lien, sinon
+    la plus longue ligne qui n'est pas une étiquette du site (« En cours », « Terminé »…), sinon l'adresse mise en clair ; seules
+    les œuvres dont l'adresse contient tous les mots cherchés sont gardées (sans accents), une seule fois chacune."""
+    def plat(t):
+        t = unicodedata.normalize("NFD", str(t).lower())
+        return re.sub(r"[^a-z0-9]+", " ", "".join(c for c in t if unicodedata.category(c) != "Mn")).strip()
+    mots = plat(texte).split()
+    out, vus = [], set()
+    for href, titre, lignes in brut:
+        a = _ADRESSE_SERIE.search(href)
+        if not a or a.group(2) in vus:
+            continue
+        slug = plat(a.group(2))
+        if not all(m in slug.split() or m in slug for m in mots):
+            continue
+        propres = [x for x in lignes if plat(x) not in {plat(e) for e in _ETIQUETTES_SITE}]
+        nom = (titre or "").strip() or (max(propres, key=len) if propres else "") or a.group(2).replace("-", " ").title()
+        vus.add(a.group(2))
+        out.append({"name": nom, "url": href})
+    return out
+
+
+
 class JapscanScraper:
     """Scraper Japscan v2.0 avec interception réseau pour contourner Cloudflare."""
 
@@ -1462,10 +1490,12 @@ class JapscanScraper:
                         break
                 resultats = reponses[-1] if reponses else []
                 if not resultats:                    # pas de réponse JSON lisible : les œuvres affichées sous la case
-                    resultats = [{"name": nom.split("\n")[0], "url": href} for href, nom in await page.evaluate("""() =>
-                        [...document.querySelectorAll('a')].map(a => [a.getAttribute('href') || '',
-                        (a.innerText || a.title || (a.querySelector('img') || {}).alt || '').trim()])
-                        .filter(x => /^(https?:\\/\\/[^/]+)?\\/(manga|manhua|manhwa)\\/[^/]+\\/?$/.test(x[0]) && x[1])""")]
+                    brut = await page.evaluate("""() => [...document.querySelectorAll('a')].map(a => {
+                        const lignes = (a.innerText || '').split('\\n').map(x => x.trim()).filter(Boolean);
+                        return [a.getAttribute('href') || '', a.title || (a.querySelector('img') || {}).alt || '', lignes];
+                    }).filter(x => /^(https?:\\/\\/[^/]+)?\\/(manga|manhua|manhwa)\\/[^/]+\\/?$/.test(x[0]))""")
+                    logger.info("Recherche Japscan, liens lus dans la page : %d, début : %s", len(brut), [b[:2] + [b[2][:3]] for b in brut[:4]])
+                    resultats = _resultats_de_la_page(brut, texte)
             finally:
                 await browser.close()
         out = []
