@@ -4263,7 +4263,7 @@ def _tomes_de(nom, entrees=None):
     """Numéros des tomes présents d'une série."""
     if entrees is None:
         entrees = _entrees(_scan().get(nom) or [])
-    return {e["tome"] for e in entrees if e.get("tome") is not None}
+    return {n for n in map(_numero_du_tome_d_une_entree, entrees) if n is not None}   # aussi les tomes découpés en chapitres
 
 
 def _remplacer_tomes(nom, numeros):
