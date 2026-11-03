@@ -70,3 +70,33 @@ body.rtl .foot input[type=range] { direction:rtl; }
 .verif-boutons .principal { background: var(--accent); color: #0b0c0e; font-weight: 600; flex: 1 1 auto; }
 .verif-boutons .ok { background: #2f6b3a; color: #fff; flex: 1 1 auto; }
 body.hide-ui .verif { position: absolute; left: 0; right: 0; bottom: 0; }
+
+/* ⚙️ Menu des réglages de lecture */
+.rbtn.principal { background: var(--accent); color: #0b0c0e; font-weight: 600; }
+.menu-boite { max-width: 560px; width: 100%; }
+.menu-tete { display: flex; align-items: center; justify-content: space-between; gap: 10px; position: sticky; top: -16px; background: #1b1b1b; padding: 8px 0; z-index: 1; }
+.menu-tete h2 { margin: 0; }
+.opt { padding: 10px 0; border-top: 1px solid #2a2a2a; }
+.opt-nom { font-weight: 600; font-size: 1rem; }
+.opt-nom b { color: var(--accent); font-weight: 600; margin-left: 6px; }
+.opt-aide { color: #aaa; font-size: .85rem; margin: 3px 0 8px; line-height: 1.4; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button { flex: 1 1 auto; font: inherit; font-size: .95rem; padding: 12px 10px; border: 2px solid #333; border-radius: 8px; background: #262626; color: #ddd; cursor: pointer; }
+.seg button.on { border-color: var(--accent); background: #1f3320; color: #fff; font-weight: 600; }
+.opt input[type=range] { width: 100%; height: 36px; accent-color: var(--accent); }
+.ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.ligne .rbtn { padding: 12px 14px; font-size: .95rem; }
+.ligne input[type=number] { width: 90px; font-size: 16px; padding: 10px; background: #262626; color: #eee; border: 2px solid #333; border-radius: 8px; }
+.ligne.bas { margin-top: 14px; border-top: 1px solid #2a2a2a; padding-top: 12px; }
+.menu-boite .aide-note { margin: 2px 0 6px; }
+
+/* Filtres de confort : teinte chaude (lumière bleue) et assombrissement posés par-dessus l'image, sous les barres */
+.filtre { position: fixed; inset: 0; pointer-events: none; z-index: 3; display: none; }
+#filtreChaud { mix-blend-mode: multiply; }
+#filtreSombre { background: #000; }
+/* Luminosité, contraste, noir et blanc, inversion : appliqués à l'image seulement quand l'un d'eux est réglé */
+.stage.filtre-image .single img, .stage.filtre-image .scroll img { filter: var(--mf-filtre); }
+.zone { width: var(--mf-zone, 32%); }
+#menu.voir { background: transparent; }
+#menu.voir .menu-boite { opacity: .12; transition: opacity .1s; }
+#menu.voir .menu-boite .opt:has(input[type=range]:active) { opacity: 1; }

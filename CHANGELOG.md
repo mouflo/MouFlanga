@@ -1,5 +1,11 @@
 # Historique des versions
 
+## ⚙️ Lecteur : un vrai menu de réglages (3 novembre 2026)
+- **Un bouton « ⚙️ Menu »** remplace les petits boutons du haut (page, sens, ajustement, doubles pages). Il ouvre une fenêtre où chaque réglage a un titre, une phrase qui explique ce qu'il fait, et de gros boutons à toucher.
+- **Filtre lumière bleue** (teinte chaude réglable de 0 à 100 %), **luminosité** et **contraste** de l'image, **noir et blanc**, **couleurs inversées** (mode nuit). Quand on glisse un curseur, le menu devient presque transparent pour voir l'effet sur la page.
+- **Plus grande image en plein écran** : en plein écran, les barres du haut et du bas se cachent d'elles-mêmes (réglable : « barres cachées » ou « gardées ») ; un appui au centre les fait revenir. Option **« Rogner les marges blanches »** : les grands bords vides sont retirés à l'affichage (le fichier n'est pas modifié ; demande un navigateur récent).
+- Aussi : largeur des zones d'appui sur les côtés, « aller à la page… », écran toujours allumé (désactivable), « remettre tous les réglages ». Touche M sur ordinateur. Tous les réglages sont retenus sur l'appareil.
+
 ## 🌐 Autres sites que Japscan : Sushi-Scan en premier (3 novembre 2026)
 - **Un choix de site** en haut de « Télécharger » (liste déroulante, retenue d'une visite à l'autre) : Japscan, Sushi-Scan ou LelManga. Les autres sites suivront sur le même modèle (`sources_fr.py`) : un site = quelques lignes quand il utilise un moteur déjà connu (MangaThemesia aujourd'hui ; Madara, PizzaReader… ensuite).
 - **Sans navigateur ni captcha** : ces sites sont lus comme le ferait un lecteur (en-tête honnête `MouFlanga/1.0`, `robots.txt` respecté, une requête par seconde et par site). Un site qui répond « refusé » ou « un instant » est mis en pause une heure et signalé : rien n'est contourné.

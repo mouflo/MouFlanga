@@ -20,12 +20,8 @@
     <div class="rtitle"><span id="rSeries"></span><small id="rChapter"></small></div>
     <span id="rCount" class="rcount"></span>
     <button class="rbtn" id="optChap" title="Chapitres du tome" hidden>☰</button>
-    <button class="rbtn" id="optMode" title="Une page à la fois ou défilement">📄 Page</button>
-    <button class="rbtn" id="optDir" title="Sens de lecture">⟵ Manga</button>
-    <button class="rbtn" id="optFit" title="Ajustement de l'image">↔ Largeur</button>
-    <button class="rbtn" id="optDouble" title="Doubles pages : découpées en deux, glissées au doigt, ou entières">⇆</button>
-    <button class="rbtn" id="optFull" title="Plein écran">⛶</button>
-    <button class="rbtn" id="optAide" title="Aide : boutons et gestes">❔</button>
+    <button class="rbtn" id="optFull" title="Plein écran (les barres se cachent toutes seules)">⛶</button>
+    <button class="rbtn principal" id="optMenu" title="Tous les réglages de lecture">⚙️ Menu</button>
 </div>
 <div id="stage" class="stage" tabindex="0">
     <div id="msg" class="rmsg"></div>
@@ -34,11 +30,73 @@
     <div id="zoneL" class="zone left"></div><div id="zoneR" class="zone right"></div>
     <div id="annonce" class="annonce"></div>
 </div>
+<div id="menu" class="aide" hidden>
+    <div class="aide-boite menu-boite">
+        <div class="menu-tete"><h2>⚙️ Réglages de lecture</h2><button class="rbtn" id="menuFermer" aria-label="Fermer">✖ Fermer</button></div>
+        <p class="aide-note">Chaque réglage est retenu sur cet appareil. Appuie sur un choix pour le changer tout de suite.</p>
+
+        <h3>📖 Façon de lire</h3>
+        <div class="opt"><div class="opt-nom">Mode de lecture</div>
+            <div class="opt-aide">Une page à la fois (on tourne la page) ou toutes les pages à la suite (on fait défiler vers le bas, comme une page web).</div>
+            <div class="seg" data-opt="mode"><button data-val="page">📄 Une page</button><button data-val="scroll">📜 Défilement</button></div></div>
+        <div class="opt"><div class="opt-nom">Sens de lecture</div>
+            <div class="opt-aide">Manga japonais : on lit de droite à gauche. Occidental : de gauche à droite. Cela change le côté où l'on appuie pour avancer.</div>
+            <div class="seg" data-opt="dir"><button data-val="rtl">⟵ Manga</button><button data-val="ltr">Occident ⟶</button></div></div>
+        <div class="opt"><div class="opt-nom">Zones d'appui sur les côtés</div>
+            <div class="opt-aide">Largeur des bandes à gauche et à droite où un appui tourne la page. Plus large = plus facile à toucher, mais moins de place au centre pour cacher les barres.</div>
+            <div class="seg" data-opt="zones"><button data-val="20">Étroites</button><button data-val="32">Normales</button><button data-val="45">Larges</button></div></div>
+        <div class="opt"><div class="opt-nom">Aller à la page</div>
+            <div class="opt-aide">Saute directement à un numéro de page de ce chapitre.</div>
+            <div class="ligne"><input type="number" id="allerPage" min="1" inputmode="numeric" aria-label="Numéro de page"><span id="allerSur"></span><button class="rbtn" id="allerOk">Aller</button></div></div>
+
+        <h3>🔍 Taille de l'image</h3>
+        <div class="opt"><div class="opt-nom">Ajustement</div>
+            <div class="opt-aide">Page entière : toute la page tient dans l'écran. Largeur : la page remplit la largeur de l'écran (on la fait défiler vers le bas pour voir la suite).</div>
+            <div class="seg" data-opt="fit"><button data-val="height">↕ Page entière</button><button data-val="width">↔ Largeur</button></div></div>
+        <div class="opt" id="optRognerBloc"><div class="opt-nom">Rogner les marges blanches</div>
+            <div class="opt-aide">Retire les grands bords vides autour du dessin pour l'agrandir (une page à la fois). Le fichier n'est pas modifié.</div>
+            <div class="seg" data-opt="rogner"><button data-val="0">Non</button><button data-val="1">Oui</button></div></div>
+        <div class="opt"><div class="opt-nom">Doubles pages</div>
+            <div class="opt-aide">Quand une image contient deux pages côte à côte. Glissées : elle prend toute la hauteur et se fait glisser au doigt. Coupées : montrées moitié par moitié. Entières : tout tient dans l'écran.</div>
+            <div class="seg" data-opt="double"><button data-val="glisse">⇆ Glissées</button><button data-val="decoupe">◫ Coupées</button><button data-val="entiere">▭ Entières</button></div></div>
+        <div class="opt"><div class="opt-nom">Plein écran</div>
+            <div class="opt-aide">Utilise tout l'écran. Avec « barres cachées », le haut et le bas disparaissent aussi, pour que l'image soit la plus grande possible (un appui au centre les fait revenir).</div>
+            <div class="seg" data-opt="barres"><button data-val="1">Barres cachées</button><button data-val="0">Barres gardées</button></div>
+            <div class="ligne"><button class="rbtn" id="menuPleinEcran">⛶ Plein écran</button><button class="rbtn" id="menuBarres">Cacher / montrer les barres</button></div></div>
+
+        <h3>🎨 Couleurs et confort</h3>
+        <div class="opt"><div class="opt-nom">Filtre lumière bleue <b id="valChaud"></b></div>
+            <div class="opt-aide">Teinte l'écran en chaud (jaune-orangé), plus doux pour les yeux le soir. 0 = aucune teinte.</div>
+            <input type="range" data-opt="chaud" min="0" max="100" step="5"></div>
+        <div class="opt"><div class="opt-nom">Luminosité <b id="valLum"></b></div>
+            <div class="opt-aide">Éclaircit ou assombrit l'image elle-même (100 % = d'origine). Ne change pas la luminosité de l'écran de l'appareil.</div>
+            <input type="range" data-opt="lum" min="40" max="160" step="5"></div>
+        <div class="opt"><div class="opt-nom">Contraste <b id="valCon"></b></div>
+            <div class="opt-aide">Renforce ou adoucit l'écart entre le noir et le blanc (100 % = d'origine).</div>
+            <input type="range" data-opt="con" min="60" max="160" step="5"></div>
+        <div class="opt"><div class="opt-nom">Noir et blanc</div>
+            <div class="opt-aide">Affiche les pages en niveaux de gris, même si elles ont de la couleur.</div>
+            <div class="seg" data-opt="gris"><button data-val="0">Non</button><button data-val="1">Oui</button></div></div>
+        <div class="opt"><div class="opt-nom">Couleurs inversées (mode nuit)</div>
+            <div class="opt-aide">Fond noir et traits blancs : repose les yeux dans le noir complet. À éviter pour les pages en couleur.</div>
+            <div class="seg" data-opt="inv"><button data-val="0">Non</button><button data-val="1">Oui</button></div></div>
+        <div class="opt"><div class="opt-nom">Écran toujours allumé</div>
+            <div class="opt-aide">Empêche la tablette de s'éteindre pendant la lecture.</div>
+            <div class="seg" data-opt="veille"><button data-val="1">Oui</button><button data-val="0">Non</button></div></div>
+
+        <div class="ligne bas">
+            <button class="rbtn" id="menuAide">❔ Aide : boutons et gestes</button>
+            <button class="rbtn" id="menuRaz">↺ Remettre tous les réglages</button>
+        </div>
+    </div>
+</div>
+<div id="filtreChaud" class="filtre"></div><div id="filtreSombre" class="filtre"></div>
 <div id="aide" class="aide" hidden>
     <div class="aide-boite">
         <h2>Comment lire</h2>
         <h3>Les boutons du haut</h3>
         <ul>
+            <li><b>⚙️ Menu</b> : tous les réglages de lecture (sens, mode, taille de l'image, filtre lumière bleue, luminosité…), chacun avec son explication.</li>
             <li><b>📄 / 📜</b> : une page à la fois, ou toutes les pages à la suite en défilant.</li>
             <li><b>⟵ / ⟶</b> : sens de lecture. ⟵ = manga japonais (de droite à gauche), ⟶ = sens occidental.</li>
             <li><b>↕ / ↔</b> : la page entière dans l'écran, ou la largeur de l'écran (on fait défiler la page vers le bas).</li>

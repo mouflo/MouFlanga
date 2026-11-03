@@ -10,6 +10,12 @@
   function pref(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
   function setPref(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   var dir = pref('mfDir', 'rtl'), mode = pref('mfMode', 'page'), fit = pref('mfFit', 'height'), double = pref('mfDouble', 'glisse');
+  // Confort : teinte chaude (lumière bleue), luminosité et contraste de l'image (en %), gris, inversion, rognage, barres en plein écran, zones d'appui, écran allumé
+  var reglages = {chaud: pref('mfChaud', '0'), lum: pref('mfLum', '100'), con: pref('mfCon', '100'), gris: pref('mfGris', '0'), inv: pref('mfInv', '0'),
+                  rogner: pref('mfRogner', '0'), barres: pref('mfBarres', '1'), zones: pref('mfZones', '32'), veille: pref('mfVeille', '1')};
+  var CLES = {chaud: 'mfChaud', lum: 'mfLum', con: 'mfCon', gris: 'mfGris', inv: 'mfInv', rogner: 'mfRogner', barres: 'mfBarres', zones: 'mfZones', veille: 'mfVeille'};
+  var DEFAUT = {chaud: '0', lum: '100', con: '100', gris: '0', inv: '0', rogner: '0', barres: '1', zones: '32', veille: '1'};
+  var rognages = {};                                     // adresse de l'image -> zone utile (fractions) ou null
   var demi = 0, versFin = false, large = false;          // doubles pages : moitié affichée (0 = la première à lire)
   var placer = false, depuisFin = false;                 // « glissées » : replacer l'image au début (ou à la fin) de la double page
   var zoom = {s: 1, x: 0, y: 0};
@@ -33,16 +39,48 @@
 
   function applyOptions() {
     document.body.classList.toggle('rtl', dir === 'rtl');
-    var small = window.innerWidth < 700;
-    $('optDir').textContent = dir === 'rtl' ? (small ? '⟵' : '⟵ Manga') : (small ? '⟶' : 'Occident ⟶');
-    $('optMode').textContent = mode === 'page' ? (small ? '📄' : '📄 Page') : (small ? '📜' : '📜 Défilement');
-    $('optFit').textContent = fit === 'width' ? (small ? '↔' : '↔ Largeur') : (small ? '↕' : '↕ Page entière');
-    $('optFit').style.display = mode === 'page' ? '' : 'none';
-    $('optDouble').style.display = mode === 'page' ? '' : 'none';
-    $('optDouble').textContent = double === 'decoupe' ? (small ? '◫' : '◫ Coupées') : double === 'glisse' ? (small ? '⇆' : '⇆ Glissées') : (small ? '▭' : '▭ Entières');
     $('stage').classList.toggle('mode-scroll', mode === 'scroll');
     $('stage').classList.toggle('fit-height', fit === 'height');
     $('slider').style.direction = dir === 'rtl' && mode === 'page' ? 'rtl' : 'ltr';
+    majMenu(); majConfort();
+  }
+  // Les choix du menu : le bouton du réglage en cours est coloré ; certains réglages n'ont de sens que page par page
+  function valeurChoix(opt) { return opt === 'mode' ? mode : opt === 'dir' ? dir : opt === 'fit' ? fit : opt === 'double' ? double : reglages[opt]; }
+  function majMenu() {
+    document.querySelectorAll('#menu .seg').forEach(function (g) {
+      var v = String(valeurChoix(g.dataset.opt));
+      g.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.dataset.val === v); });
+    });
+    document.querySelectorAll('#menu input[type=range]').forEach(function (i) { i.value = reglages[i.dataset.opt]; });
+    $('valChaud').textContent = reglages.chaud + ' %'; $('valLum').textContent = reglages.lum + ' %'; $('valCon').textContent = reglages.con + ' %';
+    $('optRognerBloc').style.display = rognageOk() ? '' : 'none';
+  }
+  // Teinte chaude et assombrissement : deux calques posés sur l'écran ; luminosité, contraste, gris et inversion : filtre sur l'image
+  function majConfort() {
+    var c = +reglages.chaud, fc = $('filtreChaud');
+    fc.style.display = c > 0 ? 'block' : 'none';
+    fc.style.background = 'rgb(255,' + Math.round(255 - 1.05 * c) + ',' + Math.round(255 - 1.95 * c) + ')';
+    var lum = +reglages.lum, sombre = $('filtreSombre');
+    sombre.style.display = 'none';
+    var f = [];
+    if (lum !== 100) f.push('brightness(' + lum / 100 + ')');
+    if (+reglages.con !== 100) f.push('contrast(' + reglages.con / 100 + ')');
+    if (reglages.gris === '1') f.push('grayscale(1)');
+    if (reglages.inv === '1') f.push('invert(1)');
+    $('stage').style.setProperty('--mf-filtre', f.join(' ') || 'none');
+    $('stage').classList.toggle('filtre-image', f.length > 0);
+    document.body.style.setProperty('--mf-zone', reglages.zones + '%');
+  }
+  function reglerOption(opt, val) {
+    val = String(val);
+    if (opt === 'mode') { mode = val; setPref('mfMode', mode); applyOptions(); if (mode === 'scroll') { buildScroll(); go(page); } else { $('scroll').innerHTML = ''; go(page); } return; }
+    if (opt === 'dir') { dir = val; setPref('mfDir', dir); applyOptions(); majDouble(); return; }
+    if (opt === 'fit') { fit = val; setPref('mfFit', fit); applyOptions(); majDouble(); return; }
+    if (opt === 'double') { double = val; setPref('mfDouble', double); demi = 0; placer = true; depuisFin = false; applyOptions(); majDouble(); return; }
+    reglages[opt] = val; setPref(CLES[opt], val);
+    if (opt === 'veille') { if (val === '1') garderEcran(); else libererEcran(); }
+    if (opt === 'rogner') majDouble();
+    applyOptions();
   }
 
   function places() { return interne.filter(function (x) { return x.image != null; }).sort(function (a, b) { return a.image - b.image; }); }
@@ -134,6 +172,7 @@
     var im = $('img');
     large = im.naturalWidth > im.naturalHeight * 1.2;
     var c = coupee(), g = glisse();
+    im.style.objectViewBox = '';
     im.classList.toggle('moitie', c);
     $('stage').classList.toggle('glisse', g);
     if (g) {
@@ -159,7 +198,56 @@
       if (w2 / h2 > r2) w2 = h2 * r2;
       im.style.width = w2 + 'px'; im.style.height = (w2 / r2) + 'px'; im.style.objectPosition = '';
       st2.scrollTop = 0;
-    } else { placer = false; im.style.width = ''; im.style.height = ''; im.style.objectPosition = ''; }
+    } else { placer = false; im.style.width = ''; im.style.height = ''; im.style.objectPosition = ''; rogner(im); }
+  }
+
+  // ---------- Rognage des marges vides (une page à la fois) : l'image est affichée sans ses bords blancs (ou noirs), le fichier n'est pas touché ----------
+  function rognageOk() { try { return !!(window.CSS && CSS.supports && CSS.supports('object-view-box', 'inset(1px)')); } catch (e) { return false; } }
+  // Zone utile de l'image en fractions {t, r, b, l} à retirer, ou null s'il n'y a rien de net à rogner (couverture, page presque vide…)
+  function zoneUtile(im) {
+    var cle = im.currentSrc || im.src;
+    if (cle in rognages) return rognages[cle];
+    var res = null;
+    try {
+      var W = 160, H = Math.max(1, Math.round(W * im.naturalHeight / im.naturalWidth));
+      var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      var cx = cv.getContext('2d', {willReadFrequently: true}); cx.drawImage(im, 0, 0, W, H);
+      var d = cx.getImageData(0, 0, W, H).data, lum = new Float32Array(W * H);
+      for (var i = 0; i < W * H; i++) lum[i] = 0.3 * d[i * 4] + 0.59 * d[i * 4 + 1] + 0.11 * d[i * 4 + 2];
+      var fond = 0, n = 0;                                     // couleur du fond : la moyenne des quatre coins
+      [[0, 0], [W - 6, 0], [0, H - 6], [W - 6, H - 6]].forEach(function (c) {
+        for (var y = c[1]; y < c[1] + 6 && y < H; y++) for (var x = c[0]; x < c[0] + 6 && x < W; x++) { fond += lum[y * W + x]; n++; }
+      });
+      fond /= n;
+      var ligne = new Array(H).fill(0), colonne = new Array(W).fill(0);
+      for (var y2 = 0; y2 < H; y2++) for (var x2 = 0; x2 < W; x2++) if (Math.abs(lum[y2 * W + x2] - fond) > 45) { ligne[y2]++; colonne[x2]++; }
+      var seuilL = Math.max(1, W * 0.012), seuilC = Math.max(1, H * 0.012);
+      var t = 0, b = H - 1, l = 0, rr = W - 1;
+      while (t < H && ligne[t] < seuilL) t++;
+      while (b > t && ligne[b] < seuilL) b--;
+      while (l < W && colonne[l] < seuilC) l++;
+      while (rr > l && colonne[rr] < seuilC) rr--;
+      var marge = 0.01;
+      var z = {t: Math.max(0, t / H - marge), b: Math.max(0, 1 - (b + 1) / H - marge), l: Math.max(0, l / W - marge), r: Math.max(0, 1 - (rr + 1) / W - marge)};
+      var util = (1 - z.t - z.b) * (1 - z.l - z.r);
+      // Trop peu de dessin (page presque vide) ou rien à gagner : on ne touche pas
+      if (t < H && util > 0.4 && util < 0.97) res = z;
+    } catch (e) { res = null; }                                // image d'un autre site ou illisible : pas de rognage
+    rognages[cle] = res;
+    return res;
+  }
+  function rogner(im) {
+    im.style.objectViewBox = '';
+    if (reglages.rogner !== '1' || !rognageOk() || mode !== 'page') return false;
+    var z = zoneUtile(im); if (!z) return false;
+    var st = $('stage'), w = st.clientWidth, h = st.clientHeight;
+    var cw = im.naturalWidth * (1 - z.l - z.r), ch = im.naturalHeight * (1 - z.t - z.b), r = cw / ch;
+    var largeur, hauteur;
+    if (fit === 'width') { largeur = w; hauteur = w / r; }
+    else { hauteur = h; largeur = h * r; if (largeur > w) { largeur = w; hauteur = w / r; } }
+    im.style.objectViewBox = 'inset(' + (z.t * 100) + '% ' + (z.r * 100) + '% ' + (z.b * 100) + '% ' + (z.l * 100) + '%)';
+    im.style.width = largeur + 'px'; im.style.height = hauteur + 'px'; im.style.objectPosition = '';
+    return true;
   }
 
   // ---------- Zoom (deux doigts, deux appuis au centre) ----------
@@ -455,16 +543,16 @@
     if (versFin) { large = $('img').naturalWidth > $('img').naturalHeight * 1.2; if (coupee()) demi = 1; if (glisse()) depuisFin = true; versFin = false; }
     majDouble();
   });
-  $('optDouble').addEventListener('click', function () { double = double === 'decoupe' ? 'glisse' : double === 'glisse' ? 'entiere' : 'decoupe'; setPref('mfDouble', double); demi = 0; placer = true; depuisFin = false; applyOptions(); majDouble(); });
   // Aide : boutons et gestes (montrée d'office la première fois)
   function aide(ouvrir) { $('aide').hidden = !ouvrir; if (!ouvrir) setPref('mfAideVue', '1'); }
-  $('optAide').addEventListener('click', function () { aide(true); });
+  $('menuAide').addEventListener('click', function () { $('menu').hidden = true; aide(true); });
   $('aideFermer').addEventListener('click', function () { aide(false); });
   $('aide').addEventListener('click', function (e) { if (e.target === $('aide')) aide(false); });
   if (!pref('mfAideVue', '')) aide(true);
   // L'écran reste allumé pendant la lecture
   var verrouEcran = null;
-  async function garderEcran() { try { if ('wakeLock' in navigator && !document.hidden) verrouEcran = await navigator.wakeLock.request('screen'); } catch (e) {} }
+  async function garderEcran() { try { if (reglages.veille === '1' && 'wakeLock' in navigator && !document.hidden) verrouEcran = await navigator.wakeLock.request('screen'); } catch (e) {} }
+  function libererEcran() { try { if (verrouEcran) verrouEcran.release(); } catch (e) {} verrouEcran = null; }
   garderEcran();
   window.addEventListener('resize', function () { majDouble(); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) garderEcran(); });
@@ -481,14 +569,45 @@
     if (idx < chapters.length - 1) openChapter(idx + 1);
   });
   $('slider').addEventListener('input', function () { go(+$('slider').value - 1); });
-  $('optDir').addEventListener('click', function () { dir = dir === 'rtl' ? 'ltr' : 'rtl'; setPref('mfDir', dir); applyOptions(); majDouble(); });
-  $('optFit').addEventListener('click', function () { fit = fit === 'width' ? 'height' : 'width'; setPref('mfFit', fit); applyOptions(); majDouble(); });
-  $('optMode').addEventListener('click', function () {
-    mode = mode === 'page' ? 'scroll' : 'page'; setPref('mfMode', mode); applyOptions();
-    if (mode === 'scroll') { buildScroll(); go(page); } else { $('scroll').innerHTML = ''; go(page); }
-  });
-  $('optFull').addEventListener('click', function () {
+  function pleinEcran() {
     if (document.fullscreenElement) document.exitFullscreen(); else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function () {});
+  }
+  $('optFull').addEventListener('click', pleinEcran);
+  // En plein écran, les barres se cachent d'elles-mêmes (réglable) pour que l'image prenne toute la place ; elles reviennent en sortant
+  document.addEventListener('fullscreenchange', function () {
+    document.body.classList.toggle('hide-ui', !!document.fullscreenElement && reglages.barres === '1');
+    setTimeout(majDouble, 60);
+  });
+
+  // ---------- ⚙️ Menu des réglages ----------
+  function menu(ouvrir) {
+    $('menu').hidden = !ouvrir;
+    if (ouvrir) { majMenu(); $('allerPage').value = page + 1; $('allerPage').max = Math.max(1, count); $('allerSur').textContent = '/ ' + count; }
+  }
+  $('optMenu').addEventListener('click', function () { menu(true); });
+  $('menuFermer').addEventListener('click', function () { menu(false); });
+  $('menu').addEventListener('click', function (e) {
+    if (e.target === $('menu')) { menu(false); return; }
+    var b = e.target.closest('.seg button'); if (b) reglerOption(b.parentNode.dataset.opt, b.dataset.val);
+  });
+  document.querySelectorAll('#menu input[type=range]').forEach(function (i) {
+    i.addEventListener('input', function () { reglerOption(i.dataset.opt, i.value); });
+    // Pendant qu'on glisse le curseur, le menu devient presque transparent : on voit l'effet sur la page
+    ['pointerdown', 'touchstart', 'mousedown'].forEach(function (ev) { i.addEventListener(ev, function () { $('menu').classList.add('voir'); }, {passive: true}); });
+    ['pointerup', 'pointercancel', 'touchend', 'touchcancel', 'mouseup', 'change'].forEach(function (ev) { i.addEventListener(ev, function () { $('menu').classList.remove('voir'); }); });
+  });
+  $('menuPleinEcran').addEventListener('click', function () { menu(false); pleinEcran(); });
+  $('menuBarres').addEventListener('click', function () { menu(false); document.body.classList.toggle('hide-ui'); });
+  $('allerOk').addEventListener('click', function () {
+    var n = parseInt($('allerPage').value, 10);
+    if (n >= 1 && n <= count) { menu(false); go(n - 1); }
+  });
+  $('menuRaz').addEventListener('click', async function () {
+    if (!await MouConfirm('Remettre tous les réglages de lecture comme au départ (sens manga, une page à la fois, aucune teinte) ?')) return;
+    Object.keys(DEFAUT).forEach(function (k) { reglages[k] = DEFAUT[k]; setPref(CLES[k], DEFAUT[k]); });
+    dir = 'rtl'; mode = 'page'; fit = 'height'; double = 'glisse';
+    ['mfDir', 'mfMode', 'mfFit', 'mfDouble'].forEach(function (k) { setPref(k, {mfDir: 'rtl', mfMode: 'page', mfFit: 'height', mfDouble: 'glisse'}[k]); });
+    $('scroll').innerHTML = ''; applyOptions(); majDouble(); go(page); garderEcran();
   });
   document.addEventListener('keydown', function (e) {
     if (e.target && e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
@@ -500,7 +619,9 @@
     else if (k === 'Home') go(0);
     else if (k === 'End') go(count - 1);
     else if (k === 'f' || k === 'F') $('optFull').click();
+    else if (k === 'm' || k === 'M') menu($('menu').hidden);
     else if (k === 'h' || k === 'H') document.body.classList.toggle('hide-ui');
+    else if (k === 'Escape' && !$('menu').hidden) menu(false);
     else if (k === 'Escape' && !document.fullscreenElement) location.href = $('rBack').href;
   });
   window.addEventListener('pagehide', function () { if (count) save(true); });
