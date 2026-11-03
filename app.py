@@ -7012,7 +7012,9 @@ def _source_autre(identifiant):
 @app.route("/api/sources")
 def api_sources():
     """Les sites où chercher des mangas (Japscan en premier)."""
-    return jsonify({"ok": True, "sources": sources_fr.liste()})
+    gardees = _read_json(CATALOGUES_SOURCES, {})
+    return jsonify({"ok": True, "sources": [dict(x, nb=len((gardees.get(x["id"]) or {}).get("mangas", [])) if x["id"] in gardees else None,
+                                                  date=(gardees.get(x["id"]) or {}).get("date")) for x in sources_fr.liste()]})
 
 
 def _chercher_dans(autre, texte):
@@ -7050,6 +7052,44 @@ def japscan_recherche():
         logger.error(f"Recherche {autre.nom if autre else 'Japscan'} impossible : {e}")
         return jsonify({"ok": False, "error": f"Recherche impossible : {e}"}), 500
     return jsonify({"ok": True, "mangas": resultats})
+
+
+CATALOGUES_SOURCES = DATA_DIR / "catalogues_sources.json"      # {source: {date, mangas}} : la liste de chaque site, gardée sur le serveur
+_LISTES_ETAT = {}                                            # source -> {en_cours, page, series, message} (suivi du chargement en cours)
+_LISTES_VERROU = threading.Lock()
+
+
+def _charger_catalogue(src):
+    """Lit toute la liste d'un site en arrière-plan. Une liste coupée n'est jamais gardée : l'ancienne reste."""
+    def progres(page, series):
+        _LISTES_ETAT[src.id].update(page=page, series=series)
+    try:
+        mangas = src.catalogue(progres)
+        with _LISTES_VERROU:
+            gardes = _read_json(CATALOGUES_SOURCES, {})
+            gardes[src.id] = {"date": time.time(), "mangas": mangas}
+            _write_json(CATALOGUES_SOURCES, gardes)
+        _LISTES_ETAT[src.id] = {"en_cours": False, "message": f"✅ {len(mangas)} séries lues sur {src.nom}."}
+    except Exception as e:
+        logger.warning(f"Liste de {src.nom} impossible : {e}")
+        _LISTES_ETAT[src.id] = {"en_cours": False, "message": f"⚠ La liste de {src.nom} n'a pas pu être lue en entier : {e}. L'ancienne liste (s'il y en a une) est gardée."}
+
+
+@app.route("/api/sources/<identifiant>/catalogue", methods=["GET", "POST"])
+def api_sources_catalogue(identifiant):
+    """GET : la liste gardée d'un site (et l'état du chargement). POST : lance sa lecture en arrière-plan."""
+    src = _source_autre(identifiant)
+    if not src:
+        return jsonify({"ok": False, "error": "Source inconnue."}), 400
+    if request.method == "POST":
+        with _LISTES_VERROU:
+            if (_LISTES_ETAT.get(src.id) or {}).get("en_cours"):
+                return jsonify({"ok": True, "etat": _LISTES_ETAT[src.id]})
+            _LISTES_ETAT[src.id] = {"en_cours": True, "page": 0, "series": 0, "message": f"Lecture de la liste de {src.nom}…"}
+        threading.Thread(target=_charger_catalogue, args=(src,), daemon=True).start()
+    gardee = _read_json(CATALOGUES_SOURCES, {}).get(src.id) or {}
+    return jsonify({"ok": True, "date": gardee.get("date"), "etat": _LISTES_ETAT.get(src.id) or {"en_cours": False, "message": ""},
+                    "mangas": [dict(m, source=src.id) for m in gardee.get("mangas", [])]})
 
 
 @app.route("/api/sources/recherche", methods=["POST"])

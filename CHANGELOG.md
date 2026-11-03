@@ -1,5 +1,12 @@
 # Historique des versions
 
+## 📚 La liste complète de chaque site (3 novembre 2026)
+- **Choisis un site dans « Télécharger » puis « 📚 Lire la liste de ce site »** : l'appli lit en arrière-plan toutes les séries du site (de 20 secondes à 3 minutes), les garde sur le serveur et les affiche par ordre alphabétique, avec un filtre. Tu vois enfin ce qui est récupérable. « 🔄 Mettre à jour la liste » la relit.
+- **Dans « 🔎 Tous les sites »**, un résumé montre pour chaque site combien de séries sont connues et la date de lecture (ou « pas encore lue »).
+- **Une liste coupée n'est jamais gardée** : si un site s'arrête ou refuse en cours de route, l'ancienne liste reste et le message le dit. Les séries pour adultes sont exclues (Bluesolo, FMTeam).
+- Tailles lues le jour même : Sushi-Scan 4 347 séries, Pantheon-Scan 421, LelManga 223, Bluesolo 97, Harmony-Scan 45, FMTeam 20.
+- Un test a révélé une erreur de ma part avant la mise en ligne : un nom de variable écrasait celui du catalogue de Japscan, ce qui faisait planter le contrôle « l'appli est-elle occupée ? ». Corrigé.
+
 ## 🔎 Une seule recherche pour tous les sites (3 novembre 2026)
 - **« 🔎 Tous les sites »** est maintenant le premier choix de « Télécharger » (et le choix par défaut). Tu tapes le nom une seule fois : tous les sites sont interrogés en même temps, et les résultats sont rangés **par site**, avec le nombre trouvé pour chacun.
 - Un clic sur une série ouvre ses chapitres sur le bon site, sans rien changer d'autre.

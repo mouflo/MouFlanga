@@ -25,6 +25,7 @@ logger = logging.getLogger("mouflanga")
 
 UA = "MouFlanga/1.0"
 DELAI_PAR_SITE = 1.0          # secondes entre deux requêtes vers le même site
+PAGES_MAX = 400               # une liste de plus de 400 pages est suspecte : on s'arrête et on le dit
 PAUSE_REFUS = 3600.0          # un site qui refuse (403/429/503) n'est pas relancé avant une heure
 
 
@@ -126,6 +127,31 @@ class Source:
     def chapitres(self, adresse):
         raise NotImplementedError
 
+    def catalogue(self, progres=None):
+        """Toutes les séries du site : [{title, url, type, id}]. `progres(page, nb_series)` est appelé à chaque page lue.
+        Lève SourceErreur si la liste n'a pas pu être lue en entier : une liste coupée n'est jamais rendue comme complète."""
+        raise NotImplementedError
+
+    def _parcourir(self, adresse_de_la_page, lire, progres):
+        """Lit page après page jusqu'à une page vide, introuvable ou sans nouveauté (au plus PAGES_MAX pages)."""
+        out, vus = [], set()
+        for n in range(1, PAGES_MAX + 1):
+            try:
+                nouveaux = [m for m in lire(CLIENT.get(adresse_de_la_page(n))) if m["url"] not in vus]
+            except SourceErreur as e:
+                if n > 1 and "404" in str(e):
+                    break                                    # la page d'après n'existe pas : fin de la liste
+                raise SourceErreur(f"liste coupée à la page {n} ({e}) : elle n'est pas gardée")
+            if not nouveaux:
+                break
+            vus.update(m["url"] for m in nouveaux)
+            out += nouveaux
+            if progres:
+                progres(n, len(out))
+        else:
+            raise SourceErreur(f"plus de {PAGES_MAX} pages : liste non gardée")
+        return out
+
     def adresses_des_pages(self, adresse_chapitre):
         raise NotImplementedError
 
@@ -170,7 +196,12 @@ class MangaThemesia(Source):
         texte = (texte or "").strip()[:80]
         if len(texte) < 2:
             return []
-        soupe = self._soupe(f"{self.base}/?s={quote_plus(texte)}")
+        return self._lire_series(self._soupe(f"{self.base}/?s={quote_plus(texte)}"))
+
+    def catalogue(self, progres=None):
+        return self._parcourir(lambda n: f"{self.base}{self.dossier_series}/?page={n}", lambda h: self._lire_series(BeautifulSoup(h, "html.parser")), progres)
+
+    def _lire_series(self, soupe):
         out, vus = [], set()
         for bsx in soupe.select(".listupd .bs .bsx, .listo .bs .bsx, .utao .uta .imgu"):
             a = bsx.find("a", href=True)
@@ -254,8 +285,15 @@ class Madara(Source):
         if len(texte) < 2:
             return []
         soupe = BeautifulSoup(CLIENT.get(f"{self.base}/?s={quote_plus(texte)}&post_type=wp-manga"), "html.parser")
+        return self._lire_series(soupe, ".c-tabs-item__content")
+
+    def catalogue(self, progres=None):
+        return self._parcourir(lambda n: f"{self.base}/manga/" if n == 1 else f"{self.base}/manga/page/{n}/",
+                               lambda h: self._lire_series(BeautifulSoup(h, "html.parser"), ".page-item-detail"), progres)
+
+    def _lire_series(self, soupe, selecteur):
         out, vus = [], set()
-        for bloc in soupe.select(".c-tabs-item__content"):
+        for bloc in soupe.select(selecteur):
             a = bloc.select_one(".post-title a")
             if not a or not a.get("href"):
                 continue
@@ -331,13 +369,17 @@ class PizzaReader(Source):
         texte = (texte or "").strip()[:80]
         if len(texte) < 2:
             return []
-        out = []
-        for c in self._json("/api/search/" + quote(texte, safe="")).get("comics") or []:
-            if c.get("adult") or c.get("hidden") or not c.get("slug"):
-                continue
-            out.append({"title": (c.get("title") or c["slug"]).strip(), "url": f"{self.base}/comics/{c['slug']}", "type": "",
-                        "id": f"{self.id}-{c['slug']}"[:80]})
+        return self._lire_liste(self._json("/api/search/" + quote(texte, safe="")).get("comics") or [])
+
+    def catalogue(self, progres=None):
+        out = self._lire_liste(self._json("/api/comics").get("comics") or [])
+        if progres:
+            progres(1, len(out))
         return out
+
+    def _lire_liste(self, comics):
+        return [{"title": (c.get("title") or c["slug"]).strip(), "url": f"{self.base}/comics/{c['slug']}", "type": "",
+                 "id": f"{self.id}-{c['slug']}"[:80]} for c in comics if c.get("slug") and not c.get("adult") and not c.get("hidden")]
 
     def chapitres(self, adresse):
         slug = urlparse(adresse).path.rstrip("/").rsplit("/", 1)[-1]

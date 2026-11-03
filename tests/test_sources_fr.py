@@ -209,3 +209,57 @@ class PizzaReaderTest(unittest.TestCase):
             a = self.s.adresses_des_pages("https://exemple.test/read/ma-serie/fr/ch/12")
         self.assertEqual(appelees, ["https://exemple.test/api/read/ma-serie/fr/ch/12"])
         self.assertEqual(a, ["https://img.exemple.test/1.png", "https://exemple.test/storage/2.png"])
+
+
+class CatalogueTest(unittest.TestCase):
+    """La liste complète d'un site : lue page après page, jamais coupée sans le dire."""
+
+    def _pages(self, nb_pages):
+        def lire(adresse):
+            n = int(adresse.rsplit("=", 1)[-1])
+            if n > nb_pages:
+                raise S.SourceErreur(f"page introuvable (404) : {adresse}")
+            return "".join(f'<div class="bs"><div class="bsx"><a href="https://exemple.test/catalogue/s{n}-{i}/" title="S{n}-{i}"><div class="tt">S{n}-{i}</div></a></div></div>'
+                           for i in range(2)).join(['<div class="listupd">', "</div>"])
+        return lire
+
+    def test_lit_toutes_les_pages_puis_s_arrete_a_la_404(self):
+        s = S.MangaThemesia("exemple", "Exemple", "https://exemple.test")
+        vues = []
+        with mock.patch.object(S.CLIENT, "get", side_effect=self._pages(3)):
+            c = s.catalogue(lambda page, nb: vues.append((page, nb)))
+        self.assertEqual(len(c), 6)
+        self.assertEqual(vues, [(1, 2), (2, 4), (3, 6)])
+
+    def test_une_panne_en_cours_de_route_ne_rend_pas_une_liste_coupee(self):
+        s = S.MangaThemesia("exemple", "Exemple", "https://exemple.test")
+        lire = self._pages(5)
+
+        def en_panne(adresse):
+            if adresse.endswith("=3"):
+                raise S.SourceErreur("exemple.test a refusé la demande (HTTP 403)")
+            return lire(adresse)
+        with mock.patch.object(S.CLIENT, "get", side_effect=en_panne):
+            with self.assertRaises(S.SourceErreur) as e:
+                s.catalogue()
+        self.assertIn("page 3", str(e.exception))
+
+    def test_pizzareader_sans_adultes(self):
+        s = S.PizzaReader("exemple", "Exemple", "https://exemple.test")
+        rep = json.dumps({"comics": [{"title": "A", "slug": "a"}, {"title": "X", "slug": "x", "adult": 1}, {"title": "B", "slug": "b"}]})
+        with mock.patch.object(S.CLIENT, "get", return_value=rep):
+            self.assertEqual([m["title"] for m in s.catalogue()], ["A", "B"])
+
+    def test_madara_page_1_puis_page_n(self):
+        s = S.Madara("exemple", "Exemple", "https://exemple.test")
+        demandees = []
+
+        def get(adresse):
+            demandees.append(adresse)
+            n = 1 if adresse.endswith("/manga/") else int(adresse.rstrip("/").rsplit("/", 1)[-1])
+            if n > 2:
+                return "<div></div>"
+            return f'<div class="page-item-detail"><div class="post-title"><h3><a href="https://exemple.test/manga/m{n}/">M{n}</a></h3></div></div>'
+        with mock.patch.object(S.CLIENT, "get", side_effect=get):
+            self.assertEqual([m["title"] for m in s.catalogue()], ["M1", "M2"])
+        self.assertEqual(demandees[:2], ["https://exemple.test/manga/", "https://exemple.test/manga/page/2/"])

@@ -68,27 +68,33 @@ async function chargerSources() {
 
 // Japscan a sa liste des dernières sorties et son catalogue ; les autres sources se cherchent par leur recherche
 function appliquerSource() {
-    const japscan = sourceId === "japscan";
+    const japscan = sourceId === "japscan", unSite = !japscan && sourceId !== "tous";
     $("btn-refresh-list").hidden = !japscan;
-    $("btn-catalogue").hidden = !japscan;
-    $("catalogue-etat").hidden = !japscan;
-    $("liste-note").hidden = !japscan;
+    $("btn-catalogue").hidden = !(japscan || unSite);
+    $("catalogue-etat").hidden = !(japscan || unSite);
+    $("liste-note").hidden = !(japscan || unSite);
+    $("catalogue-etat").textContent = "";
+    $("btn-catalogue").textContent = japscan ? "📚 Charger tout le catalogue" : "📚 Lire la liste de ce site";
     $("sous-titre-liste").textContent = japscan
         ? "Séries mises à jour récemment sur Japscan. Appuie sur un nom pour voir ses chapitres."
         : sourceId === "tous" ? "Tape le nom d'une série puis valide : la recherche se fait sur tous les sites à la fois."
-        : `Tape le nom d'une série puis valide : la recherche se fait sur ${nomSource()}.`;
+        : `Toutes les séries de ${nomSource()} (liste lue sur le site). Tape quelques lettres pour filtrer, ou valide pour chercher sur le site.`;
     boutonRecherche();
 }
 
 async function loadMangas(forcer) {
     const list = $("manga-list");
-    if (sourceId !== "japscan") {
+    if (sourceId === "tous") {
         state.mangas = [];
         $("manga-lettres").innerHTML = "";
-        list.innerHTML = `<div class="loading">🔍 ${sourceId === "tous" ? "Cherche une série : tous les sites sont interrogés d'un coup." : `Cherche une série sur ${echapper(nomSource())}.`}</div>`;
+        const lues = sources.filter(x => x.id !== "tous" && x.id !== "japscan");
+        list.innerHTML = `<div class="loading">🔍 Cherche une série : tous les sites sont interrogés d'un coup.</div>`
+            + `<div class="lettre-titre">Ce que chaque site propose</div>`
+            + lues.map(x => `<div class="loading">${echapper(x.nom)} : ${x.nb == null ? "liste pas encore lue (choisis le site puis « 📚 Lire la liste »)" : `${x.nb} séries (lues le ${new Date(x.date * 1000).toLocaleDateString("fr-FR")})`}</div>`).join("");
         ouvrirDepuisLien();
         return;
     }
+    if (sourceId !== "japscan") { await chargerListeDuSite(); ouvrirDepuisLien(); return; }
     list.innerHTML = '<div class="loading">Chargement des mangas...</div>';
 
     try {
@@ -110,6 +116,41 @@ async function loadMangas(forcer) {
         suivreCatalogue(data.chargement_catalogue);
     } catch (e) {
         list.innerHTML = `<div class="loading" style="color: #ff6b6b;">Erreur: ${e.message}</div>`;
+    }
+}
+
+// Autres sites : la liste complète du site, lue une fois sur le serveur puis gardée
+async function chargerListeDuSite() {
+    const list = $("manga-list"), note = $("liste-note");
+    list.innerHTML = '<div class="loading">Chargement de la liste…</div>';
+    try {
+        const d = await (await fetch(`/api/sources/${encodeURIComponent(sourceId)}/catalogue`)).json();
+        if (!d.ok) { list.innerHTML = `<div class="loading" style="color:#ff6b6b">${echapper(d.error || "Liste impossible")}</div>`; return; }
+        state.mangas = d.mangas;
+        if (d.mangas.length) renderMangas();
+        else { $("manga-lettres").innerHTML = ""; list.innerHTML = `<div class="loading">📚 La liste de ${echapper(nomSource())} n'a pas encore été lue : appuie sur « 📚 Lire la liste de ce site ».</div>`; }
+        note.textContent = d.date ? `${d.mangas.length} séries sur ${nomSource()} (liste lue le ${new Date(d.date * 1000).toLocaleDateString("fr-FR")}).` : "";
+        suivreListeDuSite(d.etat);
+    } catch (e) {
+        list.innerHTML = `<div class="loading" style="color: #ff6b6b;">Erreur : ${echapper(e.message)}</div>`;
+    }
+}
+let suiviSite = null;
+function suivreListeDuSite(e) {
+    const zone = $("catalogue-etat"), b = $("btn-catalogue"), id = sourceId;
+    clearTimeout(suiviSite);
+    if (e && e.en_cours) {
+        b.hidden = true;
+        zone.textContent = e.page ? `⏳ Liste de ${nomSource()} : page ${e.page} lue · ${e.series} séries` : `⏳ ${e.message || "Lecture de la liste…"}`;
+        suiviSite = setTimeout(async () => {
+            if (id !== sourceId) return;
+            const r = await (await fetch(`/api/sources/${encodeURIComponent(id)}/catalogue`)).json();
+            if (r.etat && r.etat.en_cours) suivreListeDuSite(r.etat); else { b.hidden = false; await chargerListeDuSite(); zone.textContent = (r.etat && r.etat.message) || ""; }
+        }, 3000);
+    } else {
+        b.hidden = false;
+        b.textContent = state.mangas.length ? "🔄 Mettre à jour la liste" : "📚 Lire la liste de ce site";
+        zone.textContent = (e && e.message) || "";
     }
 }
 
@@ -191,7 +232,7 @@ function renderMangas() {
     const liste = state.mangas.filter(m => !q || sansAccents(m.title).includes(q));
     const list = $("manga-list");
     if (!liste.length) {
-        list.innerHTML = `<div class="loading">Aucun manga ne correspond à « ${echapper($("manga-search").value)} » parmi les séries récentes : appuie sur « 🔎 Chercher dans tout Japscan ».</div>`;
+        list.innerHTML = `<div class="loading">Aucun manga ne correspond à « ${echapper($("manga-search").value)} » dans la liste : appuie sur « 🔎 Chercher » pour interroger le site.</div>`;
         $("manga-lettres").innerHTML = "";
         return;
     }
@@ -213,7 +254,7 @@ function renderMangas() {
     if (parLettre) list.insertAdjacentHTML("afterbegin", `<div class="tabsinfo" style="padding:6px">${visibles.length} série(s) en « ${state.lettre} » sur ${liste.length} — choisis une lettre ou tape un nom.</div>`);
 }
 
-$("manga-search").addEventListener("input", () => { boutonRecherche(); if (sourceId === "japscan") renderMangas(); });
+$("manga-search").addEventListener("input", () => { boutonRecherche(); if (sourceId !== "tous") renderMangas(); });
 
 // Catalogue complet : chargement en arrière-plan (20 à 30 minutes), avec sa progression
 let suiviCatalogue = null;
@@ -233,6 +274,12 @@ function suivreCatalogue(e) {
     }
 }
 $("btn-catalogue").addEventListener("click", async () => {
+    if (sourceId !== "japscan") {
+        const r = await (await fetch(`/api/sources/${encodeURIComponent(sourceId)}/catalogue`, {method: "POST"})).json();
+        if (!r.ok) { $("catalogue-etat").textContent = r.error || "Impossible"; return; }
+        suivreListeDuSite(r.etat);
+        return;
+    }
     if (!await MouConfirm("Charger tout le catalogue de Japscan (environ 17 000 séries) ?\n\nÇa prend 20 à 30 minutes en arrière-plan ; pendant ce temps, pas de téléchargement. Tu recevras un message Telegram à la fin.")) return;
     const r = await (await fetch("/api/japscan/catalogue", {method: "POST"})).json();
     if (!r.ok) { $("catalogue-etat").textContent = r.error || "Impossible"; return; }

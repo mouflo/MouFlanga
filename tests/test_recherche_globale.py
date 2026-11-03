@@ -58,6 +58,32 @@ class RechercheGlobaleTest(unittest.TestCase):
         r = self._chercher("a")
         self.assertEqual(r.status_code, 400)
 
+    def test_liste_d_un_site_gardee_et_servie(self):
+        A = self.A
+        src = A.sources_fr.SOURCES["bluesolo"]
+        with mock.patch.object(A, "CATALOGUES_SOURCES", Path(self.tmp.name) / "cat.json"), \
+                mock.patch.object(src, "catalogue", return_value=[{"title": "A", "url": "https://x/a", "id": "bluesolo-a", "type": ""}]):
+            self.assertEqual(self.c.get("/api/sources/bluesolo/catalogue").get_json()["mangas"], [])
+            A._charger_catalogue(src)
+            d = self.c.get("/api/sources/bluesolo/catalogue").get_json()
+            self.assertEqual([m["source"] for m in d["mangas"]], ["bluesolo"])
+            self.assertIn("1 séries", d["etat"]["message"])
+
+    def test_liste_coupee_garde_l_ancienne(self):
+        A = self.A
+        src = A.sources_fr.SOURCES["bluesolo"]
+        with mock.patch.object(A, "CATALOGUES_SOURCES", Path(self.tmp.name) / "cat.json"):
+            with mock.patch.object(src, "catalogue", return_value=[{"title": "A", "url": "https://x/a", "id": "bluesolo-a", "type": ""}]):
+                A._charger_catalogue(src)
+            with mock.patch.object(src, "catalogue", side_effect=A.sources_fr.SourceErreur("coupée")):
+                A._charger_catalogue(src)
+            d = self.c.get("/api/sources/bluesolo/catalogue").get_json()
+            self.assertEqual(len(d["mangas"]), 1)
+            self.assertIn("pas pu être lue", d["etat"]["message"])
+
+    def test_source_inconnue(self):
+        self.assertEqual(self.c.get("/api/sources/nimporte/catalogue").status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()
