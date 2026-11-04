@@ -126,7 +126,7 @@ async function chargerListeDuSite() {
     try {
         const d = await (await fetch(`/api/sources/${encodeURIComponent(sourceId)}/catalogue`)).json();
         if (!d.ok) { list.innerHTML = `<div class="loading" style="color:#ff6b6b">${echapper(d.error || "Liste impossible")}</div>`; return; }
-        state.mangas = d.mangas;
+        state.mangas = [...d.mangas].sort((x, y) => sansAccents(x.title).localeCompare(sansAccents(y.title), "fr"));   // l'ordre du site n'est pas alphabétique
         if (d.mangas.length) renderMangas();
         else { $("manga-lettres").innerHTML = ""; list.innerHTML = `<div class="loading">📚 La liste de ${echapper(nomSource())} n'a pas encore été lue : appuie sur « 📚 Lire la liste de ce site ».</div>`; }
         note.textContent = d.date ? `${d.mangas.length} séries sur ${nomSource()} (liste lue le ${new Date(d.date * 1000).toLocaleDateString("fr-FR")}).` : "";
