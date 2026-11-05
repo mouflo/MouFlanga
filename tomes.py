@@ -629,6 +629,9 @@ def _douteuse(m, serie, tome_max):
     """Fiche sans rapport probable : un nom d'un seul mot (« Arena ») seulement CONTENU dans un autre titre (« AFK Arena »), sans
     titre identique et sans nombre de tomes compatible avec ce qu'on a. Mieux vaut « inconnue » (l'éditeur, la BnF… prennent le relais)
     que la fiche d'une autre série. `m` : fiche AniList ou fiche gardée (statut_officiel : titre, titre_en, synonymes, volumes)."""
+    chapitres, vol = m.get("chapters") or m.get("chapitres"), m.get("volumes")
+    if tome_max and not vol and chapitres and chapitres < tome_max:
+        return True                    # 1 chapitre pour 19 tomes (« Sanran » pour « Radiant ») : impossible, même si le titre colle
     mots = _simple(sans_edition(serie)).split()
     if len(mots) != 1:
         return False

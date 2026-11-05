@@ -54,6 +54,11 @@ class TestFicheDouteuse(unittest.TestCase):
         self.assertFalse(tomes._douteuse({"title": {"romaji": "Shijou Saikyou no Deshi Kenichi"}, "synonyms": [], "volumes": 61}, "Kenichi", 14))
         self.assertFalse(tomes._douteuse(self.afk, "Arena Nova", 5))          # plusieurs mots : règle inchangée
 
+    def test_moins_de_chapitres_que_de_tomes(self):
+        sanran = {"title": {"romaji": "Sanran"}, "synonyms": [], "volumes": None, "chapters": 1}
+        self.assertTrue(tomes._douteuse(sanran, "Sanran", 19))
+        self.assertFalse(tomes._douteuse({**sanran, "chapters": 74}, "Sanran", 19))
+
     def test_fiche_gardee_reconnue(self):
         st = {"titre": "Jian Yu Yuanzheng: Wu Mang Zhi Ren", "titre_en": "Legends of Esperia", "synonymes": ["AFK Arena"], "volumes": None}
         self.assertTrue(tomes._douteuse(st, "Arena", 5))
