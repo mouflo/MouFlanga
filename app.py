@@ -53,6 +53,7 @@ import archives
 import plage
 import reseau
 import tomes
+import candidats
 import tomes_cbz
 import importer
 import deux_tomes
@@ -1372,6 +1373,7 @@ def api_series():
                     "compte": _compte(chapters), "resume": st.get("resume") or "", "resume_langue": st.get("resume_langue") or "",
                     "resume_source": st.get("resume_source") if st.get("resume_langue") == "fr" and st.get("resume_source", "").startswith("présentation") else "",
                     "anilist": st.get("anilist"), "anilist_choisi": _anilist_choisi(name), "rattacher_a": _serie_mere(name),
+                    "doute": (tomes._charger(name) or {}).get("doute"), "identite_choisie": _identite_choisie(name),
                     "manquants": trous, "premier": premier, "dernier": dernier, "type_manquants": type_manquants,
                     "organiser": _plan_organiser(name, files) if name != "(Sans série)" else None,
                     "cover_perso": name != "(Sans série)" and (MANGA_DIR / name / COUVERTURE_PERSO).is_file(),
@@ -5278,6 +5280,10 @@ def _relancer_identification(serie, relire_fichiers=True, nouvelle_identite=Fals
                 _etape(serie, nb + 1, "ok", f"{len(reste)} tome(s) lus dans les pages, en arrière-plan (Internet ne les a pas)")
         except Exception as e:
             _etape(serie, nb + 1, "echec", f"erreur : {e.__class__.__name__}")
+        try:
+            _noter_doute(serie)
+        except Exception as e:
+            logger.info("Propositions de séries pour « %s » : %s", serie, e.__class__.__name__)
         with _IDENT_VERROU:
             _IDENTIFICATIONS[serie]["fini"] = True
         logger.info("Identification relancée : « %s »", serie)
@@ -5455,6 +5461,31 @@ def _anilist_choisi(serie):
 
 tomes.ID_CHOISI = _anilist_choisi
 tomes.ID_INDICE = lambda serie: _anilist_infos(serie).get("anilist_indice")
+tomes.SANS_ANILIST = lambda serie: bool(_anilist_infos(serie).get("aucune_fiche_anilist"))
+tomes.EDITEUR_CHOISI = lambda serie: _anilist_infos(serie).get("editeur_choisi")
+
+
+def _tome_max_serie(serie):
+    try:
+        return max(_tomes_de(serie), default=None)
+    except Exception:
+        return None
+
+
+def _noter_doute(serie):
+    """Après une identification : si l'identité de la série n'est pas sûre, garde les séries qui pourraient correspondre (écran
+    « ❓ Quelle série est-ce ? » dans sa fiche) ; sinon retire la question. Une panne d'une source ne supprime pas la question."""
+    brut = tomes._charger(serie) or {}
+    infos = _anilist_infos(serie)
+    st = brut.get("statut_officiel") or {}
+    tome_max = _tome_max_serie(serie)
+    if not candidats.y_a_doute(serie, st, infos, brut, tome_max):
+        if brut.get("doute"):
+            tomes.modifier(serie, lambda b: b.pop("doute", None) and None)
+        return
+    r = candidats.proposer(serie, tome_max)
+    if r["propositions"] or r["pannes"]:
+        tomes.modifier(serie, lambda b: b.__setitem__("doute", {"date": time.time(), "propositions": r["propositions"], "pannes": r["pannes"]}))
 tomes.TITRES_FICHIERS = lambda serie: _anilist_infos(serie).get("titres_fichiers") or []
 
 
@@ -5486,28 +5517,64 @@ def api_identifier_chercher():
         return jsonify({"error": f"Recherche AniList impossible : {e}"}), 502
 
 
+def _identite_choisie(serie):
+    """Ce qui a été choisi à la main pour la série : {"source", "libelle"} ou None."""
+    infos = _anilist_infos(serie)
+    if infos.get("anilist_choisi"):
+        return {"source": "anilist", "libelle": f"AniList n° {infos['anilist_choisi']}"}
+    if infos.get("editeur_choisi"):
+        e = infos["editeur_choisi"]
+        return {"source": e.get("source"), "libelle": f"{candidats.LIBELLES.get(e.get('source'), e.get('source'))} : {e.get('nom')}"}
+    if infos.get("aucune_fiche_anilist"):
+        return {"source": "aucune", "libelle": "aucune série des bases (fichiers et éditeurs seulement)"}
+    return None
+
+
+@app.route("/api/identifier/propositions")
+def api_identifier_propositions():
+    """« ❓ Quelle série est-ce ? » : les séries qui peuvent correspondre (AniList, Vega Livres, Ankama), de la plus probable à la moins
+    probable. `q` : mots tapés à la place du nom de la série."""
+    name = request.args.get("series", "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"error": "Série introuvable"}), 404
+    texte = request.args.get("q", "").strip()[:150] or None
+    return jsonify(candidats.proposer(name, _tome_max_serie(name), texte))
+
+
 @app.route("/api/identifier/choisir", methods=["POST"])
 def api_identifier_choisir():
-    """Retient la fiche AniList choisie (ou l'oublie : retour à la recherche automatique), puis relance l'identification."""
+    """Retient la série choisie, puis relance l'identification. `source` : « anilist » (avec `anilist` ou `id`), « vega » ou « ankama »
+    (avec `nom` : le nom dans le catalogue de l'éditeur), « aucune » (aucune série des bases ne correspond). Sans rien : oublie le
+    choix, retour à la recherche automatique."""
     import edition
     body = request.get_json(silent=True) or {}
     name = str(body.get("series", ""))
     if name not in _scan() or name == "(Sans série)":
         return jsonify({"ok": False, "error": "Série introuvable"}), 404
-    ident = body.get("anilist")
+    source = str(body.get("source") or ("anilist" if body.get("anilist") else ""))
     infos = edition.lire(MANGA_DIR / name)
-    if ident:
+    for cle in ("anilist_choisi", "editeur_choisi", "aucune_fiche_anilist"):
+        infos.pop(cle, None)
+    if source == "anilist":
         try:
-            infos["anilist_choisi"] = int(ident)
+            infos["anilist_choisi"] = int(body.get("anilist") or body.get("id"))
         except (TypeError, ValueError):
             return jsonify({"ok": False, "error": "Fiche inconnue"}), 400
-    else:
-        infos.pop("anilist_choisi", None)
+    elif source in ("vega", "ankama"):
+        nom = str(body.get("nom") or body.get("id") or "").strip()[:150]
+        if not nom:
+            return jsonify({"ok": False, "error": "Nom de la série manquant"}), 400
+        infos["editeur_choisi"] = {"source": source, "nom": nom}
+        infos["aucune_fiche_anilist"] = True              # un éditeur français choisi : AniList ne devine plus
+    elif source == "aucune":
+        infos["aucune_fiche_anilist"] = True
+    elif source:
+        return jsonify({"ok": False, "error": "Source inconnue"}), 400
     infos.pop("anilist_indice", None)
     infos["fichiers_relus"] = True                    # ton choix l'emporte : les Notes des fichiers ne le remettent pas en cause
     edition.ecrire(MANGA_DIR / name, infos)
     _identifier_en_fond(name, relire_fichiers=False, nouvelle_identite=True)
-    return jsonify({"ok": True, "message": "Fiche retenue : identification relancée." if ident else "Retour à la recherche automatique : identification relancée."})
+    return jsonify({"ok": True, "message": "Choix retenu : identification relancée." if source else "Retour à la recherche automatique : identification relancée."})
 
 
 @app.route("/api/identifier", methods=["POST"])
@@ -5583,6 +5650,13 @@ def api_renommer():
         suivi.renommer(name, nouveau)
     except (OSError, ValueError) as e:
         return jsonify({"ok": False, "error": f"Renommage impossible : {e}"}), 500
+    try:                                  # un autre nom = une autre question : l'ancien choix (éditeur, « aucune ») ne vaut plus
+        import edition
+        infos_n = edition.lire(MANGA_DIR / nouveau)
+        if any(infos_n.pop(k, None) for k in ("editeur_choisi", "aucune_fiche_anilist")):
+            edition.ecrire(MANGA_DIR / nouveau, infos_n)
+    except Exception:
+        pass
     _identifier_en_fond(nouveau)
     if fusion:
         logger.info("Série fusionnée (%s) : « %s » → « %s » (%d remplacé(s), %d doublon(s) à la corbeille)", mode, name, nouveau, remplaces, doublons)

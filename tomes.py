@@ -795,6 +795,8 @@ def meme_serie_sous_titre(serie: str, reste: str) -> bool:
 
 
 ID_CHOISI = lambda serie: None          # remplacé par l'appli : identifiant AniList choisi à la main pour la série
+SANS_ANILIST = lambda serie: False      # remplacé par l'appli : « aucune fiche AniList ne correspond » (choix fait à la main)
+EDITEUR_CHOISI = lambda serie: None     # remplacé par l'appli : {"source": "vega"|"ankama", "nom": …} choisi à la main
 TITRES_FICHIERS = lambda serie: []      # remplacé par l'appli : nom de la série écrit dans le ComicInfo.xml des tomes (équipe)
 ID_INDICE = lambda serie: None          # remplacé par l'appli : identifiant AniList noté dans les fichiers des tomes (série reçue)
 
@@ -823,6 +825,8 @@ def _media_anilist(serie: str, tome_max=None):
     choisi = ID_CHOISI(serie) or ID_INDICE(serie)
     if choisi:                                         # fiche choisie à la main (🔎 Choisir la fiche) ou notée dans les fichiers : jamais de recherche
         return (reseau.anilist("query($i:Int){Media(id:$i,type:MANGA)" + _REQ_FICHE + "}", {"i": int(choisi)}) or {}).get("Media")
+    if SANS_ANILIST(serie):                            # tu as dit qu'aucune fiche AniList ne correspond : on n'en devine pas
+        return None
     q = "query($s:String){Page(perPage:6){media(search:$s,type:MANGA,format_not:NOVEL)" + _REQ_FICHE + "}}"
     medias = []
     essais = _variantes(serie) + [t for t in (TITRES_FICHIERS(serie) or []) if t not in _variantes(serie)]
@@ -852,7 +856,7 @@ def statut_officiel_bilan(serie: str, tome_max=None, forcer=False):
     ne connaît pas la série) ou « panne » (AniList n'a pas répondu : l'ancienne fiche reste)."""
     garde = _charger(serie) or {}
     st = garde.get("statut_officiel")
-    douteuse = bool(st and st.get("anilist") and not st.get("choisi") and _douteuse(st, serie, tome_max))   # fiche devinée d'une autre série (« AFK Arena »)
+    douteuse = bool(st and st.get("anilist") and not st.get("choisi") and (_douteuse(st, serie, tome_max) or SANS_ANILIST(serie)))   # fiche devinée d'une autre série (« AFK Arena »)
     if not forcer and not douteuse and statut_a_jour(st):
         return (st if st.get("statut") else None), "deja", []
     ancien = st if st and st.get("statut") and not douteuse else None

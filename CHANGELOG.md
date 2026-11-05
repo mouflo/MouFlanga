@@ -1,5 +1,12 @@
 # Historique des versions
 
+## ❓ « Quelle série est-ce ? » et l'éditeur Ankama (5 novembre 2026)
+- **Quand l'appli doute de l'identité d'une série** (aucune fiche trouvée, ou fiche au titre différent ou incompatible avec tes tomes), la fiche de la série affiche « ❓ Je ne suis pas sûre de reconnaître cette série » avec un bouton « Choisir la bonne ». Le doute est évalué après chaque identification, donc aussi après un renommage. Rien n'est demandé pour une série bien reconnue.
+- **L'écran liste les séries possibles, la plus probable en premier** : AniList, mais aussi les catalogues des éditeurs français (Vega Livres, Ankama), avec couverture, année, nombre de tomes et une ligne qui dit pourquoi (✅ même titre, 7 tomes pour tes 5 ; ⚠ seulement 1 chapitre pour 19 tomes). Tu peux taper un autre titre.
+- **Le choix est gardé** et jamais remis en cause : une fiche AniList, un éditeur, ou « 🚫 Aucune de ces séries » (AniList ne devine plus rien). « ↺ Revenir à la recherche automatique » annule. Renommer une série efface un choix « éditeur » ou « aucune » (autre nom, autre question).
+- **Nouvelle source : Ankama Boutique** (Radiant, Dofus, Wakfu…) : ISBN et résumé de chaque tome, lus dans la catégorie de la série (pas la recherche du site, interdite par son `robots.txt`).
+- **Radiant** était reliée à « Sanran » (1 chapitre pour 19 tomes) : une fiche qui a moins de chapitres que la série n'a de tomes est maintenant refusée.
+
 ## 📖 « Arena » : une série française que les bases ne connaissent pas (5 novembre 2026)
 - **Nouvelle source : Vega Livres** (vega-livres.fr, l'éditeur de K-Factory). Pour chaque tome : ISBN, résumé, date et éditeur, lus sur la page du catalogue (autorisé par leur `robots.txt`, une requête toutes les 2 secondes). Elle passe avant la BnF et Google Books dans l'ordre de confiance.
 - **Fini la fiche d'une autre série** : « Arena » (5 tomes) était reliée à tort à « AFK Arena » (20 chapitres, manhua chinois). Un nom d'un seul mot simplement contenu dans un autre titre, sans nombre de tomes compatible, n'est plus accepté. Une fiche devinée de cette façon est retirée à la prochaine identification (une fiche choisie à la main n'est jamais touchée).

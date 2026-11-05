@@ -410,6 +410,9 @@
     $('sPitchAuto').hidden = s.resume_langue !== 'perso';
     $('sPitchZone').value = s.resume || '';
     // Édition : « 📐 1600 × 2400 · Digital ✓ » (✓ vert si sûr : NFO, nom de l'archive ou ton choix ; ? orange si deviné)
+    $('sDoute').hidden = !(s.doute && (s.doute.propositions || []).length) || !!s.identite_choisie;
+    if (!$('sDoute').hidden) $('sDoute').innerHTML = '❓ Je ne suis pas sûre de reconnaître cette série (' + s.doute.propositions.length + ' possibilité(s)). ' +
+      '<button type="button" class="mou-btn" id="sDouteVoir">Choisir la bonne</button>';
     $('sRattacherSuggere').hidden = !s.rattacher_a;
     if (s.rattacher_a) $('sRattacherSuggere').innerHTML = '📎 Ça ressemble à un hors-série de « ' + esc(s.rattacher_a) + ' ». ' +
       '<button type="button" class="mou-btn" data-rattacher="' + esc(s.rattacher_a) + '">Le rattacher</button>';
@@ -1646,36 +1649,53 @@
 
     $('sDecouper').addEventListener('click', function () { fermerMenus(); location.href = '/decouper?id=' + encodeURIComponent(current.id); });
 
-    // 🔎 Choisir soi-même la fiche AniList (série mal reconnue : Crows, Prisonnier Riku…)
+    // ❓ Quelle série est-ce ? : les séries qui peuvent correspondre (AniList, Vega Livres, Ankama), la plus probable en tête
     var STATUTS_AL = {FINISHED: 'terminée', RELEASING: 'en cours', HIATUS: 'en pause', CANCELLED: 'arrêtée', NOT_YET_RELEASED: 'à paraître'};
-    $('sChoisirFiche').addEventListener('click', function () {
+    var SOURCES_ID = {anilist: 'AniList', vega: 'Vega Livres (éditeur)', ankama: 'Ankama (éditeur)'};
+    function ouvrirChoixFiche() {
       fermerMenus();
-      $('infosTitre').textContent = '🔎 Fiche de « ' + current.title + ' »';
-      $('infosCorps').innerHTML = '<div class="dem-sous">Tape le titre japonais, anglais ou l\'auteur, puis choisis la bonne fiche.' +
-        (current.anilist_choisi ? ' Fiche choisie à la main : n° ' + esc(current.anilist_choisi) + '.' : (current.anilist ? ' Fiche trouvée automatiquement : n° ' + esc(current.anilist) + '.' : ' Aucune fiche trouvée pour l\'instant.')) + '</div>' +
-        '<div class="ident-actions"><input type="search" id="ficheQ" class="fiche-q" value="' + esc(current.title) + '" style="flex:1;min-width:0"><button type="button" class="mou-btn" id="ficheGo">Chercher</button></div>' +
-        (current.anilist_choisi ? '<div class="ident-actions"><button type="button" class="mou-btn ghost" data-fiche-auto="1">↺ Revenir à la recherche automatique</button></div>' : '') +
+      var choisie = current.identite_choisie;
+      $('infosTitre').textContent = '❓ Quelle série est-ce ? « ' + current.title + ' »';
+      $('infosCorps').innerHTML = '<div class="dem-sous">Voici les séries qui peuvent correspondre à tes fichiers, la plus probable en premier. Choisis la bonne : ce choix est gardé et plus jamais remis en cause. ' +
+        'Tu peux aussi taper un autre titre (japonais, anglais, français, auteur).' +
+        (choisie ? ' <b>Choix actuel : ' + esc(choisie.libelle) + '.</b>' : (current.anilist ? ' Fiche trouvée automatiquement : AniList n° ' + esc(current.anilist) + '.' : ' Aucune fiche trouvée pour l\'instant.')) + '</div>' +
+        '<div class="ident-actions"><input type="search" id="ficheQ" class="fiche-q" value="" placeholder="' + esc(current.title) + '" style="flex:1;min-width:0"><button type="button" class="mou-btn" id="ficheGo">Chercher</button></div>' +
+        '<div class="ident-actions">' + (choisie ? '<button type="button" class="mou-btn ghost" data-src-auto="1">↺ Revenir à la recherche automatique</button>' : '') +
+        '<button type="button" class="mou-btn ghost" data-src="aucune">🚫 Aucune de ces séries</button></div>' +
         '<div id="ficheRes"></div>';
       $('infosVue').hidden = false;
       var chercher = async function () {
-        $('ficheRes').innerHTML = '<div class="dem-sous">Recherche…</div>';
-        var r = await api('/api/identifier/chercher?q=' + encodeURIComponent($('ficheQ').value));
+        $('ficheRes').innerHTML = '<div class="dem-sous">Recherche dans AniList et chez les éditeurs…</div>';
+        var q = $('ficheQ').value.trim();
+        var r = await api('/api/identifier/propositions?series=' + encodeURIComponent(current.id) + (q ? '&q=' + encodeURIComponent(q) : ''));
         if (r.error) { $('ficheRes').innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
-        $('ficheRes').innerHTML = (r.resultats || []).map(function (m) {
-          return '<div class="fiche-choix' + (m.id === (current.anilist_choisi || current.anilist) ? ' actuelle' : '') + '">' + (m.couverture ? '<img src="' + esc(m.couverture) + '" alt="">' : '<div></div>') +
-            '<div><b>' + esc(m.titre) + '</b>' + (m.anglais && m.anglais !== m.titre ? '<small>' + esc(m.anglais) + '</small>' : '') + (m.natif ? '<small>' + esc(m.natif) + '</small>' : '') +
+        var pannes = (r.pannes || []).length ? '<div class="dem-sous">⚠ Sans réponse : ' + esc(r.pannes.join(', ')) + ' (réessaie plus tard).</div>' : '';
+        $('ficheRes').innerHTML = pannes + ((r.propositions || []).map(function (m) {
+          var actuelle = (m.source === 'anilist' && m.id === (current.anilist_choisi || current.anilist));
+          return '<div class="fiche-choix' + (actuelle ? ' actuelle' : '') + '">' + (m.couverture ? '<img src="' + esc(m.couverture) + '" alt="">' : '<div></div>') +
+            '<div><b>' + esc(m.titre) + '</b><small>' + esc(SOURCES_ID[m.source] || m.source) + '</small>' +
+            (m.anglais && m.anglais !== m.titre ? '<small>' + esc(m.anglais) + '</small>' : '') + (m.natif ? '<small>' + esc(m.natif) + '</small>' : '') +
             '<small>' + [m.annee, STATUTS_AL[m.statut] || '', m.tomes ? m.tomes + ' tomes' : '', m.format === 'NOVEL' ? 'roman' : ''].filter(Boolean).join(' · ') +
             (m.lien ? ' · <a href="' + esc(m.lien) + '" target="_blank" rel="noopener">voir ↗</a>' : '') + '</small>' +
-            '<button type="button" class="mou-btn" data-fiche="' + m.id + '">C\'est celle-ci</button></div></div>';
-        }).join('') || '<div class="dem-sous">Aucun résultat : essaie un autre titre.</div>';
+            (m.raison ? '<small>' + (m.ok ? '✅ ' : '⚠ ') + esc(m.raison) + '</small>' : '') +
+            '<button type="button" class="mou-btn" data-src="' + esc(m.source) + '" data-id="' + esc(m.id) + '">C\'est celle-ci</button></div></div>';
+        }).join('') || '<div class="dem-sous">Aucune proposition : essaie un autre titre.</div>');
       };
       $('ficheGo').addEventListener('click', chercher);
       $('ficheQ').addEventListener('keydown', function (e) { if (e.key === 'Enter') chercher(); });
       chercher();
-    });
+    }
+    $('sChoisirFiche').addEventListener('click', ouvrirChoixFiche);
+    $('sDoute').addEventListener('click', function (e) { if (e.target.closest('#sDouteVoir')) ouvrirChoixFiche(); });
     $('infosCorps').addEventListener('click', async function (e) {
-      var b = e.target.closest('[data-fiche],[data-fiche-auto]'); if (!b) return;
-      var r = await post('/api/identifier/choisir', {series: current.id, anilist: b.dataset.fiche || null});
+      var b = e.target.closest('[data-src],[data-src-auto]'); if (!b) return;
+      var corps = {series: current.id};
+      if (b.dataset.src) {
+        corps.source = b.dataset.src;
+        if (b.dataset.src === 'anilist') corps.anilist = b.dataset.id;
+        else if (b.dataset.src !== 'aucune') corps.nom = b.dataset.id;
+      }
+      var r = await post('/api/identifier/choisir', corps);
       if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
       suivreIdentification(current.id);
     });
