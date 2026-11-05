@@ -80,3 +80,12 @@ class TestFicheSansAniList(unittest.TestCase):
         self.assertNotIn("romaji", f)
         self.assertNotIn("scenario", f)
         self.assertEqual(f["editeur_fr"], "Vega-Dupuis")
+
+
+class TestResumeTome1(unittest.TestCase):
+    def test_le_resume_de_la_serie_pris_du_tome_1_reste_celui_du_tome_1(self):
+        texte = "Sous ses dehors de garçon timide, Gabriel est un psychopathe qui tente de s'intégrer aux groupes qui l'entourent."
+        brut = {"statut_officiel": {"resume": texte, "resume_source": "Tome 1"}, "resumes_tomes": {"1": {"texte": texte}}, "intros": []}
+        self.assertEqual(tomes._resume_de_serie(texte, brut, 1), texte)
+        brut["statut_officiel"]["resume_source"] = "AniList"
+        self.assertEqual(tomes._resume_de_serie(texte, brut, 1), "")

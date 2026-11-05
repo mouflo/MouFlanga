@@ -1113,8 +1113,8 @@ def _resume_de_serie(texte: str, brut: dict, n: int) -> str:
                 intros.append(intro)
             texte = texte[coupe:].lstrip()
     st = brut.get("statut") or brut.get("statut_officiel") or {}
-    if texte and st.get("resume") and _simple(texte)[:160] == _simple(st["resume"])[:160]:
-        return ""
+    if texte and st.get("resume") and st.get("resume_source") != "Tome 1" and _simple(texte)[:160] == _simple(st["resume"])[:160]:
+        return ""          # (un résumé de série repris du tome 1 est celui du tome 1 : il lui reste)
     return texte if len(texte) >= 40 else ""
 
 
