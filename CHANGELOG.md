@@ -1,5 +1,8 @@
 # Historique des versions
 
+## ✅ Les tomes assemblés restent cochés (5 novembre 2026)
+- **Un tome « ✅ assemblé » ne perd plus sa coche** quand l'appli réécrit son fichier ensuite : écriture des infos et des chapitres dans le tome, ou allègement / uniformisation. La coche était liée à la date et à la taille exactes du fichier, que ces écritures changent : les tomes déjà traités réapparaissaient comme « à faire » dans la liste des doubles pages. L'appli remet maintenant la coche elle-même après chaque réécriture d'un tome qu'elle avait assemblé.
+
 ## 🎯 Les infos viennent de la bonne série seulement (5 novembre 2026)
 - **La BnF ne mélange plus « Arena » et « Arena 13 »** (autre série, autre éditeur) : une notice dont le nom de série porte un numéro que ta série n'a pas est refusée, et celles déjà gardées à tort sont retirées à la prochaine identification (c'est le seul cas où une recherche efface : ce qui vient d'une autre série n'a jamais été une information sur celle-ci).
 - **Résumé du tome 1** : le résumé de la série repris du tome 1 n'est plus écarté comme « présentation de la série » (le tome 1 retombait sur un résumé d'une autre source).

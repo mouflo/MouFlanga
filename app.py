@@ -1889,9 +1889,13 @@ def api_optimiser():
     if q == "o":                                             # « même qualité que l'original » : chaque tome garde la sienne
         manuelle = optimiser.QUALITE_ORIGINE
 
+    etaient_assembles = []                                   # tomes déjà assemblés avant le traitement : ils le restent (le fichier change de date et de taille)
+
     def fini():
         if appliquer:
             tomes_cbz._CACHE.clear()
+            for f in etaient_assembles:
+                _marquer_assemble(name, f)
             import edition
             infos = edition.lire(MANGA_DIR / name)
             infos["allegement"] = {"date": datetime.now().strftime("%Y-%m-%d"), "largeur": largeur, "eclairci": bool(eclairer), "amelioration": eclairer}
@@ -1912,6 +1916,7 @@ def api_optimiser():
         fichiers = [f for f in fichiers if f.name in noms]
         if not fichiers:
             return jsonify({"ok": False, "error": "Aucun tome coché."}), 400
+    etaient_assembles[:] = [f for f in fichiers if _est_assemble(name, f)]
     infos_de = None
     if appliquer and body.get("infos"):                       # 📝 les infos du tome écrites dans la même passe que l'allègement
         import edition
@@ -6517,6 +6522,7 @@ def _ecrire_fichier_tome(name, tome, chemin, chapitres, infos, partage, ranger=F
     import optimiser
     import signets
     r = (name, tome) if ranger else None
+    etait_assemble = _est_assemble(name, chemin)             # le fichier est réécrit : date et taille changent, il reste « assemblé »
     if partage:
         optimiser.echanger_dossier(chemin, lambda dest: bool(signets.ecrire(chemin, chapitres, dest, infos, r)), _vers_corbeille)
     else:
@@ -6526,6 +6532,8 @@ def _ecrire_fichier_tome(name, tome, chemin, chapitres, infos, partage, ranger=F
         chemin.rename(ancien)
         tmp.rename(chemin)
         _vers_corbeille(ancien)
+    if etait_assemble:
+        _marquer_assemble(name, chemin)
     tomes_cbz._CACHE.clear()
 
 
