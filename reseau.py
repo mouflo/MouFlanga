@@ -118,6 +118,7 @@ SERVICES = {s.nom: s for s in (
     Service("google", "Google Books", 0.4, ["www.googleapis.com"], quota_jour=1000, pause_429=3600),
     Service("bnf", "BnF (catalogue)", 5.0, ["catalogue.bnf.fr", "data.bnf.fr"], pause_429=600),
     Service("openlibrary", "Open Library", 1.0, ["openlibrary.org"], pause_429=300),
+    Service("vega", "Vega Livres (éditeur)", 2.0, ["www.vega-livres.fr"], pause_429=300),
     Service("kitsu", "Kitsu", 1.0, ["kitsu.io"]),
     Service("jikan", "MyAnimeList (Jikan)", 1.2, ["api.jikan.moe"], pause_429=60),
     Service("github", "GitHub (API)", 1.0, ["api.github.com"], pause_429=3600),

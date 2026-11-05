@@ -619,7 +619,25 @@ def _choisir(medias, serie, tome_max):
         compatible = bool(tome_max and vol and vol >= tome_max)
         proche = -abs((vol or 0) - (tome_max or 0)) if tome_max and vol else -999
         return (assez, exact, compatible, contient, m.get("format") == "MANGA", proche)
-    return max(medias, key=note) if medias else None
+    if not medias:
+        return None
+    meilleur = max(medias, key=note)
+    return None if _douteuse(meilleur, serie, tome_max) else meilleur
+
+
+def _douteuse(m, serie, tome_max):
+    """Fiche sans rapport probable : un nom d'un seul mot (« Arena ») seulement CONTENU dans un autre titre (« AFK Arena »), sans
+    titre identique et sans nombre de tomes compatible avec ce qu'on a. Mieux vaut « inconnue » (l'éditeur, la BnF… prennent le relais)
+    que la fiche d'une autre série. `m` : fiche AniList ou fiche gardée (statut_officiel : titre, titre_en, synonymes, volumes)."""
+    mots = _simple(sans_edition(serie)).split()
+    if len(mots) != 1:
+        return False
+    t = m.get("title") or {}
+    titres = [_simple(x) for x in (t.get("romaji") or m.get("titre"), t.get("english") or m.get("titre_en"), *(m.get("synonyms") or m.get("synonymes") or [])) if x]
+    if any(mots[0] == x for x in titres):
+        return False
+    vol = m.get("volumes")
+    return not (tome_max and vol and vol >= tome_max)
 
 
 def _texte_propre(t):
@@ -831,15 +849,18 @@ def statut_officiel_bilan(serie: str, tome_max=None, forcer=False):
     ne connaît pas la série) ou « panne » (AniList n'a pas répondu : l'ancienne fiche reste)."""
     garde = _charger(serie) or {}
     st = garde.get("statut_officiel")
-    if not forcer and statut_a_jour(st):
+    douteuse = bool(st and st.get("anilist") and not st.get("choisi") and _douteuse(st, serie, tome_max))   # fiche devinée d'une autre série (« AFK Arena »)
+    if not forcer and not douteuse and statut_a_jour(st):
         return (st if st.get("statut") else None), "deja", []
-    ancien = st if st and st.get("statut") else None
+    ancien = st if st and st.get("statut") and not douteuse else None
     try:
         m = _media_anilist(serie, tome_max)
     except reseau.Panne as e:
         logger.info("Statut de %s : %s (l'ancienne fiche reste)", serie, e)
         return ancien, "panne", [e]
-    nouveau = _garder_statut(serie, m) or ancien                      # « inconnue » ne retire pas une fiche déjà trouvée
+    if douteuse and m is None:
+        logger.info("Statut de %s : la fiche AniList devinée (%s) n'est pas celle de cette série, elle est retirée", serie, st.get("titre"))
+    nouveau = _garder_statut(serie, m, retire=douteuse and m is None) or ancien                      # « inconnue » ne retire pas une fiche déjà trouvée
     resultat = (_charger(serie) or {}).get("statut_officiel") or {}
     if resultat.get("resume_incomplet"):
         return nouveau, "partiel", []
@@ -863,7 +884,7 @@ def resume_de_serie_depuis_le_tome(serie: str, texte: str, source: str = "Tome 1
     return bool(fait)
 
 
-def _garder_statut(serie, m):
+def _garder_statut(serie, m, retire=False):
     """Enregistre la fiche AniList et le résumé (à côté de la répartition en tomes, même fichier). Le résumé trouvé n'en remplace
     jamais un meilleur : un résumé en français reste si la recherche de cette fois n'a trouvé que l'anglais ou rien."""
     resume, langue, pannes, source = _resume(m, serie) if m else _resume_sans_anilist(serie)
@@ -889,7 +910,7 @@ def _garder_statut(serie, m):
             st["resume"], st["resume_langue"], st["resume_source"] = ancien["resume"], ancien["resume_langue"], ancien.get("resume_source", "")
         if not (st["statut"] and len(st["resume"] or "") >= 40):          # incomplet : on compte les échecs pour espacer les essais
             st["essais"] = int(ancien.get("essais") or 0) + 1
-        if not st["statut"] and ancien.get("statut") and m is None:
+        if not st["statut"] and ancien.get("statut") and m is None and not retire:
             return False                                                 # « inconnue » ne remplace pas une fiche trouvée
         brut["statut_officiel"] = st
     modifier(serie, appliquer)

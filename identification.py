@@ -25,6 +25,7 @@ import googlebooks
 import notices
 import reseau
 import tomes
+import vega
 
 logger = logging.getLogger("mouflanga")
 
@@ -209,6 +210,18 @@ def etape_notices(serie: str, forcer: bool = False) -> Bilan:
             def noter_bnf(brut):
                 brut.setdefault("recherches", {})["bnf"] = {"date": time.time(), "tomes": sorted(trouves), "absents": sorted(voulus - set(trouves))}
             tomes.modifier(serie, noter_bnf)
+        except reseau.Panne as e:
+            pannes.append(e)
+    # 1 bis. Vega Livres (catalogue d'un éditeur français, pour les séries que les bases ne connaissent pas) : même rythme que la BnF
+    v_avant = _etat_recherche(serie, "vega")
+    if forcer or not v_avant or (manque() and time.time() - v_avant.get("date", 0) > BNF_DUREE):
+        try:
+            trouves = vega.chercher(noms, voulus=voulus)
+            notices.enregistrer(serie, "vega", trouves)
+
+            def noter_vega(brut):
+                brut.setdefault("recherches", {})["vega"] = {"date": time.time(), "tomes": sorted(trouves)}
+            tomes.modifier(serie, noter_vega)
         except reseau.Panne as e:
             pannes.append(e)
     # 2. Google Books : ce qu'il manque encore, une recherche de toute la série puis quelques tomes un à un

@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 📖 « Arena » : une série française que les bases ne connaissent pas (5 novembre 2026)
+- **Nouvelle source : Vega Livres** (vega-livres.fr, l'éditeur de K-Factory). Pour chaque tome : ISBN, résumé, date et éditeur, lus sur la page du catalogue (autorisé par leur `robots.txt`, une requête toutes les 2 secondes). Elle passe avant la BnF et Google Books dans l'ordre de confiance.
+- **Fini la fiche d'une autre série** : « Arena » (5 tomes) était reliée à tort à « AFK Arena » (20 chapitres, manhua chinois). Un nom d'un seul mot simplement contenu dans un autre titre, sans nombre de tomes compatible, n'est plus accepté. Une fiche devinée de cette façon est retirée à la prochaine identification (une fiche choisie à la main n'est jamais touchée).
+- Reste connu : la BnF confond encore « Arena » avec « Arena 13 » (autre série) ; le bon résumé et le bon ISBN de Vega passent devant.
+
 ## 📚 La liste complète de chaque site (3 novembre 2026)
 - **Choisis un site dans « Télécharger » puis « 📚 Lire la liste de ce site »** : l'appli lit en arrière-plan toutes les séries du site (de 20 secondes à 3 minutes), les garde sur le serveur et les affiche par ordre alphabétique, avec un filtre. Tu vois enfin ce qui est récupérable. « 🔄 Mettre à jour la liste » la relit.
 - **Dans « 🔎 Tous les sites »**, un résumé montre pour chaque site combien de séries sont connues et la date de lecture (ou « pas encore lue »).
