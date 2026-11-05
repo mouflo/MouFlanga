@@ -1,5 +1,9 @@
 # Historique des versions
 
+## 🎯 Les infos viennent de la bonne série seulement (5 novembre 2026)
+- **La BnF ne mélange plus « Arena » et « Arena 13 »** (autre série, autre éditeur) : une notice dont le nom de série porte un numéro que ta série n'a pas est refusée, et celles déjà gardées à tort sont retirées à la prochaine identification (c'est le seul cas où une recherche efface : ce qui vient d'une autre série n'a jamais été une information sur celle-ci).
+- **Résumé du tome 1** : le résumé de la série repris du tome 1 n'est plus écarté comme « présentation de la série » (le tome 1 retombait sur un résumé d'une autre source).
+
 ## ❓ « Quelle série est-ce ? » et l'éditeur Ankama (5 novembre 2026)
 - **Quand l'appli doute de l'identité d'une série** (aucune fiche trouvée, ou fiche au titre différent ou incompatible avec tes tomes), la fiche de la série affiche « ❓ Je ne suis pas sûre de reconnaître cette série » avec un bouton « Choisir la bonne ». Le doute est évalué après chaque identification, donc aussi après un renommage. Rien n'est demandé pour une série bien reconnue.
 - **L'écran liste les séries possibles, la plus probable en premier** : AniList, mais aussi les catalogues des éditeurs français (Vega Livres, Ankama), avec couverture, année, nombre de tomes et une ligne qui dit pourquoi (✅ même titre, 7 tomes pour tes 5 ; ⚠ seulement 1 chapitre pour 19 tomes). Tu peux taper un autre titre.

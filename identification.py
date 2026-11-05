@@ -206,6 +206,9 @@ def etape_notices(serie: str, forcer: bool = False) -> Bilan:
     if forcer or not bnf_avant or (manque() and (time.time() - bnf_avant.get("date", 0) > BNF_DUREE or voulus - connus_bnf)):
         try:
             trouves = bnf.chercher(noms, autres_series=autres, edition=edition, voulus=voulus)
+            faux = notices.retirer_observations(serie, "bnf", lambda o: bnf.est_une_autre_serie(o, noms))     # « Arena 13 » pour « Arena »
+            if faux:
+                logger.info("BnF : notices d'une autre série retirées pour %s (tomes %s)", serie, faux)
             notices.enregistrer(serie, "bnf", trouves)
 
             def noter_bnf(brut):

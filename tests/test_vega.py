@@ -89,3 +89,22 @@ class TestResumeTome1(unittest.TestCase):
         self.assertEqual(tomes._resume_de_serie(texte, brut, 1), texte)
         brut["statut_officiel"]["resume_source"] = "AniList"
         self.assertEqual(tomes._resume_de_serie(texte, brut, 1), "")
+
+
+class TestAutreSerieBnf(unittest.TestCase):
+    def test_serie_avec_un_numero_en_plus_est_une_autre(self):
+        import bnf
+        self.assertTrue(bnf.est_une_autre_serie({"serie": "Arena 13"}, ["Arena"]))
+        self.assertFalse(bnf.est_une_autre_serie({"serie": "Arena"}, ["Arena"]))
+        self.assertFalse(bnf.est_une_autre_serie({"serie": ""}, ["Arena"]))
+        self.assertFalse(bnf.est_une_autre_serie({"serie": "20th Century Boys"}, ["20th Century Boys"]))
+        self.assertFalse(bnf.est_une_autre_serie({"serie": "Arena 13"}, ["Arena 13"]))
+
+    def test_retirer_observations_seulement_les_fausses(self):
+        import notices
+        brut = {"notices": {"1": {"bnf": {"serie": "Arena 13"}, "vega": {"isbn": "x"}}, "4": {"bnf": {"serie": "Arena"}}}}
+        with mock.patch.object(notices.tomes, "modifier", lambda s, f: f(brut)):
+            retires = notices.retirer_observations("Arena", "bnf", lambda o: o["serie"] == "Arena 13")
+        self.assertEqual(retires, [1])
+        self.assertEqual(brut["notices"]["1"], {"vega": {"isbn": "x"}})
+        self.assertIn("bnf", brut["notices"]["4"])

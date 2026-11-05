@@ -130,3 +130,19 @@ def manquants(serie: str, tomes_voulus, champ: str = "isbn") -> list:
 def a_cherche(serie: str, source: str, tome) -> bool:
     """Cette source a-t-elle déjà une observation pour ce tome ?"""
     return bool((observations(serie).get(str(int(tome))) or {}).get(source))
+
+
+def retirer_observations(serie: str, source: str, refuse) -> list:
+    """Retire les observations d'une source que `refuse(observation)` juge fausses (autre série) ; rend les tomes concernés. Seul cas où une
+    recherche efface : ce qui vient d'une autre série n'a jamais été une information sur celle-ci."""
+    retires = []
+
+    def appliquer(brut):
+        for t, par in list((brut.get("notices") or {}).items()):
+            if source in par and refuse(par[source]):
+                del par[source]
+                retires.append(int(t))
+        if not retires:
+            return False
+    tomes.modifier(serie, appliquer)
+    return sorted(retires)

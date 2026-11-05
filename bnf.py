@@ -142,12 +142,22 @@ def _titres_candidats(n: dict) -> list:
     return list(dict.fromkeys(x for x in out if x))
 
 
+def est_une_autre_serie(n: dict, noms) -> bool:
+    """La série de la notice (le nom de la série, qui ne porte jamais un numéro de tome) a un numéro que la série cherchée n'a pas :
+    « Arena 13 » (Hachette, 389 pages) n'est pas « Arena ». `n` : notice (ou observation gardée) avec son champ « serie »."""
+    chiffres = lambda t: {m for m in correspondance.jetons(t) if m.isdigit()}
+    connus = set().union(*(chiffres(x) for x in noms)) if noms else set()
+    return bool(chiffres(n.get("serie") or "") - connus)
+
+
 def de_la_serie(notices, noms, autres_series=(), edition: str = "") -> list:
     """Notices de tomes de la série : numéro de tome, ISBN français valide, titre qui est bien celui de la série (le titre du tome
     ou celui de sa série : beaucoup de notices ne portent que « Banane » avec la série en lien)."""
     out = []
     for n in notices:
         if n["tome"] is None or not n["isbn"] or not n["isbn"].startswith(("9782", "97910")):
+            continue
+        if est_une_autre_serie(n, noms):
             continue
         if any(correspondance.titre_de_la_serie(t, noms, autres_series, edition) for t in _titres_candidats(n)):
             out.append(n)
