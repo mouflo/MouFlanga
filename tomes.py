@@ -1175,6 +1175,12 @@ def fiche_bilan(serie: str, forcer=False):
     if st.get("statut") and not st.get("anilist"):        # fiche AniList d'avant (sans identifiant) : on la refait une fois
         st = statut_officiel(serie, forcer=True) or st
     out = {k: v for k, v in (f or {}).items()}              # un échec (AniList qui demande de ralentir…) garde l'ancien
+    if not st.get("anilist") and "AniList" in (out.get("sources") or []):
+        # la fiche AniList a été retirée (série devinée à tort) : ce qu'elle avait donné (auteurs, dates, genres, nom d'origine, et la
+        # fiche MangaUpdates trouvée d'après ce nom) ne vaut plus pour cette série
+        for k in ("debut", "fin", "statut", "titre_original", "romaji", "genres", "scenario", "dessin", "editeurs_mu", "volumes_mu",
+                  "mangaupdates", "wikipedia"):
+            out.pop(k, None)
     out.pop("partielle", None)
     roles, pannes, ont_repondu = {}, [], set()
     out["date"] = time.time()

@@ -57,3 +57,21 @@ class TestFicheDouteuse(unittest.TestCase):
     def test_fiche_gardee_reconnue(self):
         st = {"titre": "Jian Yu Yuanzheng: Wu Mang Zhi Ren", "titre_en": "Legends of Esperia", "synonymes": ["AFK Arena"], "volumes": None}
         self.assertTrue(tomes._douteuse(st, "Arena", 5))
+
+
+class TestFicheSansAniList(unittest.TestCase):
+    def test_champs_de_la_fiche_retiree_sont_purges(self):
+        import tempfile
+        brut = {"statut_officiel": {"statut": None, "anilist": None},
+                "fiche": {"sources": ["AniList"], "romaji": "Jian Yu", "scenario": "Shou Ji Quan", "mangaupdates": 1, "editeur_fr": "Vega-Dupuis",
+                          "genres": "action", "date": 0, "debut": "2021"}}
+        gardes = {}
+        with mock.patch.object(tomes, "_charger", lambda s: brut), \
+                mock.patch.object(tomes, "modifier", lambda s, f: gardes.update(brut=f(brut) or brut)), \
+                mock.patch.object(tomes, "_page_wikipedia", lambda *a, **k: None), \
+                mock.patch.object(tomes, "_mangaupdates", lambda t: None), \
+                mock.patch.object(tomes, "_google_books", lambda t: None):
+            f = tomes.fiche_bilan("Arena", forcer=True)[0]
+        self.assertNotIn("romaji", f)
+        self.assertNotIn("scenario", f)
+        self.assertEqual(f["editeur_fr"], "Vega-Dupuis")
