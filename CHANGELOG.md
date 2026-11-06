@@ -1,5 +1,8 @@
 # Historique des versions
 
+## 🎧 Plus de livres audio ni de vidéos dans les propositions (6 novembre 2026)
+- **Un torrent audio ou vidéo n'est plus jamais proposé** : un livre audio (« … à l'arena FRENCH Mp3 128kbps ») était proposé pour la série « Arena » parce que son titre contenait le mot « arena ». Les noms contenant Mp3, FLAC, kbps, audio book, Audible, MKV/MP4, 1080p, x264, WEB-DL… sont refusés (« pas un manga »), dans la recherche comme dans la surveillance et le bouton 🤖. Une proposition déjà en attente de ce genre disparaît à la prochaine vérification.
+
 ## ✅ Les tomes assemblés restent cochés (5 novembre 2026)
 - **Un tome « ✅ assemblé » ne perd plus sa coche** quand l'appli réécrit son fichier ensuite : écriture des infos et des chapitres dans le tome, ou allègement / uniformisation. La coche était liée à la date et à la taille exactes du fichier, que ces écritures changent : les tomes déjà traités réapparaissaient comme « à faire » dans la liste des doubles pages. L'appli remet maintenant la coche elle-même après chaque réécriture d'un tome qu'elle avait assemblé.
 

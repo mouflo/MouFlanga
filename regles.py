@@ -252,6 +252,15 @@ def est_anglais(titre: str) -> bool:
     return bool(_ANGLAIS.search((titre or "").replace("_", " ")))
 
 
+# Pas un manga : livre audio, musique, vidéo (« … Nuit blanche à l'arena FRENCH Mp3 128kbps » proposé pour la série « Arena »)
+_PAS_MANGA = re.compile(r"\bmp3\b|\bflac\b|\bm4b\b|\baac\b|\bogg\b|\d\s*kbps|\baudio\s?book|\blivre\s+audio|\baudible\b|"
+                        r"\b(?:mkv|mp4|avi)\b|\b(?:1080p|720p|2160p|x264|x265|h264|h265|bluray|web-?dl|hdtv)\b", re.I)
+
+
+def pas_un_manga(titre: str) -> bool:
+    return bool(_PAS_MANGA.search((titre or "").replace("_", " ").replace(".", " ")))
+
+
 def _refus(profil: dict, r: dict, score: int) -> str:
     """Pourquoi le profil refuse ce torrent (« » s'il l'accepte)."""
     titre = r.get("titre") or ""
@@ -282,6 +291,8 @@ def filtrer(resultats: list[dict], serie: str = "", avec_rejets: bool = False, p
         r["score"] = score
         r["formats"] = [f["nom"] for f in trouves]
         r["rejet"] = _refus(profil, r, score) if profil else ""
+        if not r["rejet"] and pas_un_manga(r.get("titre")):
+            r["rejet"] = "pas un manga (audio ou vidéo) : jamais pris"
         if not r["rejet"] and est_anglais(r.get("titre")):
             r["rejet"] = "marqué en anglais (ENG / EN) : jamais pris"
         r["profil"] = profil["nom"] if profil else ""

@@ -179,7 +179,7 @@ def propositions_pour(nom, info, resultats, deja):
     cands = {"nouveau": [], "equipe": [], "meilleur": []}
     couverts_de, serie_entiere = {}, []
     for r in resultats:
-        if r["titre"] in exclus or r.get("rejet") or ("🇫🇷 FR" not in r["badges"] and not r.get("profil")):
+        if r["titre"] in exclus or r.get("rejet") or __import__("regles").pas_un_manga(r["titre"]) or ("🇫🇷 FR" not in r["badges"] and not r.get("profil")):
             continue
         couverts = tomes_couverts(r, info.get("attendus"))
         couverts_de[id(r)] = couverts
