@@ -933,7 +933,7 @@
         '<section class="reg" id="allRecap"></section>' +
         '<div class="ident-actions"><button type="button" class="mou-btn" id="allComparer">👁 Comparer avant / après (en direct)</button></div><div id="allCmp"></div>' +
         '<div class="ident-actions"><label><input type="checkbox" id="allInfos" checked> 📝 Écrire aussi les infos du tome (résumé, chapitres, provenance, ISBN…) dans la même passe</label></div>' +
-        '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser les tomes cochés (rien n\'est modifié)</button></div><div id="allRes"></div>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser les tomes cochés (rien n\'est modifié)</button> <a class="mou-btn" href="/historique-allegement">📜 Historique de tous les tomes</a></div><div id="allRes"></div>' +
         '</div>' +
 
         '<div data-panneau="doubles" hidden>' +

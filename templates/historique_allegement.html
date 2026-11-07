@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historique de l'allègement · MouFlanga</title>
+    <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+    <style>
+        .hs-barre { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
+        .hs-barre input, .hs-barre select { font-size:16px; padding:10px; border-radius:8px; border:1px solid #2c2f36; background:#17181c; color:#eee; flex:1 1 140px; min-width:0; }
+        .hs-tot { padding:12px; border:1px solid var(--accent,#52b54b); border-radius:10px; margin:10px 0; line-height:1.6; }
+        .hs-zone { overflow-x:auto; border:1px solid #2c2f36; border-radius:10px; }
+        table.hs { border-collapse:collapse; width:100%; min-width:640px; font-size:15px; }
+        table.hs th, table.hs td { padding:8px 10px; border-bottom:1px solid #1c1e22; text-align:right; white-space:nowrap; }
+        table.hs th { position:sticky; top:0; background:#1f2126; cursor:pointer; user-select:none; }
+        table.hs td.t, table.hs th.t { text-align:left; white-space:normal; overflow-wrap:anywhere; min-width:180px; }
+        .bon { color:#52b54b; } .mauvais { color:#e0a84a; } .peti { color:#999; font-size:.85em; }
+    </style>
+</head>
+<body>
+<div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}"></div>
+<main style="max-width:1000px;margin:0 auto;padding:0 16px 40px">
+    <h2>📜 Historique de l'allègement</h2>
+    <p class="peti">Chaque tome analysé (taille <b>estimée</b>) ou traité (taille <b>réelle</b>) est gardé ici, avec sa taille avant, après et le gain. Touche un titre de colonne pour trier. Les analyses faites avant la création de cette page n'y sont pas.</p>
+    <div class="hs-barre">
+        <input id="q" type="search" placeholder="Chercher une série ou un tome">
+        <select id="mode"><option value="">Analyses et traitements</option><option value="analyse">Analyses (estimations)</option><option value="applique">Traitements faits</option></select>
+    </div>
+    <div class="hs-tot" id="tot"></div>
+    <div class="hs-zone"><table class="hs"><thead><tr>
+        <th class="t" data-k="nom">Tome</th><th data-k="mode">Type</th><th data-k="avant">Avant</th><th data-k="apres">Après</th><th data-k="gain">Gain (Mo)</th><th data-k="pct">Gain (%)</th><th data-k="date">Date</th>
+    </tr></thead><tbody id="corps"></tbody></table></div>
+</main>
+<script>
+(function () {
+  var L = [], tri = 'date', sens = -1;
+  var mo = function (o) { return (o / 1048576).toFixed(1).replace('.', ','); };
+  var esc = function (t) { return String(t).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); };
+  var norm = function (t) { return String(t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); };
+  function rendre() {
+    var q = norm(document.getElementById('q').value), m = document.getElementById('mode').value;
+    var v = L.filter(function (x) { return (!m || x.mode === m) && (!q || norm(x.serie + ' ' + x.fichier).indexOf(q) >= 0); });
+    v.sort(function (a, b) { var x = a[tri], y = b[tri]; return (x < y ? -1 : x > y ? 1 : 0) * sens; });
+    var A = 0, B = 0; v.forEach(function (x) { A += x.avant; B += x.apres; });
+    document.getElementById('tot').innerHTML = '<b>' + v.length + '</b> ligne(s) · avant <b>' + mo(A) + ' Mo</b> → après <b>' + mo(B) + ' Mo</b> · gain <b class="bon">' + mo(A - B) + ' Mo (' + (A ? Math.round(1000 * (A - B) / A) / 10 : 0).toString().replace('.', ',') + ' %)</b>';
+    document.getElementById('corps').innerHTML = v.map(function (x) {
+      return '<tr><td class="t">' + esc(x.serie) + ' · ' + esc(x.fichier.replace(/\.(cbz|zip)$/i, '')) + (x.note ? '<br><span class="peti">' + esc(x.note) + '</span>' : '') + '</td><td>' + (x.mode === 'applique' ? '✅ fait' : '🔍 estimé') +
+        '</td><td>' + mo(x.avant) + ' Mo</td><td>' + mo(x.apres) + ' Mo</td><td class="' + (x.gain >= 0 ? 'bon' : 'mauvais') + '">' + (x.gain >= 0 ? '−' : '+') + mo(Math.abs(x.gain)) +
+        '</td><td class="' + (x.gain >= 0 ? 'bon' : 'mauvais') + '">' + (x.gain >= 0 ? '−' : '+') + Math.abs(x.pct).toFixed(1).replace('.', ',') + ' %</td><td class="peti">' + esc(x.date.slice(0, 16)) + '</td></tr>';
+    }).join('') || '<tr><td class="t" colspan="7">Rien pour l\'instant.</td></tr>';
+  }
+  fetch('/api/optimiser/historique').then(function (r) { return r.json(); }).then(function (d) {
+    L = (d.lignes || []).map(function (x) { x.nom = x.serie + ' ' + x.fichier; x.gain = x.avant - x.apres; x.pct = x.avant ? 100 * x.gain / x.avant : 0; return x; });
+    rendre();
+  });
+  document.getElementById('q').oninput = rendre; document.getElementById('mode').onchange = rendre;
+  [].forEach.call(document.querySelectorAll('th[data-k]'), function (th) {
+    th.onclick = function () { var k = th.dataset.k; sens = (tri === k) ? -sens : (k === 'nom' || k === 'mode' ? 1 : -1); tri = k; rendre(); };
+  });
+})();
+</script>
+</body>
+</html>

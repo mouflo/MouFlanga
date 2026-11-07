@@ -1,5 +1,8 @@
 # Historique des versions
 
+## [Non publié]
+- 📜 **Historique de l'allègement** : chaque tome analysé (taille estimée) ou traité (taille réelle) est gardé dans `data/historique_allegement.jsonl`. Page `/historique-allegement` (bouton dans le module ✨ Améliorer, alléger) : taille avant, après, gain en Mo et en %, tri par colonne, recherche, totaux.
+
 ## 🎧 Plus de livres audio ni de vidéos dans les propositions (6 novembre 2026)
 - **Un torrent audio ou vidéo n'est plus jamais proposé** : un livre audio (« … à l'arena FRENCH Mp3 128kbps ») était proposé pour la série « Arena » parce que son titre contenait le mot « arena ». Les noms contenant Mp3, FLAC, kbps, audio book, Audible, MKV/MP4, 1080p, x264, WEB-DL… sont refusés (« pas un manga »), dans la recherche comme dans la surveillance et le bouton 🤖. Une proposition déjà en attente de ce genre disparaît à la prochaine vérification.
 

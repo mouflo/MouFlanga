@@ -12,6 +12,7 @@ L'original part à la corbeille (30 jours) seulement quand le nouveau fichier es
 partagé par qBittorrent (lien physique) n'est jamais touché.
 """
 import io
+import json
 import logging
 import threading
 import time
@@ -397,6 +398,39 @@ def _dossier_a_lui(f: Path, serie: str) -> bool:
         return False
 
 
+HISTORIQUE = None               # app.py : data/historique_allegement.jsonl (une ligne JSON par tome analysé ou traité, jamais effacée)
+
+
+def noter_historique(serie, mode, fichier, avant, apres, note=""):
+    """Garde sur disque une ligne par tome analysé (« analyse », taille estimée) ou traité (« applique », taille réelle)."""
+    if not HISTORIQUE:
+        return
+    try:
+        ligne = {"date": time.strftime("%Y-%m-%d %H:%M:%S"), "serie": serie, "fichier": fichier, "mode": mode,
+                 "avant": int(avant), "apres": int(apres), "note": note}
+        with _VERROU_HISTORIQUE, open(HISTORIQUE, "a", encoding="utf-8") as h:
+            h.write(json.dumps(ligne, ensure_ascii=False) + "\n")
+    except Exception as e:
+        logger.warning("Historique d'allègement : %s", e)
+
+
+def lire_historique():
+    lignes = []
+    try:
+        with open(HISTORIQUE, encoding="utf-8") as h:
+            for l in h:
+                try:
+                    lignes.append(json.loads(l))
+                except ValueError:
+                    pass
+    except (OSError, TypeError):
+        pass
+    return lignes
+
+
+_VERROU_HISTORIQUE = threading.Lock()
+
+
 def etat(serie):
     with _VERROU:
         return dict(_ETAT.get(serie) or {})
@@ -434,6 +468,7 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
                              "gain": a["gain_estime"], "psnr": a["psnr_min"]}
                     if eclairer and eclairer.get("uniformiser") and not calage:
                         ligne["alerte"] = "uniformisation ignorée : ce tome n'est pas encore mesuré"
+                    gagne_f = 0
                     comicinfo = infos_de(f) if (appliquer and infos_de) else None
                     if appliquer and (a["qualite"] or comicinfo):
                         if partage:
@@ -444,6 +479,7 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
                             ancien = f.with_name(f.name + ".avant")
                             if ancien.exists():
                                 vers_corbeille(ancien)
+                        gagne_f = g
                         ligne["gagne_mo"] = round(g / 1048576, 1)
                         if comicinfo:
                             ligne["infos"] = True
@@ -453,6 +489,11 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
                     if not a["qualite"]:
                         ligne["note"] = "rien à changer sur ce tome (images laissées telles quelles)" + (", infos écrites" if ligne.get("infos") else "")
                     rapport.append(ligne)
+                    if a["qualite"] or ligne.get("gagne_mo") is not None:
+                        g_oct = gagne_f if ligne.get("gagne_mo") is not None else int(a["taille"] * a["gain_estime"])
+                        noter_historique(serie, "applique" if appliquer else "analyse", f.name, a["taille"], a["taille"] - g_oct, ligne.get("note", ""))
+                    else:
+                        noter_historique(serie, "applique" if appliquer else "analyse", f.name, a["taille"], a["taille"], "rien à changer")
                 except Exception as e:
                     logger.warning("Allègement de %s : %s", f, e)
                     rapport.append({"fichier": f.name, "note": f"erreur : {e}"})

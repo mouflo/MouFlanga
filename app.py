@@ -1870,6 +1870,20 @@ def api_optimiser_fichiers():
     return jsonify({"fichiers": out})
 
 
+optimiser.HISTORIQUE = str(DATA_DIR / "historique_allegement.jsonl")
+
+
+@app.route("/api/optimiser/historique")
+def api_optimiser_historique():
+    """Tous les tomes déjà analysés ou traités (taille avant / après, gain), du plus récent au plus ancien."""
+    return jsonify({"lignes": list(reversed(optimiser.lire_historique()))})
+
+
+@app.route("/historique-allegement")
+def page_historique_allegement():
+    return render_template("historique_allegement.html", version=APP_VERSION)
+
+
 @app.route("/api/optimiser", methods=["GET", "POST"])
 def api_optimiser():
     """GET : où en est l'analyse ou l'allègement. POST {series, appliquer, amelio (« 2,2,1,1,1 »), largeur} : lance l'un ou l'autre."""
