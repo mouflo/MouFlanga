@@ -185,6 +185,24 @@ def edition_du_titre(titre: str):
     return m.group(0).strip().capitalize() if m else None
 
 
+def edition_generique(nom) -> bool:
+    """Le nom d'édition gardé est un texte de l'appli (« Édition en 20 tomes (indiquée à la main) »), pas celui d'un livre :
+    il ne sert à rien pour chercher sur Internet."""
+    return not nom or str(nom).startswith(("Édition en ", "Édition regroupée"))
+
+
+def nom_d_edition(d: dict) -> str:
+    """Nom d'édition à chercher sur Internet (« Final edition », « Perfect édition »…) : celui qui est gardé, sauf s'il est
+    générique, alors la mention lue dans le nom des archives ou des fichiers importés ; "" si on n'en trouve aucune."""
+    if not edition_generique(d.get("edition")):
+        return d["edition"]
+    for t in [*(d.get("archives") or []), *(d.get("titres_fichiers") or [])]:
+        ed = edition_du_titre(t)
+        if ed:
+            return ed
+    return ""
+
+
 def noter_volumes(dossier: Path, titre: str):
     """Garde le nombre de tomes et la mention d'édition de l'import (l'édition peut différer de l'édition standard)."""
     d = lire(dossier)
@@ -192,7 +210,7 @@ def noter_volumes(dossier: Path, titre: str):
     changed = False
     if n and d.get("volumes_attendus") != n:
         d["volumes_attendus"], changed = n, True
-    if ed and d.get("edition") != ed:
+    if ed and d.get("edition") != ed and (edition_generique(d.get("edition")) or not d.get("volumes_manuel")):
         d["edition"], changed = ed, True
     if changed:
         ecrire(dossier, d)

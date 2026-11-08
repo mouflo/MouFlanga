@@ -1115,3 +1115,24 @@ class NumerosManquantsTest(unittest.TestCase):
         self.assertEqual(A._numeros_manquants([1.0, 2.0, 40.0]), [])          # trop grand : autre découpage, pas d'alerte
         self.assertEqual(A._numeros_manquants([5.0, 6.0, 6.5, 7.0]), [])      # chapitre bonus « 6,5 » : rien ne manque
         self.assertEqual(A._numeros_manquants([5.0, 6.5, 7.0]), [6])
+
+
+class TestFinalEdition(unittest.TestCase):
+    """« Saint Seiya Final Edition » (Kana) : une édition à part, cherchée sous son vrai nom et non sous « Édition en 20 tomes »."""
+
+    def test_mention_reconnue(self):
+        import edition
+        self.assertEqual(edition.edition_du_titre("Saint Seiya Final Edition - Tome 5 (French Edition)_nodrm"), "Final edition")
+
+    def test_nom_d_edition_ignore_le_texte_de_l_appli(self):
+        import edition
+        d = {"edition": "Édition en 20 tomes (indiquée à la main)", "archives": ["Saint Seiya - Les Chevaliers du Zodiaque Final Edition"]}
+        self.assertEqual(edition.nom_d_edition(d), "Final edition")
+        self.assertEqual(edition.nom_d_edition({"edition": "Perfect édition"}), "Perfect édition")
+        self.assertEqual(edition.nom_d_edition({"edition": "Édition en 20 tomes (indiquée à la main)"}), "")
+
+    def test_titres_acceptes_ou_refuses(self):
+        import correspondance
+        noms = ["Saint Seiya", "Les Chevaliers du Zodiaque"]
+        self.assertTrue(correspondance.titre_de_la_serie("Saint Seiya - Final Edition - Tome 1", noms, [], "Final edition"))
+        self.assertFalse(correspondance.titre_de_la_serie("Saint Seiya - Tome 7", noms, [], "Final edition"))

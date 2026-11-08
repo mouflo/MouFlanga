@@ -911,7 +911,7 @@ def _contexte_identification(nom):
     import edition
     differente = _edition_differente(nom)
     return {"tomes": _tomes_de(nom), "edition_differente": differente,
-            "edition": (edition.lire(MANGA_DIR / nom).get("edition") or "") if differente else ""}
+            "edition": edition.nom_d_edition(edition.lire(MANGA_DIR / nom)) if differente else ""}
 
 
 import identification
@@ -7835,7 +7835,7 @@ def api_edition_volumes():
         if not brut.isdigit() or not 1 <= int(brut) <= 999:
             return jsonify({"ok": False, "error": "Indique un nombre de tomes (ex. 11)."}), 400
         d["volumes_attendus"], d["volumes_manuel"] = int(brut), True
-        d["edition"] = d.get("edition") or f"Édition en {int(brut)} tomes (indiquée à la main)"
+        d["edition"] = edition.nom_d_edition(d) or f"Édition en {int(brut)} tomes (indiquée à la main)"
         msg = f"Ton édition compte {int(brut)} tomes."
     else:                                                 # retour à la détection : ce qui venait de là ou de la main est oublié
         for k in ("volumes_manuel", "edition_detectee", "volumes_attendus"):

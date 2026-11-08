@@ -1,6 +1,7 @@
 # Historique des versions
 
 ## [Non publié]
+- 📖 **« Final Edition » reconnue comme une édition** (Saint Seiya, Kana, 20 tomes) : l'appli cherchait les ISBN et résumés sous le texte « Édition en 20 tomes (indiquée à la main) », qui n'est le titre d'aucun livre, donc rien de la bonne édition ne ressortait. « Final Edition » / « Édition finale » est maintenant une mention d'édition ; le nom cherché sur Internet est lu dans les archives importées quand le nom gardé est un texte de l'appli.
 - 📜 **Historique de l'allègement** : chaque tome analysé (taille estimée) ou traité (taille réelle) est gardé dans `data/historique_allegement.jsonl`. Page `/historique-allegement` (bouton dans le module ✨ Améliorer, alléger) : taille avant, après, gain en Mo et en %, tri par colonne, recherche, totaux.
 
 ## 🎧 Plus de livres audio ni de vidéos dans les propositions (6 novembre 2026)

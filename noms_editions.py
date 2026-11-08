@@ -14,7 +14,10 @@ FAIBLES = (r"prestige|originale|double|triple|limit[ée]e|sp[ée]ciale|anniversa
            r"poche|reli[ée]e|anglaise|fran[cç]aise|japonaise")
 MULTIPLE = r"\d{1,2}\s*(?:en|in)\s*1"
 
+FINALE = r"final(?:e)?\s+[ée]dition|[ée]dition\s+finale?"       # « Saint Seiya Final Edition » (Kana, 20 tomes)
+
 _CORPS = (rf"(?:[ée]dition\s+(?:de\s+)?)?(?:{FORTS})(?:\s+[ée]dition)?"
+          rf"|{FINALE}"
           rf"|[ée]dition\s+(?:de\s+)?(?:luxe|{FAIBLES})"
           rf"|de\s+luxe|{MULTIPLE}")
 
