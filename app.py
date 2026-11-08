@@ -910,7 +910,7 @@ def _contexte_identification(nom):
     (Perfect, Deluxe… : les ISBN et résumés de l'édition standard ne valent pas, on ne cherche que cette édition)."""
     import edition
     differente = _edition_differente(nom)
-    return {"tomes": _tomes_de(nom), "edition_differente": differente,
+    return {"tomes": _tomes_de(nom), "edition_differente": differente, "volumes": _volumes_edition(nom) if differente else None,
             "edition": edition.nom_d_edition(edition.lire(MANGA_DIR / nom)) if differente else ""}
 
 

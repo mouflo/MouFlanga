@@ -1,6 +1,7 @@
 # Historique des versions
 
 ## [Non publié]
+- 🧭 **Identification d'une édition à part : le bilan dit laquelle compte** : pour Saint Seiya Final Edition (20 tomes), les étapes « statut », « titres et ISBN » et « répartition des chapitres » affichaient « 28 tomes » sans préciser que c'est l'édition standard, ignorée pour tes tomes. Elles ajoutent maintenant « ne vaut pas pour ton édition (Final edition, 20 tomes) ».
 - 📖 **« Final Edition » reconnue comme une édition** (Saint Seiya, Kana, 20 tomes) : l'appli cherchait les ISBN et résumés sous le texte « Édition en 20 tomes (indiquée à la main) », qui n'est le titre d'aucun livre, donc rien de la bonne édition ne ressortait. « Final Edition » / « Édition finale » est maintenant une mention d'édition ; le nom cherché sur Internet est lu dans les archives importées quand le nom gardé est un texte de l'appli.
 - 📜 **Historique de l'allègement** : chaque tome analysé (taille estimée) ou traité (taille réelle) est gardé dans `data/historique_allegement.jsonl`. Page `/historique-allegement` (bouton dans le module ✨ Améliorer, alléger) : taille avant, après, gain en Mo et en %, tri par colonne, recherche, totaux.
 

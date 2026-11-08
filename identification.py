@@ -83,7 +83,18 @@ def _tome_max(serie: str):
     return max({int(t) for t in CONTEXTE(serie).get("tomes") or ()} or {0}) or None
 
 
-def etape_statut(serie: str, forcer: bool = False) -> Bilan:
+def _selon_edition(serie: str, bilan: Bilan, ce_qui: str) -> Bilan:
+    """Édition à part (Final Edition, Perfect…) : ce que dit l'édition standard est gardé mais ne vaut pas pour tes tomes. Le bilan le dit,
+    au lieu de laisser croire que « 28 tomes » est ton édition."""
+    ctx = CONTEXTE(serie)
+    if not ctx.get("edition_differente") or bilan.etat in ("panne", "vide"):
+        return bilan
+    nb = ctx.get("volumes")
+    mon = f"{ctx.get('edition') or 'ton édition'}" + (f", {nb} tomes" if nb else "")
+    return bilan._replace(detail=f"{bilan.detail} · édition standard : {ce_qui} ne vaut pas pour ton édition ({mon})")
+
+
+def _etape_statut(serie: str, forcer: bool = False) -> Bilan:
     st, etat, pannes = tomes.statut_officiel_bilan(serie, tome_max=_tome_max(serie), forcer=forcer)
     brut = (tomes._charger(serie) or {}).get("statut_officiel") or {}
     if etat == "panne":
@@ -102,7 +113,7 @@ def etape_statut(serie: str, forcer: bool = False) -> Bilan:
     return Bilan("ok" if st else "vide", detail, None if st else time.time() + tomes.attente_essai(brut.get("essais")))
 
 
-def etape_liste_fr(serie: str, forcer: bool = False, tome_max=None) -> Bilan:
+def _etape_liste_fr(serie: str, forcer: bool = False, tome_max=None) -> Bilan:
     titres, etat, pannes = tomes.titres_tomes_bilan(serie, forcer=forcer, tome_max=tome_max or _tome_max(serie))
     brut = (tomes._charger(serie) or {}).get("titres_tomes") or {}
     details = brut.get("details") or {}
@@ -119,7 +130,7 @@ def etape_liste_fr(serie: str, forcer: bool = False, tome_max=None) -> Bilan:
     return Bilan("deja" if etat == "deja" else "ok", detail, None)
 
 
-def etape_tomes(serie: str, forcer: bool = False) -> Bilan:
+def _etape_tomes(serie: str, forcer: bool = False) -> Bilan:
     info, etat, pannes = tomes.chercher_bilan(serie, forcer=forcer)
     garde = tomes._charger(serie) or {}
     if etat == "panne":
@@ -277,6 +288,18 @@ def etape_notices(serie: str, forcer: bool = False) -> Bilan:
     if isbn_ok or resume_ok:
         return Bilan("ok", detail, None, extra)
     return Bilan("vide", detail, time.time() + tomes.attente_essai(None), extra)
+
+
+def etape_statut(serie: str, forcer: bool = False) -> Bilan:
+    return _selon_edition(serie, _etape_statut(serie, forcer), "le nombre de tomes")
+
+
+def etape_liste_fr(serie: str, forcer: bool = False, tome_max=None) -> Bilan:
+    return _selon_edition(serie, _etape_liste_fr(serie, forcer, tome_max), "cette liste de titres et d'ISBN")
+
+
+def etape_tomes(serie: str, forcer: bool = False) -> Bilan:
+    return _selon_edition(serie, _etape_tomes(serie, forcer), "cette répartition des chapitres")
 
 
 _FONCTIONS = {"statut": etape_statut, "liste_fr": etape_liste_fr, "tomes": etape_tomes, "fiche": etape_fiche, "notices": etape_notices}
