@@ -508,6 +508,11 @@ def surveiller(importer_serie, envoyer, manga_dir):
             corriger_series()
         except Exception as e:
             logger.warning("Correction des séries de torrents : %s", e)
+        try:
+            if _ETAT.get("appliquer_regles"):
+                _ETAT["appliquer_regles"]()          # choix retenus (« toujours faire ce choix ») : aussi pour les demandes déjà en attente
+        except Exception as e:
+            logger.warning("Application des choix retenus : %s", e)
         en_cours = [j for j in _lire() if j["etat"] in ("telechargement", "import")]
         if en_cours:
             traiter(q, en_cours, importer_serie, envoyer, manga_dir)

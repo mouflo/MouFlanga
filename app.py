@@ -3673,7 +3673,29 @@ def api_torrents_decider():
         regles[j["serie"]] = {"choix": choix, "date": datetime.now().strftime("%Y-%m-%d %H:%M")}
         _write_json(REGLES_IMPORT, regles)
     r, code = _appliquer_choix(jid, body.get("remplacer"))
+    if j is not None and body.get("toujours") and r.get("ok"):
+        autres = _appliquer_regles_en_attente()                  # les autres demandes de cette série, déjà en attente
+        if autres:
+            r["message"] = f"{r.get('message', '')} {autres} autre(s) demande(s) de « {j['serie']} » appliquée(s) de la même façon.".strip()
     return jsonify(r), code
+
+
+def _appliquer_regles_en_attente() -> int:
+    """« Toujours faire ce choix » : la règle retenue pour une série s'applique aussi aux demandes DÉJÀ en attente (Rave, 13/11 :
+    la case était cochée mais les autres torrents de la série restaient à valider un par un, la règle ne servant qu'aux torrents
+    qui finissaient de télécharger après). Renvoie le nombre de demandes réglées."""
+    n = 0
+    for j in list(torrents._lire()):
+        if j.get("etat") != "a_valider":
+            continue
+        regle = _regle_import(j.get("serie", ""))
+        if not regle:
+            continue
+        r, _code = _appliquer_choix(j["id"], {"remplacer": True, "manquants": False, "ignorer": "ignorer"}[regle])
+        if r.get("ok"):
+            n += 1
+            logger.info("Demande en attente de « %s » (%s) : règle « %s » appliquée toute seule", j.get("serie"), j.get("titre"), regle)
+    return n
 
 
 def _appliquer_choix(jid, valeur):
@@ -4957,6 +4979,7 @@ def _tomes_deja_la(nom, source):
 
 torrents._ETAT["doublons"] = _tomes_deja_la
 torrents._ETAT["regle"] = _regle_import
+torrents._ETAT["appliquer_regles"] = _appliquer_regles_en_attente
 def _noter_volumes_torrent(serie, titre):
     """Fin d'un torrent : son nom devient la provenance des tomes qu'il a VRAIMENT apportés (nouveaux ou remplacés),
     jamais celle des anciens tomes restés en place."""

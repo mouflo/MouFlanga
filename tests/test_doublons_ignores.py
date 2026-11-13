@@ -152,3 +152,44 @@ class ChoixSurUnTorrentLanceDepuisLAppliTest(DoublonsBase):
         self.assertEqual(j["etat"], "a_valider")
         self.assertIn("À toi de choisir", j["message"])
         self.assertEqual(self.A.torrents.reprendre_choix_perdus(), 0)         # une seule fois
+
+    def test_la_regle_retenue_regle_aussi_les_demandes_deja_en_attente(self):
+        """« Toujours faire ce choix » : les autres torrents de la série qui attendaient déjà ne restent pas à valider un par un."""
+        def tor(i, serie="Serie", **kw):
+            return {"id": i, "titre": f"{serie}.T{i}", "serie": serie, "remplacer": None, "etat": "a_valider", "progression": 100,
+                    "debut": "2026-11-13 00:44", "manuel": True, "message": "Tomes déjà présents. À toi de choisir.", **kw}
+        self.A.torrents._ecrire([tor("a"), tor("b"), tor("c", serie="Autre"), tor("d", etat="fini")])
+        self.A._write_json(self.A.REGLES_IMPORT, {"Serie": {"choix": "remplacer"}})
+        self.assertEqual(self.A._appliquer_regles_en_attente(), 2)
+        etats = {j["id"]: (j["etat"], j["remplacer"]) for j in self.A.torrents._lire()}
+        self.assertEqual(etats, {"a": ("telechargement", True), "b": ("telechargement", True),
+                                 "c": ("a_valider", None), "d": ("fini", None)})            # une autre série n'est pas touchée
+        self.assertEqual(self.A._appliquer_regles_en_attente(), 0)                           # rien de plus à régler
+
+    def test_la_regle_manquants_et_ne_rien_faire(self):
+        self.A.torrents._ecrire([{"id": "a", "titre": "S.T1", "serie": "Serie", "remplacer": None, "etat": "a_valider", "manuel": True,
+                                  "debut": "2026-11-13 00:44", "message": "x"}])
+        self.A._write_json(self.A.REGLES_IMPORT, {"Serie": {"choix": "manquants"}})
+        self.A._appliquer_regles_en_attente()
+        self.assertEqual(self.etat("a")["remplacer"], False)
+        self.A.torrents._ecrire([{"id": "b", "titre": "S.T2", "serie": "Serie", "remplacer": None, "etat": "a_valider", "manuel": True,
+                                  "debut": "2026-11-13 00:44", "message": "x"}])
+        self.A._write_json(self.A.REGLES_IMPORT, {"Serie": {"choix": "ignorer"}})
+        self.A._appliquer_regles_en_attente()
+        self.assertEqual(self.etat("b")["etat"], "fini")
+
+    def test_cocher_toujours_dans_la_page_regle_les_autres_demandes(self):
+        import auth
+        def tor(i):
+            return {"id": i, "titre": f"Serie.T{i}", "serie": "Serie", "remplacer": None, "etat": "a_valider", "progression": 100,
+                    "debut": "2026-11-13 00:44", "manuel": True, "message": "x"}
+        self.A.torrents._ecrire([tor("a"), tor("b"), tor("c")])
+        os.environ.update(APP_USER="test", APP_PASSWORD_HASH="x")
+        client = self.A.app.test_client()
+        with client.session_transaction() as sess:
+            sess["u"], sess["f"] = "test", auth._fingerprint()
+        with mock.patch.object(self.A.auth, "role", return_value="admin"):
+            rep = client.post("/api/torrents/decider", json={"id": "a", "remplacer": True, "toujours": True})
+        self.assertTrue(rep.get_json()["ok"], rep.get_json())
+        self.assertIn("2 autre(s) demande(s)", rep.get_json()["message"])
+        self.assertEqual([j["etat"] for j in self.A.torrents._lire()], ["telechargement"] * 3)
