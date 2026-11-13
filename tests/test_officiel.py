@@ -21,7 +21,7 @@ def info(**kw):
 
 class OfficielTest(unittest.TestCase):
     def test_est_officiel(self):
-        for t in ("Gachiakuta.T12.FRENCH.CBZ.eBook-NEO.RIP-Club", "Kaf T11 [Digital-1500px] [NEO RIP-Club]", "Kaf T01 Digital", "Kaf eBook officiel", "Kaf.T01.eBook-Paprika"):
+        for t in ("Gachiakuta.T12.FRENCH.CBZ.eBook-NEO.RIP-Club", "Kaf T11 [Digital-1500px] [NEO RIP-Club]", "Kaf T01 Digital", "Kaf eBook officiel", "Kaf.T01.eBook-Paprika", "Rave.The.Goove.Adventure.Tome.09.Hiro.Mashima.FR.[CBZ]-NRC.ALLIANCE"):
             self.assertTrue(suivi.est_officiel(t), t)
         for t in ("Gachiakuta.T01.FRENCH.CBZ.eBook-ebdz", "Kaf.T01.FR.[CBZ]-Dogbanov"):
             self.assertFalse(suivi.est_officiel(t), t)

@@ -82,7 +82,7 @@ def renommer(ancien, nouveau):
             ecrire(d)
 
 
-_OFFICIEL = re.compile(r"digital|officiel|num[ée]rique|neo[ ._-]?rip[ ._-]?club", re.I)
+_OFFICIEL = re.compile(r"digital|officiel|num[ée]rique|neo[ ._-]?rip[ ._-]?club|nrc[ ._-]?alliance", re.I)      # NRC ALLIANCE = autre nom de Neo Rip Club (13/11/2026)
 
 
 def est_officiel(titre: str) -> bool:
