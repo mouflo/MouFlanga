@@ -481,6 +481,10 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
                                 vers_corbeille(ancien)
                         gagne_f = g
                         ligne["gagne_mo"] = round(g / 1048576, 1)
+                        try:                                           # tailles exactes avant / après : le registre des traitements s'en sert (traitements.py)
+                            ligne["octets_avant"], ligne["octets_apres"] = a["taille"], f.stat().st_size
+                        except OSError:
+                            pass
                         if comicinfo:
                             ligne["infos"] = True
                         gagne += g

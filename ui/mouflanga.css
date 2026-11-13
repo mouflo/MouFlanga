@@ -395,12 +395,6 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 /* pense-bête « où j'en suis » d'une série */
 .travail-pastille { font:inherit; font-size:.85rem; font-weight:600; padding:2px 10px; border-radius:999px; border:1px solid var(--line, #444); background:transparent; color:inherit; cursor:pointer; }
 .travail-pastille.complet { border-color:#2e7d32; background:#2e7d32; color:#fff; }
-.travail-ligne { display:flex; align-items:center; gap:10px; font-size:1rem; padding:6px 0; }
-.travail-ligne input { width:22px; height:22px; flex:none; }
-.travail-cpt { margin-left:auto; font-weight:600; white-space:nowrap; font-variant-numeric:tabular-nums; }
-.travail-cpt.complet { color:var(--accent); }
-.travail-cpt.partiel { color:var(--warn); }
-.travail-cpt.vide { color:var(--muted); }
 .card .travail-ok { position:absolute; bottom:46px; right:8px; font-size:.8rem; background:#2e7d32; border-radius:10px; padding:1px 6px; }
 /* 🧹 Pages parasites : un groupe = trois exemples, touché pour être coché */
 .par-groupe { display:block; width:100%; margin:8px 0; padding:6px; border:3px solid #333; border-radius:8px; background:#151515 !important; color:#ddd; text-align:left; cursor:pointer; }
@@ -461,3 +455,54 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .ed-boite .ed-msg { font-size:.88rem; min-height:1.2em; }
 .ed-boite .ed-msg.err { color:#ff8a80; }
 .ed-mixte { color:#ffb74d; }
+
+/* 🛠 Gérer la série : fenêtre à onglets (État · Identité · Tomes · Images) */
+.onglets-4 { grid-template-columns:repeat(2, 1fr); }
+.gerer-onglets { grid-template-columns:repeat(4, 1fr); }
+.gerer-onglets .mou-btn { padding:10px 2px; font-size:.8rem; }
+.gerer-liste { display:flex; flex-direction:column; gap:6px; margin:8px 0 12px; }
+.gerer-liste button, .gerer-liste a { display:block; width:100%; text-align:left; padding:13px 12px; border:1px solid var(--line); border-radius:8px; background:var(--field); color:var(--text); font:inherit; font-weight:500; text-decoration:none; cursor:pointer; }
+.gerer-liste button[hidden] { display:none; }
+.gerer-titre { font-weight:700; font-size:.9rem; margin:14px 0 2px; color:var(--muted); }
+.gerer-avance { margin:10px 0; }
+.gerer-avance summary { cursor:pointer; color:var(--muted); font-size:.9rem; padding:8px 0; }
+.gerer-etat { font-size:.9rem; line-height:1.7; padding:8px 0 10px; border-bottom:1px solid var(--line); }
+
+/* 📋 État : une ligne par tome, une case par étape */
+.etat-detail { position:sticky; top:62px; z-index:1; background:var(--surface, #1e1f22); border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin:0 0 10px; font-size:.9rem; line-height:1.5; box-shadow:0 6px 10px -6px #000; }
+.etat-detail.actif { border-color:var(--accent); }
+.etat-detail .mou-btn { margin:6px 6px 0 0; }
+.etat-tick { display:flex; align-items:center; gap:8px; margin-top:8px; font-size:.85rem; color:var(--muted); }
+.etat-tick input { width:20px; height:20px; flex:none; }
+.etat-groupe { margin:6px 0; }
+.etat-groupe > summary { cursor:pointer; font-weight:700; padding:8px 0; }
+.etat-defile { overflow-x:auto; }
+.etat-tab { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
+.etat-tab th, .etat-tab td { text-align:center; padding:0; height:40px; }
+.etat-tab tbody th, .etat-tab tfoot th { text-align:left; font-weight:600; font-size:.85rem; padding-right:6px; white-space:nowrap; width:1%; }
+.etat-tab tbody tr + tr > * { border-top:1px solid var(--line); }
+.etat-tab tfoot td { font-size:.75rem; color:var(--muted); border-top:2px solid var(--line); }
+.etat-tab tfoot td.e-tout { color:var(--accent); font-weight:700; }
+.etat-tab tfoot td.e-part { color:var(--warn); }
+.etat-col, .etat-case { font:inherit; background:none; border:0; color:var(--text); width:100%; height:40px; min-width:40px; padding:0; cursor:pointer; font-size:1.05rem; }
+.etat-case.e-manque, .etat-case.e-inconnu { color:var(--muted); opacity:.7; }
+.etat-case.e-a_faire { color:var(--warn); }
+.etat-case.e-main { opacity:.85; }
+
+/* discret : une ligne grise sous le titre et de petites icônes dans l'en-tête de chaque tome */
+.trt-ligne { display:block; background:none; border:0; padding:0; margin:-4px 0 8px; font:inherit; font-size:.8rem; color:var(--muted); text-align:left; cursor:pointer; }
+.trt-ligne[hidden] { display:none; }
+.trt { margin-left:6px; font-size:.7rem; opacity:.75; letter-spacing:1px; }
+.trt-bloc { font-size:.9rem; line-height:1.7; }
+.trt-l.e-manque, .trt-l.e-inconnu { color:var(--muted); }
+.trt-l.e-a_faire { color:var(--warn); }
+.trt-l small { color:var(--muted); }
+body.lecteur .trt-ligne, body.lecteur .trt { display:none !important; }
+/* le kit (body.mou-skin) donne à tout bouton un fond de couleur : ces boutons-là restent discrets */
+body.mou-skin .etat-case, body.mou-skin .etat-col, body.mou-skin .etat-case:hover, body.mou-skin .etat-col:hover { background:none; color:var(--text); padding:0; font-weight:400; border-radius:0; box-shadow:none; }
+body.mou-skin .etat-case:hover, body.mou-skin .etat-col:hover { background:var(--field); }
+body.mou-skin .etat-case.e-manque, body.mou-skin .etat-case.e-inconnu { color:var(--muted); }
+body.mou-skin .etat-case.e-a_faire { color:var(--warn); }
+body.mou-skin .trt-ligne, body.mou-skin .trt-ligne:hover { background:none; color:var(--muted); padding:0; width:auto; font-weight:400; border-radius:0; box-shadow:none; }
+body.mou-skin .gerer-liste button, body.mou-skin .gerer-liste a { background:var(--field); color:var(--text); font-weight:500; padding:13px 12px; }
+body.mou-skin .gerer-liste button:hover, body.mou-skin .gerer-liste a:hover { border-color:var(--accent); }

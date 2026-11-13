@@ -862,9 +862,8 @@ def _index_apres_ecriture(reponse):
     return reponse
 
 
-TRAVAIL = [("resumes", "Résumé des tomes"), ("titres", "Titres des chapitres"), ("liens", "Liens des chapitres"),
-           ("isbn", "ISBN des tomes"),
-           ("doubles", "Pages simples et doubles"), ("allegement", "Allègement"), ("couvertures", "Couverture des tomes"), ("reecriture", "Réécriture des fichiers")]
+import traitements
+TRAVAIL = [(cle, nom) for cle, nom, _icone, _groupe in traitements.ETAPES]       # les mêmes étapes que « où j'en suis » (registre des traitements)
 
 
 def _travail_de(name, entrees=None):
@@ -1556,31 +1555,26 @@ _CACHE_RESUME_FICHIER = {}                              # (chemin, date, taille)
 _CACHE_ECRIT = {}                                        # (chemin, date, taille) → le fichier porte-t-il les infos écrites par MouFlanga ?
 
 
-@app.route("/api/series/travail/comptes")
-def api_series_travail_comptes():
-    """Pour la fenêtre « 📋 Où j'en suis » : combien de tomes sont déjà faits, étape par étape, sans ouvrir les tomes un par un.
-    {total: nombre de tomes, comptes: {étape: nombre de tomes faits}}. Les étapes qui ne se comptent pas par tome sont absentes."""
+def _identification_par_tome(name):
+    """Pour « où j'en suis » : {étape: ensemble des numéros de tomes faits} (résumés, titres, liens, ISBN, couvertures, infos écrites) et la
+    liste triée des tomes. Lit les infos de la série et le catalogue de chaque fichier (gardé en mémoire tant que le fichier ne change pas)."""
     import edition
     import signets
-    name = request.args.get("series", "")
-    if name not in _scan() or name == "(Sans série)":
-        return jsonify({"error": "Série introuvable"}), 404
     numeros = sorted(_tomes_de(name))
     infos = edition.lire(MANGA_DIR / name)
     brut = tomes._charger(name) or {}
     details = (brut.get("titres_tomes") or {}).get("details") or {}
     manuels = infos.get("resumes_tomes") or {}
     sommaires = infos.get("sommaires") or {}
-    comptes = {}
     chap = lambda t: (sommaires.get(str(t)) or {}).get("chapitres") or []
     # « fait » = sommaire VALIDÉ (bouton ✅), pas seulement lu automatiquement ni enregistré en cours de saisie
     valide = lambda t: bool((sommaires.get(str(t)) or {}).get("valide_le"))
-    comptes["titres"] = sum(1 for t in numeros if chap(t) and valide(t))
-    comptes["liens"] = sum(1 for t in numeros if chap(t) and valide(t) and signets.nb_signets(chap(t)) == len(chap(t)))
-    comptes["isbn"] = sum(1 for t in numeros if str(t) in _isbn_connus(infos, serie=name))
-    comptes["couvertures"] = sum(1 for t in numeros if couvertures_tomes.remplacement(MANGA_DIR / name, t))
-    ecrits = 0
-    resume_fichier = set()                                # tomes dont le fichier porte un résumé (balise Summary)
+    faits = {"titres": {t for t in numeros if chap(t) and valide(t)},
+             "liens": {t for t in numeros if chap(t) and valide(t) and signets.nb_signets(chap(t)) == len(chap(t))}}
+    connus = _isbn_connus(infos, serie=name)
+    faits["isbn"] = {t for t in numeros if str(t) in connus}
+    faits["couvertures"] = {t for t in numeros if couvertures_tomes.remplacement(MANGA_DIR / name, t)}
+    ecrits, resume_fichier = set(), set()                  # tomes dont le fichier porte les infos de MouFlanga / un résumé (balise Summary)
     for t in numeros:
         rel = _fichier_du_tome(name, t)
         if not rel or not rel.lower().endswith((".cbz", ".zip")):
@@ -1598,16 +1592,28 @@ def api_series_travail_comptes():
             du = signets.lire_infos(chemin) or {}
             _CACHE_ECRIT[cle] = bool(du.get("notes"))
             _CACHE_RESUME_FICHIER[cle] = bool((du.get("resume") or "").strip())
-        ecrits += 1 if _CACHE_ECRIT[cle] else 0
+        if _CACHE_ECRIT[cle]:
+            ecrits.add(t)
         if _CACHE_RESUME_FICHIER[cle]:
             resume_fichier.add(t)
     # un résumé écrit dans le fichier du tome compte comme un résumé trouvé (comme dans la fiche du tome)
     import notices
     memoire = notices.resumes_de(name, numeros)                # tous les tomes d'un coup (Wikipédia, BnF, Google Books déjà gardés)
-    comptes["resumes"] = sum(1 for t in numeros if t in resume_fichier or manuels.get(str(t)) or (details.get(str(t)) or {}).get("resume")
-                             or memoire.get(int(t), ("", ""))[0])
-    comptes["reecriture"] = ecrits
-    return jsonify({"total": len(numeros), "comptes": comptes})
+    faits["resumes"] = {t for t in numeros if t in resume_fichier or manuels.get(str(t)) or (details.get(str(t)) or {}).get("resume")
+                        or memoire.get(int(t), ("", ""))[0]}
+    faits["reecriture"] = ecrits
+    return faits, numeros
+
+
+@app.route("/api/series/travail/comptes")
+def api_series_travail_comptes():
+    """Pour la fenêtre « 📋 Où j'en suis » : combien de tomes sont déjà faits, étape par étape, sans ouvrir les tomes un par un.
+    {total: nombre de tomes, comptes: {étape: nombre de tomes faits}}. Les étapes qui ne se comptent pas par tome sont absentes."""
+    name = request.args.get("series", "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"error": "Série introuvable"}), 404
+    faits, numeros = _identification_par_tome(name)
+    return jsonify({"total": len(numeros), "comptes": {k: len(v) for k, v in faits.items()}})
 
 
 _ISBN_SERIE = {}                                         # série → avancement de « lire les ISBN de toute la série »
@@ -1906,6 +1912,7 @@ def api_optimiser():
         manuelle = optimiser.QUALITE_ORIGINE
 
     etaient_assembles = []                                   # tomes déjà assemblés avant le traitement : ils le restent (le fichier change de date et de taille)
+    avant_travail = {}                                       # {fichier: (taille, marques)} avant le traitement : le registre des traitements les garde
 
     def fini():
         if appliquer:
@@ -1915,6 +1922,11 @@ def api_optimiser():
             import edition
             infos = edition.lire(MANGA_DIR / name)
             infos["allegement"] = {"date": datetime.now().strftime("%Y-%m-%d"), "largeur": largeur, "eclairci": bool(eclairer), "amelioration": eclairer}
+            for ligne in optimiser.etat(name).get("rapport") or []:         # ce qui a changé sur chaque tome (voir traitements.py)
+                chemin = next((f for f in fichiers if f.name == ligne.get("fichier")), None)
+                faits = _faits_de_l_allegement(ligne, eclairer, largeur)
+                if chemin is not None and faits:
+                    _noter_travail(name, chemin, avant_travail.get(chemin.name), faits, infos=infos)
             edition.ecrire(MANGA_DIR / name, infos)
             edition.invalider(MANGA_DIR / name)              # résolution et source refaites d'après les nouveaux fichiers
         try:                                                 # Telegram + notification du téléphone : on n'a pas à rester sur la page
@@ -1933,6 +1945,7 @@ def api_optimiser():
         if not fichiers:
             return jsonify({"ok": False, "error": "Aucun tome coché."}), 400
     etaient_assembles[:] = [f for f in fichiers if _est_assemble(name, f)]
+    avant_travail.update(_avant_travail(name, fichiers))
     infos_de = None
     if appliquer and body.get("infos"):                       # 📝 les infos du tome écrites dans la même passe que l'allègement
         import edition
@@ -2078,6 +2091,223 @@ def api_uniformite():
     return jsonify({"ok": True, "message": "Mesure lancée…"})
 
 
+# ---------------- 📋 Où j'en suis : ce qui est fait, tome par tome (admin) ----------------
+def _fichiers_des_tomes(name):
+    """{numéro de tome: chemin} des tomes de la série qui ont UN fichier .cbz : tome complet (Rave) ou tome assemblé par l'appli, dont les
+    chapitres sont dans le fichier (Air Gear : une entrée par chapitre, toutes du groupe « Tome 01 » et du même fichier). Des chapitres en
+    fichiers séparés n'en font pas un."""
+    par_tome = {}
+    for e in _entrees(_scan().get(name) or []):
+        if e.get("a_importer"):
+            continue
+        t = e.get("tome")
+        if t is None:
+            m = re.match(r"Tome (\d+)$", str(e.get("groupe") or ""))
+            if not m:
+                continue
+            t = m[1]
+        par_tome.setdefault(int(t), set()).add(str(e.get("path", "")))
+    return {t: MANGA_DIR / next(iter(p)) for t, p in par_tome.items() if len(p) == 1 and next(iter(p)).lower().endswith((".cbz", ".zip"))}
+
+
+def _taille_fichier(chemin) -> int:
+    try:
+        return Path(chemin).stat().st_size
+    except OSError:
+        return 0
+
+
+def _iso_depuis_fr(date) -> str:
+    """« 13/11/2026 » (date des anciennes marques de découpe) → « 2026-11-13 » ; vide si ce n'est pas une date."""
+    m = re.fullmatch(r"(\d\d)/(\d\d)/(\d{4})", str(date or ""))
+    return f"{m[3]}-{m[2]}-{m[1]}" if m else ""
+
+
+def _marques_anciennes(name, f, infos, taille=None) -> dict:
+    """Ce que l'appli savait déjà d'un tome AVANT le registre des traitements (assemblé, doubles pages coupées, pages parasites vérifiées),
+    tant que le fichier n'a pas changé depuis. Sert à l'affichage, et à ne rien perdre quand l'appli réécrit le tome."""
+    f = Path(f)
+    taille = _taille_fichier(f) if taille is None else taille
+    faits = {}
+    if _est_assemble(name, f):
+        faits["doubles"] = {"date": "", "detail": "pages assemblées en doubles"}
+    coupee = (infos.get("doubles_coupees") or {}).get(f.name)
+    if coupee and traitements.proche(coupee.get("taille"), taille):
+        faits["doubles"] = {"date": _iso_depuis_fr(coupee.get("date")), "detail": "doubles pages coupées"}
+    if traitements.proche((infos.get("parasites_verifies") or {}).get(f.name), taille):
+        faits["parasites"] = {"date": "", "detail": "vérifié : plus de page d'équipe"}
+    return faits
+
+
+def _avant_travail(name, fichiers) -> dict:
+    """{nom du fichier: (taille, marques d'avant)} juste AVANT qu'un travail réécrive ces tomes : le registre garde ainsi ce qui valait
+    pour le fichier d'avant (voir traitements.noter)."""
+    import edition
+    infos = edition.lire(MANGA_DIR / name)
+    out = {}
+    for f in fichiers:
+        t = _taille_fichier(f)
+        out[Path(f).name] = (t, _marques_anciennes(name, f, infos, t))
+    return out
+
+
+@_sous_verrou_infos
+def _noter_travail(name, chemin, avant, faits, infos=None):
+    """Retient dans le registre ce que l'appli vient de faire sur un tome. `avant` : (taille, marques d'avant) pris par `_avant_travail`
+    (ou None). `infos` : les infos de la série quand l'appelant les a déjà sous la main (il les écrit lui-même ensuite)."""
+    import edition
+    chemin = Path(chemin)
+    taille_avant, anciennes = avant if avant else (0, {})
+    ecrire = infos is None
+    if ecrire:
+        infos = edition.lire(MANGA_DIR / name)
+    if taille_avant:                                       # les anciennes marques (assemblé, doubles coupées, parasites vérifiés) entrent dans le registre
+        presentes = traitements.lire(infos, chemin.name, taille_avant)
+        manquantes = {k: v for k, v in anciennes.items() if k not in presentes}
+        if manquantes:
+            traitements.noter(infos, chemin.name, taille_avant, taille_avant, manquantes)
+    traitements.noter(infos, chemin.name, taille_avant or _taille_fichier(chemin), _taille_fichier(chemin), faits)
+    if ecrire:
+        edition.ecrire(MANGA_DIR / name, infos)
+
+
+@_sous_verrou_infos
+def _oublier_traitements(name, fichier):
+    """Un tome remplacé par une autre version : le registre n'a plus rien à dire de l'ancien fichier."""
+    import edition
+    infos = edition.lire(MANGA_DIR / name)
+    if (infos.get("traitements") or {}).get(fichier) is not None:
+        traitements.oublier(infos, fichier)
+        edition.ecrire(MANGA_DIR / name, infos)
+
+
+def _faits_de_l_allegement(ligne, eclairer, largeur):
+    """Ce qu'un passage d'allègement a changé sur un tome, d'après sa ligne de rapport : {étape: détails}. Un tome seulement réécrit pour ses
+    infos (images recopiées telles quelles) n'a rien changé à l'image."""
+    faits = {}
+    if not ligne.get("qualite") or ligne.get("octets_apres") is None:
+        return faits
+    if eclairer:
+        reglages = {k: v for k, v in eclairer.items() if v and k != "uniformiser"}
+        if reglages:
+            faits["image"] = {"reglages": reglages}
+        if eclairer.get("uniformiser") and not ligne.get("alerte"):
+            faits["uniformise"] = {"detail": "noirs et blancs alignés sur la référence"}
+    mo = lambda o: str(round(o / 1048576, 1)).replace(".", ",")
+    morceaux = []
+    if not ligne.get("fidele") and ligne.get("qualite"):
+        morceaux.append(f"qualité {ligne['qualite']}/100")
+    if largeur:
+        morceaux.append(f"pages réduites à {largeur} px")
+    if morceaux:
+        avant, apres = ligne.get("octets_avant"), ligne.get("octets_apres")
+        if avant and apres:
+            morceaux.append(f"{mo(avant)} → {mo(apres)} Mo")
+        faits["allegement"] = {"detail": " · ".join(morceaux)}
+    return faits
+
+
+def _cases_images(name, infos, f, taille, analyse_unif, historique):
+    """{étape: {etat, detail, date, manuel}} des étapes d'images d'un tome. `etat` : fait | manque | a_faire | inconnu."""
+    marques = {**_marques_anciennes(name, f, infos, taille), **traitements.lire(infos, Path(f).name, taille)}
+    cases = {}
+
+    def fait(etape, defaut):
+        m = marques.get(etape)
+        if not m:
+            return None
+        return {"etat": "fait", "detail": m.get("detail") or defaut, "date": m.get("date") or "", "manuel": bool(m.get("manuel"))}
+
+    cases["doubles"] = fait("doubles", "") or {"etat": "manque"}
+    cases["parasites"] = fait("parasites", "") or {"etat": "manque"}
+    cases["image"] = fait("image", "") or {"etat": "manque"}
+    cases["allegement"] = fait("allegement", "")
+    if cases["allegement"] is None:
+        h = historique.get(Path(f).name)
+        cases["allegement"] = ({"etat": "fait", "detail": f"{round(h['avant'] / 1048576, 1)} → {round(h['apres'] / 1048576, 1)} Mo".replace(".", ","),
+                                "date": str(h.get("date", ""))[:10], "manuel": False}
+                               if h and traitements.proche(h.get("apres"), taille) else {"etat": "manque"})
+    u = analyse_unif.get(Path(f).name)
+    if marques.get("uniformise"):
+        cases["uniformise"] = fait("uniformise", "noirs et blancs uniformisés")
+    elif u is None:
+        cases["uniformise"] = {"etat": "inconnu", "detail": "pas mesuré (ou tome modifié depuis la mesure)"}
+    elif u.get("a_uniformiser"):
+        cases["uniformise"] = {"etat": "a_faire", "detail": ", ".join(u.get("ecarts") or []) or "ne ressemble pas aux autres tomes"}
+    else:
+        cases["uniformise"] = {"etat": "fait", "detail": "noirs et blancs conformes à la référence", "date": "", "manuel": False}
+    return cases
+
+
+def _etat_de_la_serie(name, avec_identification=False):
+    """Tout « où j'en suis » : une ligne par tome, une case par étape. Sans `avec_identification` : seulement les étapes d'images (rapide,
+    aucun fichier n'est ouvert) ; avec : résumés, titres, liens, ISBN, couvertures, infos écrites (plus long la première fois)."""
+    import edition
+    infos = edition.lire(MANGA_DIR / name)
+    fichiers = _fichiers_des_tomes(name)
+    analyse, _ = _analyse_uniformite(name)
+    unif = {t["fichier"]: t for t in analyse.get("tomes", [])}
+    historique = {}
+    for l in optimiser.lire_historique():
+        if l.get("serie") == name and l.get("mode") == "applique" and l.get("avant") != l.get("apres"):
+            historique[l.get("fichier")] = l                       # la plus récente (le fichier est lu dans l'ordre)
+    identification, _numeros = _identification_par_tome(name) if avec_identification else ({}, [])
+    lignes, comptes = [], {}
+    for tome in sorted(fichiers):
+        f = fichiers[tome]
+        try:
+            taille = f.stat().st_size
+        except OSError:
+            continue
+        cases = _cases_images(name, infos, f, taille, unif, historique)
+        for cle, faits in identification.items():
+            cases[cle] = {"etat": "fait" if tome in faits else "manque"}
+        for cle, c in cases.items():
+            if c["etat"] == "fait":
+                comptes[cle] = comptes.get(cle, 0) + 1
+        lignes.append({"tome": tome, "libelle": _libelle_tome(f, name), "fichier": f.name, "taille_mo": round(taille / 1048576, 1), "cases": cases})
+    return {"total": len(lignes), "tomes": lignes, "comptes": comptes, "resume": traitements.resume_court(comptes, len(lignes))}
+
+
+@app.route("/api/series/etat")
+def api_series_etat():
+    """GET ?series=&tout=1 : « où j'en suis » tome par tome (voir `_etat_de_la_serie`) + les étapes et la liste cochée à la main."""
+    name = request.args.get("series", "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"error": "Série introuvable"}), 404
+    r = _etat_de_la_serie(name, avec_identification=request.args.get("tout") == "1")
+    r["etapes"] = [{"cle": c, "nom": n, "icone": i, "groupe": g, "cochable": c in traitements.MANUELLES} for c, n, i, g in traitements.ETAPES]
+    r["groupes"] = traitements.GROUPES
+    r["travail"] = _travail_de(name)
+    return jsonify(r)
+
+
+@app.route("/api/series/etat/marquer", methods=["POST"])
+def api_series_etat_marquer():
+    """POST {series, etape, tomes: [numéros], fait}: coche (ou décoche) à la main une étape pour des tomes (travail fait avant que l'appli ne s'en
+    souvienne). Une marque posée par l'appli ne se décoche pas."""
+    import edition
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    etape = str(body.get("etape", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if etape not in traitements.MANUELLES:
+        return jsonify({"ok": False, "error": "Cette étape se mesure : elle ne se coche pas à la main."}), 400
+    fichiers = _fichiers_des_tomes(name)
+    voulus = [int(t) for t in (body.get("tomes") or []) if str(t).isdigit() and int(t) in fichiers]
+    if not voulus:
+        return jsonify({"ok": False, "error": "Aucun tome."}), 400
+    fait = bool(body.get("fait"))
+    with _VERROU_SOMMAIRES:
+        infos = edition.lire(MANGA_DIR / name)
+        n = sum(1 for t in voulus if traitements.marquer_main(infos, fichiers[t].name, _taille_fichier(fichiers[t]), etape, fait))
+        if n:
+            edition.ecrire(MANGA_DIR / name, infos)
+            edition.invalider(MANGA_DIR / name)
+    return jsonify({"ok": True, "changes": n, **_etat_de_la_serie(name)})
+
+
 # ---------------- 📖 Doubles pages : découpe en simples pages (admin) ----------------
 def _recaler_progression(name, rel, carte):
     """Après une découpe, la page où l'on était devient celle de la moitié qui la remplace (chaque lecteur)."""
@@ -2181,6 +2411,7 @@ def api_doubles_couper():
     if not travaux:
         return jsonify({"ok": False, "error": "Aucune double page à couper."}), 400
     sens = str(body.get("sens", "manga")) != "occidental"
+    avant_travail = _avant_travail(name, [t[0] for t in travaux])
 
     @_sous_verrou_infos
     def apres(chemin, carte):
@@ -2189,6 +2420,7 @@ def api_doubles_couper():
         infos = edition.lire(MANGA_DIR / name)
         _suivre_sommaire(infos, chemin, carte)
         infos.setdefault("doubles_coupees", {})[chemin.name] = {"date": datetime.now().strftime("%d/%m/%Y"), "taille": chemin.stat().st_size}
+        _noter_travail(name, chemin, avant_travail.get(chemin.name), {"doubles": {"detail": "doubles pages coupées"}}, infos=infos)
         edition.ecrire(MANGA_DIR / name, infos)
         edition.invalider(MANGA_DIR / name)
     if not optimiser.lancer_coupes(name, travaux, sens, _vers_corbeille, apres):
@@ -2266,6 +2498,7 @@ def api_doubles_assembler():
     if not travaux:
         return jsonify({"ok": False, "error": "Aucune paire de pages à assembler."}), 400
     sens = str(body.get("sens", "manga")) != "occidental"
+    avant_travail = _avant_travail(name, [t[0] for t in travaux])
 
     @_sous_verrou_infos
     def apres(chemin, carte):
@@ -2273,6 +2506,7 @@ def api_doubles_assembler():
         import edition
         infos = edition.lire(MANGA_DIR / name)
         _suivre_sommaire(infos, chemin, carte)                # chapitres et sommaire gardent leur page
+        _noter_travail(name, chemin, avant_travail.get(chemin.name), {"doubles": {"detail": "pages assemblées en doubles"}}, infos=infos)
         edition.ecrire(MANGA_DIR / name, infos)
         edition.invalider(MANGA_DIR / name)
         _marquer_assemble(name, chemin)
@@ -2336,12 +2570,14 @@ def _suivre_sommaire(infos, chemin, carte):
 
 
 @_sous_verrou_infos
-def _apres_nettoyage(name, chemin, carte):
-    """Position de lecture recalée et tome noté comme vérifié (il ne sera pas réexaminé tant qu'il ne change pas)."""
+def _apres_nettoyage(name, chemin, carte, avant=None):
+    """Position de lecture recalée et tome noté comme vérifié (il ne sera pas réexaminé tant qu'il ne change pas). `avant` : ce que
+    `_avant_travail` a relevé sur ce tome avant le nettoyage (pour que le registre des traitements suive le changement de taille)."""
     import edition
     _recaler_progression(name, _rel(chemin), carte)
     infos = edition.lire(MANGA_DIR / name)
     infos.setdefault("parasites_verifies", {})[chemin.name] = chemin.stat().st_size
+    _noter_travail(name, chemin, avant, {"parasites": {"detail": "pages d'équipe retirées"}}, infos=infos)
     _suivre_sommaire(infos, chemin, carte)
     edition.ecrire(MANGA_DIR / name, infos)
     edition.invalider(MANGA_DIR / name)
@@ -2411,8 +2647,9 @@ def api_parasites_retirer():
         except Exception as e:
             logger.warning("Chapitres d'après les pages d'équipe de %s : %s", f, e)
     edition.invalider(MANGA_DIR / name)
+    avant_travail = _avant_travail(name, [fichiers[f] for f in plan])
     parasites.lancer_nettoyage(name, [(fichiers[f], ind) for f, ind in sorted(plan.items())], _vers_corbeille,
-                               lambda chemin, carte: _apres_nettoyage(name, chemin, carte))
+                               lambda chemin, carte: _apres_nettoyage(name, chemin, carte, avant_travail.get(chemin.name)))
     logger.info("Pages parasites de « %s » : %d groupe(s) refusé(s), %d tome(s) à nettoyer", name, len(groupes), len(plan))
     return jsonify({"ok": True, "message": "Nettoyage lancé…"})
 
@@ -2433,6 +2670,7 @@ def api_parasites_page():
         return jsonify({"ok": False, "error": "Seules les pages d'un tome en .cbz peuvent être retirées."}), 400
     if _serie_occupee(name):
         return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    avant_travail = _avant_travail(name, [f])
     try:
         res = parasites.nettoyer_tome(f, {index}, name, _vers_corbeille)
     except Exception as e:
@@ -2440,7 +2678,7 @@ def api_parasites_page():
         return jsonify({"ok": False, "error": f"Échec : {e}"}), 500
     if "carte" not in res:
         return jsonify({"ok": False, "error": res.get("note", "Fichier non modifié.")}), 409
-    _apres_nettoyage(name, f, res["carte"])
+    _apres_nettoyage(name, f, res["carte"], avant_travail.get(f.name))
     logger.info("Page %d retirée à la main de %s", index + 1, f)
     return jsonify({"ok": True, "pages": res["pages"], "message": f"Page retirée (l'ancien fichier est dans la corbeille — {_corbeille_phrase()})."})
 
@@ -2462,9 +2700,10 @@ def _nettoyer_nouveaux_tomes():
                 indices = parasites.a_retirer(f, refusees)
                 if indices:
                     _chapitres_par_parasites(name, f, indices)
+                    avant_travail = _avant_travail(name, [f])
                     res = parasites.nettoyer_tome(f, set(indices), name, _vers_corbeille)
                     if "carte" in res:
-                        _apres_nettoyage(name, f, res["carte"])
+                        _apres_nettoyage(name, f, res["carte"], avant_travail.get(f.name))
                         logger.info("Pages parasites : %d retirée(s) toutes seules de %s", len(indices), f)
                         continue
                 infos = edition.lire(MANGA_DIR / name)
@@ -4360,6 +4599,7 @@ def _remplacer_tomes(nom, numeros):
                     p["read"] = sorted(set(p["read"]) - chap | {cle})
                     _write_json(_pf, data)
         _vers_corbeille(ancien)
+        _oublier_traitements(nom, ancien.name)           # la nouvelle version n'a encore subi aucun des traitements de l'ancienne
         try:
             ancien.parent.rmdir()                       # « Tome NN » vidé par le remplacement : pas de dossier vide qui traîne
         except OSError:

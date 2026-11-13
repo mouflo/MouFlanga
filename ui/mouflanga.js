@@ -249,6 +249,7 @@
     var r = await api('/api/series?id=' + encodeURIComponent(id));
     if (r.error || $('seriesView').style.display === 'none' || !current || current.id !== id) return;
     current = r; drawSeries();
+    if (window.MFTraitements) window.MFTraitements.charger(id);
   }
 
   async function openSeries(id, push) {
@@ -260,6 +261,7 @@
     drawSeries();
     window.scrollTo(0, 0);
     majNavSeries();
+    if (window.MFTraitements) window.MFTraitements.charger(id);
     if (!document.body.classList.contains('lecteur')) api('/api/optimiser?series=' + encodeURIComponent(id)).then(function (o) { if (!window.MFAllege) return; if (o && o.en_cours) window.MFAllege.veiller(id); window.MFAllege.ligne(id, o); });
     else $('sAllege').hidden = true;
   }
@@ -328,57 +330,6 @@
     window._majBoutonAuto = maj;
   }
   boutonAuto();
-  function ouvrirTravail(s) {
-    var liste = s.travail_liste || [], tr = s.travail || {fait: []}, sug = tr.suggere || [];
-    var o = document.createElement('div'); o.className = 'choix-fond';
-    o.innerHTML = '<div class="choix-boite"><h3>📋 Où j\'en suis : « ' + esc(s.title) + ' »</h3>' + liste.map(function (x) {
-      return '<label class="travail-ligne"><input type="checkbox" data-cle="' + x.cle + '"' + (tr.fait.indexOf(x.cle) >= 0 ? ' checked' : '') + '> ' + esc(x.nom) +
-        ' <span class="travail-cpt" data-cpt="' + x.cle + '"></span>' +
-        (sug.indexOf(x.cle) >= 0 ? ' <small>(l\'appli l\'a fait : à cocher ?)</small>' : '') + '</label>'; }).join('') +
-      '<div class="dem-sous" id="travailEtat"></div><button type="button" class="mou-btn ghost" data-fermer="1">Fermer</button></div>';
-    function etat(t) {
-      $('travailEtat').textContent = t.complet ? '✅ Tout est fait pour cette série.' : t.fait.length + ' étape(s) sur ' + t.total + ' faites.';
-    }
-    document.body.appendChild(o);
-    etat(tr);
-    // combien de tomes sont déjà faits, étape par étape (calculé par le serveur, sans ouvrir les tomes)
-    o.querySelectorAll('[data-cpt]').forEach(function (c) { c.textContent = '…'; });
-    api('/api/series/travail/comptes?series=' + encodeURIComponent(s.id)).then(function (r) {
-      if (!r || r.error || !document.body.contains(o)) return;
-      o.querySelectorAll('[data-cpt]').forEach(function (c) {
-        var n = r.comptes[c.dataset.cpt];
-        if (n === undefined || !r.total) { c.textContent = ''; return; }
-        c.textContent = c.dataset.cpt === 'couvertures' ? n + ' remplacée' + (n > 1 ? 's' : '')     // les couvertures sont les 1res pages tant qu'on n'en remplace pas
-          : n + ' / ' + r.total + (n >= r.total ? ' ✅' : '');
-        c.className = 'travail-cpt' + (n >= r.total ? ' complet' : (n ? ' partiel' : ' vide'));
-      });
-    }).catch(function () { o.querySelectorAll('[data-cpt]').forEach(function (c) { c.textContent = ''; }); });
-    o.addEventListener('change', async function (e) {
-      var c = e.target.closest('[data-cle]'); if (!c) return;
-      var r = await post('/api/series/travail', {series: s.id, cle: c.dataset.cle, fait: c.checked});
-      if (!r.ok) { c.checked = !c.checked; return; }
-      s.travail = r; etat(r);
-    });
-    // Bouton retour du téléphone : ferme la fenêtre (comme « Fermer ») au lieu de quitter la fiche
-    var pousse = true;
-    history.pushState({modal: 'travail'}, '', location.href);
-    function fermer(parRetour) {
-      window.removeEventListener('popstate', surRetour);
-      o.remove();
-      if (!parRetour && pousse && history.state && history.state.modal === 'travail') { window._retourModal = true; history.back(); }
-      pousse = false;
-      openSeries(s.id, false);
-    }
-    function surRetour() {
-      if (!document.body.contains(o) || (history.state && history.state.modal === 'travail')) return;   // pas quand on revient seulement d'une confirmation posée par-dessus
-      pousse = false; fermer(true);
-    }
-    window.addEventListener('popstate', surRetour);
-    o.addEventListener('click', function (e) {
-      if (e.target === o || e.target.closest('[data-fermer]')) fermer(false);
-    });
-  }
-
   function arreterGenerique() {
     if (lecteurGenerique) { lecteurGenerique.pause(); lecteurGenerique = null; }
     lecteurGenerique_cible = null;
@@ -429,7 +380,7 @@
     $('sEdition').hidden = !bouts.length; $('sEdition').innerHTML = bouts.join(' · ');
     $('sEdition').onclick = function (e) {
       var b = e.target.closest('[data-travail]');
-      if (b) ouvrirTravail(s);
+      if (b && window.MFGerer) window.MFGerer.ouvrir('etat');
     };
     $('sEdition').title = ed.pourquoi ? 'Indice : ' + ed.pourquoi : '';
     $('sNfo').hidden = !(ed.nfo || (ed.archives || []).length);
@@ -561,6 +512,7 @@
         '<span class="tc">' + g.chapitres.length + ' ch. · ' + (lus === g.chapitres.length ? 'lu ✔' : lus + ' lu' + (lus > 1 ? 's' : '')) + '</span></button>' +
         '<div class="tome-chaps">' + g.chapitres.map(ligne).join('') + '</div></div>';
     }).join('');
+    if (window.MFTraitements) window.MFTraitements.appliquer();
     if (!(s.rangement && s.rangement.message)) note('sMsg', (!s.rar && s.chapters.some(function (c) { return /\.(cbr|rar)$/i.test(c.path); })) ? 'Les vrais fichiers RAR (.cbr) ne s\'ouvrent que si le serveur a « rarfile » et un outil de décompression : voir le Journal si une page refuse de s\'ouvrir.' : '', 'warn');
   }
 
@@ -916,7 +868,7 @@
         '<button type="button" class="mou-btn ghost small" id="allRien">Tout décocher</button>' +
         '<button type="button" class="mou-btn ghost small" id="allUnif" hidden>🎨 Seulement ceux à uniformiser</button></div>' +
         '<details id="allListe"><summary>Voir ou changer la sélection</summary><div id="allTomes" class="dem-sous">…</div></details></section>' +
-        '<div class="onglets" role="tablist">' + [['image', '✨ Image'], ['doubles', '📖 Doubles'], ['uniforme', '🎨 Uniformité']].map(function (o, i) {
+        '<div class="onglets onglets-4" role="tablist">' + [['image', '✨ Image'], ['doubles', '📖 Doubles'], ['uniforme', '🎨 Uniformité'], ['parasites', '🧹 Parasites']].map(function (o, i) {
           return '<button type="button" class="mou-btn' + (i ? ' ghost' : '') + '" role="tab" data-onglet="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' +
 
         '<div data-panneau="image">' +
@@ -949,7 +901,12 @@
         '<div data-panneau="uniforme" hidden>' +
         carte('🎨 Uniformité des tomes', 'Mesure le noir, le blanc et la teinte de chaque tome, repère ceux qui ne ressemblent pas aux autres (noirs moins profonds, papier gris, léger ton violet ou jaune) et propose le réglage qui les ramène au même niveau.',
           '<div id="unifZone" class="dem-sous">…</div>') +
-        '</div>';
+        '</div>' +
+
+        '<div data-panneau="parasites" hidden>' +
+        '<div class="dem-sous">Les pages qui reviennent à l\'identique dans plusieurs chapitres (crédits de l\'équipe, « on recrute », pubs) sont regroupées. ' +
+        'Coche les groupes à jeter : ils sont retirés de tous les tomes, l\'ancien fichier part à la corbeille (' + corb() + '), ' +
+        'et les prochains tomes de la série seront nettoyés tout seuls.</div><div id="parZone"><div class="dem-sous">…</div></div></div>';
       $('infosVue').hidden = false;
       try { var sens = localStorage.getItem('mfDblSens'); if (sens) $('dblSens').value = sens; } catch (e) {}
       Promise.all([api('/api/optimiser/fichiers?series=' + encodeURIComponent(current.id)), api('/api/uniformite?series=' + encodeURIComponent(current.id))]).then(function (rs) {
@@ -1005,8 +962,9 @@
     function ongletAmelioration(nom) {
       document.querySelectorAll('[data-onglet]').forEach(function (b) { b.classList.toggle('ghost', b.dataset.onglet !== nom); });
       document.querySelectorAll('[data-panneau]').forEach(function (p) { p.hidden = p.dataset.panneau !== nom; });
-      if ($('regTomes')) $('regTomes').hidden = nom === 'doubles';          // les doubles pages se choisissent tome par tome
+      if ($('regTomes')) $('regTomes').hidden = nom === 'doubles' || nom === 'parasites';          // les doubles pages se choisissent tome par tome ; les parasites se cherchent dans toute la série
       if (nom === 'uniforme') unifCharger();
+      if (nom === 'parasites') demarrerParasites();
     }
     // ✨ Profils d'amélioration (ordre d'optimiser.AMELIORATIONS ; 0 = non … 3 = fort)
     var PROFILS_AMEL = [['0,0,0,0,0,0,0,0,0', 'Non (image d\'origine)'], ['1,1,1,1,0,1,0,0,0', 'Légère (scan un peu gris)'],
@@ -1703,16 +1661,18 @@
 
     // 🧹 Pages parasites : pages qui se répètent d'un chapitre à l'autre (crédits, recrutement), cochées puis retirées
     var parCoches = {}, parSerie = null;
-    $('sParasites').addEventListener('click', function () {
+    $('sParasites').addEventListener('click', function () {            // les pages parasites sont un onglet de la fenêtre ✨
       fermerMenus();
-      parSerie = current.id; parCoches = {};
-      $('infosTitre').textContent = '🧹 Pages parasites';
-      $('infosCorps').innerHTML = '<div class="dem-sous">Les pages qui reviennent à l\'identique dans plusieurs chapitres (crédits de l\'équipe, « on recrute », pubs) ' +
-        'sont regroupées. Coche les groupes à jeter : ils sont retirés de tous les tomes, l\'ancien fichier part à la corbeille (' + corb() + '), ' +
-        'et les prochains tomes de la série seront nettoyés tout seuls.</div><div id="parZone"><div class="dem-sous">…</div></div>';
-      $('infosVue').hidden = false;
-      suivreParasites(true);
+      $('sAlleger')._passe = true;                                       // le clic ne repasse pas par la fermeture de la fenêtre « Gérer »
+      $('sAlleger').click();
+      ongletAmelioration('parasites');
     });
+    function demarrerParasites() {                                     // appelé quand on ouvre l'onglet « 🧹 Parasites »
+      if (!$('parZone') || parSerie === current.id && $('parZone').dataset.demarre) return;
+      parSerie = current.id; parCoches = {};
+      $('parZone').dataset.demarre = '1';
+      suivreParasites(true);
+    }
     async function suivreParasites(lancer) {
       var serie = parSerie;
       var r = await api('/api/parasites?series=' + encodeURIComponent(serie));
@@ -1955,6 +1915,16 @@
       var h = Number(n) >= 1000 && (current.chapters || []).find(function (c) { return String(c.hs) === String(Number(n)); });
       return h ? 'Hors-série : ' + h.title : 'Tome ' + String(n).padStart(2, '0');
     }
+    function blocTraitementsTome(n) {                       // « Ce qui a été fait sur ce tome » : une ligne par étape d'image (administrateur seulement)
+      var r = current && etatSerie[current.id];
+      if (!r || document.body.classList.contains('lecteur')) return '';
+      var t = r.tomes.filter(function (x) { return x.tome === Number(n); })[0];
+      if (!t) return '';
+      return '<div class="dem-titre">🛠 Ce qui a été fait sur ce tome</div><div class="trt-bloc">' + Object.keys(ICONES_IMAGES).map(function (k) {
+        var c = t.cases[k] || {etat: 'manque'}, e = r.etapes.filter(function (x) { return x.cle === k; })[0];
+        return '<div class="trt-l e-' + c.etat + '">' + symboleCase(c) + ' ' + e.icone + ' ' + esc(e.nom) + ' <small>' + esc(texteCase(c)) + '</small></div>';
+      }).join('') + '</div>';
+    }
     async function afficherTome(n, premier) {
       clearTimeout(suiviSommaire);
       if (premier) { $('infosTitre').textContent = 'ℹ️ ' + nomTome(n); $('infosCorps').innerHTML = '<div class="dem-sous">…</div>'; $('infosVue').hidden = false; }
@@ -1976,6 +1946,7 @@
       $('infosCorps').innerHTML = '<div class="tome-fiche"><img class="tome-couv" src="' + cov + '" alt="" data-grand="' + cov + '&grand=1">' +
         '<div class="tome-champs">' + (champs.length ? champs.map(function (x) { return '<div class="champ"><small>' + x[0] + '</small><div>' + esc(x[1]) + '</div></div>'; }).join('')
           : (chap.length ? '' : '<div class="dem-sous">Pas d\'infos sur ce tome.</div>')) + '</div></div>' +
+        blocTraitementsTome(n) +
         (d.resume ? '<div class="dem-titre">Résumé' + (d.resume_source ? ' <small>(' + esc(d.resume_source) + ')</small>' : '') + '</div><p class="tome-resume" id="tomeResumeTexte">' + esc(d.resume) + '</p>' : '') +
         '<div class="ident-actions admin-seul"><button type="button" class="mou-btn ghost" id="tomeResumeModif" data-tome="' + n + '">✏️ ' + (d.resume ? 'Modifier' : 'Écrire') + ' le résumé du tome</button></div>' +
         '<div id="tomeResumeEdit" hidden><textarea id="tomeResumeZone" class="mou-field" rows="8" style="width:100%" maxlength="5000"></textarea>' +
@@ -2408,6 +2379,186 @@
       history.replaceState({s: r.id}, '', '#' + encodeURIComponent(r.id));
       await openSeries(r.id, false);
     });
+    // 🛠 Gérer la série : une fenêtre à onglets (État · Identité · Tomes · Images) à la place du long menu « ⋯ ».
+    // Les boutons d'action gardent leur identifiant et leur code ; un appui ferme la fenêtre puis lance l'action.
+    var etatSerie = {};                                       // série → dernière réponse de /api/series/etat (badges des tomes, ligne de la fiche)
+    var gererOnglet = 'etat';
+    var ICONES_IMAGES = {doubles: '📖', parasites: '🧹', image: '✨', uniformise: '🎨', allegement: '🗜'};
+    var AIDES_ETAPES = {
+      doubles: 'Fait : doubles pages coupées ou assemblées par l\'appli (ou cochées à la main).',
+      parasites: 'Fait : pages d\'équipe retirées, ou tome vérifié sans page parasite.',
+      image: 'Fait : amélioration de l\'image appliquée (✨).',
+      uniformise: '✅ mêmes noirs et blancs que la référence (mesuré ou uniformisé) · ⚠️ s\'en écarte · ? pas encore mesuré. Se règle dans ✨ → 🎨 Uniformité.',
+      allegement: 'Fait : tome recompressé ou pages réduites (🗜), d\'après ce que l\'appli a fait.',
+      couvertures: 'Fait : couverture remplacée (sinon c\'est la 1re page du tome).',
+      resumes: 'Fait : le tome a un résumé (trouvé, écrit à la main ou dans son fichier).',
+      isbn: 'Fait : l\'ISBN du tome est connu.',
+      titres: 'Fait : sommaire du tome VALIDÉ (✅ dans la fenêtre ⓘ du tome).',
+      liens: 'Fait : sommaire validé et chaque chapitre a sa page de départ.',
+      reecriture: 'Fait : les infos de l\'appli sont écrites dans le fichier du tome.'
+    };
+    function dateFr(iso) { var m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(iso || ''); return m ? m[3] + '/' + m[2] + '/' + m[1] : ''; }
+    function symboleCase(c) { return c.etat === 'fait' ? (c.manuel ? '☑' : '✅') : c.etat === 'a_faire' ? '⚠️' : c.etat === 'inconnu' ? '?' : '·'; }
+    function petitTome(t) { return String(t.libelle || '').replace(/^Tome\s*/i, 'T'); }
+    function texteCase(c) {
+      var d = [c.detail, c.date ? dateFr(c.date) : '', c.manuel ? 'coché par toi' : ''].filter(Boolean).join(' · ');
+      return c.etat === 'fait' ? (d || 'fait') : c.etat === 'a_faire' ? 'À faire : ' + (c.detail || '') : c.etat === 'inconnu' ? (c.detail || 'pas encore mesuré') : 'pas fait, ou pas noté';
+    }
+    function ouvrirGerer(onglet) {
+      if (!current || current.id === '(Sans série)') return;
+      $('gererTitre').textContent = '🛠 ' + current.title;
+      $('gererVue').hidden = false;
+      gererChoisir(onglet || pref('mfGerer', 'etat'));
+      var cbr = (current.chapters || []).some(function (c) { return /\.(cbr|rar)$/i.test(c.path); });
+      $('sConvertir').hidden = !cbr;                          // « Convertir les .cbr » seulement s'il y en a
+    }
+    function fermerGerer() { $('gererVue').hidden = true; }
+    function gererChoisir(nom) {
+      gererOnglet = nom; setPref('mfGerer', nom);
+      document.querySelectorAll('[data-gerer]').forEach(function (b) { b.classList.toggle('ghost', b.dataset.gerer !== nom); });
+      document.querySelectorAll('[data-gerer-panneau]').forEach(function (p) { p.hidden = p.dataset.gererPanneau !== nom; });
+      if (nom === 'etat') gererEtat(); else if (nom === 'identite') gererIdentite();
+    }
+    async function gererIdentite() {
+      var s = current, ed = s.edition || {}, z = $('gererIdentiteEtat');
+      var lignes = ['<div>📚 Fiche : ' + (s.etat_source ? esc(s.etat_source) : '<i>non reconnue</i>') + '</div>',
+        '<div>🏷 Édition : ' + (ed.edition ? esc(ed.edition) : 'standard') + (ed.resolution ? ' · 📐 ' + esc(ed.resolution) : '') + (ed.source ? ' · ' + esc(categorieSource(ed.source, ed.devine).nom) : '') + '</div>'];
+      z.innerHTML = lignes.join('') + '<div id="gererIdentiteCompte" class="dem-sous">…</div>';
+      var r = etatSerie[s.id], id = s.id;
+      if (!r || !r.tomes.length || !(r.comptes.isbn !== undefined || r.tomes[0].cases.isbn)) {
+        try { r = await api('/api/series/etat?tout=1&series=' + encodeURIComponent(id)); } catch (e) { r = null; }
+        if (r && !r.error) etatSerie[id] = r;
+      }
+      if (!$('gererIdentiteCompte') || !current || current.id !== id) return;
+      if (!r || r.error || !r.total) { $('gererIdentiteCompte').textContent = ''; return; }
+      var c = r.comptes || {};
+      $('gererIdentiteCompte').innerHTML = '📝 Résumés ' + (c.resumes || 0) + '/' + r.total + ' · 🔢 ISBN ' + (c.isbn || 0) + '/' + r.total + ' · 🖼 couvertures remplacées ' + (c.couvertures || 0);
+    }
+    async function gererEtat() {
+      var z = $('gererEtat'), id = current.id;
+      z.innerHTML = '<div class="dem-sous">Lecture des tomes…</div>';
+      var r;
+      try { r = await api('/api/series/etat?tout=1&series=' + encodeURIComponent(id)); } catch (e) { r = {error: 'Pas de réponse de l\'appli.'}; }
+      if (!current || current.id !== id || gererOnglet !== 'etat' || $('gererVue').hidden) return;
+      if (r.error) { z.innerHTML = '<div class="dem-sous">' + esc(r.error) + '</div>'; return; }
+      etatSerie[id] = r;
+      gererEtatDessiner(r);
+      appliquerTraitements();
+    }
+    function gererEtatDessiner(r) {
+      var z = $('gererEtat');
+      if (!r.total) { z.innerHTML = '<div class="dem-sous">Aucun tome complet en .cbz dans cette série : rien à suivre tome par tome.</div>'; return; }
+      var groupes = ['images', 'identite', 'fichiers'];
+      var html = '<div class="etat-detail" id="etatDetail"><span class="dem-sous">' + r.total + ' tome' + (r.total > 1 ? 's' : '') +
+        '. Touche une case pour le détail d\'un tome, une icône de colonne pour toute la série.</span></div>';
+      groupes.forEach(function (g) {
+        var cols = r.etapes.filter(function (e) { return e.groupe === g; });
+        if (!cols.length) return;
+        html += '<details class="etat-groupe"' + (g === 'images' ? ' open' : '') + '><summary>' + esc(r.groupes[g]) + '</summary><div class="etat-defile"><table class="etat-tab"><thead><tr><th></th>' +
+          cols.map(function (e) { return '<th><button type="button" class="etat-col" data-etape="' + e.cle + '" title="' + esc(e.nom) + '">' + e.icone + '</button></th>'; }).join('') + '</tr></thead><tbody>' +
+          r.tomes.map(function (t) {
+            return '<tr><th>' + esc(petitTome(t)) + '</th>' + cols.map(function (e) {
+              var c = t.cases[e.cle] || {etat: 'manque'};
+              return '<td><button type="button" class="etat-case e-' + c.etat + (c.manuel ? ' e-main' : '') + '" data-tome="' + t.tome + '" data-etape="' + e.cle + '">' + symboleCase(c) + '</button></td>';
+            }).join('') + '</tr>';
+          }).join('') + '</tbody><tfoot><tr><th>Faits</th>' + cols.map(function (e) {
+            var n = (r.comptes || {})[e.cle] || 0;
+            return '<td class="' + (n >= r.total ? 'e-tout' : n ? 'e-part' : '') + '">' + n + '/' + r.total + '</td>';
+          }).join('') + '</tr></tfoot></table></div></details>';
+      });
+      z.innerHTML = html;
+    }
+    function detailEtat(html) { var d = $('etatDetail'); if (d) { d.innerHTML = html; d.classList.add('actif'); } }
+    $('gererEtat').addEventListener('click', async function (e) {
+      var r = etatSerie[current.id]; if (!r) return;
+      var cl = e.target.closest('.etat-case'), co = e.target.closest('.etat-col'), id = current.id;
+      var cible = e.target.closest('[data-marquer]');
+      if (e.target.closest('[data-vers-uniformite]')) {         // la mesure et l'uniformisation se font dans ✨ → 🎨 Uniformité
+        fermerGerer();
+        setTimeout(function () { $('sAlleger')._passe = true; $('sAlleger').click(); ongletAmelioration('uniforme'); }, 160);
+        return;
+      }
+      if (cible) {                                              // ☑ cocher ou ↺ retirer sa coche, pour un tome ou pour tous ceux qui manquent
+        var tomes = cible.dataset.tomes.split(',').map(Number);
+        var rep = await post('/api/series/etat/marquer', {series: id, etape: cible.dataset.etape, tomes: tomes, fait: cible.dataset.marquer === '1'});
+        if (!rep.ok) { MouAlert(rep.error || 'Impossible'); return; }
+        window.MouToast && window.MouToast(rep.changes ? '☑ Noté' : 'Rien à changer', 'ok');
+        await gererEtat(); return;
+      }
+      if (e.target.closest('[data-travail-cle]')) {              // « J'ai terminé cette étape pour toute la série » (ancienne liste cochée à la main)
+        var cb = e.target.closest('[data-travail-cle]');
+        var tr = await post('/api/series/travail', {series: id, cle: cb.dataset.travailCle, fait: cb.checked});
+        if (!tr.ok) { cb.checked = !cb.checked; return; }
+        r.travail = tr; current.travail = tr; return;
+      }
+      if (cl) {
+        var t = r.tomes.filter(function (x) { return String(x.tome) === cl.dataset.tome; })[0], et = r.etapes.filter(function (x) { return x.cle === cl.dataset.etape; })[0];
+        var c = t.cases[et.cle] || {etat: 'manque'};
+        var h = '<b>' + esc(t.libelle) + ' · ' + et.icone + ' ' + esc(et.nom) + '</b><div>' + symboleCase(c) + ' ' + esc(texteCase(c)) + '</div>';
+        if (et.cochable && c.etat !== 'fait') h += '<button type="button" class="mou-btn small" data-marquer="1" data-etape="' + et.cle + '" data-tomes="' + t.tome + '">☑ Marquer ce tome comme fait</button>';
+        if (et.cochable && c.etat === 'fait' && c.manuel) h += '<button type="button" class="mou-btn ghost small" data-marquer="0" data-etape="' + et.cle + '" data-tomes="' + t.tome + '">↺ Retirer ma coche</button>';
+        detailEtat(h); return;
+      }
+      if (co) {
+        var etp = r.etapes.filter(function (x) { return x.cle === co.dataset.etape; })[0];
+        var manque = r.tomes.filter(function (x) { return (x.cases[etp.cle] || {}).etat !== 'fait'; }), deja = r.tomes.length - manque.length;
+        var coches = r.tomes.filter(function (x) { return (x.cases[etp.cle] || {}).manuel; });
+        var hh = '<b>' + etp.icone + ' ' + esc(etp.nom) + ' : ' + deja + '/' + r.total + '</b><div class="dem-sous">' + esc(AIDES_ETAPES[etp.cle] || '') + '</div>' +
+          (manque.length ? '<div>Pas encore : ' + manque.map(petitTome).map(esc).join(', ') + '</div>' : '<div>✅ Tous les tomes.</div>');
+        if (etp.cochable && manque.length) hh += '<button type="button" class="mou-btn small" data-marquer="1" data-etape="' + etp.cle + '" data-tomes="' + manque.map(function (x) { return x.tome; }).join(',') + '">☑ Marquer ces ' + manque.length + ' tome(s) comme faits</button>';
+        if (etp.cochable && coches.length) hh += '<button type="button" class="mou-btn ghost small" data-marquer="0" data-etape="' + etp.cle + '" data-tomes="' + coches.map(function (x) { return x.tome; }).join(',') + '">↺ Retirer mes ' + coches.length + ' coche(s)</button>';
+        if (etp.cle === 'uniformise') hh += '<button type="button" class="mou-btn small" data-vers-uniformite="1">📊 Mesurer et uniformiser (✨ → 🎨)</button>';
+        var fait = ((r.travail || {}).fait || []).indexOf(etp.cle) >= 0;
+        hh += '<label class="etat-tick"><input type="checkbox" data-travail-cle="' + etp.cle + '"' + (fait ? ' checked' : '') + '> J\'ai terminé cette étape pour toute la série</label>';
+        detailEtat(hh);
+      }
+    });
+    // Ligne discrète sous le titre de la fiche + petites icônes dans l'en-tête de chaque tome : ce qui est déjà fait, sans ouvrir quoi que ce soit
+    function appliquerTraitements() {
+      var r = current && etatSerie[current.id], l = $('sTraitements');
+      if (document.body.classList.contains('lecteur') || !l) return;
+      if (!r || !r.total) { l.hidden = true; return; }
+      var t = traitementsResume(r);
+      l.hidden = !t; l.textContent = t ? '🛠 ' + t : '';
+      document.querySelectorAll('#chapters [data-tinfo]').forEach(function (el) {        // en-tête d'un groupe « Tome NN » ou ligne d'un tome complet
+        var tome = r.tomes.filter(function (x) { return x.tome === parseInt(el.dataset.tinfo, 10); })[0];
+        var groupe = el.closest('.tome-titre'), ligne = el.closest('.chap');
+        var hote = groupe ? groupe.querySelector('.tn') : ligne && ligne.querySelector('.ct');
+        if (!hote) return;
+        var vieux = hote.querySelector('.trt'); if (vieux) vieux.remove();
+        if (!tome) return;
+        var faits = Object.keys(ICONES_IMAGES).filter(function (k) { return (tome.cases[k] || {}).etat === 'fait'; });
+        if (!faits.length) return;
+        var sp = document.createElement('small'); sp.className = 'trt'; sp.textContent = faits.map(function (k) { return ICONES_IMAGES[k]; }).join('');
+        sp.title = faits.map(function (k) { return ICONES_IMAGES[k] + ' ' + texteCase(tome.cases[k]); }).join('\n');
+        hote.appendChild(sp);
+      });
+    }
+    function traitementsResume(r) { return r.resume || ''; }
+    async function chargerTraitements(id) {                     // en arrière-plan, sans rien bloquer : seulement les étapes d'images (rapide)
+      if (document.body.classList.contains('lecteur')) return;
+      var r;
+      try { r = await api('/api/series/etat?series=' + encodeURIComponent(id)); } catch (e) { return; }
+      if (!r || r.error) return;
+      etatSerie[id] = r;
+      if (current && current.id === id) appliquerTraitements();
+    }
+    window.MFTraitements = {charger: chargerTraitements, appliquer: appliquerTraitements};
+    window.MFGerer = {ouvrir: ouvrirGerer};
+    $('sGerer').addEventListener('click', function () { fermerMenus(); ouvrirGerer(); });
+    $('sTraitements').addEventListener('click', function () { ouvrirGerer('etat'); });
+    $('gererFermer').addEventListener('click', fermerGerer);
+    $('gererVue').addEventListener('click', function (e) {
+      if (e.target === $('gererVue')) { fermerGerer(); return; }
+      var o = e.target.closest('[data-gerer]'); if (o) { gererChoisir(o.dataset.gerer); return; }
+    });
+    $('gererVue').addEventListener('click', function (e) {       // une action : la fenêtre se ferme d'abord (le retour du téléphone s'y remet), puis l'action part
+      var b = e.target.closest('.gerer-liste button, .gerer-liste a'); if (!b) return;
+      if (b._passe) { b._passe = false; return; }
+      e.stopImmediatePropagation(); e.preventDefault();
+      fermerGerer();
+      setTimeout(function () { b._passe = true; b.click(); }, 160);
+    }, true);
     // Menus : appui sur la couverture (couverture) et sur « ⋯ » (actions moins courantes)
     function basculer(menu, e) {
       e.stopPropagation();
@@ -2429,7 +2580,7 @@
     });
     $('sAllUnread').addEventListener('click', async function () { if (await MouConfirm('Tout marquer comme non lu pour cette série ?')) markAll(false); });
     // Bouton retour du téléphone : une fenêtre ouverte (ⓘ d'un tome, infos, affichage…) se ferme et on reste sur la fiche
-    ['infosVue', 'affVue'].forEach(function (id) {
+    ['gererVue', 'infosVue', 'affVue'].forEach(function (id) {
       var el = $(id); if (!el) return;
       new MutationObserver(function () {
         if (!el.hidden && !el._pousse) { history.pushState({modal: id}, '', location.href); el._pousse = true; }
@@ -2442,7 +2593,7 @@
     window.addEventListener('popstate', function (e) {
       if (window._retourModal) { window._retourModal = false; e.stopImmediatePropagation(); return; }   // fermeture par le code
       var ferme = false;
-      ['infosVue', 'affVue'].forEach(function (id) {
+      ['gererVue', 'infosVue', 'affVue'].forEach(function (id) {
         var el = $(id);
         if (el && !el.hidden && el._pousse && !(history.state && history.state.modal === id)) { el._pousse = false; el.hidden = true; ferme = true; }   // pas quand on revient seulement d'une fenêtre de confirmation posée par-dessus
       });

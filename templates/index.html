@@ -85,6 +85,7 @@
                     <div class="edition-ligne" id="sEdition" hidden></div>
                     <div class="etat-ligne" id="sEtat" hidden></div>
                     <div class="etat-ligne admin-seul" id="sAllege" hidden></div>
+                    <button type="button" class="trt-ligne admin-seul" id="sTraitements" hidden title="Ce qui a été fait sur les tomes : appuie pour voir lesquels"></button>
                     <a class="missing-line" id="sMissingLine" hidden title="Chercher les manquants sur Japscan"></a>
                     <div class="actions">
                         <button id="sResume">▶ Reprendre</button>
@@ -93,26 +94,8 @@
                             <div class="menu menu-droite" id="menuMore" hidden>
                                 <button id="sAllRead">✔ Tout marquer lu</button>
                                 <button id="sAllUnread">↺ Tout marquer non lu</button>
-                                <button id="sTomes" hidden>📚 Ranger en tomes</button>
-                                <button id="sTitres">🏷 Titres des chapitres</button>
-                                <button id="sUnivers">🌌 Univers de la série</button>
-                <button id="sCouvertures">🖼 Couvertures des tomes</button>
-                <button id="sRenommer">✏️ Renommer la série</button>
-                                <button id="sIdentifier">🔄 Relancer l'identification</button>
-                                <button id="sChoisirFiche" class="admin-seul">🔎 Quelle série est-ce ? (choisir la fiche)</button>
-                                <button id="sRattacher" class="admin-seul">📎 Rattacher comme hors-série d'une autre série</button>
-                                <button id="sDecouper" class="admin-seul">✂️ Découper un gros fichier en tomes</button>
-                                <button id="sAlleger" class="admin-seul">✨ Améliorer, alléger, doubles pages</button>
-                                <button id="sParasites" class="admin-seul">🧹 Pages parasites (crédits, pubs d'équipe)</button>
+                                <button id="sGerer" class="admin-seul">🛠 Gérer la série…</button>
                                 <button id="sSurveiller">👁 Surveiller les nouveaux tomes</button>
-                                <button id="sSource">🏷 Corriger la source (Digital, Scan…)</button>
-                                <button id="sVolumes" class="admin-seul">✏️ Mon édition (nom, tomes, éditeur…)</button>
-                                <button id="sConvertir" class="admin-seul">🔄 Convertir les .cbr en .cbz</button>
-                                <button id="sNfoImport" class="admin-seul">📄 Importer un NFO (fichier)</button>
-                                <input type="file" id="sNfoFichier" accept=".nfo,.txt,text/plain" hidden>
-                                <button id="sIsbnLire" class="admin-seul">🔍 Lire les ISBN de toute la série (OCR)</button>
-                                <button id="sProvenance" class="admin-seul">✏️ Provenance de toute la série (équipe, torrent)</button>
-                                <button id="sInfosTous" class="admin-seul">📝 Réécrire les infos de TOUS les tomes dans leurs fichiers</button>
                                 <a id="sGenerique" hidden title="Ouvre MouFlopening sur l’anime de cette série">🎵 Choisir le générique</a>
                                 <button id="sGeneriqueListe" class="admin-seul" hidden>🎵 Changer le générique</button>
                                 <button class="danger" id="sDelete">🗑 Supprimer la série</button>
@@ -143,6 +126,55 @@
         </div>
     </div>
 </div>
+<div class="dem-fond" id="gererVue" hidden><div class="dem-boite"><div class="dem-tete"><h2 id="gererTitre">🛠 Gérer la série</h2>
+    <button type="button" class="ghost" id="gererFermer" aria-label="Fermer">✕</button></div>
+    <div class="onglets gerer-onglets" role="tablist">
+        <button type="button" class="mou-btn" role="tab" data-gerer="etat">📋 État</button>
+        <button type="button" class="mou-btn ghost" role="tab" data-gerer="identite">🔎 Identité</button>
+        <button type="button" class="mou-btn ghost" role="tab" data-gerer="tomes">📖 Tomes</button>
+        <button type="button" class="mou-btn ghost" role="tab" data-gerer="images">✨ Images</button>
+    </div>
+    <div data-gerer-panneau="etat" id="gererEtat"><div class="dem-sous">…</div></div>
+    <div data-gerer-panneau="identite" hidden>
+        <div class="gerer-etat" id="gererIdentiteEtat"></div>
+        <div class="gerer-liste">
+            <button id="sRenommer">✏️ Renommer la série</button>
+            <button id="sChoisirFiche" class="admin-seul">🔎 Quelle série est-ce ? (choisir la fiche)</button>
+            <button id="sIdentifier">🔄 Relancer l'identification</button>
+            <button id="sVolumes" class="admin-seul">✏️ Mon édition (nom, tomes, éditeur…)</button>
+            <button id="sUnivers">🌌 Univers de la série</button>
+            <button id="sRattacher" class="admin-seul">📎 Rattacher comme hors-série d'une autre série</button>
+        </div>
+        <div class="gerer-titre">D'où viennent mes fichiers</div>
+        <div class="gerer-liste">
+            <button id="sSource">🏷 Corriger la source (Digital, Scan…)</button>
+            <button id="sProvenance" class="admin-seul">✏️ Provenance de toute la série (équipe, torrent)</button>
+        </div>
+        <details class="gerer-avance"><summary>Avancé</summary><div class="gerer-liste">
+            <button id="sNfoImport" class="admin-seul">📄 Importer un NFO (fichier)</button>
+            <input type="file" id="sNfoFichier" accept=".nfo,.txt,text/plain" hidden>
+        </div></details>
+    </div>
+    <div data-gerer-panneau="tomes" hidden>
+        <div class="gerer-liste">
+            <button id="sTomes" hidden>📚 Ranger en tomes</button>
+            <button id="sDecouper" class="admin-seul">✂️ Découper un gros fichier en tomes</button>
+            <button id="sConvertir" class="admin-seul">🔄 Convertir les .cbr en .cbz</button>
+            <button id="sTitres">🏷 Titres des chapitres</button>
+            <button id="sIsbnLire" class="admin-seul">🔍 Lire les ISBN de toute la série (OCR)</button>
+        </div>
+        <details class="gerer-avance"><summary>Avancé</summary><div class="gerer-liste">
+            <button id="sInfosTous" class="admin-seul">📝 Réécrire les infos de TOUS les tomes dans leurs fichiers</button>
+        </div></details>
+    </div>
+    <div data-gerer-panneau="images" hidden>
+        <div class="gerer-liste">
+            <button id="sAlleger" class="admin-seul">✨ Améliorer, uniformiser, alléger, doubles pages</button>
+            <button id="sParasites" class="admin-seul">🧹 Pages parasites (crédits, pubs d'équipe)</button>
+            <button id="sCouvertures">🖼 Couvertures des tomes</button>
+        </div>
+    </div>
+</div></div>
 <div class="dem-fond" id="affVue" hidden><div class="dem-boite"><div class="dem-tete"><h2>🎛 Affichage</h2>
     <button type="button" class="ghost" id="affFermer" aria-label="Fermer">✕</button></div>
     <div class="dem-sous">Retenu sur cet appareil.</div>
