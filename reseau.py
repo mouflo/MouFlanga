@@ -120,6 +120,7 @@ SERVICES = {s.nom: s for s in (
     Service("openlibrary", "Open Library", 1.0, ["openlibrary.org"], pause_429=300),
     Service("vega", "Vega Livres (éditeur)", 2.0, ["www.vega-livres.fr"], pause_429=300),
     Service("ankama", "Ankama Boutique (éditeur)", 2.0, ["www.ankama-shop.com"], pause_429=300),
+    Service("glenat", "Glénat (éditeur)", 2.0, ["www.glenat.com"], pause_429=300),
     Service("kitsu", "Kitsu", 1.0, ["kitsu.io"]),
     Service("jikan", "MyAnimeList (Jikan)", 1.2, ["api.jikan.moe"], pause_429=60),
     Service("github", "GitHub (API)", 1.0, ["api.github.com"], pause_429=3600),
@@ -327,6 +328,8 @@ def obtenir(methode, url, *, params=None, json=None, data=None, entetes=None, ti
         texte = getattr(r, "text", None)
         if not isinstance(texte, str):                         # réponse simulée (tests) : pas de texte, seulement un JSON
             texte = ""
+        elif attendu != "json":
+            texte = _texte_utf8(r, texte)
         lecteur = getattr(r, "json", None) if callable(getattr(r, "json", None)) else None
         if statut == 429:
             if s.nom == "google" and _quota_du_jour(r):
@@ -395,6 +398,17 @@ def _erreur_dans_json(s, rep):
             return None                                   # « Not Found » : aucune fiche, pas une panne
         return 30.0, "AniList a répondu par une erreur : " + str((j["errors"][0] or {}).get("message"))[:80]
     return None
+
+
+def _texte_utf8(r, texte: str) -> str:
+    """`requests` lit en latin-1 une page qui n'annonce aucun charset (Glénat : « Édition originale » devenait « Ã\x89dition originale ») ;
+    la plupart des sites sont en UTF-8 : on le lit d'abord ainsi, et on garde le texte d'origine si ce n'en est pas."""
+    try:
+        if "charset" in (r.headers.get("Content-Type") or "").lower() or not isinstance(r.content, (bytes, bytearray)):
+            return texte
+        return bytes(r.content).decode("utf-8")
+    except (AttributeError, UnicodeDecodeError, TypeError):
+        return texte
 
 
 def get(url, **kw):

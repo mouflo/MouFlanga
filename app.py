@@ -910,8 +910,9 @@ def _contexte_identification(nom):
     (Perfect, Deluxe… : les ISBN et résumés de l'édition standard ne valent pas, on ne cherche que cette édition)."""
     import edition
     differente = _edition_differente(nom)
+    infos = edition.lire(MANGA_DIR / nom)
     return {"tomes": _tomes_de(nom), "edition_differente": differente, "volumes": _volumes_edition(nom) if differente else None,
-            "edition": edition.nom_d_edition(edition.lire(MANGA_DIR / nom)) if differente else ""}
+            "edition": edition.nom_d_edition(infos) if differente else "", "edition_lien": infos.get("edition_lien") or ""}
 
 
 import identification
@@ -7879,6 +7880,90 @@ def api_edition_volumes():
     edition.ecrire(MANGA_DIR / name, d)
     _CACHE_EDITION.pop(name, None)
     return jsonify({"ok": True, "message": msg})
+
+
+def _pages_de_torrents(serie):
+    """Pages de trackers déjà lues pour les torrents de cette série ([{tomes, tracker, presentation}]) : sans rien interroger, seulement
+    ce que l'appli a gardé. Elles portent l'ISBN de chaque tome (« ISBN : 978… »), preuve de l'édition."""
+    import page_tracker
+    out, vus = [], set()
+    for j in torrents._lire():
+        if j.get("serie") != serie or not j.get("page") or j["page"] in vus:
+            continue
+        vus.add(j["page"])
+        p = page_tracker.en_memoire(j["page"])
+        if p:
+            out.append({"tomes": p.get("tomes") or [], "tracker": p.get("tracker") or "", "presentation": p.get("presentation") or ""})
+    return out
+
+
+@app.route("/api/edition/mon-edition", methods=["GET", "POST"])
+def api_mon_edition():
+    """« ✏️ Mon édition » : le nom (Deluxe, Ultime, Édition originale…), le nombre de tomes et la page de l'éditeur de SON édition, au même
+    endroit, avec les ISBN que ses tomes portent (lus dans le tome ou sur la page du torrent). GET : l'état et les ISBN. POST : enregistre.
+    Une page d'éditeur est lue pour vérifier que les ISBN des tomes sont bien ceux de cette édition (sinon « confirme » est exigé) ;
+    l'éditeur qui ne répond pas ne modifie rien. Tout champ vide est oublié (retour à la détection automatique)."""
+    import edition
+    import glenat
+    import mon_edition
+    corps = request.get_json(silent=True) or {} if request.method == "POST" else {}
+    name = str(corps.get("series") if request.method == "POST" else request.args.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    d = edition.lire(MANGA_DIR / name)
+    isbn = mon_edition.isbn_des_tomes(d, _pages_de_torrents(name))
+    if request.method == "GET":
+        auto = edition.edition_generique(d.get("edition"))
+        officiel = ((tomes._charger(name) or {}).get("statut_officiel") or {}).get("volumes")
+        return jsonify({"nom": "" if auto else d.get("edition", ""), "detecte": d.get("edition", "") if auto else "",
+                        "volumes": d.get("volumes_attendus"), "manuel": bool(d.get("volumes_manuel")), "lien": d.get("edition_lien", ""),
+                        "standard": officiel, "editeur_lu": bool(glenat.adresse(d.get("edition_lien", ""))),
+                        "isbn": [{"tome": t, **x} for t, liste in isbn.items() for x in liste]})
+    erreur = mon_edition.valider(corps)
+    if erreur:
+        return jsonify({"ok": False, "error": erreur}), 400
+    verif = None
+    lien = str(corps.get("lien") or "").strip()
+    if lien:
+        try:
+            verif = mon_edition.verifier_lien(lien, isbn)
+        except glenat.PageIllisible as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        except reseau.Panne as e:
+            return jsonify({"ok": False, "error": f"Glénat n'a pas répondu ({e}) : rien n'est modifié, réessaie dans un moment."}), 503
+        if not verif["ok"] and not corps.get("confirme"):
+            quoi = ", ".join(f"T{t} : ton ISBN {a}, l'éditeur {b}" for t, (a, b) in sorted(verif["differents"].items()))
+            return jsonify({"ok": False, "confirmer": True, "error": f"Les ISBN de tes tomes ne sont pas ceux de cette page ({quoi}). "
+                                                                  "C'est peut-être une autre édition : vérifie l'adresse."}), 409
+    # le formulaire dit tout : ce que la personne avait donné avant et qu'elle vide est oublié
+    for cle in ("edition_lien", "edition_editeur"):
+        d.pop(cle, None)
+    if d.get("volumes_manuel"):
+        d.pop("volumes_attendus", None)
+        d.pop("volumes_manuel", None)
+    if d.pop("edition_manuelle", None):
+        d.pop("edition", None)
+    retenu = mon_edition.a_retenir(corps, d, verif)
+    d.update(retenu)
+    if "edition" in retenu:
+        d["edition_manuelle"] = True
+    elif retenu.get("volumes_attendus"):
+        d["edition"] = edition.nom_d_edition(d) or f"Édition en {retenu['volumes_attendus']} tomes (indiquée à la main)"
+    elif edition.edition_generique(d.get("edition")) and not retenu:
+        d.pop("edition_detectee", None)
+    edition.ecrire(MANGA_DIR / name, d)
+    _CACHE_EDITION.pop(name, None)
+    _identifier_en_fond(name, relire_fichiers=False)
+    morceaux = []
+    if retenu.get("edition"):
+        morceaux.append(f"édition « {retenu['edition']} »")
+    if retenu.get("volumes_attendus"):
+        morceaux.append(f"{retenu['volumes_attendus']} tomes")
+    if retenu.get("edition_lien"):
+        ok_isbn = f", ISBN confirmés pour T{', T'.join(map(str, verif['concordent']))}" if verif and verif["concordent"] else ""
+        morceaux.append("page de l'éditeur lue" + ok_isbn)
+    return jsonify({"ok": True, "message": ("Ton édition : " + ", ".join(morceaux) + ". L'identification est relancée.") if morceaux
+                    else "Édition : détection automatique."})
 
 
 # Pendant les tests, la préparation de fond ne fait rien : un fil lancé par un test écrirait dans le dossier du test suivant.

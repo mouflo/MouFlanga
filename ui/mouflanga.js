@@ -2318,13 +2318,53 @@
       note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err');
       if (r.ok) await openSeries(current.id, false);
     });
+    // ✏️ Mon édition : le nom (Deluxe, Ultime, Édition originale…), le nombre de tomes et la page de l'éditeur au même endroit, avec les
+    // ISBN que les tomes portent (lus dans le tome ou sur la page du torrent) : ils servent de preuve quand on donne la page de l'éditeur.
     $('sVolumes').addEventListener('click', async function () {
       fermerMenus();
-      var v = await MouPrompt('Combien de tomes compte TON édition de « ' + current.title + ' » (ex. 11 pour une Perfect Édition) ?\n\nLes chapitres affichés suivront alors le sommaire de chaque tome, pas la liste de Wikipédia.\nLaisse vide pour que l\'appli le détecte toute seule.');
-      if (v === null) return;
-      var r = await post('/api/edition/volumes', {series: current.id, volumes: v});
-      note('sMsg', r.message || r.error, r.ok ? 'ok' : 'err');
-      if (r.ok) await openSeries(current.id, false);
+      var serie = current.id, etat;
+      try { etat = await (await fetch('/api/edition/mon-edition?series=' + encodeURIComponent(serie))).json(); } catch (e) { etat = null; }
+      if (!etat || etat.error) { note('sMsg', (etat && etat.error) || 'Pas de réponse de l\'appli.', 'err'); return; }
+      var isbn = (etat.isbn || []).map(function (x) { return '<li>T' + x.tome + ' · ' + esc(x.isbn) + ' <small>(' + esc(x.source) + ')</small></li>'; }).join('');
+      var o = document.createElement('div'); o.className = 'choix-fond';
+      o.innerHTML = '<div class="choix-boite ed-boite"><h3>✏️ Mon édition · ' + esc(current.title) + '</h3>' +
+        '<p>Tout ce qui aide à reconnaître ton édition. Laisse vide ce que tu ne sais pas : l\'appli le cherchera seule.</p>' +
+        '<label>Nom de l\'édition<input type="text" id="edNom" maxlength="80" placeholder="ex. Deluxe, Ultime, Édition originale"' + (etat.detecte ? ' title="Repéré : ' + esc(etat.detecte) + '"' : '') + '></label>' +
+        '<label>Nombre de tomes<input type="number" id="edVol" inputmode="numeric" min="1" max="999" placeholder="ex. 18 (si tu ne le sais pas, laisse vide)"></label>' +
+        '<label>Page de l\'éditeur<input type="url" id="edLien" placeholder="adresse d\'un tome sur glenat.com"></label>' +
+        '<p class="ed-note">' + (etat.standard ? 'AniList annonce ' + etat.standard + ' tomes pour l\'édition standard. ' : '') +
+          'Seules les pages de tomes de <b>glenat.com</b> sont lues pour l\'instant : ISBN, résumé et nombre de pages de chaque tome de ton édition.</p>' +
+        (isbn ? '<details class="ed-isbn" open><summary>ISBN trouvés dans tes tomes</summary><ul>' + isbn + '</ul><p class="ed-note">Avec une page d\'éditeur, ils servent de preuve : s\'ils ne sont pas ceux de la page, l\'appli te le dit.</p></details>'
+              : '<p class="ed-note">Aucun ISBN trouvé dans tes tomes (ni imprimé, ni sur la page de leur torrent).</p>') +
+        '<div id="edMsg" class="ed-msg"></div>' +
+        '<button type="button" class="mou-btn" id="edOk">✅ Enregistrer</button>' +
+        '<button type="button" class="mou-btn ghost" id="edEfface">↺ Tout effacer (détection automatique)</button>' +
+        '<button type="button" class="mou-btn ghost" id="edAnnule">Annuler</button></div>';
+      document.body.appendChild(o);
+      o.querySelector('#edNom').value = etat.nom || ''; o.querySelector('#edVol').value = etat.volumes || ''; o.querySelector('#edLien').value = etat.lien || '';
+      var msg = function (t, cls) { var m = o.querySelector('#edMsg'); m.className = 'ed-msg ' + (cls || ''); m.textContent = t; };
+      var fermer = function () { o.remove(); };
+      o.querySelector('#edAnnule').addEventListener('click', fermer);
+      o.addEventListener('click', function (e) { if (e.target === o) fermer(); });
+      async function envoyer(corps) {
+        var boutons = o.querySelectorAll('button'); boutons.forEach(function (b) { b.disabled = true; });
+        msg(corps.lien ? '⏳ Lecture de la page de l\'éditeur… (quelques secondes)' : '⏳ Enregistrement…');
+        var r;
+        try { r = await post('/api/edition/mon-edition', Object.assign({series: serie}, corps)); } catch (e) { r = {ok: false, error: 'Pas de réponse de l\'appli : réessaie.'}; }
+        boutons.forEach(function (b) { b.disabled = false; });
+        if (r.confirmer) {
+          if (await MouConfirm(r.error + '\n\nEnregistrer quand même ?')) return envoyer(Object.assign({confirme: true}, corps));
+          msg(r.error, 'err'); return;
+        }
+        if (!r.ok) { msg(r.error || 'Échec.', 'err'); return; }
+        fermer(); await openSeries(serie, false); note('sMsg', r.message, 'ok');
+      }
+      o.querySelector('#edOk').addEventListener('click', function () {
+        envoyer({nom: o.querySelector('#edNom').value.trim(), volumes: o.querySelector('#edVol').value.trim(), lien: o.querySelector('#edLien').value.trim()});
+      });
+      o.querySelector('#edEfface').addEventListener('click', async function () {
+        if (await MouConfirm('Effacer ce que tu as indiqué (nom, nombre de tomes, page de l\'éditeur) ? L\'appli reprendra sa détection automatique.')) envoyer({nom: '', volumes: '', lien: ''});
+      });
     });
     $('sEcouter').addEventListener('click', function () {
       if (lecteurGenerique) { arreterGenerique(); return; }

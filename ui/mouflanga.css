@@ -451,3 +451,12 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .reg-recap { margin:4px 0 2px; padding-left:20px; line-height:1.5; font-size:.92rem; }
 .reg-recap li { margin:2px 0; }
 #allRecap { border-color:color-mix(in srgb, var(--accent, #52b54b) 45%, var(--line, #333)); }
+/* ✏️ Mon édition */
+.ed-boite { max-height:92vh; overflow-y:auto; }
+.ed-boite label { display:flex; flex-direction:column; gap:4px; font-size:.9rem; }
+.ed-boite input { font-size:16px; padding:10px; border-radius:8px; border:1px solid var(--line, #2c2f36); background:var(--surface, #17181c); color:inherit; width:100%; box-sizing:border-box; }
+.ed-boite .ed-note { color:var(--muted, #9aa); font-size:.82rem; }
+.ed-boite .ed-isbn ul { margin:6px 0; padding-left:18px; font-size:.85rem; }
+.ed-boite .ed-isbn summary { cursor:pointer; font-size:.9rem; }
+.ed-boite .ed-msg { font-size:.88rem; min-height:1.2em; }
+.ed-boite .ed-msg.err { color:#ff8a80; }

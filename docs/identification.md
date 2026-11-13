@@ -29,6 +29,8 @@ avant de toucher à `tomes.py`, `identification.py`, `reseau.py`, `bnf.py`, `goo
 | `wikifr.py` | Wikipédia en français : trouver la page de la série, lire la liste des volumes (modèle `TomeBD` : titres, dates, **ISBN français**, résumés, chapitres sous toutes leurs formes de numérotation), section d'une série dans une page partagée (Akame ga Kill / Zero). |
 | `bnf.py` | Catalogue de la BnF (API SRU, UNIMARC) : ISBN, numéro, éditeur, pages et **résumé** de chaque tome français. |
 | `googlebooks.py` | Google Books : une recherche pour toute la série au lieu d'une par tome (Google rend en fait 20 résultats par page : la page suivante reprend là où l'autre s'arrête, et on s'arrête dès qu'une page ne parle plus de la série) ; ISBN, résumé, éditeur. Google omet parfois le numéro du tome (« Air Gear » tout court) : l'ISBN, déjà connu par Wikipédia ou la BnF, le donne. En dernier recours (quota 1 000/jour). |
+| `glenat.py` | Glénat (glenat.com), **seulement la page d'un tome donnée par la personne** (« ✏️ Mon édition ») : ISBN, résumé, date, nombre de pages, couverture de chaque tome d'une édition (« Rave - Édition originale », 384 pages par tome) ; les autres tomes par les liens de la page puis par l'ISBN qui se suit, vérifié sur leur page. |
+| `mon_edition.py` | « ✏️ Mon édition » : nom, nombre de tomes, page de l'éditeur ; les ISBN lus dans les tomes ou sur la page de leur torrent servent de **preuve** (refus s'ils ne sont pas ceux de la page, sauf confirmation). |
 | `notices.py` | Ce qu'Internet dit de chaque tome, **source par source** (`notices` dans `data/tomes/<série>.json`) ; choix à la lecture : deux sources d'accord pour l'ISBN, sinon Wikipédia > BnF > Google ; résumé Wikipédia > BnF > Google sans la présentation de la série répétée. |
 | `presentation.py` | Lire la présentation d'un torrent ou un NFO (HTML, BBCode, Markdown, texte) : titre, auteur, éditeur, parution, genre, pages, résolution, qualité, ISBN par tome, résumé. Sert aux NFO des archives (`edition.analyser_nfo`) et aux pages des trackers (`page_tracker.py`). |
 | `identification.py` | Le parcours : statut → liste française de Wikipédia → répartition en tomes → fiche → ISBN et résumés. Rend un `Bilan(etat, detail, prochain, extra)` par étape. `a_reprendre()` liste les séries dont une étape attend. |
@@ -60,6 +62,10 @@ La préparation de fond (`prechauffage`) lui fait faire les étapes `statut` (sy
 
 Utilisées (API ouvertes ou documentées, rythme respecté, `User-Agent` qui nous identifie) : AniList, Wikipédia (en, fr), MangaDex, MangaUpdates, BnF
 (catalogue.bnf.fr/api/SRU : licence ouverte, robots.txt : délai de 5 s respecté), Google Books (clé de l'utilisatrice).
+
+Glénat (glenat.com) : robots.txt, groupe « * », n'interdit que les adresses avec paramètres, `/api/` et `/_next/` ; on ne lit que des pages de tomes sans
+paramètre, **jamais la recherche du site**, au rythme de `reseau` (2 s). Une adresse de page est donnée par la personne, jamais cherchée. Les pages sont
+en UTF-8 sans charset annoncé : `reseau._texte_utf8` (sinon « Édition originale » devenait « Ã\x89dition originale »).
 
 Examinées et **refusées** (ne pas relancer sans nouvelle raison) :
 - Manga-News : protégé par Cloudflare (« Just a moment… ») : on ne contourne jamais une protection anti-robot.

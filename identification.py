@@ -27,6 +27,7 @@ import reseau
 import tomes
 import vega
 import ankama
+import glenat
 
 logger = logging.getLogger("mouflanga")
 
@@ -201,7 +202,8 @@ def etape_notices(serie: str, forcer: bool = False) -> Bilan:
     tomes.modifier(serie, noter_edition)
     if not voulus:
         return Bilan("deja", "aucun tome à renseigner", None, {"isbn_manquants": [], "attente": False})
-    if differente and not edition:
+    lien_edition = ctx.get("edition_lien") or ""
+    if differente and not edition and not glenat.adresse(lien_edition):
         return Bilan("deja", "édition particulière (Perfect, Deluxe…) dont le nom n'est pas connu : les ISBN et résumés de l'édition "
                              "standard ne valent pas ici", None, {"isbn_manquants": sorted(voulus), "attente": False})
     fortes, faibles, autres = tomes.noms_de_recherche(serie)
@@ -245,6 +247,19 @@ def etape_notices(serie: str, forcer: bool = False) -> Bilan:
             tomes.modifier(serie, noter)
         except reseau.Panne as e:
             pannes.append(e)
+    # 1 ter. La page de l'éditeur de TON édition (« ✏️ Mon édition », Glénat) : ISBN, résumé, date, pages de chaque tome de cette édition.
+    if glenat.adresse(lien_edition):
+        avant = _etat_recherche(serie, "glenat")
+        if forcer or not avant or avant.get("lien") != lien_edition or (manque() and time.time() - avant.get("date", 0) > BNF_DUREE):
+            try:
+                trouves = glenat.chercher(lien_edition, voulus=voulus)
+                notices.enregistrer(serie, "glenat", trouves)
+
+                def noter_glenat(brut, trouves=trouves):
+                    brut.setdefault("recherches", {})["glenat"] = {"date": time.time(), "tomes": sorted(trouves), "lien": lien_edition}
+                tomes.modifier(serie, noter_glenat)
+            except reseau.Panne as e:
+                pannes.append(e)
     # 2. Google Books : ce qu'il manque encore, une recherche de toute la série puis quelques tomes un à un
     google_utilisable = bool(googlebooks.cle())
     g_avant = _etat_recherche(serie, "google")
