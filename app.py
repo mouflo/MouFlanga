@@ -3583,14 +3583,21 @@ def _lire_json_liste(f):
         return []
 
 
+def _est_rangement(j):
+    """Tâche « Rangé à la main » (tomes déjà là, fichiers à retrouver : champ « paires »). À ne pas confondre avec un torrent
+    lancé depuis l'appli, lui aussi marqué « manuel » (jamais retiré pour lenteur) mais sans « paires » : son choix se
+    prend au moment de l'import, par torrents.decider_torrent."""
+    return bool(j.get("paires"))
+
+
 def _signaler_doublons(serie, paires):
     """Tomes rangés à la main alors qu'un tome identique existe déjà : une tâche « à valider » dans Télécharger.
     Ne signale que les vrais doublons nouveaux : ni fichiers disparus, ni paires déjà refusées (« ne rien faire »)."""
     maintenant = datetime.now().strftime("%Y-%m-%d %H:%M")
     ignores = set(_lire_json_liste(DOUBLONS_IGNORES))
     with torrents._verrou:
-        d = [j for j in torrents._lire() if not (j.get("manuel") and j.get("serie") == serie and j.get("etat") == "a_valider")]
-        anciennes = [p for j in torrents._lire() if j.get("manuel") and j.get("serie") == serie and j.get("etat") == "a_valider"
+        d = [j for j in torrents._lire() if not (_est_rangement(j) and j.get("serie") == serie and j.get("etat") == "a_valider")]
+        anciennes = [p for j in torrents._lire() if _est_rangement(j) and j.get("serie") == serie and j.get("etat") == "a_valider"
                      for p in j.get("paires", [])]
         anciennes = [p for p in anciennes if (MANGA_DIR / p[0]).is_file() and f"{p[0]}|{p[1]}" not in ignores]
         vus = {tuple(p[:2]) for p in anciennes}
@@ -3607,7 +3614,7 @@ def _signaler_doublons(serie, paires):
         torrents._ecrire(d)
     regle = _regle_import(serie)
     if regle and nouvelles:                 # choix retenu pour cette série : appliqué tout seul
-        jid = next((x["id"] for x in torrents._lire() if x.get("manuel") and x.get("serie") == serie and x.get("etat") == "a_valider"), None)
+        jid = next((x["id"] for x in torrents._lire() if _est_rangement(x) and x.get("serie") == serie and x.get("etat") == "a_valider"), None)
         if jid:
             r, _c = _appliquer_choix(jid, {"remplacer": True, "manquants": False, "ignorer": "ignorer"}[regle])
             logger.info("Doublons de « %s » : règle « %s » appliquée toute seule (%s)", serie, regle, r.get("message") or r.get("error"))
@@ -3678,14 +3685,14 @@ def _appliquer_choix(jid, valeur):
         return {"ok": False, "error": "Rien à valider ici (déjà traité ?)."}, 404
     if ignorer:
         # Ne rien faire : la tâche est fermée, les doublons restent tels quels et ne sont plus signalés
-        if j.get("manuel"):
+        if _est_rangement(j):
             _retenir_doublons_ignores(j.get("paires", []))
         torrents._maj(jid, remplacer=None, etat="fini", message="Choix : ne rien faire. Les doublons restent tels quels.")
         return {"ok": True, "message": "Rien n'a été changé. Cette demande ne reviendra plus."}, 200
-    if j.get("manuel") and not any((MANGA_DIR / src).is_file() for src, _c, _t in j.get("paires", [])):
+    if _est_rangement(j) and not any((MANGA_DIR / src).is_file() for src, _c, _t in j.get("paires", [])):
         torrents._maj(jid, etat="erreur", message="Fichiers introuvables (dossier renommé ou supprimé) : relance le rangement.")
         return {"ok": False, "error": "Ces fichiers ne sont plus à leur place : relance le rangement."}, 409
-    if not j.get("manuel"):
+    if not _est_rangement(j):
         torrents.decider_torrent(jid, remplacer)
         return {"ok": True, "message": "Choix enregistré : l'import reprend."}, 200
     try:

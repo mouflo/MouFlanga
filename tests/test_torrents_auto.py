@@ -200,5 +200,42 @@ class Bloques(unittest.TestCase):
         self.assertEqual([x["chercher"] for x in self.rates], [False])
 
 
+class AjoutQuiAboutitPas(Bloques):
+    """qBittorrent répond « Ok. » à l'envoi puis va chercher le .torrent chez Prowlarr : s'il échoue (« L'opération a été annulée »,
+    Rave le 13/11, 15 torrents sur 17), le torrent n'existe jamais. Ce n'est ni « supprimé à la main » ni un torrent mauvais."""
+
+    def attente(self, minutes):
+        debut = (datetime.now() - timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M")
+        torrents._ecrire([{"id": "j1", "titre": "Rave.T06.FR.[CBZ]-NeoRipClub", "serie": "Rave", "etat": "telechargement",
+                           "debut": debut, "attend_ajout": True, "manuel": True}])
+
+    def test_pas_encore_apparu_on_attend(self):
+        self.attente(1)
+        torrents.traiter(FauxQbit([]), torrents._lire(), None, lambda m: None, None)
+        self.assertEqual(torrents._lire()[0]["etat"], "telechargement")
+        self.assertEqual(self.rates, [])
+
+    def test_jamais_apparu_apres_l_attente_ajout_echoue_et_reste_proposable(self):
+        self.attente(10)
+        messages = []
+        torrents.traiter(FauxQbit([]), torrents._lire(), None, messages.append, None)
+        j = torrents._lire()[0]
+        self.assertEqual((j["etat"], j["ajout_echoue"]), ("erreur", True))
+        self.assertIn("Prowlarr", j["message"])
+        self.assertNotIn("supprimé à la main", j["message"])
+        self.assertEqual(self.rates, [])                                        # pas de « raté, retiré de qBittorrent », pas de nouvelle recherche
+        self.assertNotIn("Rave.T06.FR.[CBZ]-NeoRipClub", torrents.deja_pris())   # il pourra être reproposé
+        self.assertEqual(torrents.en_cours_de("Rave"), [])
+        self.assertEqual(len(messages), 1)
+        self.assertIn("1 torrent(s)", messages[0])
+
+    def test_apparu_tard_il_est_suivi_normalement(self):
+        self.attente(2)
+        q = FauxQbit([{"hash": "h1", "progress": 0.3, "state": "downloading", "num_seeds": 3, "category": "mouflanga"}])
+        torrents.traiter(q, torrents._lire(), None, lambda m: None, None)
+        j = torrents._lire()[0]
+        self.assertEqual((j["etat"], j["attend_ajout"], j["progression"]), ("telechargement", False, 30))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -9,7 +9,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
-class DoublonsTest(unittest.TestCase):
+class DoublonsBase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         t = Path(self.tmp.name)
@@ -44,6 +44,8 @@ class DoublonsTest(unittest.TestCase):
     def taches(self):
         return [j for j in self.A.torrents._lire() if j.get("manuel")]
 
+
+class DoublonsTest(DoublonsBase):
     def test_choix_retenu_applique_tout_seul(self):
         """« Toujours faire ce choix » (ici : ne rien faire) : la fois suivante, plus de question ni de tâche en attente."""
         self.A._write_json(self.A.REGLES_IMPORT, {"Serie": {"choix": "ignorer", "date": "x"}})
@@ -87,3 +89,66 @@ class DoublonsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChoixSurUnTorrentLanceDepuisLAppliTest(DoublonsBase):
+    """Un torrent lancé depuis l'appli (« manuel » = jamais retiré pour lenteur) qui tombe sur des tomes déjà là attend un choix.
+    Remplacer / ajouter les manquants doit reprendre son import, pas le prendre pour un « rangement à la main » (qui a des
+    fichiers à retrouver, « paires ») : avant, « Fichiers introuvables : relance le rangement » (Rave, 13/11)."""
+
+    def torrent(self, **kw):
+        j = {"id": "tor1", "titre": "Serie.Tome.09.FR.[CBZ]-NRC", "serie": "Serie", "remplacer": None, "etat": "a_valider",
+             "progression": 100, "debut": "2026-11-13 00:44", "manuel": True, "message": "Tomes déjà présents : 09. À toi de choisir.", **kw}
+        self.A.torrents._ecrire([j])
+        return j
+
+    def etat(self, jid="tor1"):
+        return next(x for x in self.A.torrents._lire() if x["id"] == jid)
+
+    def test_remplacer_reprend_le_telechargement(self):
+        self.torrent()
+        r, code = self.A._appliquer_choix("tor1", True)
+        self.assertEqual(code, 200, r)
+        self.assertEqual((self.etat()["etat"], self.etat()["remplacer"]), ("telechargement", True))
+
+    def test_ajouter_les_manquants_reprend_le_telechargement(self):
+        self.torrent()
+        r, code = self.A._appliquer_choix("tor1", False)
+        self.assertEqual(code, 200, r)
+        self.assertEqual((self.etat()["etat"], self.etat()["remplacer"]), ("telechargement", False))
+
+    def test_ne_rien_faire_ferme_la_tache(self):
+        self.torrent()
+        r, code = self.A._appliquer_choix("tor1", "ignorer")
+        self.assertEqual(code, 200, r)
+        self.assertEqual(self.etat()["etat"], "fini")
+
+    def test_un_rangement_a_la_main_signale_ne_fait_pas_disparaitre_un_torrent_en_attente(self):
+        self.torrent()
+        self.A._signaler_doublons("Serie", self.paire())
+        self.assertEqual(self.etat()["etat"], "a_valider")          # le torrent est toujours là
+        self.assertEqual(len([j for j in self.A.torrents._lire() if j.get("paires")]), 1)
+
+    def test_la_regle_retenue_ne_s_applique_pas_au_torrent_a_la_place_du_rangement(self):
+        self.torrent()
+        self.A._write_json(self.A.REGLES_IMPORT, {"Serie": {"choix": "ignorer"}})
+        self.A._signaler_doublons("Serie", self.paire())
+        self.assertEqual(self.etat()["etat"], "a_valider")          # seule la tâche de rangement a été close
+        self.assertEqual([j["etat"] for j in self.A.torrents._lire() if j.get("paires")], ["fini"])
+
+    def test_un_rangement_a_la_main_dont_les_fichiers_ont_disparu_reste_une_erreur(self):
+        self.A.torrents._ecrire([{"id": "r1", "titre": "Rangé à la main", "serie": "Serie", "remplacer": None, "etat": "a_valider",
+                                  "manuel": True, "paires": [["Serie/absent.cbz", "Serie/cible.cbz", 7]], "progression": 100,
+                                  "debut": "2026-11-13 00:44", "message": "x"}])
+        r, code = self.A._appliquer_choix("r1", True)
+        self.assertEqual(code, 409)
+        self.assertEqual(self.etat("r1")["etat"], "erreur")
+
+    def test_les_torrents_mis_en_erreur_par_ce_defaut_reviennent_en_attente(self):
+        """Réparation faite par le code : un torrent encore dans qBittorrent, mis en « erreur » à tort, retrouve son choix."""
+        self.torrent(etat="erreur", message="Fichiers introuvables (dossier renommé ou supprimé) : relance le rangement.")
+        self.assertEqual(self.A.torrents.reprendre_choix_perdus(), 1)
+        j = self.etat()
+        self.assertEqual(j["etat"], "a_valider")
+        self.assertIn("À toi de choisir", j["message"])
+        self.assertEqual(self.A.torrents.reprendre_choix_perdus(), 0)         # une seule fois

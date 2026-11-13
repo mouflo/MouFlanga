@@ -34,7 +34,15 @@ HISTORIQUE = 1000                  # torrents gardés dans torrents.json (au-del
 EN_COURS = ("telechargement", "import", "a_valider")
 # États de qBittorrent où un torrent devrait avancer : s'il ne bouge plus, il est bloqué. En pause ou en file d'attente : on attend.
 ETATS_ACTIFS = {"stalledDL", "metaDL", "forcedMetaDL", "downloading", "forcedDL", "missingFiles", "error", "unknown"}
+ATTENTE_AJOUT_MIN = 3              # minutes pendant lesquelles un torrent pas encore apparu dans qBittorrent est attendu
 _verrou = threading.Lock()
+
+
+def _minutes_depuis(debut) -> float:
+    try:
+        return (datetime.now() - datetime.strptime(str(debut), "%Y-%m-%d %H:%M")).total_seconds() / 60
+    except ValueError:
+        return 1e9
 
 
 def reglages():
@@ -253,8 +261,9 @@ def _maj(jid, **kw):
 
 def deja_pris() -> set:
     """Noms des torrents déjà envoyés à qBittorrent (en cours, importés, ratés ou supprimés à la main) : jamais repris tout seuls,
-    jamais reproposés. Un torrent raté sert ainsi de liste noire : la recherche passe au suivant."""
-    return {j.get("titre") for j in _lire() if j.get("titre")}
+    jamais reproposés. Un torrent raté sert ainsi de liste noire : la recherche passe au suivant. Sauf un ajout qui n'a jamais abouti
+    (qBittorrent n'a pas pu récupérer le fichier chez Prowlarr) : rien n'a été téléchargé, il reste proposable."""
+    return {j.get("titre") for j in _lire() if j.get("titre") and not j.get("ajout_echoue")}
 
 
 def en_cours_de(serie: str) -> list:
@@ -315,6 +324,22 @@ def decider_torrent(jid, remplacer: bool):
          message="Choix enregistré : remplacer les tomes" if remplacer else "Choix enregistré : ajouter les manquants")
 
 
+def reprendre_choix_perdus() -> int:
+    """Répare ce que l'ancien défaut a laissé (13/11/2026) : un torrent lancé depuis l'appli, tombé sur des tomes déjà là, était
+    mis en « erreur : fichiers introuvables » dès qu'on touchait Remplacer ou Ajouter les manquants. Il retrouve son choix."""
+    n = 0
+    with _verrou:
+        d = _lire()
+        for j in d:
+            if (j.get("etat") == "erreur" and not j.get("paires") and j.get("remplacer") is None
+                    and str(j.get("message", "")).startswith("Fichiers introuvables (dossier renommé")):
+                j.update(etat="a_valider", progression=100, message="Des tomes sont déjà présents. À toi de choisir.")
+                n += 1
+        if n:
+            _ecrire(d)
+    return n
+
+
 def rappeler_a_valider(envoyer):
     """Une tâche en attente de choix est rappelée une fois par jour (Telegram), jusqu'à la décision."""
     fmt = "%Y-%m-%d %H:%M"
@@ -339,7 +364,8 @@ def _forcer_demarrage(q, jid):
                 q.appel("torrents/setForceStart", hashes=infos[0]["hash"], value="true")
             except Exception as e:
                 logger.warning("Forçage du démarrage impossible : %s", e)
-            return
+            return True
+    return False
 
 
 def lancer(lien: str, titre: str, serie: str, remplacer: bool | None = None, page: str = "", manuel: bool = False) -> dict:
@@ -348,9 +374,12 @@ def lancer(lien: str, titre: str, serie: str, remplacer: bool | None = None, pag
     q.preparer_categorie()
     jid = uuid.uuid4().hex[:10]
     q.appel("torrents/add", urls=lien, category=CATEGORIE, tags=f"mouflanga,mf-{jid}", savepath=r["nok"], autoTMM="false")
-    _forcer_demarrage(q, jid)
+    apparu = _forcer_demarrage(q, jid)
+    # « torrents/add » répond « Ok. » dès que la demande est prise : qBittorrent va ensuite chercher le fichier .torrent chez Prowlarr,
+    # et peut échouer plus tard (« L'opération a été annulée » : Rave, 13/11). Tant qu'il n'est pas apparu, on le sait (attend_ajout).
     j = {"id": jid, "titre": titre, "serie": serie, "remplacer": remplacer, "etat": "telechargement", "progression": 0, "debut": datetime.now().strftime("%Y-%m-%d %H:%M"),
-         "message": "Envoyé à qBittorrent", **({"manuel": True} if manuel else {}), **({"page": page} if str(page).startswith("https://") and len(page) <= 600 else {})}
+         "message": "Envoyé à qBittorrent" if apparu else "Envoyé à qBittorrent : en attente du fichier de Prowlarr…",
+         **({} if apparu else {"attend_ajout": True}), **({"manuel": True} if manuel else {}), **({"page": page} if str(page).startswith("https://") and len(page) <= 600 else {})}
     with _verrou:
         d = _lire()
         d.append(j)
@@ -460,6 +489,11 @@ def surveiller(importer_serie, envoyer, manga_dir):
             if j.get("etat") == "import":
                 j.update(etat="telechargement", message="Reprise après redémarrage")
         _ecrire(d)
+    try:
+        if reprendre_choix_perdus():
+            logger.info("Torrents remis en attente de ton choix (erreur « fichiers introuvables » due à un ancien défaut)")
+    except Exception as e:
+        logger.warning("Reprise des choix perdus : %s", e)
     while True:
         time.sleep(60)
         if not configure():
@@ -502,19 +536,30 @@ def adopter(q):
 
 def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
     """Un passage du suivi : progression, ou copie + import + déplacement vers « OK » quand c'est fini."""
-    rates = []
+    rates, echecs = [], []
     if True:
         for j in en_cours:
             if j["etat"] != "telechargement":
                 continue
             try:
                 infos = q.info(tag=f"mf-{j['id']}")
+                if not infos and j.get("attend_ajout"):
+                    # jamais apparu dans qBittorrent : il peut encore être en train de chercher le fichier chez Prowlarr, puis il abandonne
+                    if _minutes_depuis(j.get("debut")) < ATTENTE_AJOUT_MIN:
+                        continue
+                    _maj(j["id"], etat="erreur", ajout_echoue=True, attend_ajout=False,
+                         message="qBittorrent n'a pas pu récupérer le fichier .torrent chez Prowlarr (ajout annulé ou trop lent) : "
+                                 "rien n'a été téléchargé. Tu peux le relancer.")
+                    echecs.append(j)
+                    continue
                 if not infos:
                     _maj(j["id"], etat="rate", rate_le=datetime.now().strftime("%Y-%m-%d %H:%M"),
                          message="Introuvable dans qBittorrent (supprimé à la main ?) : il ne sera plus proposé.")
                     rates.append({**j, "raison": "supprimé de qBittorrent", "chercher": False})
                     continue
                 t = infos[0]
+                if j.get("attend_ajout"):
+                    _maj(j["id"], attend_ajout=False)
                 if t.get("progress", 0) < 1:
                     garder, bloque = suivre_avance(j, t, datetime.now())
                     if bloque and j.get("manuel"):      # ajouté à la main : jamais retiré pour lenteur, c'est son choix
@@ -560,6 +605,9 @@ def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
                 logger.warning("Torrent %s : %s", j["titre"], e)
                 _maj(j["id"], etat="erreur", message=str(e)[:200])
                 envoyer(f"⚠️ MouFlanga : import du torrent {j['titre'][:80]} impossible : {e}")
+    if echecs:
+        envoyer(f"⚠️ MouFlanga : {len(echecs)} torrent(s) n'ont pas pu être envoyés à qBittorrent (Prowlarr n'a pas livré le fichier ; rien n'a été "
+                "téléchargé). Relance-les depuis la fiche de la série.\n" + "\n".join(f"• {j['serie']} : {j['titre'][:80]}" for j in echecs[:10]))
     if rates:
         if _ETAT.get("apres_rate"):
             try:
