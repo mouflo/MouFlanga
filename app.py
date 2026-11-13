@@ -4686,7 +4686,8 @@ def _infos_suivi(nom):
     return {"tomes": t, "source": source, "complete": complete, "en_cours": en_cours, "tomes_en_cours": tomes_en_cours,
             "attendus": attendus or _volumes_attendus(nom),       # série encore vide : nombre de tomes d'AniList (série finie)
             "deja_pris": torrents.deja_pris(), "equipe": equipe, "equipe_tomes": equipe_tomes,
-            "profil": profil is not None, "scores_tomes": scores, "arret": (profil or {}).get("score_arret"),
+            "profil": profil is not None, "profil_precis": bool(profil and profil.get("series")),
+            "scores_tomes": scores, "arret": (profil or {}).get("score_arret"),
             "sources_tomes": d.get("sources_tomes") or {}}
 
 

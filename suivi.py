@@ -94,14 +94,21 @@ def est_officiel(titre: str) -> bool:
 def tomes_ameliorables(r: dict, deja_la, info: dict) -> set:
     """Parmi les tomes déjà là que ce torrent apporte, ceux qu'il vaut la peine de remplacer :
     - noté « Scantrad » ou « Scan… » (source du tome) alors que le torrent est un ebook officiel ;
-    - ou, avec un profil, provenance moins bien notée que ce torrent et sous le score d'arrêt du profil (provenance inconnue : jamais)."""
+    - ou, avec un profil, provenance moins bien notée que ce torrent et sous le score d'arrêt du profil ;
+    - ou, quand la série a un profil QUI LA NOMME (règle voulue pour elle : pas le profil général, pas de profil), et qu'on ne sait RIEN de la
+      provenance du tome (ni source ni torrent d'origine : archive ancienne, import à la main), si
+      l'édition entière de la série est un scan ou du web (source de la série « Scan », « Web (chapitres) ») et que le torrent est un
+      ebook officiel (une source « Mixte » ou « Digital » ne suffit jamais)."""
     sources, scores, arret = info.get("sources_tomes") or {}, info.get("scores_tomes") or {}, info.get("arret")
+    edition_en_scan = RANG_QUALITE.get(str(info.get("source") or ""), 2) < 2
     out = set()
     for t in deja_la:
         s = str(sources.get(str(t)) or sources.get(t) or "")
         if s and (s == "Scantrad" or s.lower().startswith("scan")) and est_officiel(r.get("titre")):
             out.add(t)
         elif info.get("profil") and t in scores and scores[t] < r.get("score", 0) and (arret is None or scores[t] < arret):
+            out.add(t)
+        elif info.get("profil_precis") and not s and t not in scores and edition_en_scan and est_officiel(r.get("titre")):
             out.add(t)
     return out
 
@@ -167,8 +174,9 @@ def propositions_pour(nom, info, resultats, deja):
     deja : noms de torrents à ne plus proposer. Renvoie les propositions, un seul torrent par tome (le meilleur d'après le profil,
     la MÊME ÉQUIPE en premier ⭐), au plus MAX_PROPOSITIONS."""
     import provenance
-    if info.get("complete") or info.get("en_cours"):          # série terminée, ou torrent en cours dont on ne connaît pas les tomes
+    if info.get("en_cours"):                                   # torrent en cours dont on ne connaît pas les tomes
         return []
+    terminee = bool(info.get("complete"))                      # tous les tomes sont là : rien de « nouveau », mais un meilleur torrent reste proposé
     en_cours = set(info.get("tomes_en_cours") or ())
     presents = set(info["tomes"])
     possedes = presents | en_cours                             # un tome en téléchargement compte comme là
@@ -188,9 +196,11 @@ def propositions_pour(nom, info, resultats, deja):
         # tomes déjà là mais d'une autre équipe, que l'équipe de la série sort enfin (NoFace696 → Paprika)
         autres = {t for t in la if (info.get("equipe_tomes") or {}).get(t) and not provenance.meme_equipe(info["equipe_tomes"][t], equipe)}
         mieux = tomes_ameliorables(r, la, info) if la else set()
-        if manquants:
+        if manquants and not terminee:
             cands["nouveau"].append((r, manquants))
-        elif meme(r) and autres:
+        elif terminee and not mieux:
+            continue
+        elif meme(r) and autres and not terminee:
             cands["equipe"].append((r, autres))
         elif mieux:
             # un tome déjà là n'est proposé que s'il est en scan alors que ce torrent est officiel, ou s'il vaut PLUS de points d'après le profil

@@ -50,5 +50,58 @@ class OfficielTest(unittest.TestCase):
         self.assertEqual([(x["type"], x["tomes"]) for x in p["torrents"]], [("nouveau", [6])])
 
 
+class EditionEnScanSansProvenanceTest(unittest.TestCase):
+    """Rave (13/11/2026) : 35 tomes sur 35, ancienne édition en scan dont on ne sait pas d'où vient chaque tome : un profil « Neo Rip Club » doit
+    quand même faire proposer les ebooks officiels, même si la série est complète."""
+
+    def rave(self, **kw):
+        base = dict(tomes=set(range(1, 9)), source="Scan", complete=True, profil=True, profil_precis=True, arret=1000, sources_tomes={})
+        base.update(kw)
+        return info(**base)
+
+    def res(self):
+        return [r("Rave.The.Goove.Adventure.Tome.0%d.Hiro.Mashima.FR.[CBZ]-NeoRipClub" % n, score=1240) for n in range(1, 9)]
+
+    def test_serie_complete_en_scan_sans_provenance_propose_l_officiel(self):
+        p = suivi.propositions_pour("Rave", self.rave(), self.res(), [])
+        self.assertEqual(sorted((x["type"], x["tomes"][0]) for x in p), [("meilleur", n) for n in range(1, 9)])
+
+    def test_serie_incomplete_pareil(self):
+        p = suivi.propositions_pour("Rave", self.rave(complete=False), self.res(), [])
+        self.assertEqual(len(p), 8)
+
+    def test_edition_mixte_ou_digitale_jamais_remplacee_sans_preuve(self):
+        for source in ("Mixte", "Digital", ""):
+            self.assertEqual(suivi.propositions_pour("Rave", self.rave(source=source), self.res(), []), [], source)
+
+    def test_un_tome_dont_on_connait_la_source_n_est_pas_devine(self):
+        info_ = self.rave(sources_tomes={str(n): "Digital" for n in range(1, 9)})
+        self.assertEqual(suivi.propositions_pour("Rave", info_, self.res(), []), [])
+
+    def test_un_tome_venu_d_un_torrent_note_par_le_profil_n_est_pas_devine(self):
+        info_ = self.rave(scores_tomes={n: 1240 for n in range(1, 9)})
+        self.assertEqual(suivi.propositions_pour("Rave", info_, self.res(), []), [])
+
+    def test_profil_general_ou_sans_profil_ne_devine_pas(self):
+        # « Manga · Français » (aucune série nommée) ne suffit pas : seule une règle écrite pour la série autorise la devinette
+        self.assertEqual(suivi.propositions_pour("Rave", self.rave(profil_precis=False), self.res(), []), [])
+        self.assertEqual(suivi.propositions_pour("Rave", self.rave(profil=False, profil_precis=False), self.res(), []), [])
+
+    def test_torrent_non_officiel_pas_propose(self):
+        res = [r("Rave.T01.Hiro.Mashima.FR.[CBZ]-Dogbanov", score=500)]
+        self.assertEqual(suivi.propositions_pour("Rave", self.rave(), res, []), [])
+
+    def test_serie_complete_ne_recoit_ni_nouveau_ni_serie_entiere(self):
+        res = [r("Rave.The.Goove.Adventure.Tome.09.Hiro.Mashima.FR.[CBZ]-NeoRipClub", score=1240)]      # T9 : pas dans la bibliothèque
+        self.assertEqual(suivi.propositions_pour("Rave", self.rave(source="Mixte"), res, []), [])
+        res = [r("Rave.[INTEGRALE].FR.[CBZ]-Skandery", score=0)]
+        res[0]["badges"] = ["🇫🇷 FR", "Digital"]
+        self.assertEqual(suivi.propositions_pour("Rave", self.rave(profil=False), res, []), [])
+
+    def test_plan_automatique_remplace_tous_les_tomes_en_scan(self):
+        p = auto_telechargement.plan(self.res(), set(range(1, 9)), 8, self.rave())
+        self.assertEqual(sorted((x["type"], x["tomes"][0]) for x in p["torrents"]), [("meilleur", n) for n in range(1, 9)])
+
+
 if __name__ == "__main__":
     unittest.main()
