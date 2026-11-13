@@ -460,3 +460,4 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .ed-boite .ed-isbn summary { cursor:pointer; font-size:.9rem; }
 .ed-boite .ed-msg { font-size:.88rem; min-height:1.2em; }
 .ed-boite .ed-msg.err { color:#ff8a80; }
+.ed-mixte { color:#ffb74d; }

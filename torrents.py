@@ -320,7 +320,7 @@ def demander_choix(jid, tomes) -> str:
 
 
 def decider_torrent(jid, remplacer: bool):
-    _maj(jid, remplacer=remplacer, etat="telechargement",
+    _maj(jid, remplacer=remplacer, etat="telechargement", decoupage_confirme=True,         # choix fait en connaissance de cause : plus de question
          message="Choix enregistré : remplacer les tomes" if remplacer else "Choix enregistré : ajouter les manquants")
 
 
@@ -576,6 +576,19 @@ def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
                     _maj(j["id"], progression=round(t.get("progress", 0) * 100), message=t.get("state", ""), **garder)
                     continue
                 source = chemin_local(t.get("content_path") or str(Path(t["save_path"]) / t["name"]))
+                if _ETAT.get("decoupage") and j.get("remplacer") is not False and not j.get("decoupage_confirme"):
+                    try:                                      # remplacer un tome par un autre découpage mélangerait deux éditions : on demande
+                        diff = _ETAT["decoupage"](j["serie"], source, j)
+                    except Exception as e:
+                        logger.warning("Contrôle du découpage de %s : %s", j.get("titre"), e)
+                        diff = []
+                    if diff:
+                        msg = ("Autre découpage ? " + ", ".join(f"T{t:02d} : {n} pages dans le torrent, {a} dans ton tome" for t, n, a in diff[:4])
+                               + (" …" if len(diff) > 4 else "") + ". Remplacer mélangerait deux éditions. À toi de choisir.")
+                        _maj(j["id"], etat="a_valider", progression=100, decoupage=True, message=msg[:300])
+                        envoyer(f"🧲 MouFlanga : « {j['serie']} » : ce torrent n'a pas le même découpage que tes tomes ({msg[:150]}) "
+                                "Choisis dans Télécharger → ⏳ En cours.")
+                        continue
                 if j.get("remplacer") is None and _ETAT.get("doublons"):
                     deja = _ETAT["doublons"](j["serie"], source)
                     regle = _ETAT["regle"](j["serie"]) if deja and _ETAT.get("regle") else None

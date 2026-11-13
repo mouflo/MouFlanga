@@ -424,7 +424,8 @@
     var pense = (s.recherchee || !tr.total || document.body.classList.contains('lecteur')) ? '' : '<button type="button" class="travail-pastille' + (tr.complet ? ' complet' : '') + '" data-travail="1" ' +
       'title="Ce que tu as déjà fait à la main sur cette série">' + (tr.complet ? '✅ Tout est fait' : '📋 ' + tr.fait.length + '/' + tr.total) + '</button>';
     var bouts = [ed.edition ? '🏷 ' + esc(ed.edition) : '', ed.resolution ? '📐 ' + esc(ed.resolution) : '', src,
-      ed.sources_tomes ? '<small title="Source de chaque tome">📚 ' + esc(ed.sources_tomes) + '</small>' : '', pense].filter(Boolean);
+      ed.sources_tomes ? '<small title="Source de chaque tome">📚 ' + esc(ed.sources_tomes) + '</small>' : '',
+      ed.editions_tomes ? '<small class="ed-mixte" title="Édition de chaque tome, d\'après l\'ISBN ou le nombre de pages : deux éditions sont mélangées">📖 ' + esc(ed.editions_tomes) + '</small>' : '', pense].filter(Boolean);
     $('sEdition').hidden = !bouts.length; $('sEdition').innerHTML = bouts.join(' · ');
     $('sEdition').onclick = function (e) {
       var b = e.target.closest('[data-travail]');

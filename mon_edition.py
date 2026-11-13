@@ -8,6 +8,8 @@ page d'un éditeur, les ISBN des tomes doivent être ceux de cette édition, sin
 Rien n'est écrit ici : app.py enregistre (edition.ecrire) ; ce module lit, compare et décide.
 """
 import re
+import zipfile
+from pathlib import Path
 
 import ankama
 import glenat
@@ -115,3 +117,67 @@ def valider(corps: dict):
     if len(lien) > 300:
         return "Cette adresse est trop longue."
     return None
+
+
+# ------------------------------------------------------------------ Quelle édition est CE fichier ? (découpage des tomes)
+
+IMAGES = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif")
+SEUIL_DECOUPAGE = 1.7              # au-delà (ou en deçà de l'inverse) le nombre de pages dit un autre découpage : 384 contre 95 pour Rave
+_PAGES = {}                        # (chemin, taille, date) → nombre de pages : un tome n'est ouvert qu'une fois tant qu'il ne change pas
+
+
+def nb_pages(chemin):
+    """Nombre de pages (images) d'un tome .cbz, lu dans le catalogue du fichier sans l'extraire ; None si ce n'est pas lisible."""
+    p = Path(chemin)
+    try:
+        st = p.stat()
+    except OSError:
+        return None
+    cle = (str(p), st.st_size, int(st.st_mtime))
+    if cle not in _PAGES:
+        try:
+            with zipfile.ZipFile(p) as z:
+                n = sum(1 for nom in z.namelist() if nom.lower().endswith(IMAGES))
+        except (zipfile.BadZipFile, OSError):
+            n = 0
+        if len(_PAGES) > 3000:
+            _PAGES.clear()
+        _PAGES[cle] = n or None
+    return _PAGES[cle]
+
+
+def decoupage_different(neuf, vieux) -> bool:
+    """Deux fichiers du même numéro de tome, mais l'un a au moins 1,7 fois les pages de l'autre : ce n'est pas le même découpage
+    (une édition à deux tomes en un, par exemple), remplacer l'un par l'autre mélangerait deux éditions."""
+    return bool(neuf and vieux) and (neuf / vieux >= SEUIL_DECOUPAGE or vieux / neuf >= SEUIL_DECOUPAGE)
+
+
+def reference(observations: dict) -> dict:
+    """L'édition de référence d'après ce que la page de l'éditeur a dit de chaque tome (source « glenat » des notices) :
+    {isbn: {tome: {codes}}, pages: {tome: nombre}, mediane: nombre de pages habituel ou None}."""
+    isbn, pages = {}, {}
+    for t, par in (observations or {}).items():
+        g = (par or {}).get("glenat") or {}
+        if not str(t).isdigit():
+            continue
+        codes = {c for c in [g.get("isbn"), *(g.get("autres_isbn") or [])] if c}
+        if codes:
+            isbn[int(t)] = codes
+        if g.get("pages"):
+            pages[int(t)] = int(g["pages"])
+    tri = sorted(pages.values())
+    return {"isbn": isbn, "pages": pages, "mediane": tri[len(tri) // 2] if tri else None}
+
+
+def classer(tome: int, ref: dict, pages, codes) -> str:
+    """« edition » (ce fichier est de l'édition de référence), « autre » (d'une autre édition) ou « ? » (pas de preuve).
+    L'ISBN d'abord (celui du tome dit tout) ; sinon le nombre de pages face à celui de l'édition (± un quart)."""
+    if not ref or not (ref.get("isbn") or ref.get("pages")):
+        return "?"
+    attendus = (ref.get("isbn") or {}).get(tome)
+    if codes and attendus:
+        return "edition" if set(codes) & attendus else "autre"
+    voulu = (ref.get("pages") or {}).get(tome) or ref.get("mediane")
+    if pages and voulu:
+        return "edition" if 0.75 <= pages / voulu <= 1.33 else "autre"
+    return "?"

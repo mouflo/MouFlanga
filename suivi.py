@@ -94,6 +94,8 @@ def est_officiel(titre: str) -> bool:
 def tomes_ameliorables(r: dict, deja_la, info: dict) -> set:
     """Parmi les tomes déjà là que ce torrent apporte, ceux qu'il vaut la peine de remplacer :
     - noté « Scantrad » ou « Scan… » (source du tome) alors que le torrent est un ebook officiel ;
+    - ou, quand la personne a choisi son édition (« Mon édition ») et que le fichier du tome est d'une AUTRE édition (`info["autre_edition"]`,
+      autre découpage : l'ancienne en 35 tomes face à l'édition originale en 18), si le torrent est un ebook officiel ;
     - ou, avec un profil, provenance moins bien notée que ce torrent et sous le score d'arrêt du profil ;
     - ou, quand la série a un profil QUI LA NOMME (règle voulue pour elle : pas le profil général, pas de profil), et qu'on ne sait RIEN de la
       provenance du tome (ni source ni torrent d'origine : archive ancienne, import à la main), si
@@ -101,10 +103,13 @@ def tomes_ameliorables(r: dict, deja_la, info: dict) -> set:
       ebook officiel (une source « Mixte » ou « Digital » ne suffit jamais)."""
     sources, scores, arret = info.get("sources_tomes") or {}, info.get("scores_tomes") or {}, info.get("arret")
     edition_en_scan = RANG_QUALITE.get(str(info.get("source") or ""), 2) < 2
+    autre = info.get("autre_edition") or set()
     out = set()
     for t in deja_la:
         s = str(sources.get(str(t)) or sources.get(t) or "")
-        if s and (s == "Scantrad" or s.lower().startswith("scan")) and est_officiel(r.get("titre")):
+        if t in autre and est_officiel(r.get("titre")):          # fichier d'une autre édition que celle voulue (« ✏️ Mon édition ») : à remplacer
+            out.add(t)
+        elif s and (s == "Scantrad" or s.lower().startswith("scan")) and est_officiel(r.get("titre")):
             out.add(t)
         elif info.get("profil") and t in scores and scores[t] < r.get("score", 0) and (arret is None or scores[t] < arret):
             out.add(t)

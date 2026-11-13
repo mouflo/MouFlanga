@@ -525,17 +525,17 @@ let signatureChoix = null;
 function rendreChoix(l) {
     const boite = $("jobs-choix");
     if (!boite) return;
-    const signature = JSON.stringify(l.map(t => [t.id, t.message]));
+    const signature = JSON.stringify(l.map(t => [t.id, t.message, !!t.decoupage]));
     if (signature === signatureChoix) return;
     signatureChoix = signature;
     boite.innerHTML = l.length ? `<h3 style="font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:#ffb74d;margin:8px 0 4px">❓ À valider (${l.length})</h3>`
         + l.map(t => `<div class="job-item tor-ligne a_valider" style="background: var(--card); border-radius: 8px; padding: 12px 16px; margin: 12px 0;">
             <div class="tor-info"><strong>${echapper(t.serie)}</strong><br><small>${echapper(t.titre)}</small><br><span>${echapper(t.message || "")}</span></div>
             <div class="tor-choix">
-                <button type="button" class="mou-btn" data-decider="${echapper(t.id)}" data-remplacer="1">Remplacer</button>
+                <button type="button" class="mou-btn" data-decider="${echapper(t.id)}" data-remplacer="1">${t.decoupage ? "Remplacer quand même" : "Remplacer"}</button>
                 <button type="button" class="mou-btn" data-decider="${echapper(t.id)}" data-remplacer="0">Ajouter seulement les manquants</button>
                 <button type="button" class="mou-btn ghost" data-decider="${echapper(t.id)}" data-remplacer="ignorer">Ne rien faire</button>
-                <label class="tor-toujours"><input type="checkbox" data-toujours="${echapper(t.id)}"> Toujours faire ce choix pour « ${echapper(t.serie)} »</label></div></div>`).join("") : "";
+                ${t.decoupage ? "" : `<label class="tor-toujours"><input type="checkbox" data-toujours="${echapper(t.id)}"> Toujours faire ce choix pour « ${echapper(t.serie)} »</label>`}</div></div>`).join("") : "";
 }
 
 async function loadJobs() {

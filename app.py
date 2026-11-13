@@ -1220,7 +1220,8 @@ def _infos_edition(name, files):
     source, devine = (d["source_manuelle"], False) if d.get("source_manuelle") else (a.get("source") or "", a.get("devine", True))
     return {"resolution": a.get("resolution", ""), "source": source, "devine": devine, "pourquoi": a.get("pourquoi", ""),
             "nfo": d.get("nfo", ""), "archives": d.get("archives", []), "analyse_faite": "analyse" in d,
-            "edition": d.get("edition", ""), "sources_tomes": _resume_sources_tomes(d.get("sources_tomes") or {})}
+            "edition": d.get("edition", ""), "sources_tomes": _resume_sources_tomes(d.get("sources_tomes") or {}),
+            "editions_tomes": _resume_editions(_classement_editions_vite(name), d.get("edition", ""))}
 
 
 def _resume_sources_tomes(st):
@@ -3687,7 +3688,7 @@ def _appliquer_regles_en_attente() -> int:
     qui finissaient de télécharger après). Renvoie le nombre de demandes réglées."""
     n = 0
     for j in list(torrents._lire()):
-        if j.get("etat") != "a_valider":
+        if j.get("etat") != "a_valider" or j.get("decoupage"):         # un autre découpage se demande toujours
             continue
         regle = _regle_import(j.get("serie", ""))
         if not regle:
@@ -4718,7 +4719,8 @@ def _infos_suivi(nom):
             "deja_pris": torrents.deja_pris(), "equipe": equipe, "equipe_tomes": equipe_tomes,
             "profil": profil is not None, "profil_precis": bool(profil and profil.get("series")),
             "scores_tomes": scores, "arret": (profil or {}).get("score_arret"),
-            "sources_tomes": d.get("sources_tomes") or {}}
+            "sources_tomes": d.get("sources_tomes") or {},
+            "autre_edition": {t for t, c in _classement_editions_vite(nom).items() if c == "autre"} if files else set()}
 
 
 def _lancer_torrent(lien, titre, nom, remplacer=True, page=""):
@@ -7882,6 +7884,88 @@ def api_edition_volumes():
     return jsonify({"ok": True, "message": msg})
 
 
+_CACHE_CLASSEMENT = {}
+
+
+def _classement_editions(nom):
+    """{tome: « edition » | « autre » | « ? »} : de quelle édition est le fichier de chaque tome, face à l'édition que la personne a choisie
+    (« ✏️ Mon édition » avec la page de l'éditeur). Preuve : l'ISBN du tome, sinon son nombre de pages face à celui de l'édition
+    (384 pour Rave « Édition originale », une centaine pour l'ancienne). Vide tant qu'aucune page d'éditeur n'est enregistrée."""
+    import edition
+    import mon_edition
+    import notices
+    infos = edition.lire(MANGA_DIR / nom)
+    if not infos.get("edition_lien"):
+        return {}
+    ref = mon_edition.reference(notices.observations(nom))
+    if not ref["isbn"] and not ref["pages"]:
+        return {}
+    isbn = mon_edition.isbn_des_tomes(infos, _pages_de_torrents(nom))
+    dossier, out = MANGA_DIR / nom, {}
+    for t in sorted(_tomes_de(nom)):
+        f = tomes_cbz.fichier_tome(dossier, nom, t)
+        out[t] = mon_edition.classer(t, ref, mon_edition.nb_pages(f) if f.is_file() else None, [x["isbn"] for x in isbn.get(t, [])])
+    return out
+
+
+def _classement_editions_vite(nom):
+    """Le même, gardé une minute (la fiche d'une série le demande à chaque ouverture)."""
+    c = _CACHE_CLASSEMENT.get(nom)
+    if c and time.time() - c[0] < 60:
+        return c[1]
+    out = _classement_editions(nom)
+    _CACHE_CLASSEMENT[nom] = (time.time(), out)
+    return out
+
+
+def _resume_editions(classement, nom_edition):
+    """« T1–T12 Édition originale · T13–T35 autre édition (à remplacer) » ; vide quand tous les tomes sont de la même édition."""
+    if "autre" not in classement.values():
+        return ""
+    par = {}
+    for t, c in sorted(classement.items()):
+        if c in ("edition", "autre"):
+            par.setdefault(c, []).append(t)
+    noms = {"edition": nom_edition or "édition choisie", "autre": "autre édition (à remplacer)"}
+    return " · ".join(f"{suivi.plage(ts)} {noms[c]}" for c, ts in sorted(par.items(), key=lambda x: x[1][0]))
+
+
+def _decoupage_different(nom, source, job=None):
+    """Garde-fou avant de REMPLACER : les tomes du torrent qui existent déjà mais avec un autre découpage (au moins 1,7 fois plus ou moins
+    de pages : 384 contre 95, deux tomes en un) alors que le torrent n'est pas reconnu comme l'édition choisie. [(tome, pages du torrent,
+    pages du tome)] ; vide = rien d'anormal. Un torrent reconnu comme l'édition voulue (ISBN de sa page de tracker ou nombre de pages
+    de la page de l'éditeur) est une migration voulue : jamais bloqué."""
+    import edition
+    import mon_edition
+    import notices
+    import page_tracker
+    dossier = MANGA_DIR / nom
+    ref = mon_edition.reference(notices.observations(nom)) if edition.lire(dossier).get("edition_lien") else None
+    tome_job, isbn_job = None, []
+    if job and job.get("page"):
+        p = page_tracker.en_memoire(job["page"])
+        if p and len(p.get("tomes") or []) == 1:
+            tome_job, isbn_job = int(p["tomes"][0]), mon_edition.isbn13_dans(p.get("presentation") or "")
+    out = []
+    for f in torrents.fichiers_du_torrent(Path(source)):
+        if torrents.suffixe(f) not in (".cbz", ".zip"):
+            continue
+        t = _numero_tome(torrents.nom_sans_ext(f))
+        ancien = tomes_cbz.fichier_tome(dossier, nom, t) if t is not None else None
+        if t is None or not ancien.is_file() or _meme_fichier(ancien, f):
+            continue
+        neuf, vieux = mon_edition.nb_pages(f), mon_edition.nb_pages(ancien)
+        if not mon_edition.decoupage_different(neuf, vieux):
+            continue
+        if ref and mon_edition.classer(t, ref, neuf, isbn_job if t == tome_job else []) == "edition":
+            continue
+        out.append((t, neuf, vieux))
+    return out
+
+
+torrents._ETAT["decoupage"] = _decoupage_different
+
+
 def _pages_de_torrents(serie):
     """Pages de trackers déjà lues pour les torrents de cette série ([{tomes, tracker, presentation}]) : sans rien interroger, seulement
     ce que l'appli a gardé. Elles portent l'ISBN de chaque tome (« ISBN : 978… »), preuve de l'édition."""
@@ -7953,6 +8037,7 @@ def api_mon_edition():
         d.pop("edition_detectee", None)
     edition.ecrire(MANGA_DIR / name, d)
     _CACHE_EDITION.pop(name, None)
+    _CACHE_CLASSEMENT.pop(name, None)
     _identifier_en_fond(name, relire_fichiers=False)
     morceaux = []
     if retenu.get("edition"):

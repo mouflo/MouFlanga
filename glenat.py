@@ -158,4 +158,4 @@ def chercher(url: str, voulus=None) -> dict:
     except PageIllisible:
         return {}
     return {t: {k: v for k, v in {"isbn": f["isbn"], "resume": f["resume"], "titre": f["titre"], "date": f["date"], "pages": f["pages"],
-                                  "editeur": "Glénat"}.items() if v} for t, f in fiches.items()}
+                                  "editeur": "Glénat", "autres_isbn": f["autres_isbn"]}.items() if v} for t, f in fiches.items()}
