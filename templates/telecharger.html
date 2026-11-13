@@ -12,10 +12,8 @@
 </head>
 <body>
     <div class="container">
-        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
-            <a href="/" class="back">← Retour</a>
-            <h1 style="margin: 0;">📥 Télécharger des mangas</h1>
-        </div>
+        <div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}" data-sub="📥 Télécharger des mangas"></div>
+        <a href="/" class="back">← Retour</a>
 
         <!-- Bandeau : Cloudflare attend une vérification humaine -->
         <div id="verif-banner" style="display: none; margin-bottom: 16px; padding: 12px 16px; border-radius: 10px; background: #3a2e12; border: 1px solid #b58a1b; color: #ffd978;">
@@ -142,6 +140,8 @@
 
         <!-- Tab: En cours -->
         <div id="jobs-tab" class="tab-content">
+            <div id="jobs-choix-msg"></div>
+            <div id="jobs-choix"></div>
             <div id="jobs-list"></div>
         </div>
     </div>

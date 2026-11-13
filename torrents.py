@@ -349,7 +349,7 @@ def rappeler_a_valider(envoyer):
             continue
         if maintenant - datetime.strptime(j.get("rappel_le") or j["debut"], fmt) < timedelta(hours=24):
             continue
-        envoyer(f"🧲 MouFlanga : « {j['serie']} » attend ton choix (remplacer tout ou ajouter les manquants) dans Télécharger.")
+        envoyer(f"🧲 MouFlanga : « {j['serie']} » attend ton choix (remplacer tout ou ajouter les manquants) dans Télécharger → ⏳ En cours.")
         _maj(j["id"], rappel_le=maintenant.strftime(fmt))
 
 
@@ -590,7 +590,7 @@ def traiter(q, en_cours, importer_serie, envoyer, manga_dir):
                         msg = demander_choix(j["id"], deja)
                         _maj(j["id"], etat="a_valider", progression=100, message=msg)
                         envoyer(f"🧲 MouFlanga : « {j['serie']} » contient déjà des tomes ({msg}). "
-                                "Choisis dans Télécharger : remplacer tout ou ajouter les manquants.")
+                                "Choisis dans Télécharger → ⏳ En cours : remplacer tout ou ajouter les manquants.")
                         continue
                 _maj(j["id"], etat="import", progression=100, message="Rangement dans la bibliothèque…")
                 fin = importer_serie(j["serie"], source, bool(j.get("remplacer")))

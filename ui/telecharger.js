@@ -518,6 +518,26 @@ function echapper(t) {
     return String(t == null ? "" : t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 }
 
+// ❓ Torrents finis qui attendent ton choix (tomes déjà là : remplacer, ajouter les manquants, ne rien faire). Bloc à part : la liste
+// ci-dessous est refaite toutes les 3 secondes, ce bloc seulement quand une demande arrive, change ou disparaît (sinon la case
+// « Toujours faire ce choix » cochée se décocherait sous le doigt).
+let signatureChoix = null;
+function rendreChoix(l) {
+    const boite = $("jobs-choix");
+    if (!boite) return;
+    const signature = JSON.stringify(l.map(t => [t.id, t.message]));
+    if (signature === signatureChoix) return;
+    signatureChoix = signature;
+    boite.innerHTML = l.length ? `<h3 style="font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:#ffb74d;margin:8px 0 4px">❓ À valider (${l.length})</h3>`
+        + l.map(t => `<div class="job-item tor-ligne a_valider" style="background: var(--card); border-radius: 8px; padding: 12px 16px; margin: 12px 0;">
+            <div class="tor-info"><strong>${echapper(t.serie)}</strong><br><small>${echapper(t.titre)}</small><br><span>${echapper(t.message || "")}</span></div>
+            <div class="tor-choix">
+                <button type="button" class="mou-btn" data-decider="${echapper(t.id)}" data-remplacer="1">Remplacer</button>
+                <button type="button" class="mou-btn" data-decider="${echapper(t.id)}" data-remplacer="0">Ajouter seulement les manquants</button>
+                <button type="button" class="mou-btn ghost" data-decider="${echapper(t.id)}" data-remplacer="ignorer">Ne rien faire</button>
+                <label class="tor-toujours"><input type="checkbox" data-toujours="${echapper(t.id)}"> Toujours faire ce choix pour « ${echapper(t.serie)} »</label></div></div>`).join("") : "";
+}
+
 async function loadJobs() {
     const list = $("jobs-list");
 
@@ -526,8 +546,13 @@ async function loadJobs() {
         const data = await resp.json();
         const jobs = (data.jobs || []);
         // Torrents (Prowlarr → qBittorrent) : affichés aussi ici
-        let tor = [];
-        try { tor = ((await (await fetch("/api/torrents?leger=1")).json()).torrents || []).slice(0, 15); } catch (e) {}
+        let tor = [], avalider = [];
+        try {
+            const tous = (await (await fetch("/api/torrents?leger=1")).json()).torrents || [];
+            avalider = tous.filter(t => t.etat === "a_valider");
+            tor = tous.filter(t => t.etat !== "a_valider").slice(0, 15);
+        } catch (e) {}
+        rendreChoix(avalider);
         const ETATS_TOR = {telechargement: "⬇️ Téléchargement", import: "📦 Import", fini: "✅ Importé", erreur: "⚠️ Erreur", rate: "⛔ Raté"};
         const htmlTor = tor.length ? '<h3 style="font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent,#52b54b);margin:18px 0 4px">🧲 Torrents</h3>'
             + tor.map(t => `<div class="job-item" style="background: var(--card); border-radius: 8px; padding: 12px 16px; margin: 12px 0;">
@@ -536,12 +561,12 @@ async function loadJobs() {
                 <small>${echapper(t.titre)}</small><br><small>${t.etat === "telechargement" ? (t.progression || 0) + " % · " : ""}${echapper(t.message || "")}</small></div>`).join("") : "";
 
         // Pastille sur l'onglet quand un téléchargement tourne
-        const nb = jobs.filter(j => j.status === "running").length + tor.filter(t => t.etat === "telechargement" || t.etat === "import").length;
+        const nb = jobs.filter(j => j.status === "running").length + tor.filter(t => t.etat === "telechargement" || t.etat === "import").length + avalider.length;
         const onglet = document.querySelector('.tab[data-tab="jobs"]');
         if (onglet) onglet.textContent = nb ? `⏳ En cours (${nb})` : "⏳ En cours";
 
         if (jobs.length === 0) {
-            list.innerHTML = (htmlTor ? "" : '<p style="color: var(--muted);">Aucun téléchargement en cours.</p>') + htmlTor;
+            list.innerHTML = (htmlTor || avalider.length ? "" : '<p style="color: var(--muted);">Aucun téléchargement en cours.</p>') + htmlTor;
             return;
         }
         list.innerHTML = (htmlTor ? '<h3 style="font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent,#52b54b);margin:8px 0 4px">📚 Japscan</h3>' : "") + jobs.map(j => {

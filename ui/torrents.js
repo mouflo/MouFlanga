@@ -21,11 +21,7 @@
         const l = r.torrents || [];
         $("tor-liste").innerHTML = l.length ? l.map(j => `<div class="tor-ligne ${j.etat}"><div class="tor-info"><b>${esc(j.serie)}</b><small>${esc(j.titre)}</small>
             <span>${ETATS[j.etat] || j.etat}${j.etat === "telechargement" ? " " + (j.progression || 0) + " %" : ""} · ${esc(j.message || "")}</span>
-            ${j.page && window.MouPageTracker ? `<div class="pt-liens">${MouPageTracker.lien(j.page)}</div>` : ""}</div>${j.etat === "a_valider" ? `<div class="tor-choix">
-                <button type="button" class="mou-btn" data-decider="${esc(j.id)}" data-remplacer="1">Remplacer tous les tomes</button>
-                <button type="button" class="mou-btn" data-decider="${esc(j.id)}" data-remplacer="0">Ajouter seulement les manquants</button>
-                <button type="button" class="mou-btn ghost" data-decider="${esc(j.id)}" data-remplacer="ignorer">Ne rien faire</button>
-                <label class="tor-toujours"><input type="checkbox" data-toujours="${esc(j.id)}"> Toujours faire ce choix pour « ${esc(j.serie)} »</label></div>` : ""}</div>`).join("")
+            ${j.page && window.MouPageTracker ? `<div class="pt-liens">${MouPageTracker.lien(j.page)}</div>` : ""}</div>${j.etat === "a_valider" ? `<div class="tor-choix"><button type="button" class="mou-btn" data-vers-encours>❓ Faire le choix dans ⏳ En cours</button></div>` : ""}</div>`).join("")
             : '<p class="sub">Aucun téléchargement pour l\'instant.</p>';
         clearTimeout(minuteur);
         if (l.some(j => j.etat === "telechargement" || j.etat === "import")) minuteur = setTimeout(etat, 15000);
@@ -90,16 +86,30 @@
             etat();
             return;
         }
+        if (e.target.closest("[data-vers-encours]")) {            // les choix se font dans l'onglet ⏳ En cours
+            const onglet = document.querySelector('.tab[data-tab="jobs"]');
+            if (onglet) { onglet.click(); window.scrollTo(0, 0); }
+            return;
+        }
         const dec = e.target.closest("[data-decider]");
         if (dec) {
             const choix = dec.dataset.remplacer, bloc = dec.closest(".tor-choix");
             if (choix === "1" && !await MouConfirm("Les tomes actuels iront à la corbeille (" + corb() + "). Continuer ?")) return;
             bloc.querySelectorAll("button").forEach(b => b.disabled = true);
             const remplacer = choix === "ignorer" ? "ignorer" : choix === "1";
-            const r = await (await fetch("/api/torrents/decider", {method: "POST", headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({id: dec.dataset.decider, remplacer, toujours: !!(bloc.querySelector("[data-toujours]") || {}).checked})})).json();
-            bloc.innerHTML = `<div class="note ${r.ok ? "ok" : "err"}">${esc(r.message || r.error)}</div>`;
+            let r;
+            try {
+                r = await (await fetch("/api/torrents/decider", {method: "POST", headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({id: dec.dataset.decider, remplacer, toujours: !!(bloc.querySelector("[data-toujours]") || {}).checked})})).json();
+            } catch (err) {
+                r = {ok: false, error: "Pas de réponse de l'appli : réessaie."};
+            }
+            if (!r.ok) bloc.querySelectorAll("button").forEach(b => b.disabled = false);
+            const note = `<div class="note ${r.ok ? "ok" : "err"}">${esc(r.message || r.error)}</div>`, msg = $("jobs-choix-msg");
+            if (msg) { msg.innerHTML = note; clearTimeout(msg._t); msg._t = setTimeout(() => { msg.innerHTML = ""; }, 20000); }
+            else bloc.innerHTML = note;
             etat();
+            if (window.loadJobs) loadJobs();
         }
     });
     // 🤖 Série complétée automatiquement : on montre d'abord ce qui serait téléchargé, puis on lance après confirmation

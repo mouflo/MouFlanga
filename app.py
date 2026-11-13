@@ -3591,7 +3591,7 @@ def _est_rangement(j):
 
 
 def _signaler_doublons(serie, paires):
-    """Tomes rangés à la main alors qu'un tome identique existe déjà : une tâche « à valider » dans Télécharger.
+    """Tomes rangés à la main alors qu'un tome identique existe déjà : une tâche « à valider » dans Télécharger → En cours.
     Ne signale que les vrais doublons nouveaux : ni fichiers disparus, ni paires déjà refusées (« ne rien faire »)."""
     maintenant = datetime.now().strftime("%Y-%m-%d %H:%M")
     ignores = set(_lire_json_liste(DOUBLONS_IGNORES))
@@ -3624,7 +3624,7 @@ def _signaler_doublons(serie, paires):
     if not nouvelles:                       # rien de neuf : pas de nouvelle notification
         return
     import notifier
-    notifier.envoyer(f"📚 MouFlanga : « {serie} » contient déjà des tomes. Choisis dans Télécharger : remplacer tout, ajouter les manquants ou ne rien faire.")
+    notifier.envoyer(f"📚 MouFlanga : « {serie} » contient déjà des tomes. Choisis dans Télécharger → ⏳ En cours : remplacer tout, ajouter les manquants ou ne rien faire.")
 
 
 def _appliquer_rangement(j, remplacer):
@@ -5192,7 +5192,9 @@ def _serie_proche(nom):
 @app.route("/api/torrents", methods=["GET", "POST"])
 def api_torrents():
     if request.method == "GET":
-        return jsonify({"configure": torrents.configure(), "torrents": torrents.liste()[:30],
+        tous = torrents.liste()
+        recents = tous[:30] + [j for j in tous[30:] if j.get("etat") == "a_valider"]       # un choix en attente n'est jamais caché
+        return jsonify({"configure": torrents.configure(), "torrents": recents,
                         "series": [] if request.args.get("leger") else sorted(n for n in _scan() if n != "(Sans série)")})
     body = request.get_json(silent=True) or {}
     titre, serie = str(body.get("titre", ""))[:200], _nom_serie(str(body.get("serie", "")).strip())
