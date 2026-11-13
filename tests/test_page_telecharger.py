@@ -50,3 +50,17 @@ class PageTelechargerTest(unittest.TestCase):
         etats = [j["etat"] for j in rep["torrents"]]
         self.assertIn("a_valider", etats)
         self.assertEqual(len(rep["torrents"]), 31)                  # 30 récents + la demande en attente
+
+
+class TitreRamenantALAccueilTest(unittest.TestCase):
+    """Sur toute page, un clic sur le titre « MouFlanga » ramène à l'accueil (13/11, à sa demande). Seul le lecteur, plein écran
+    de lecture, a sa propre barre (« ← Retour » vers la série) ; la page de connexion n'a pas d'accueil à rejoindre."""
+
+    def test_chaque_page_a_l_en_tete_cliquable_et_le_script_qui_le_construit(self):
+        dossier = Path(__file__).resolve().parent.parent / "templates"
+        pages = sorted(p for p in dossier.glob("*.html") if p.name != "lecteur.html")
+        self.assertGreaterEqual(len(pages), 10)
+        for p in pages:
+            html = p.read_text(encoding="utf-8")
+            self.assertIn('id="mou-header"', html, p.name)                 # le logo MouFlanga (lien vers /) est construit dans ce bloc
+            self.assertIn("/ui/mou-ui.js", html, f"{p.name} : sans ce script l'en-tête reste vide")

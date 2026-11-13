@@ -6,6 +6,7 @@
     <title>Aperçu de l'envoi groupé · MouFlanga</title>
     <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
     <link rel="stylesheet" href="/ui/mou-settings.css?v={{ version|urlencode }}">
+    <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
     <style>
         .cv-tete { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
         .cv-lot-ligne { display: flex; gap: 12px; align-items: flex-start; border: 1px solid #2c2f36; border-radius: 12px; padding: 12px; margin-bottom: 12px; background: #17181c; }
@@ -24,9 +25,9 @@
 </head>
 <body>
     <div class="container">
+        <div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}" data-sub="🖼 Aperçu de l'envoi groupé"></div>
         <div class="cv-tete">
             <a href="/couvertures?id={{ nom|urlencode }}" class="back">← Retour aux couvertures</a>
-            <h1 style="margin: 0;">🖼 Aperçu de l'envoi groupé</h1>
         </div>
         <p class="sub">{{ nom }}</p>
         <p class="note">Vérifiez le tome choisi pour chaque image. Rien n'est enregistré avant « Enregistrer ». Mettez « ne pas utiliser » pour écarter une image.</p>

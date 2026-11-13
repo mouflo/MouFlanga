@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Historique de l'allègement · MouFlanga</title>
     <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+    <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
     <style>
         .hs-barre { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
         .hs-barre input, .hs-barre select { font-size:16px; padding:10px; border-radius:8px; border:1px solid #2c2f36; background:#17181c; color:#eee; flex:1 1 140px; min-width:0; }
@@ -18,9 +19,9 @@
     </style>
 </head>
 <body>
-<div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}"></div>
+<div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}" data-sub="📜 Historique de l'allègement"></div>
 <main style="max-width:1000px;margin:0 auto;padding:0 16px 40px">
-    <h2>📜 Historique de l'allègement</h2>
+    <a href="/" style="display:inline-block;margin-bottom:12px;color:var(--muted,#9aa);text-decoration:none">← Retour</a>
     <p class="peti">Chaque tome analysé (taille <b>estimée</b>) ou traité (taille <b>réelle</b>) est gardé ici, avec sa taille avant, après et le gain. Touche un titre de colonne pour trier. Les analyses faites avant la création de cette page n'y sont pas.</p>
     <div class="hs-barre">
         <input id="q" type="search" placeholder="Chercher une série ou un tome">

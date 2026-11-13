@@ -52,10 +52,8 @@
 </head>
 <body>
     <div class="container">
-        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-            <a href="/" class="back">← Retour</a>
-            <h1 style="margin: 0;">📏 Règles de recherche</h1>
-        </div>
+        <div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}" data-sub="📏 Règles de recherche"></div>
+        <a href="/" class="back">← Retour</a>
         <p class="note">Ce qui est accepté ou refusé quand MouFlanga cherche un torrent, et dans quel ordre on les propose.</p>
 
         {% if ok %}<div class="msg ok">{{ ok }}</div>{% endif %}
