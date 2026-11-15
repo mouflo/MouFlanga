@@ -253,7 +253,55 @@ def bilan_serie(sommaires, tomes) -> dict:
             a_verifier.append(t)
         elif c["niveau"] == "aucun":
             aucun.append(t)
-    return {"total": len(par_tome), "comptes": dict(comptes), "a_verifier": a_verifier, "aucun": aucun, "par_tome": par_tome}
+    for t, raison in _doublons_entre_tomes(sommaires, sorted(tomes, key=_ordre)):
+        c = par_tome[_cle(t)]
+        if c["niveau"] == "valide":
+            continue                                    # validé à la main : on n'y touche pas, même pour le signaler
+        if c["niveau"] != "a_verifier":
+            comptes[c["niveau"]] -= 1
+            comptes["a_verifier"] += 1
+            c.update(niveau="a_verifier", libelle=LIBELLES["a_verifier"], pastille=PASTILLES["a_verifier"])
+            a_verifier.append(t)
+        c["raisons"] = [raison] + [r for r in c["raisons"] if r != raison]
+    a_verifier.sort(key=_ordre)
+    return {"total": len(par_tome), "comptes": {k: v for k, v in comptes.items() if v}, "a_verifier": a_verifier, "aucun": aucun,
+            "par_tome": par_tome}
+
+
+def _numeros(lu) -> list:
+    """[(numéro entier, chapitre)] des chapitres numérotés d'un sommaire, dans l'ordre."""
+    out = []
+    for c in (lu or {}).get("chapitres") or []:
+        if c.get("special"):
+            continue
+        try:
+            n = float(c.get("num"))
+        except (TypeError, ValueError):
+            continue
+        if n.is_integer():
+            out.append((int(n), c))
+    return out
+
+
+def _doublons_entre_tomes(sommaires, tomes) -> list:
+    """Un même numéro de chapitre à la fin d'un tome et au début du suivant (« chapitre 31 » à la fin du tome 2, estimé, et au début du
+    tome 3) : l'un des deux est faux. Renvoie [(tome à regarder, raison)] : le tome dont le chapitre en double est le moins sûr
+    (page estimée, corrigée, sans page, non confirmée), sinon le second. On signale seulement : rien n'est modifié."""
+    out = []
+    for a, b in zip(tomes, tomes[1:]):
+        na, nb = _numeros((sommaires or {}).get(_cle(a))), _numeros((sommaires or {}).get(_cle(b)))
+        if not na or not nb or nb[0][0] > na[-1][0]:
+            continue
+        if nb[0][0] <= 1 or len({n for n, _ in nb} & {n for n, _ in na}) > max(2, len(nb) // 2):
+            continue                                    # numérotation qui repart à 1 à chaque tome, ou même sommaire relu : pas un doublon
+        num = nb[0][0]
+        en_a = next((c for n, c in na if n == num), na[-1][1])
+        fragile = lambda c: c.get("image") is None or c.get("estimee") or c.get("corrige")
+        if verrouille((sommaires or {}).get(_cle(b))) or (fragile(en_a) and not fragile(nb[0][1])):
+            out.append((a, f"le chapitre {num} est aussi au début du tome {_cle(b)}"))
+        else:
+            out.append((b, f"le chapitre {num} est déjà dans le tome {_cle(a)}"))
+    return out
 
 
 def _cle(tome) -> str:

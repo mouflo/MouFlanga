@@ -8718,6 +8718,10 @@ if __name__ == "__main__":
     threading.Thread(target=_boucle_parasites, daemon=True).start()
     threading.Thread(target=_boucle_relecture_sommaires, daemon=True, name="relecture-sommaires").start()
     threading.Thread(target=_boucle_equipes, daemon=True).start()
+    try:
+        suivi.recaler_tout()          # séries suivies renommées pour une autre œuvre : fiche de l'ancienne oubliée
+    except Exception:
+        logger.exception("Recalage des séries suivies")
     threading.Thread(target=suivi.boucle, args=(torrents.chercher, _infos_suivi, lambda t: notifier.envoyer(t),
                                                 lambda: os.getenv("APP_URL", "").strip(), torrents.configure,
                                                 _lancer_torrent, lecture_pages.lire_en_fond), daemon=True).start()

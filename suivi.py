@@ -15,6 +15,7 @@ import os
 import re
 import threading
 import time
+import unicodedata
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -74,11 +75,54 @@ def retirer(nom):
     return False
 
 
+_IDENTITE = ("anilist", "mangadex", "mangaupdates", "couverture", "annee", "source", "auteur", "editeur", "lien")
+
+
+def _cle_titre(t):
+    t = "".join(c for c in unicodedata.normalize("NFD", str(t or "").lower()) if unicodedata.category(c) != "Mn")
+    return re.sub(r"[\W_]", "", t)
+
+
+def _meme_serie(nom, titres):
+    """Le nom de la série ressemble-t-il à l'un des titres connus de sa fiche ? (même règle que app._anilist_choisi)"""
+    c = _cle_titre(nom)
+    return any(c and k and (c == k or c in k or k in c) for k in (_cle_titre(t) for t in titres or []))
+
+
+def _recaler(nom, x):
+    """Série suivie dont le nom ne correspond plus à sa fiche (renommée pour une AUTRE œuvre : « Basilisk Ouka » devenue « Kouga ») :
+    ce qu'on savait de l'ancienne fiche (identifiants, couverture, année, titres) ne vaut plus, sinon la surveillance cherche les torrents
+    de l'autre série. Rien n'est perdu : l'ancienne fiche est gardée dans « avant_renommage ». Renvoie True si l'entrée a changé."""
+    titres = [t for t in x.get("titres") or [] if t]
+    if not titres or _meme_serie(nom, titres):
+        if titres and nom not in titres:
+            x["titres"] = ([nom] + titres)[:4]          # simple changement d'écriture : le nouveau nom se cherche en premier
+            return True
+        return False
+    x["avant_renommage"] = {k: x.pop(k) for k in _IDENTITE if k in x} | {"titres": titres}
+    x["titres"] = [nom]
+    x["propositions"] = [p for p in x.get("propositions", []) if p.get("statut") != "attente"]     # propositions de l'autre série
+    x.pop("verifiee", None)
+    return True
+
+
+def recaler_tout():
+    """Au démarrage : répare les séries suivies renommées avant ce correctif (jamais à la main dans le fichier)."""
+    with _verrou:
+        d = lire()
+        changees = [nom for nom, x in d["series"].items() if isinstance(x, dict) and _recaler(nom, x)]
+        if changees:
+            ecrire(d)
+            logger.info("Séries suivies recalées sur leur nouveau nom : %s", ", ".join(changees))
+    return changees
+
+
 def renommer(ancien, nouveau):
     with _verrou:
         d = lire()
         if ancien in d["series"] and nouveau not in d["series"]:
             d["series"][nouveau] = d["series"].pop(ancien)
+            _recaler(nouveau, d["series"][nouveau])
             ecrire(d)
 
 

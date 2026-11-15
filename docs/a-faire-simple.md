@@ -62,9 +62,7 @@ faite par un modèle moins puissant. Les tâches difficiles sont à part, tout e
 ## Difficile : à garder pour le modèle le plus capable
 - **Téléchargement 100 % automatique des remplacements** (scan → officiel) par série : touche à `suivi.py`,
   `auto_telechargement.py`, `torrents.py`, garde-fous d'édition, corbeille ; une erreur remplace de bons tomes.
-- **Séries suivies renommées** (Basilisk) : les entrées de `data/suivies.json` gardent des champs croisés ; à corriger dans le
-  code du renommage, sans jamais éditer le fichier à la main.
 - **Édition devinée sans lien d'éditeur** (ISBN → BnF) : règles de fer de `docs/identification.md`.
 - **Fiabilité des chapitres** au-delà de 92 % (`chapitres_auto.py`, `sommaire.py`) : chaque changement se mesure sur le banc
   `outils/banc_sommaires.py`, plafond mémoire obligatoire.
-- **Chapitre 31 d'Air Gear Unlimited vu en double** (fin du tome 2 estimée, début du tome 3).
+- Fait le 16/11/2026 : séries suivies renommées (`suivi._recaler`), chapitre en double entre deux tomes signalé (`chapitres_auto._doublons_entre_tomes`).
