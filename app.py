@@ -1892,27 +1892,14 @@ def page_historique_allegement():
     return render_template("historique_allegement.html", version=APP_VERSION)
 
 
-@app.route("/api/optimiser", methods=["GET", "POST"])
-def api_optimiser():
-    """GET : où en est l'analyse ou l'allègement. POST {series, appliquer, amelio (« 2,2,1,1,1 »), largeur} : lance l'un ou l'autre."""
-    if request.method == "GET":
-        return jsonify(optimiser.etat(request.args.get("series", "")))
-    body = request.get_json(silent=True) or {}
-    name = str(body.get("series", ""))
-    if name not in _scan() or name == "(Sans série)":
-        return jsonify({"ok": False, "error": "Série introuvable"}), 404
-    if _en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours"):
-        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
-    largeur = int(body["largeur"]) if str(body.get("largeur", "")).isdigit() and int(body["largeur"]) >= 800 else None
-    appliquer = bool(body.get("appliquer"))
-    eclairer = optimiser.reglages_amelioration(str(body.get("amelio", ""))) or optimiser.reglages_amelioration(bool(body.get("eclairer")))
-    q = str(body.get("qualite", ""))
-    manuelle = int(q) if q.isdigit() and 30 <= int(q) <= 98 else None        # réglage manuel ; vide = automatique
-    if q == "o":                                             # « même qualité que l'original » : chaque tome garde la sienne
-        manuelle = optimiser.QUALITE_ORIGINE
+_UNIF_TOUT = {}                                              # {série: {"en_cours", "message"}} : « tout uniformiser d'un coup »
 
-    etaient_assembles = []                                   # tomes déjà assemblés avant le traitement : ils le restent (le fichier change de date et de taille)
-    avant_travail = {}                                       # {fichier: (taille, marques)} avant le traitement : le registre des traitements les garde
+
+def _lancer_optimisation(name, fichiers, appliquer, eclairer, largeur=None, manuelle=None, avec_infos=False, telegram=True) -> bool:
+    """Lance l'analyse ou l'allègement de ces fichiers de la série (bouton ✨, « tout uniformiser », pilote). False si déjà en cours.
+    À la fin d'un traitement appliqué : coches d'assemblage remises, registre des traitements noté, message Telegram si demandé."""
+    etaient_assembles = [f for f in fichiers if _est_assemble(name, f)]     # ils le restent (le fichier change de date et de taille)
+    avant_travail = _avant_travail(name, fichiers)           # {fichier: (taille, marques)} avant le traitement : pour le registre
 
     def fini():
         if appliquer:
@@ -1929,6 +1916,8 @@ def api_optimiser():
                     _noter_travail(name, chemin, avant_travail.get(chemin.name), faits, infos=infos)
             edition.ecrire(MANGA_DIR / name, infos)
             edition.invalider(MANGA_DIR / name)              # résolution et source refaites d'après les nouveaux fichiers
+        if not telegram:
+            return
         try:                                                 # Telegram + notification du téléphone : on n'a pas à rester sur la page
             import notifier
             ok, msg = notifier.envoyer(f"🪶 MouFlanga : {'traitement terminé' if appliquer else 'analyse terminée'} pour « {name} » : "
@@ -1937,17 +1926,8 @@ def api_optimiser():
                 logger.info("Telegram (fin d'allègement) : %s", msg)
         except Exception as e:
             logger.info("Notification de fin d'allègement : %s", e)
-    fichiers = _fichiers_a_alleger(name)
-    choisis = body.get("fichiers")
-    if isinstance(choisis, list):                            # seulement les tomes cochés
-        noms = {str(x) for x in choisis}
-        fichiers = [f for f in fichiers if f.name in noms]
-        if not fichiers:
-            return jsonify({"ok": False, "error": "Aucun tome coché."}), 400
-    etaient_assembles[:] = [f for f in fichiers if _est_assemble(name, f)]
-    avant_travail.update(_avant_travail(name, fichiers))
     infos_de = None
-    if appliquer and body.get("infos"):                       # 📝 les infos du tome écrites dans la même passe que l'allègement
+    if appliquer and avec_infos:                             # 📝 les infos du tome écrites dans la même passe que l'allègement
         import edition
         import signets
         par_chemin = {Path(c[1]): c[0] for c in _tomes_a_ecrire(name) if c[2]}     # mêmes tomes et mêmes règles que « Réécrire les infos »
@@ -1963,7 +1943,35 @@ def api_optimiser():
             infos = _infos_tome(name, tome)
             return lambda ancien: signets._xml(ancien, chapitres, infos)
     calages = _calages_uniformite(name, fichiers) if eclairer and eclairer.get("uniformiser") else None
-    if not optimiser.lancer(name, fichiers, appliquer, _vers_corbeille, eclairer, fini, largeur, manuelle, infos_de, calages):
+    return bool(optimiser.lancer(name, fichiers, appliquer, _vers_corbeille, eclairer, fini, largeur, manuelle, infos_de, calages))
+
+
+@app.route("/api/optimiser", methods=["GET", "POST"])
+def api_optimiser():
+    """GET : où en est l'analyse ou l'allègement. POST {series, appliquer, amelio (« 2,2,1,1,1 »), largeur} : lance l'un ou l'autre."""
+    if request.method == "GET":
+        return jsonify(optimiser.etat(request.args.get("series", "")))
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if _en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours") or (_UNIF_TOUT.get(name) or {}).get("en_cours"):
+        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    largeur = int(body["largeur"]) if str(body.get("largeur", "")).isdigit() and int(body["largeur"]) >= 800 else None
+    appliquer = bool(body.get("appliquer"))
+    eclairer = optimiser.reglages_amelioration(str(body.get("amelio", ""))) or optimiser.reglages_amelioration(bool(body.get("eclairer")))
+    q = str(body.get("qualite", ""))
+    manuelle = int(q) if q.isdigit() and 30 <= int(q) <= 98 else None        # réglage manuel ; vide = automatique
+    if q == "o":                                             # « même qualité que l'original » : chaque tome garde la sienne
+        manuelle = optimiser.QUALITE_ORIGINE
+    fichiers = _fichiers_a_alleger(name)
+    choisis = body.get("fichiers")
+    if isinstance(choisis, list):                            # seulement les tomes cochés
+        noms = {str(x) for x in choisis}
+        fichiers = [f for f in fichiers if f.name in noms]
+        if not fichiers:
+            return jsonify({"ok": False, "error": "Aucun tome coché."}), 400
+    if not _lancer_optimisation(name, fichiers, appliquer, eclairer, largeur, manuelle, bool(body.get("infos"))):
         return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
     return jsonify({"ok": True, "message": "Traitement lancé…" if appliquer else "Analyse lancée…"})
 
@@ -2075,11 +2083,21 @@ def api_uniformite():
             return jsonify({"error": "Série introuvable."}), 404
         analyse, _ = _analyse_uniformite(name)
         analyse["etat"] = uniformite.etat(name)
+        analyse["tout"] = dict(_UNIF_TOUT.get(name) or {})
+        analyse["auto"] = bool(__import__("edition").lire(MANGA_DIR / name).get("uniformiser_auto"))
         return jsonify(analyse)
     body = request.get_json(silent=True) or {}
     name = str(body.get("series", ""))
     if name not in _scan() or name == "(Sans série)":
         return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if body.get("action") == "auto":                         # « uniformiser aussi les prochains tomes tout seuls »
+        import edition
+        with _VERROU_SOMMAIRES:
+            infos = edition.lire(MANGA_DIR / name)
+            infos["uniformiser_auto"] = bool(body.get("actif"))
+            edition.ecrire(MANGA_DIR / name, infos)
+        return jsonify({"ok": True, "auto": bool(body.get("actif")),
+                        "message": "Les prochains tomes seront uniformisés tout seuls." if body.get("actif") else "Les prochains tomes ne seront plus uniformisés tout seuls."})
     if body.get("action") == "reference":
         uniformite.choisir_reference(_fichier_uniformite(), name, str(body.get("ref") or ""))
         analyse, _ = _analyse_uniformite(name)
@@ -2279,6 +2297,7 @@ def api_series_etat():
     r["etapes"] = [{"cle": c, "nom": n, "icone": i, "groupe": g, "cochable": c in traitements.MANUELLES} for c, n, i, g in traitements.ETAPES]
     r["groupes"] = traitements.GROUPES
     r["travail"] = _travail_de(name)
+    r["chapitres"] = _chapitres_pour_la_fiche(name)
     return jsonify(r)
 
 
@@ -2521,7 +2540,8 @@ import parasites
 
 def _serie_occupee(name):
     return bool(_en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours") or optimiser.etat(name).get("en_cours")
-                or optimiser.coupes_etat(name).get("en_cours") or parasites.etat(name).get("en_cours"))
+                or optimiser.coupes_etat(name).get("en_cours") or parasites.etat(name).get("en_cours")
+                or (_UNIF_TOUT.get(name) or {}).get("en_cours"))
 
 
 @_sous_verrou_infos
@@ -4561,6 +4581,7 @@ def _travaux_en_cours():
         raisons += [f"découpe ou assemblage de pages de {n}" for n, e in optimiser._COUPES_ETAT.items() if e.get("en_cours")]
     raisons += [f"conversion de {n}" for n, e in list(_CONVERSION.items()) if e.get("en_cours")]
     raisons += [f"lecture des ISBN de {n}" for n, e in list(_ISBN_SERIE.items()) if e.get("en_cours")]
+    raisons += [f"uniformisation de {n}" for n, e in list(_UNIF_TOUT.items()) if e.get("en_cours")]
     return raisons
 
 
@@ -4902,6 +4923,11 @@ def _importer_torrent(nom, source, remplacer=False):
     apres = _empreintes_tomes(nom)
     venus = {t for t, v in apres.items() if empreintes_avant.get(t) != v}
     _TOMES_DU_TORRENT[nom] = venus
+    try:                                             # 🤖 chapitres et uniformité des tomes arrivés : faits tout seuls (voir pilote.py)
+        if venus:
+            pilote.signaler(nom, venus, remplaces={t for t in venus if t in empreintes_avant})
+    except Exception as e:
+        logger.info("Pilote (tomes du torrent de « %s ») : %s", nom, e)
     if not venus and not deja_note:
         # aucun tome n'est venu de ce torrent (tous déjà là, rien remplacé) : il n'est pas noté comme source de la série,
         # sinon la fiche laisserait croire que les anciens tomes ont été remplacés
@@ -7931,6 +7957,9 @@ demandes._ETAT["autres"] = lambda: [f"• {n} : {p['titre'][:80]}" for n, p in s
 
 # ---------------- ⚡ Préparation de la bibliothèque en arrière-plan (prechauffage.py) ----------------
 import prechauffage
+import pilote
+import chapitres_auto
+import automatisations
 
 
 def _signature_serie(nom):
@@ -8291,6 +8320,336 @@ def api_mon_edition():
                     else "Édition : détection automatique."})
 
 
+# ---------------- 🤖 Automatisations : ce que l'appli fait toute seule quand un tome arrive (pilote.py) ----------------
+UNIFORMISER_SEUL = '0,0,0,0,0,0,0,0,1'            # réglage ✨ « uniformiser les noirs et les blancs », rien d'autre
+
+
+def _automatisations():
+    return automatisations.lire(DATA_DIR / "automatisations.json")
+
+
+def _pilote_series():
+    return [n for n in _scan() if n != "(Sans série)"]
+
+
+def _pilote_tomes(nom):
+    """{clé du tome: empreinte du fichier} : sert au pilote à voir qu'un tome vient d'arriver et que sa copie est finie."""
+    out = {}
+    for tome, chemin in _fichiers_des_tomes(nom).items():
+        st = _stat_index(chemin)
+        if st:
+            out[pilote._cle(tome)] = f"{st[0]}|{st[1]}"
+    return out
+
+
+def _pilote_occupe(nom):
+    """Raison en clair qui empêche le pilote de travailler (sur cette série, ou sur toute l'appli si nom == ""), sinon ""."""
+    if nom:
+        return "série en cours de traitement" if _serie_occupee(nom) else ""
+    raisons = _travaux_en_cours()
+    if raisons:
+        return raisons[0]
+    detail = str(prechauffage._ETAT.get("detail") or "")
+    if prechauffage._ETAT.get("en_cours") and not detail.startswith(("en pause", "en attente")):
+        return "préparation de fond"
+    import sommaire
+    if sommaire.occupation()[0] > 0:
+        return "lecture d'un sommaire"
+    return ""
+
+
+def _attendre(en_cours, maxi, pas=2.0) -> bool:
+    """Attend la fin d'un travail de fond (`en_cours()` devient faux). False s'il dure plus de `maxi` secondes."""
+    fin = time.time() + maxi
+    while en_cours():
+        if time.time() > fin:
+            return False
+        time.sleep(pas)
+    return True
+
+
+def _pilote_chapitres(nom, tome, confirmer, avance, remplace=False):
+    """Chapitres d'un tome, sans personne : sommaire lu, place vérifiée avec les numéros de page imprimés, titres posés.
+    Un tome validé, saisi ou corrigé à la main n'est jamais touché. Renvoie {"fait", "attend"} ou {"reporter"}."""
+    import edition
+    import sommaire
+    import titres_chapitres
+    dossier = MANGA_DIR / nom
+    lu = (edition.lire(dossier).get("sommaires") or {}).get(str(tome)) or {}
+    if chapitres_auto.verrouille(lu):
+        return None
+    e = _tome_complet(nom, tome)
+    if e is None:                                        # tome fait de chapitres séparés : il n'y a pas de sommaire à lire
+        return None
+    chemin = MANGA_DIR / e["path"]
+    fait, attend = [], []
+    # 1. le sommaire
+    if sommaire.disponible() and (not lu or remplace or _lecture_perimee(lu, nom, tome)):
+        avance("lecture du sommaire")
+        ancien = json.loads(json.dumps(lu)) if lu else {}
+        _lire_sommaire(nom, tome, e, forcer=bool(remplace), urgent=False)
+        if not _attendre(lambda: sommaire.etat(nom, tome).get("en_cours"), 900):
+            return {"reporter": "lecture du sommaire trop longue"}
+        lu = (edition.lire(dossier).get("sommaires") or {}).get(str(tome)) or {}
+        if remplace and ancien.get("chapitres") and not lu.get("chapitres"):
+            # le nouveau fichier n'a pas de sommaire lisible : on garde les chapitres de l'ancien, mais leur place est à revoir
+            with _VERROU_SOMMAIRES:
+                infos = edition.lire(dossier)
+                actuel = (infos.get("sommaires") or {}).get(str(tome)) or {}
+                if not chapitres_auto.verrouille(actuel) and not actuel.get("chapitres"):
+                    for c in ancien["chapitres"]:
+                        c.pop("confirme", None)
+                        c.pop("corrige", None)
+                        if c.get("image") is not None:
+                            c["estimee"] = True
+                    ancien.pop("confirmation", None)
+                    ancien["version"] = lu.get("version", sommaire.VERSION)
+                    infos.setdefault("sommaires", {})[str(tome)] = ancien
+                    edition.ecrire(dossier, infos)
+                    lu = ancien
+    # 2. la place des chapitres, vérifiée avec les numéros imprimés en bas des pages
+    if confirmer and sommaire.disponible() and chapitres_auto.imprime(lu) and not lu.get("confirmation"):
+        nb = len(archives.pages(chemin))
+        releve = chapitres_auto.relever(lambda i: archives.read_page(chemin, i)[0], nb, sommaire.numero_imprime,
+                                        avance=lambda i, n: (i % 10 == 0) and avance(f"numéros de page : {i} / {n}"))
+        if releve:
+            signature = [(c.get("num"), c.get("image")) for c in lu.get("chapitres") or []]
+            with _VERROU_SOMMAIRES:
+                infos = edition.lire(dossier)
+                actuel = (infos.get("sommaires") or {}).get(str(tome)) or {}
+                if (not chapitres_auto.verrouille(actuel)
+                        and [(c.get("num"), c.get("image")) for c in actuel.get("chapitres") or []] == signature):
+                    bilan = chapitres_auto.confirmer(actuel["chapitres"], releve["ratios"], releve["folios"])
+                    actuel["confirmation"] = {"date": datetime.now().strftime("%Y-%m-%d"), "confirmes": bilan["confirmes"],
+                                              "corriges": bilan["corriges"], "version": chapitres_auto.VERSION}
+                    edition.ecrire(dossier, infos)
+                    lu = actuel
+                    if bilan["corriges"]:
+                        fait.append(f"{bilan['corriges']} place(s) de chapitre corrigée(s) d'après les numéros de page")
+    # 3. les titres
+    try:
+        with _VERROU_SOMMAIRES:
+            infos = edition.lire(dossier)
+            sommaires = infos.get("sommaires") or {}
+            changements = chapitres_auto.nommer(sommaires, [tome], _titres_officiels(nom))
+            if changements and titres_chapitres.appliquer(sommaires, changements):
+                edition.ecrire(dossier, infos)
+                fait.append(f"{len(changements)} titre(s) de chapitre posé(s)")
+            lu = sommaires.get(str(tome)) or {}
+    except Exception as ex:
+        logger.info("Pilote : titres des chapitres de « %s » tome %s : %s", nom, tome, ex)
+    # 4. le verdict
+    c = chapitres_auto.confiance(lu)
+    if c["niveau"] == "aucun":
+        attend.append("pas de chapitres trouvés")
+    else:
+        fait.insert(0, f"{c['chapitres']} chapitre(s) ({c['libelle']})")
+        if c["niveau"] == "a_verifier":
+            attend.append("chapitres à vérifier")
+    return {"fait": fait, "attend": attend}
+
+
+def _pilote_uniformiser(nom, tome, avance):
+    """Noirs et blancs du tome ramenés à ceux de la série (référence déjà choisie). L'ancien fichier part à la corbeille."""
+    chemin = _fichiers_des_tomes(nom).get(tome)
+    if chemin is None:
+        return None
+    avance("mesure des noirs et des blancs")
+    uniformite.lancer(nom, _tomes_mesurables(nom), _fichier_uniformite())
+    if not _attendre(lambda: uniformite.etat(nom).get("en_cours"), 1800):
+        return {"reporter": "mesure trop longue"}
+    analyse, _ = _analyse_uniformite(nom)
+    if chemin.name not in (analyse.get("a_uniformiser") or []):
+        return {"fait": ["noirs et blancs déjà comme le reste de la série"]}
+    avance("uniformisation des noirs et des blancs")
+    if not _lancer_optimisation(nom, [chemin], True, optimiser.reglages_amelioration(UNIFORMISER_SEUL), None,
+                                optimiser.QUALITE_ORIGINE, telegram=False):
+        return {"reporter": "allègement déjà en cours"}
+    if not _attendre(lambda: optimiser.etat(nom).get("en_cours"), 3600):
+        return {"reporter": "uniformisation trop longue"}
+    return {"fait": ["noirs et blancs uniformisés (ancien fichier à la corbeille)"]}
+
+
+def _pilote_traiter(nom, cle, quoi, avance, element):
+    """Ce que le pilote fait d'un tome (voir pilote.configurer)."""
+    import edition
+    try:
+        tome = float(cle)
+    except (TypeError, ValueError):
+        return None
+    if tome != int(tome) or nom not in _scan():
+        return None
+    tome = int(tome)
+    r = _automatisations()
+    manuel, nuit = bool(element.get("manuel")), bool(element.get("nuit"))
+    fait, attend = [], []
+    if quoi in ("tout", "chapitres") and (manuel or r["chapitres"]):
+        res = _pilote_chapitres(nom, tome, r["confirmer"] or manuel or nuit, avance, bool(element.get("remplace")))
+        if res and res.get("reporter"):
+            return res
+        fait += (res or {}).get("fait") or []
+        attend += (res or {}).get("attend") or []
+    if quoi in ("tout", "uniformiser"):
+        voulu = (manuel and quoi == "uniformiser") or (r["uniformiser"] and edition.lire(MANGA_DIR / nom).get("uniformiser_auto"))
+        if voulu:
+            res = _pilote_uniformiser(nom, tome, avance)
+            if res and res.get("reporter"):
+                return res
+            fait += (res or {}).get("fait") or []
+            attend += (res or {}).get("attend") or []
+    if (fait or attend) and r["telegram"] and not manuel and not nuit:
+        try:
+            import notifier
+            notifier.envoyer(f"🤖 MouFlanga : « {nom} » tome {tome} : " + " ; ".join(fait or ["rien à faire"])
+                             + (" — à voir : " + " ; ".join(attend) if attend else ""))
+        except Exception as ex:
+            logger.info("Telegram (pilote) : %s", ex)
+    return {"fait": fait, "attend": attend} if (fait or attend) else None
+
+
+def _bilan_chapitres(name):
+    """Confiance des chapitres de chaque tome de la série (voir chapitres_auto.bilan_serie) + la phrase qui la résume."""
+    import edition
+    sommaires = edition.lire(MANGA_DIR / name).get("sommaires") or {}
+    bilan = chapitres_auto.bilan_serie(sommaires, sorted(_fichiers_des_tomes(name)))
+    return bilan, chapitres_auto.phrase(bilan)
+
+
+def _chapitres_pour_la_fiche(name):
+    """Pour la fiche : la phrase des chapitres, le niveau de chaque tome, les tomes à vérifier (avec de quoi ouvrir le lecteur)."""
+    try:
+        bilan, phrase = _bilan_chapitres(name)
+        fichiers = _fichiers_des_tomes(name)
+        etat = pilote.etat()
+        return {"phrase": phrase, "comptes": bilan["comptes"],
+                "par_tome": {t: {k: c[k] for k in ("niveau", "pastille", "libelle", "raisons")} for t, c in bilan["par_tome"].items()},
+                "a_verifier": [{"tome": t, "fichier": _rel(fichiers[t])} for t in bilan["a_verifier"] if t in fichiers],
+                "aucun": bilan["aucun"], "file": len(pilote.en_file(name)),
+                "en_cours": (f"tome {etat.get('tome')} : {etat.get('detail') or 'en cours'}") if etat.get("en_cours") and etat.get("serie") == name else "",
+                "journal": pilote.journal(5, name)}
+    except Exception as e:
+        logger.info("Chapitres de la fiche de « %s » : %s", name, e)
+        return {"phrase": "", "par_tome": {}, "a_verifier": [], "aucun": [], "file": 0, "en_cours": "", "journal": []}
+
+
+@app.route("/api/automatisations", methods=["GET", "POST"])
+def api_automatisations():
+    """GET : le réglage, ce que le pilote fait en ce moment, sa file et son journal.
+    POST {reglage: {...}} : enregistre ; {action: "rattraper"} : vérifie la nuit les chapitres de toute la bibliothèque ;
+    {action: "arreter"} : vide la file des chapitres."""
+    import edition
+    fichier = DATA_DIR / "automatisations.json"
+    message = ""
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        if isinstance(body.get("reglage"), dict):
+            automatisations.ecrire(fichier, dict(_automatisations(), **body["reglage"]))
+            message = "Réglage enregistré."
+        elif body.get("action") == "rattraper":
+            n = 0
+            for nom in _pilote_series():
+                sommaires = edition.lire(MANGA_DIR / nom).get("sommaires") or {}
+                tomes = [t for t in _fichiers_des_tomes(nom)
+                         if chapitres_auto.imprime(sommaires.get(str(t)) or {}) and not chapitres_auto.verrouille(sommaires.get(str(t)) or {})
+                         and not (sommaires.get(str(t)) or {}).get("confirmation")]
+                if tomes:
+                    n += pilote.signaler(nom, tomes, quoi="chapitres", nuit=True)
+            message = (f"{n} tome(s) seront vérifiés la nuit (minuit–6 h), deux à trois minutes par tome." if n
+                       else "Rien à rattraper : tous les sommaires imprimés sont déjà vérifiés ou validés.")
+        elif body.get("action") == "arreter":
+            n = pilote.retirer(quoi="chapitres")
+            message = f"{n} tome(s) retiré(s) de la file."
+        else:
+            return jsonify({"ok": False, "error": "Demande inconnue."}), 400
+    r = _automatisations()
+    return jsonify({"ok": True, "message": message, "reglage": r, "phrase": automatisations.phrase(r), "etat": pilote.etat(),
+                    "journal": pilote.journal(20)})
+
+
+@app.route("/api/series/automatiser", methods=["GET", "POST"])
+def api_series_automatiser():
+    """GET ?series= : chapitres de la série (confiance par tome, phrase), file et journal du pilote pour elle.
+    POST {series, quoi: "chapitres"} : tous les tomes de la série passent tout de suite par le pilote (sauf les tomes validés)."""
+    body = request.get_json(silent=True) or {} if request.method == "POST" else {}
+    name = str(body.get("series", "")) if request.method == "POST" else request.args.get("series", "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    message = ""
+    if request.method == "POST":
+        quoi = body.get("quoi") if body.get("quoi") in ("chapitres", "uniformiser") else "chapitres"
+        n = pilote.signaler(name, sorted(_fichiers_des_tomes(name)), quoi=quoi, manuel=True)
+        message = (f"C'est parti pour {n} tome(s) : tu peux fermer la page, tout se fait en fond." if n
+                   else "Ces tomes sont déjà dans la file d'attente.")
+    bilan, phrase = _bilan_chapitres(name)
+    etat = pilote.etat()
+    return jsonify({"ok": True, "message": message, "phrase": phrase, "bilan": bilan, "file": len(pilote.en_file(name)),
+                    "en_cours": etat if etat.get("serie") == name and etat.get("en_cours") else None,
+                    "journal": pilote.journal(10, name)})
+
+
+def _uniformiser_tout(name):
+    """« 🤖 Tout faire d'un coup » : mesure tous les tomes, fige la référence, uniformise ceux qui s'en écartent, puis re-mesure."""
+    import edition
+    etat = _UNIF_TOUT[name]
+    try:
+        cache = _fichier_uniformite()
+        etat["message"] = "Mesure des tomes…"
+        uniformite.lancer(name, _tomes_mesurables(name), cache)
+        if not _attendre(lambda: uniformite.etat(name).get("en_cours"), 7200):
+            raise RuntimeError("la mesure dure trop longtemps")
+        analyse, _ = _analyse_uniformite(name)
+        if not uniformite.reference_choisie(cache, name) and (analyse.get("reference") or {}).get("ref"):
+            uniformite.choisir_reference(cache, name, analyse["reference"]["ref"])     # figée : les prochains tomes s'y comparent
+            analyse, _ = _analyse_uniformite(name)
+        noms = set(analyse.get("a_uniformiser") or [])
+        fichiers = [f for f in _tomes_mesurables(name) if f.name in noms]
+        if fichiers:
+            etat["message"] = f"Uniformisation de {len(fichiers)} tome(s)…"
+            if not _lancer_optimisation(name, fichiers, True, optimiser.reglages_amelioration(UNIFORMISER_SEUL), None,
+                                        optimiser.QUALITE_ORIGINE, telegram=False):
+                raise RuntimeError("un autre traitement d'images est en cours pour cette série")
+            if not _attendre(lambda: optimiser.etat(name).get("en_cours"), 6 * 3600, 5):
+                raise RuntimeError("l'uniformisation dure trop longtemps")
+            _scan_invalider()
+            etat["message"] = "Vérification…"
+            uniformite.lancer(name, _tomes_mesurables(name), cache)
+            _attendre(lambda: uniformite.etat(name).get("en_cours"), 7200)
+        with _VERROU_SOMMAIRES:
+            infos = edition.lire(MANGA_DIR / name)
+            infos["uniformiser_auto"] = True
+            edition.ecrire(MANGA_DIR / name, infos)
+        reste = len((_analyse_uniformite(name)[0]).get("a_uniformiser") or [])
+        msg = (f"{len(fichiers)} tome(s) uniformisé(s)" if fichiers else "Tous les tomes étaient déjà pareils") \
+            + (f", {reste} encore différent(s)" if reste else "") + ". Les prochains tomes le seront tout seuls."
+        etat.update(en_cours=False, message=msg, ok=True)
+    except Exception as e:
+        logger.warning("Uniformisation complète de « %s » : %s", name, e)
+        etat.update(en_cours=False, message=f"Arrêté : {e}", ok=False)
+    try:
+        if not reseau.EN_TEST:
+            import notifier
+            notifier.envoyer(f"🎨 MouFlanga : « {name} » : {etat['message']}")
+    except Exception as e:
+        logger.info("Telegram (uniformisation complète) : %s", e)
+
+
+@app.route("/api/uniformite/tout", methods=["POST"])
+def api_uniformite_tout():
+    """POST {series} : mesure + uniformise toute la série d'un coup, et allume « uniformiser les prochains tomes »."""
+    name = str((request.get_json(silent=True) or {}).get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if _serie_occupee(name) or _en_telechargement(name) or uniformite.etat(name).get("en_cours") or optimiser.etat(name).get("en_cours"):
+        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    _UNIF_TOUT[name] = {"en_cours": True, "message": "Démarrage…"}
+    threading.Thread(target=_uniformiser_tout, args=(name,), daemon=True).start()
+    return jsonify({"ok": True, "message": "C'est parti : tu peux fermer la page, un message arrive à la fin."})
+
+
+pilote.configurer(DATA_DIR / "pilote.json", _pilote_series, _pilote_tomes,
+                  (lambda *a: None) if reseau.EN_TEST else _pilote_traiter, _pilote_occupe, lambda: _automatisations())
+
+
 # Pendant les tests, la préparation de fond ne fait rien : un fil lancé par un test écrirait dans le dossier du test suivant.
 prechauffage.configurer(DATA_DIR / "prechauffage.json", _series_preparables, _signature_serie,
                         (lambda nom, progression: None) if reseau.EN_TEST else _preparer_serie, lambda: _travaux_en_cours())
@@ -8340,6 +8699,7 @@ if __name__ == "__main__":
             logger.info("Préparation de la liste : %s", e)
     threading.Thread(target=_chauffer_liste, daemon=True).start()
     prechauffage.surveiller()                      # séries nouvelles ou modifiées : préparées toutes seules
+    pilote.surveiller()                            # 🤖 tomes qui arrivent : chapitres et uniformité faits tout seuls
     import notes
     threading.Thread(target=notes.boucle, args=(lambda: [s for s in _scan() if s != "(Sans série)"], _identifiants_note),
                      daemon=True).start()          # notes des séries : une mise à jour par jour, en arrière-plan

@@ -506,3 +506,14 @@ body.mou-skin .etat-case.e-a_faire { color:var(--warn); }
 body.mou-skin .trt-ligne, body.mou-skin .trt-ligne:hover { background:none; color:var(--muted); padding:0; width:auto; font-weight:400; border-radius:0; box-shadow:none; }
 body.mou-skin .gerer-liste button, body.mou-skin .gerer-liste a { background:var(--field); color:var(--text); font-weight:500; padding:13px 12px; }
 body.mou-skin .gerer-liste button:hover, body.mou-skin .gerer-liste a:hover { border-color:var(--accent); }
+
+/* 🤖 Automatisations : ce que l'appli fait toute seule (chapitres, uniformité) */
+.auto-bloc { border:1px solid var(--border, #333); border-radius:10px; padding:10px 12px; margin:0 0 12px; background:rgba(82,181,75,.06); }
+.auto-bloc b { display:block; font-size:.92rem; margin-bottom:4px; }
+.auto-liens { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
+.auto-liens .mou-btn { padding:6px 10px; font-size:.85rem; }
+.auto-case { display:flex; gap:10px; align-items:flex-start; margin-top:10px; cursor:pointer; font-size:.9rem; }
+.auto-case input { width:22px; height:22px; flex:none; margin-top:1px; }
+.auto-journal { margin-top:8px; font-size:.82rem; }
+.auto-journal summary { cursor:pointer; color:var(--muted); }
+.auto-journal div { padding:3px 0; }

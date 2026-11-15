@@ -67,6 +67,24 @@
     </div>
 
     <div class="panel" data-onglet="Général">
+        <h2>🤖 Automatisations</h2>
+        <div class="sub">Ce que l'appli fait toute seule sur un tome qui vient d'arriver, sans que tu ouvres quoi que ce soit. Un tome que tu as validé ou saisi à la main n'est jamais touché.</div>
+        <div class="field"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="autoActif" style="width:22px;height:22px;flex:none;margin-top:2px"><span><b>Automatisations allumées</b></span></label></div>
+        <div class="field"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="autoChapitres" style="width:22px;height:22px;flex:none;margin-top:2px"><span>📑 Lire le sommaire et nommer les chapitres</span></label></div>
+        <div class="field"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="autoConfirmer" style="width:22px;height:22px;flex:none;margin-top:2px"><span>📍 Vérifier la place de chaque chapitre avec les numéros imprimés en bas des pages (deux à trois minutes par tome)</span></label></div>
+        <div class="field"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="autoUniformiser" style="width:22px;height:22px;flex:none;margin-top:2px"><span>🎨 Uniformiser les noirs et les blancs, dans les séries où tu l'as demandé (✨ → 🎨 Uniformité → « Tout faire d'un coup »)</span></label></div>
+        <div class="field"><label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="autoTelegram" style="width:22px;height:22px;flex:none;margin-top:2px"><span>✉️ Un message Telegram quand un tome a été traité</span></label></div>
+        <div class="field"><label for="autoQuand">Quand</label>
+            <select id="autoQuand"><option value="arrivee">Dès que le tome est rangé</option><option value="nuit">La nuit seulement (minuit–6 h)</option></select></div>
+        <div class="row"><button class="btn" id="autoSave" type="button">Enregistrer</button>
+            <button class="btn ghost" id="autoRattraper" type="button">🌙 Vérifier les chapitres de toute la bibliothèque</button>
+            <button class="btn ghost" id="autoArreter" type="button" hidden>⏹ Vider la file d'attente</button></div>
+        <div id="autoInfo" class="state" style="margin-top:8px"></div>
+        <div id="autoMsg"></div>
+        <details style="margin-top:8px"><summary style="cursor:pointer">🤖 Fait tout seul récemment</summary><div id="autoJournal" class="state"></div></details>
+    </div>
+
+    <div class="panel" data-onglet="Général">
         <h2>🗑 Corbeille</h2>
         <div class="sub">Quand l'appli réécrit un tome (alléger, améliorer, assembler des doubles pages…), l'ancien fichier n'est pas effacé : il va dans la corbeille du dossier des mangas, pour pouvoir revenir en arrière. Choisis combien de temps le garder avant de l'effacer pour de bon : chacun a ses besoins, le temps de contrôler le résultat, ou pas.</div>
         <div class="field"><label for="corbMode">Conservation</label>
@@ -425,6 +443,34 @@ $('veilleVerif').addEventListener('click', async () => {
     say('veilleMsg', r.message || r.error, r.ok); loadVeille();
 });
 loadVeille();
+// ---------- 🤖 Automatisations ----------
+function autoAffiche(r) {
+    if (r.error || !r.reglage) return;
+    const g = r.reglage, e = r.etat || {};
+    $('autoActif').checked = g.actif; $('autoChapitres').checked = g.chapitres; $('autoConfirmer').checked = g.confirmer;
+    $('autoUniformiser').checked = g.uniformiser; $('autoTelegram').checked = g.telegram; $('autoQuand').value = g.quand;
+    $('autoInfo').textContent = r.phrase + (e.en_cours ? ' En ce moment : « ' + e.serie + ' » tome ' + e.tome + (e.detail ? ' (' + e.detail + ')' : '') + '.' : '') +
+        (e.file ? ' ' + e.file + ' tome(s) en attente' + (e.attente ? ' (' + e.attente + ')' : '') + '.' : '');
+    $('autoArreter').hidden = !e.file;
+    $('autoJournal').innerHTML = (r.journal || []).map(j => '<div>' + esc(j.date) + ' · ' + esc(j.serie) + ' T' + esc(j.tome) + ' : ' +
+        esc((j.fait || []).join(' ; ') || j.erreur || '') + (j.attend && j.attend.length ? ' (à voir : ' + esc(j.attend.join(' ; ')) + ')' : '') + '</div>').join('') || 'Rien pour l\'instant.';
+}
+async function loadAuto() { autoAffiche(await api('/api/automatisations')); }
+$('autoSave').addEventListener('click', async () => {
+    const r = await post('/api/automatisations', {reglage: {actif: $('autoActif').checked, chapitres: $('autoChapitres').checked, confirmer: $('autoConfirmer').checked,
+        uniformiser: $('autoUniformiser').checked, telegram: $('autoTelegram').checked, quand: $('autoQuand').value}});
+    say('autoMsg', r.message || r.error, r.ok); autoAffiche(r);
+});
+$('autoRattraper').addEventListener('click', async () => {
+    if (!await MouConfirm('Vérifier la place des chapitres de tous les tomes déjà dans la bibliothèque ?\n\nÇa se fait la nuit (minuit–6 h), deux à trois minutes par tome : compte plusieurs nuits pour une grosse bibliothèque. Les tomes validés ou saisis à la main ne sont pas touchés. Tu peux arrêter quand tu veux.')) return;
+    const r = await post('/api/automatisations', {action: 'rattraper'});
+    say('autoMsg', r.message || r.error, r.ok); autoAffiche(r);
+});
+$('autoArreter').addEventListener('click', async () => {
+    const r = await post('/api/automatisations', {action: 'arreter'});
+    say('autoMsg', r.message || r.error, r.ok); autoAffiche(r);
+});
+loadAuto();
 // ---------- 🗑 Corbeille : combien de temps garder les anciens fichiers ----------
 const _go = o => (o / 1073741824).toFixed(1).replace('.', ',') + ' Go';
 function corbAffiche() { $('corbDuree').hidden = $('corbMode').value === 'jamais'; }

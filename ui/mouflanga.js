@@ -1204,6 +1204,14 @@
       while (i < n.length) { var j = i; while (j + 1 < n.length && n[j + 1] === n[j] + 1) j++; out.push(j > i ? n[i] + '-' + n[j] : '' + n[i]); i = j + 1; }
       return 'tomes ' + out.join(', ');
     }
+    var unifToutAttend = false;
+    function unifAuto(u) {                                      // « tout d'un coup » et « les prochains tomes tout seuls »
+      var tt = u.tout || {};
+      return '<div class="auto-bloc">' + (tt.message && !tt.en_cours ? '<div class="dem-sous">Dernier passage : ' + esc(tt.message) + '</div>' : '') +
+        '<div class="ident-actions"><button type="button" class="mou-btn" id="unifTout">🤖 Tout faire d\'un coup</button></div>' +
+        '<div class="dem-sous">Mesure tous les tomes, garde la famille la plus nombreuse comme référence, uniformise ceux qui s\'en écartent (seuls les noirs et les blancs changent, les pages en couleur ne sont pas touchées), puis vérifie. Les anciens fichiers vont à la corbeille. Un message Telegram arrive à la fin.</div>' +
+        '<label class="auto-case"><input type="checkbox" id="unifAuto"' + (u.auto ? ' checked' : '') + '><span>Uniformiser aussi les prochains tomes de cette série, tout seuls, dès qu\'ils arrivent</span></label></div>';
+    }
     async function unifCharger() {
       clearTimeout(suiviUnif);
       if (!$('unifZone') || !current) return;
@@ -1211,7 +1219,9 @@
       if (!$('unifZone')) return;
       if (r.error) { $('unifZone').textContent = r.error; return; }
       unif = r; unifDessiner();
-      var e = r.etat || {};
+      var e = r.etat || {}, tt = r.tout || {};
+      if (tt.en_cours) suiviUnif = setTimeout(unifCharger, 4000);
+      else if (unifToutAttend && tt.message) { unifToutAttend = false; window.MouToast && window.MouToast('🎨 ' + tt.message, tt.ok === false ? 'err' : 'ok'); }
       if (e.en_cours) suiviUnif = setTimeout(unifCharger, 2000);
       else if (unifAttend && e.message) { unifAttend = false; window.MouToast && window.MouToast('🎨 ' + e.message, 'ok'); }
     }
@@ -1219,13 +1229,17 @@
       var z = $('unifZone'), u = unif; if (!z || !u) return;
       var e = u.etat || {}, h = '';
       var boutonMesure = function (txt) { return '<div class="ident-actions"><button type="button" class="mou-btn" id="unifMesurer">' + txt + '</button></div>'; };
-      if (e.en_cours) {
+      if ((u.tout || {}).en_cours) {
+        z.innerHTML = '<div class="unif-bilan attention">🤖 ' + esc(u.tout.message || 'En cours…') + '</div><div class="dem-sous">Tu peux fermer cette fenêtre : tout continue, un message arrive à la fin.</div>' +
+          (e.en_cours ? '<progress max="' + (e.total || 1) + '" value="' + (e.fait || 0) + '" style="width:100%"></progress>' : '<progress style="width:100%"></progress>');
+      } else if (e.en_cours) {
         z.innerHTML = '<div class="dem-sous">' + esc(e.message || 'Mesure…') + ' ' + (e.fait || 0) + ' / ' + (e.total || '?') + ' tomes · tu peux fermer cette fenêtre, la mesure continue.</div>' +
           '<progress max="' + (e.total || 1) + '" value="' + (e.fait || 0) + '" style="width:100%"></progress>';
       } else if (!u.tomes.length) {
-        z.innerHTML = '<div class="dem-sous">Aucun tome mesuré. Environ une seconde par tome, rien n\'est modifié.</div>' + boutonMesure('📊 Mesurer les tomes');
+        z.innerHTML = '<div class="dem-sous">Aucun tome mesuré. Environ une seconde par tome, rien n\'est modifié.</div>' + boutonMesure('📊 Mesurer les tomes') + unifAuto(u);
       } else {
         var nb = u.tomes.length, fl = u.a_uniformiser.length;
+        h += unifAuto(u);
         h += '<div class="unif-bilan ' + (fl ? 'attention' : 'ok') + '">' + (fl ? '⚠ ' + esc(u.proposition) : '✅ Les ' + nb + ' tomes mesurés se ressemblent (même noir, même blanc, pas de teinte) : rien à uniformiser.') + '</div>';
         if (u.mesures < u.tomes_total) h += '<div class="dem-sous">' + u.mesures + ' tomes mesurés sur ' + u.tomes_total + '.</div>' + boutonMesure('📊 Mesurer les ' + (u.tomes_total - u.mesures) + ' autres');
         if (u.groupes.length > 1 && u.groupes[1].tomes.length >= 0.6 * u.groupes[0].tomes.length) h += '<div class="dem-sous">⚖ Deux familles de tomes de taille proche : choisis ci-dessous celle qui sert de référence.</div>';
@@ -1258,6 +1272,12 @@
         if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
         unifAttend = true; setTimeout(unifCharger, 600); return;
       }
+      if (e.target.closest('#unifTout')) {
+        if (!await MouConfirm('Uniformiser toute la série d\'un coup ?\n\nLes tomes qui s\'écartent des autres sont réécrits (noirs et blancs seulement). Les anciens fichiers vont à la corbeille. Ça peut durer longtemps : tu peux fermer la page.')) return;
+        var rt = await post('/api/uniformite/tout', {series: current.id});
+        if (!rt.ok) { MouAlert(rt.error || 'Impossible'); return; }
+        unifToutAttend = true; window.MouToast && window.MouToast(rt.message, 'ok'); setTimeout(unifCharger, 800); return;
+      }
       if (e.target.closest('#unifAppliquer')) {
         var f = (unif && unif.a_uniformiser) || []; if (!f.length) return;
         [].forEach.call(document.querySelectorAll('.all-coche'), function (c) { c.checked = f.indexOf(c.value) >= 0; });
@@ -1269,6 +1289,11 @@
       }
     });
     $('infosCorps').addEventListener('change', async function (e) {
+      if (e.target.id === 'unifAuto') {
+        var rau = await post('/api/uniformite', {series: current.id, action: 'auto', actif: e.target.checked});
+        if (unif) unif.auto = !!rau.auto;
+        window.MouToast && window.MouToast(rau.message || rau.error || 'Impossible', rau.ok ? 'ok' : 'err'); return;
+      }
       if (e.target.id !== 'unifRef') return;
       var r = await post('/api/uniformite', {series: current.id, action: 'reference', ref: e.target.value});
       if (r && r.tomes) { r.etat = (unif && unif.etat) || {}; unif = r; unifDessiner(); if (cmp) majComparaison(); }
@@ -2449,7 +2474,7 @@
       var z = $('gererEtat');
       if (!r.total) { z.innerHTML = '<div class="dem-sous">Aucun tome complet en .cbz dans cette série : rien à suivre tome par tome.</div>'; return; }
       var groupes = ['images', 'identite', 'fichiers'];
-      var html = '<div class="etat-detail" id="etatDetail"><span class="dem-sous">' + r.total + ' tome' + (r.total > 1 ? 's' : '') +
+      var html = blocChapitres(r) + '<div class="etat-detail" id="etatDetail"><span class="dem-sous">' + r.total + ' tome' + (r.total > 1 ? 's' : '') +
         '. Touche une case pour le détail d\'un tome, une icône de colonne pour toute la série.</span></div>';
       groupes.forEach(function (g) {
         var cols = r.etapes.filter(function (e) { return e.groupe === g; });
@@ -2468,9 +2493,29 @@
       });
       z.innerHTML = html;
     }
+    function blocChapitres(r) {                                 // 🤖 ce que l'appli a trouvé toute seule, et ce qui reste à regarder
+      var c = r.chapitres || {}, av = c.a_verifier || [], id = current.id;
+      if (!c.phrase && !c.file && !c.en_cours) return '';
+      var h = '<div class="auto-bloc"><b>' + esc(c.phrase || '📑 Chapitres') + '</b>';
+      if (c.en_cours) h += '<div class="dem-sous">🤖 En ce moment : ' + esc(c.en_cours) + '</div>';
+      else if (c.file) h += '<div class="dem-sous">🤖 ' + c.file + ' tome' + (c.file > 1 ? 's' : '') + ' en attente : ça se fait tout seul, tu peux fermer.</div>';
+      if (av.length) h += '<div class="dem-sous">À vérifier au lecteur (✅ bonne page, ou 📍 « il commence ici ») :</div><div class="auto-liens">' + av.map(function (t) {
+        return '<a class="mou-btn ghost" href="/lire?s=' + encodeURIComponent(id) + '&c=' + encodeURIComponent(t.fichier) + '&verif=1">🎯 T' + t.tome + '</a>'; }).join('') + '</div>';
+      h += '<div class="ident-actions"><button type="button" class="mou-btn" id="autoChapitres">🤖 Refaire les chapitres tout seul</button></div>' +
+        '<div class="dem-sous">Sommaire lu, place vérifiée avec les numéros de page, titres posés : deux à trois minutes par tome, en fond. Les tomes que tu as validés ou saisis ne sont jamais touchés.</div>';
+      if ((c.journal || []).length) h += '<details class="auto-journal"><summary>🤖 Fait tout seul récemment</summary>' + c.journal.map(function (j) {
+        return '<div><small>' + esc(j.date) + '</small> T' + esc(j.tome) + ' : ' + esc((j.fait || []).join(' ; ') || j.erreur || '') + (j.attend && j.attend.length ? ' <small>(à voir : ' + esc(j.attend.join(' ; ')) + ')</small>' : '') + '</div>'; }).join('') + '</details>';
+      return h + '</div>';
+    }
     function detailEtat(html) { var d = $('etatDetail'); if (d) { d.innerHTML = html; d.classList.add('actif'); } }
     $('gererEtat').addEventListener('click', async function (e) {
       var r = etatSerie[current.id]; if (!r) return;
+      if (e.target.closest('#autoChapitres')) {
+        var ra = await post('/api/series/automatiser', {series: current.id, quoi: 'chapitres'});
+        window.MouToast && window.MouToast(ra.message || ra.error || 'Impossible', ra.ok ? 'ok' : 'err');
+        if (ra.ok) gererEtat();
+        return;
+      }
       var cl = e.target.closest('.etat-case'), co = e.target.closest('.etat-col'), id = current.id;
       var cible = e.target.closest('[data-marquer]');
       if (e.target.closest('[data-vers-uniformite]')) {         // la mesure et l'uniformisation se font dans ✨ → 🎨 Uniformité
@@ -2520,6 +2565,8 @@
       if (!r || !r.total) { l.hidden = true; return; }
       var t = traitementsResume(r);
       l.hidden = !t; l.textContent = t ? '🛠 ' + t : '';
+      var ch = r.chapitres || {}, lc = $('sChapitres');
+      if (lc) { var tc = (ch.phrase || '') + (ch.en_cours ? ' · 🤖 ' + ch.en_cours : ch.file ? ' · 🤖 ' + ch.file + ' en attente' : ''); lc.hidden = !tc; lc.textContent = tc; }
       document.querySelectorAll('#chapters [data-tinfo]').forEach(function (el) {        // en-tête d'un groupe « Tome NN » ou ligne d'un tome complet
         var tome = r.tomes.filter(function (x) { return x.tome === parseInt(el.dataset.tinfo, 10); })[0];
         var groupe = el.closest('.tome-titre'), ligne = el.closest('.chap');
@@ -2528,9 +2575,11 @@
         var vieux = hote.querySelector('.trt'); if (vieux) vieux.remove();
         if (!tome) return;
         var faits = Object.keys(ICONES_IMAGES).filter(function (k) { return (tome.cases[k] || {}).etat === 'fait'; });
-        if (!faits.length) return;
-        var sp = document.createElement('small'); sp.className = 'trt'; sp.textContent = faits.map(function (k) { return ICONES_IMAGES[k]; }).join('');
-        sp.title = faits.map(function (k) { return ICONES_IMAGES[k] + ' ' + texteCase(tome.cases[k]); }).join('\n');
+        var conf = (ch.par_tome || {})[String(tome.tome)], past = conf && conf.niveau !== 'aucun' ? conf.pastille : '';
+        if (!faits.length && !past) return;
+        var sp = document.createElement('small'); sp.className = 'trt'; sp.textContent = (past ? past + ' ' : '') + faits.map(function (k) { return ICONES_IMAGES[k]; }).join('');
+        sp.title = (past ? 'Chapitres : ' + conf.libelle + (conf.raisons && conf.raisons.length ? ' (' + conf.raisons.join(' ; ') + ')' : '') + '\n' : '') +
+          faits.map(function (k) { return ICONES_IMAGES[k] + ' ' + texteCase(tome.cases[k]); }).join('\n');
         hote.appendChild(sp);
       });
     }
@@ -2547,6 +2596,7 @@
     window.MFGerer = {ouvrir: ouvrirGerer};
     $('sGerer').addEventListener('click', function () { fermerMenus(); ouvrirGerer(); });
     $('sTraitements').addEventListener('click', function () { ouvrirGerer('etat'); });
+    $('sChapitres').addEventListener('click', function () { ouvrirGerer('etat'); });
     $('gererFermer').addEventListener('click', fermerGerer);
     $('gererVue').addEventListener('click', function (e) {
       if (e.target === $('gererVue')) { fermerGerer(); return; }
