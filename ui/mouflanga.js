@@ -122,6 +122,7 @@
     var filtre = choixFiltre.lecture || choixFiltre.parution || choixFiltre.univers || lettre;
     $('filtreResume').hidden = !filtre || !series.length;
     $('filtreResume').innerHTML = list.length + ' série' + (list.length > 1 ? 's' : '') + ' · <button type="button" id="filtreRaz">✕ Tout remettre</button>';
+    dessinerReprendre(!!filtre || !!$('search').value.trim());
     if (!series.length) { $('grid').innerHTML = ''; return; }
     if (!list.length) {
       var quoi = [choixFiltre.lecture && libelle('lecture').toLowerCase(), choixFiltre.parution && libelle('parution').toLowerCase(), choixFiltre.univers && 'dans l\'univers « ' + choixFiltre.univers + ' »'].filter(Boolean).join(' et ');
@@ -135,6 +136,19 @@
     grilleRendu = 0;
     $('grid').innerHTML = '';
     grilleSuite(Math.max(rendu, GRILLE_PAGE));
+  }
+
+  // « Reprendre la lecture » : les séries commencées et pas finies, la dernière lue d'abord (cachée pendant une recherche ou un filtre)
+  function dessinerReprendre(cache) {
+    var z = $('reprendre'); if (!z) return;
+    var l = cache ? [] : series.filter(function (s) { return s.last_read && !s.recherchee && s.read < s.chapters; })
+      .sort(function (a, b) { return (b.last_read || '').localeCompare(a.last_read || ''); }).slice(0, 10);
+    z.hidden = !l.length;
+    z.innerHTML = l.length ? '<h3>▶ Reprendre la lecture</h3><div class="rep-rang">' + l.map(function (s) {
+      var pct = s.chapters ? Math.round(100 * s.read / s.chapters) : 0;
+      return '<div class="card rep" tabindex="0" data-id="' + esc(s.id) + '"><img class="cv" loading="lazy" alt="" src="' + esc(s.cover) + '">' +
+        '<div class="nm">' + esc(s.title) + '</div><div class="bar"><i style="width:' + Math.max(pct, 3) + '%"></i></div></div>';
+    }).join('') + '</div>' : '';
   }
 
   function carteGrille(s) {
@@ -500,7 +514,40 @@
       var actuel = s.chapters.find(function (c) { return c.key === s.current; }) || s.chapters.find(function (c) { return !c.read; }) || {};
       tomesOuverts[s.id] = {}; tomesOuverts[s.id][actuel.groupe || ''] = true;
     }
-    $('chapters').innerHTML = groupes.map(function (g) {
+    // Couvertures des tomes : une carte par tome (groupe « Tome NN » ou fichier d'un tome entier) ; le reste (hors-série, chapitres seuls) en liste
+    var cartes = [], reste = [];
+    groupes.forEach(function (g) {
+      if (/^Tome \d+/.test(g.nom)) cartes.push({n: parseInt(g.nom.slice(5), 10), titre: g.titre, chapitres: g.chapitres});
+      else if (!g.nom) {
+        var seuls = [];
+        g.chapitres.forEach(function (c) {
+          if (c.tome != null && c.hs == null) cartes.push({n: c.tome, titre: c.sous || '', chapitres: [c]});
+          else seuls.push(c);
+        });
+        if (seuls.length) reste.push({nom: '', titre: '', chapitres: seuls});
+      } else reste.push(g);
+    });
+    var vueGrille = cartes.length > 0 && pref('mfVueTomes', 'grille') === 'grille';
+    function carteTome(t) {
+      var lus = t.chapitres.filter(function (c) { return c.read; }).length, total = t.chapitres.length;
+      var cur = t.chapitres.find(function (c) { return c.key === s.current; });
+      var cible = cur || t.chapitres.find(function (c) { return !c.read; }) || t.chapitres[0];
+      var fini = lus === total, pct = cur && s.page_pct ? Math.max(4, s.page_pct) : Math.round(100 * lus / total);
+      return '<div class="tcarte' + (fini ? ' lu' : '') + (cur ? ' cur' : '') + '" role="button" tabindex="0" data-path="' + esc(cible.key) + '" aria-label="Lire le tome ' + t.n + '">' +
+        '<div class="tc-img"><img loading="lazy" alt="" src="/api/tome/couverture?id=' + encodeURIComponent(s.id) + '&tome=' + t.n + '">' +
+        (fini ? '<span class="tc-etat">✔</span>' : cur ? '<span class="tc-etat cours">▶ en cours</span>' : '') +
+        '<button type="button" class="tc-info' + (t.chapitres.some(function (c) { return c.titres_ch; }) ? ' vert' : '') + '" data-tinfo="' + t.n + '" title="Infos du tome" aria-label="Infos du tome ' + t.n + '">i</button></div>' +
+        '<div class="tc-nom"><b>Tome ' + t.n + '</b></div>' +
+        (t.titre ? '<div class="tc-titre">' + esc(t.titre) + '</div>' : '') +
+        '<div class="bar"><i style="width:' + (fini ? 100 : pct) + '%"></i></div></div>';
+    }
+    var entete = cartes.length ? '<div class="vue-tomes"><span>' + cartes.length + ' tome' + (cartes.length > 1 ? 's' : '') + '</span>' +
+      '<span class="vt-choix"><button type="button" data-vue-tomes="grille" class="' + (vueGrille ? 'actif' : '') + '" aria-pressed="' + vueGrille + '">▦ Couvertures</button>' +
+      '<button type="button" data-vue-tomes="liste" class="' + (vueGrille ? '' : 'actif') + '" aria-pressed="' + !vueGrille + '">☰ Liste</button></span></div>' : '';
+    if (vueGrille) groupes = reste;
+    $('chapters').classList.toggle('en-grille', vueGrille);
+    $('seriesView').style.setProperty('--fond', 'url("' + $('sCover').src.replace(/"/g, '%22') + '")');
+    $('chapters').innerHTML = entete + (vueGrille ? '<div class="tomes-grille">' + cartes.map(carteTome).join('') + '</div>' : '') + groupes.map(function (g) {
       if (!g.nom) return g.chapitres.map(ligne).join('');
       var lus = g.chapitres.filter(function (c) { return c.read; }).length, ouvert = !!tomesOuverts[s.id][g.nom];
       var cur = g.chapitres.some(function (c) { return c.key === s.current; });
@@ -651,6 +698,10 @@
       if (c.dataset.recherchee) location.href = '/telecharger?torrent=' + encodeURIComponent(c.dataset.id) + '&serie=' + encodeURIComponent(c.dataset.id);
       else openSeries(c.dataset.id);
     }
+    if ($('reprendre')) {
+      $('reprendre').addEventListener('click', function (e) { var c = e.target.closest('.card'); if (c) ouvrirCarte(c); });
+      $('reprendre').addEventListener('keydown', function (e) { var c = e.target.closest('.card'); if (c && e.key === 'Enter') ouvrirCarte(c); });
+    }
     $('grid').addEventListener('click', async function (e) {
       var fv = e.target.closest('[data-favori]');
       if (fv) {                                             // ⭐ cocher / décocher sans ouvrir la série
@@ -675,7 +726,15 @@
     $('grid').addEventListener('keydown', function (e) { if (e.key === 'Enter') { if (e.target.closest('[data-favori]')) return; var c = e.target.closest('.card'); if (c) ouvrirCarte(c); } });
     $('backList').addEventListener('click', function (e) { e.preventDefault(); history.pushState({}, '', location.pathname); showList(); });
     $('sResume').addEventListener('click', function () { if ($('sResume').dataset.path) readChapter($('sResume').dataset.path); });
+    $('chapters').addEventListener('keydown', function (e) {
+      var tc = e.target.closest('.tcarte');
+      if (tc && e.key === 'Enter' && !e.target.closest('[data-tinfo]')) readChapter(tc.dataset.path);
+    });
     $('chapters').addEventListener('click', async function (e) {
+      var vt = e.target.closest('[data-vue-tomes]');
+      if (vt) { setPref('mfVueTomes', vt.dataset.vueTomes); drawSeries(); return; }
+      var tca = e.target.closest('.tcarte');
+      if (tca) { if (!e.target.closest('[data-tinfo]')) readChapter(tca.dataset.path); return; }
       var tt = e.target.closest('[data-tome]');
       if (tt) {
         var bloc = tt.parentElement, ouvert = !bloc.classList.contains('ouvert');
@@ -2570,7 +2629,8 @@
       document.querySelectorAll('#chapters [data-tinfo]').forEach(function (el) {        // en-tête d'un groupe « Tome NN » ou ligne d'un tome complet
         var tome = r.tomes.filter(function (x) { return x.tome === parseInt(el.dataset.tinfo, 10); })[0];
         var groupe = el.closest('.tome-titre'), ligne = el.closest('.chap');
-        var hote = groupe ? groupe.querySelector('.tn') : ligne && ligne.querySelector('.ct');
+        var carte = el.closest('.tcarte');
+        var hote = carte ? carte.querySelector('.tc-nom') : groupe ? groupe.querySelector('.tn') : ligne && ligne.querySelector('.ct');
         if (!hote) return;
         var vieux = hote.querySelector('.trt'); if (vieux) vieux.remove();
         if (!tome) return;
@@ -2658,6 +2718,7 @@
   function showList() { arreterGenerique(); $('seriesView').style.display = 'none'; $('listView').style.display = ''; loadList(); verifierChoix(); }
   // Bandeau : les tâches qui attendent un choix (remplacer tout / ajouter les manquants) — admin seulement
   async function verifierChoix() {
+    if (document.body.classList.contains('lecteur')) return;
     try {
       var r = await (await fetch('/api/torrents?leger=1')).json();
       var n = (r.torrents || []).filter(function (t) { return t.etat === 'a_valider'; }).length;
