@@ -4590,6 +4590,7 @@ import couvertures_tomes
 import hors_serie
 import provenance
 import regles
+import regles_simples
 import torrents
 torrents._ETAT["fichier"] = DATA_DIR / "torrents.json"
 
@@ -7687,7 +7688,7 @@ def verification():
 @app.route("/regles")
 def page_regles():
     """📏 Règles de recherche (admin) : profils de version et formats personnalisés, comme dans Sonarr."""
-    onglet = request.args.get("onglet") if request.args.get("onglet") in ("formats", "tester", "sources") else "profils"
+    onglet = request.args.get("onglet") if request.args.get("onglet") in ("profils", "formats", "tester", "sources") else "simple"
     edit = request.args.get("edit", "")
     cle = "profils" if onglet == "profils" else "formats"
     modif = next((x for x in regles.profils() if x["id"] == edit), None) if edit and cle == "profils" else None
@@ -7698,7 +7699,42 @@ def page_regles():
                            formats=regles.formats(), modif=modif, types_conditions=regles.TYPES, toutes_series=sorted((n for n in _scan() if n != "(Sans série)"), key=str.lower),
                            cle_gb=("…" + cle[-4:]) if len(cle) >= 8 else "",
                            cle_claude=("…" + os.getenv("CLAUDE_API_KEY", "").strip()[-4:]) if len(os.getenv("CLAUDE_API_KEY", "").strip()) >= 8 else "",
+                           simple=regles_simples.etat() if onglet == "simple" else None, phrase_simple=regles_simples.phrase,
                            ok=request.args.get("ok", ""), erreur=request.args.get("erreur", ""))
+
+
+@app.route("/regles/simple", methods=["POST"])
+def regles_simple():
+    """✨ Préférences simples : les choix en clair deviennent le profil général (les autres profils généraux sont désactivés, gardés)."""
+    f = request.form
+    try:
+        b = regles_simples.enregistrer({"francais": f.get("francais"), "officiel": bool(f.get("officiel")), "integrale": bool(f.get("integrale")),
+                                        "pdf": bool(f.get("pdf")), "sans_source": bool(f.get("sans_source")),
+                                        "taille_max_go": f.get("taille_max_go", ""), "equipes_plus": f.get("equipes_plus", ""),
+                                        "equipes_moins": f.get("equipes_moins", "")})
+    except ValueError as e:
+        return redirect("/regles?erreur=" + quote(str(e)))
+    msg = "Préférences enregistrées : les prochaines recherches en tiennent compte."
+    if b["desactives"]:
+        msg += " Désactivé (gardé dans l'onglet Profils) : " + ", ".join(b["desactives"]) + "."
+    logger.info("Règles simples enregistrées (profils généraux désactivés : %s)", ", ".join(b["desactives"]) or "aucun")
+    return redirect("/regles?ok=" + quote(msg))
+
+
+@app.route("/regles/simple/serie", methods=["POST"])
+def regles_simple_serie():
+    """✨ Une série préfère une équipe (ou ne la préfère plus)."""
+    f = request.form
+    try:
+        if f.get("retirer"):
+            regles_simples.retirer_serie(f.get("retirer", ""))
+            msg = "Retiré : cette série suit de nouveau tes préférences générales."
+        else:
+            regles_simples.regler_serie(f.get("serie", ""), f.get("equipe", ""))
+            msg = f"Noté : pour « {f.get('serie', '').strip()} », les torrents de {f.get('equipe', '').strip()} passent en premier."
+    except ValueError as e:
+        return redirect("/regles?erreur=" + quote(str(e)) + "#series")
+    return redirect("/regles?ok=" + quote(msg) + "#series")
 
 
 _CLE_GOOGLE_RE = re.compile(r"^[A-Za-z0-9_-]{20,128}$")
@@ -7803,7 +7839,9 @@ def regles_modeles():
 @app.route("/telecharger")
 def telecharger():
     """Page de téléchargement de mangas depuis Japscan."""
-    return render_template("telecharger.html", version=APP_VERSION)
+    e = regles_simples.etat()
+    return render_template("telecharger.html", version=APP_VERSION,
+                           preferences=regles_simples.phrase(e["prefs"]) if e["actif"] else "")
 
 
 # ----------------------------------------------------------------------------

@@ -42,18 +42,19 @@
         $("tor-refuses-n").textContent = nb ? " (" + nb + ")" : "";
         $("tor-refuses-bloc").hidden = !nb;
         const liste = res.map((x, i) => [x, i]).filter(([x]) => montrer || !x.rejet);
+        const meilleur = res.findIndex(x => !x.rejet && !x.deja && x.sources > 0);      // la liste arrive triée : le premier acceptable est le meilleur
         const plage = a => { const o = []; for (let i = 0; i < a.length; i++) { let j = i; while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++; o.push(i === j ? "T" + a[i] : "T" + a[i] + "–T" + a[j]); i = j; } return o.join(", "); };
         const compare = x => !x.tomes ? "" : x.deja ? `<small class="tor-deja">✅ Déjà dans ta bibliothèque (${plage(x.tomes)})</small>` : `<small class="tor-nouveau">🆕 Apporte ${plage(x.nouveaux)}</small>`;
         $("tor-res").innerHTML = (bib ? `<div class="note">Comparé à ta bibliothèque : « ${esc(bib.serie)} » (${bib.possedes} tomes).</div>` : "") + (liste.length ? liste.map(([x, i]) => `<div class="tor-res${x.rejet ? " refuse" : ""}${x.deja ? " deja" : ""}" data-i="${i}">
             <div class="tor-info"><b>${x.score ? `<em class="tor-score">${x.assez_bon ? "⭐ " : ""}${x.score > 0 ? "+" : ""}${x.score}</em> ` : ""}${esc(x.titre)}</b>
             <small>${taille(x.taille)} · <span class="${x.sources ? "" : "tor-zero"}">${x.sources} source${x.sources > 1 ? "s" : ""}</span> · ${esc(x.indexeur)}${x.date ? " · " + esc(x.date) : ""}</small>
-            ${compare(x)}
-            ${x.rejet ? `<small class="tor-raison">❌ Refusé par ton profil : ${esc(x.rejet)}</small>` : ""}
+            ${i === meilleur && liste.length > 1 ? '<small class="tor-meilleur">⭐ Le meilleur choix</small>' : ""}${compare(x)}
+            ${x.rejet ? `<small class="tor-raison">❌ Refusé : ${esc(x.rejet)}</small>` : ""}
             <span class="tor-badges">${x.badges.map(b => `<i>${esc(b)}</i>`).join("")}${(x.formats || []).map(f => `<i class="fmt">${esc(f)}</i>`).join("")}</span></div>
             <div class="tor-act">${x.page ? `<a class="mou-btn ghost small" href="${esc(x.page)}" target="_blank" rel="noopener noreferrer" title="Voir sur le site">🔗</a>
             <button type="button" class="mou-btn ghost small" data-lire-page="${i}" title="Lire la présentation et le NFO sur le tracker">📄</button>` : ""}
             <button type="button" class="mou-btn small" data-choisir="${i}">⬇️</button></div></div>`).join("")
-            : '<div class="loading">' + (res.length ? "Tout est refusé par ton profil : coche « Montrer les refusés »." : "Rien trouvé. Essaie un autre nom, ou coche « toutes les catégories ».") + "</div>");
+            : '<div class="loading">' + (res.length ? "Tous les torrents trouvés sont refusés par tes préférences : coche « Montrer aussi les torrents refusés » pour voir pourquoi." : "Rien trouvé. Essaie un autre nom, ou coche « toutes les catégories ».") + "</div>");
     }
     document.addEventListener("click", async e => {
         const lp = e.target.closest("[data-lire-page]");

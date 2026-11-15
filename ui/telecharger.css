@@ -23,7 +23,8 @@
 }
 
 .tab.active {
-    color: var(--accent);
+    color: var(--text);
+    font-weight: 700;
     border-bottom-color: var(--accent);
 }
 
@@ -399,3 +400,13 @@ body.mou-skin .serie-ligne { background: none; color: var(--text, #eee); font-we
 .tor-choix { flex-basis:100%; display:flex; gap:8px; flex-wrap:wrap; }
 .tor-ligne.a_valider span { color:#ffb74d; }
 .tor-toujours { display:flex; gap:8px; align-items:center; font-size:.85rem; margin-top:4px; }
+
+/* Onglet Torrents simplifié : préférences en clair, options rares repliées, meilleur choix signalé */
+.tor-prefs { font-size:.88rem; line-height:1.45; color:var(--muted, #aaa); border:1px solid var(--border, #2c2f36); border-radius:10px; padding:9px 12px; margin:4px 0 10px; }
+.tor-prefs b { color:var(--text, #eee); }
+.tor-prefs a { white-space:nowrap; font-weight:600; }
+.tor-plus { border:1px solid var(--border, #2c2f36); border-radius:10px; margin:0 0 10px; padding:0 12px; }
+.tor-plus summary { cursor:pointer; padding:11px 0; font-size:.9rem; color:var(--muted, #aaa); }
+.tor-plus[open] summary { color:var(--text, #eee); }
+.tor-plus .sub { margin-top:0; }
+.tor-meilleur { display:inline-block !important; width:fit-content; align-self:flex-start; color:#0b0c0e !important; background:var(--accent, #52b54b); font-weight:700; border-radius:9px; padding:1px 9px; margin:3px 0; }

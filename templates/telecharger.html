@@ -126,10 +126,16 @@
                 <div id="tor-config" class="tor-config" hidden>Prowlarr et qBittorrent ne sont pas encore réglés : <a href="/reglages#connexions">⚙️ Réglages → Connexions</a>.</div>
                 <div class="recherche-manga"><input type="search" id="tor-q" placeholder="🔍 Nom du manga (ex. Air Gear intégrale)…" autocomplete="off" spellcheck="false" enterkeyhint="search">
                     <button type="button" class="mou-btn" id="tor-go">Chercher</button></div>
-                <label class="tor-tout"><input type="checkbox" id="tor-tout"> Chercher dans toutes les catégories (si rien n'est trouvé en livres/BD)</label>
-                <label class="tor-tout" id="tor-refuses-bloc" hidden><input type="checkbox" id="tor-refuses"> Montrer les refusés par mon profil<span id="tor-refuses-n"></span></label>
-                <div class="recherche-manga tor-auto"><input type="text" id="tor-auto-serie" list="tor-series" placeholder="🤖 Série à compléter toute seule…" autocomplete="off" autocapitalize="words">
-                    <button type="button" class="mou-btn" id="tor-auto-go">Voir ce qui serait téléchargé</button></div>
+                <div class="tor-prefs">{% if preferences %}⭐ <b>Tes préférences :</b> {{ preferences }} <a href="/regles">⚙️ Modifier</a>{% else %}<a href="/regles">✨ Régler mes préférences</a> (français, édition officielle, équipes…) pour que le meilleur torrent soit choisi tout seul.{% endif %}</div>
+                <label class="tor-tout" id="tor-refuses-bloc" hidden><input type="checkbox" id="tor-refuses"> Montrer aussi les torrents refusés<span id="tor-refuses-n"></span></label>
+                <details class="tor-plus"><summary>Rien trouvé ? Chercher plus large</summary>
+                    <label class="tor-tout"><input type="checkbox" id="tor-tout"> Chercher dans toutes les catégories (pas seulement livres et BD)</label>
+                </details>
+                <details class="tor-plus"><summary>🤖 Compléter une série toute seule</summary>
+                    <p class="sub">Choisis une série : l'appli montre les tomes qui te manquent et ce qu'elle téléchargerait. Rien ne part sans ton accord.</p>
+                    <div class="recherche-manga tor-auto"><input type="text" id="tor-auto-serie" list="tor-series" placeholder="Nom de la série…" autocomplete="off" autocapitalize="words">
+                        <button type="button" class="mou-btn" id="tor-auto-go">Voir ce qui serait téléchargé</button></div>
+                </details>
                 <div id="tor-auto-res"></div>
                 <datalist id="tor-series"></datalist>
                 <div id="tor-res"></div>

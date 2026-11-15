@@ -46,6 +46,19 @@
         .msg { padding: 10px 12px; border-radius: 8px; margin: 10px 0; }
         .msg.ok { background: #14291a; color: #9be3a6; border: 1px solid #2f6b3a; }
         .msg.err { background: #2a1416; color: #ffb4b4; border: 1px solid #6b2f35; }
+        .regles-onglets.avance { margin-top: -6px; align-items: center; font-size: 0.9em; }
+        .regles-onglets.avance span { color: #888; }
+        .regles-onglets.avance a { padding: 7px 11px; }
+        .simple-etat { border: 1px solid #2c2f36; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; background: #17181c; line-height: 1.5; }
+        .simple-etat.ok { border-color: var(--accent); }
+        .simple-etat small { color: #aaa; }
+        .formulaire.simple h2 { margin: 18px 0 8px; font-size: 1.05em; }
+        .formulaire.simple h2:first-child { margin-top: 0; }
+        .choix { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid #2c2f36; border-radius: 10px; margin: 8px 0; cursor: pointer; background: #0f1012; }
+        .choix input { width: 22px; height: 22px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+        .choix span { display: block; }
+        .choix small { display: block; color: #aaa; margin-top: 3px; line-height: 1.4; }
+        .choix:has(input:checked) { border-color: var(--accent); }
     </style>
 <link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
@@ -60,13 +73,81 @@
         {% if erreur %}<div class="msg err" role="alert">{{ erreur }}</div>{% endif %}
 
         <nav class="regles-onglets">
-            <a href="/regles?onglet=profils" class="{{ 'actif' if onglet == 'profils' }}">🧾 Profils de version</a>
-            <a href="/regles?onglet=formats" class="{{ 'actif' if onglet == 'formats' }}">🏷 Formats personnalisés</a>
-            <a href="/regles?onglet=tester" class="{{ 'actif' if onglet == 'tester' }}">🧪 Tester</a>
+            <a href="/regles" class="{{ 'actif' if onglet == 'simple' }}">✨ Mes préférences</a>
+            <a href="/regles?onglet=tester" class="{{ 'actif' if onglet == 'tester' }}">🧪 Essayer</a>
             <a href="/regles?onglet=sources" class="{{ 'actif' if onglet == 'sources' }}">🔑 Sources</a>
         </nav>
+        <nav class="regles-onglets avance">
+            <span>Réglages avancés :</span>
+            <a href="/regles?onglet=profils" class="{{ 'actif' if onglet == 'profils' }}">🧾 Profils</a>
+            <a href="/regles?onglet=formats" class="{{ 'actif' if onglet == 'formats' }}">🏷 Formats</a>
+        </nav>
 
-        {% if onglet == 'profils' %}
+        {% if onglet == 'simple' %}
+            {% set p = simple.prefs %}
+            {% if simple.actif %}
+                <div class="simple-etat ok">✅ Tes préférences servent pour toutes les recherches.<br><small>{{ phrase_simple(p) }}</small></div>
+            {% elif simple.general %}
+                <div class="simple-etat">Aujourd'hui, c'est le profil « <b>{{ simple.general }}</b> » (onglet Profils) qui décide. Les choix ci-dessous lui ressemblent : en les enregistrant, ils le remplacent. Il sera <b>désactivé mais gardé</b>, tu pourras le réactiver.</div>
+            {% else %}
+                <div class="simple-etat">Aucune préférence pour l'instant : tous les torrents trouvés sont proposés. Coche ce que tu veux puis enregistre.</div>
+            {% endif %}
+            <form class="formulaire simple" method="post" action="/regles/simple">
+                <h2>🇫🇷 Langue</h2>
+                <label class="choix"><input type="radio" name="francais" value="obligatoire" {{ 'checked' if p.francais == 'obligatoire' }}> <span><b>Seulement en français</b><small>Un torrent sans aucun indice de français (FR, French, « Tome », équipe française) est refusé.</small></span></label>
+                <label class="choix"><input type="radio" name="francais" value="prefere" {{ 'checked' if p.francais == 'prefere' }}> <span><b>Le français d'abord</b><small>Ceux sans indice sont proposés aussi, après les autres.</small></span></label>
+                <p class="aide">Dans les deux cas, l'anglais et la version originale ne sont jamais pris.</p>
+
+                <h2>📚 Ce que je préfère</h2>
+                <label class="choix"><input type="checkbox" name="officiel" value="1" {{ 'checked' if p.officiel }}> <span><b>L'édition numérique officielle</b><small>Passe avant un scan du même tome.</small></span></label>
+                <label class="choix"><input type="checkbox" name="integrale" value="1" {{ 'checked' if p.integrale }}> <span><b>Une intégrale</b><small>Passe avant les tomes un par un.</small></span></label>
+
+                <h2>🚫 Ce que je refuse</h2>
+                <label class="choix"><input type="checkbox" name="pdf" value="1" {{ 'checked' if p.pdf }}> <span><b>Accepter les PDF</b><small>Décoché : un torrent en PDF est refusé.</small></span></label>
+                <label class="choix"><input type="checkbox" name="sans_source" value="1" {{ 'checked' if p.sans_source }}> <span><b>Accepter un torrent que personne ne partage</b><small>Décoché : il faut au moins une source (sinon le téléchargement ne démarre jamais).</small></span></label>
+                <label for="staille">Taille maximale d'un torrent, en Go (vide = pas de limite)</label>
+                <input type="number" id="staille" name="taille_max_go" step="0.1" min="0" inputmode="decimal" value="{{ '%g'|format(p.taille_max_go) if p.taille_max_go else '' }}">
+
+                <h2>👥 Équipes</h2>
+                <label for="splus">Mes équipes préférées (toujours en tête)</label>
+                <input type="text" id="splus" name="equipes_plus" value="{{ p.equipes_plus|join(', ') }}" placeholder="ex. PapriKa, Neo Rip Club" autocomplete="off" spellcheck="false">
+                <label for="smoins">Équipes dont je ne veux pas</label>
+                <input type="text" id="smoins" name="equipes_moins" value="{{ p.equipes_moins|join(', ') }}" placeholder="vide = aucune" autocomplete="off" spellcheck="false">
+                {% if simple.equipes %}<p class="aide">Équipes déjà connues : {{ simple.equipes|join(', ') }}. Sépare les noms par une virgule ; écris-les comme dans le nom des torrents.</p>{% endif %}
+
+                <button type="submit">💾 Enregistrer mes préférences</button>
+            </form>
+
+            <h2 id="series">⭐ Une équipe préférée pour une série</h2>
+            <p class="note">Pour cette série seulement, les torrents de cette équipe passent devant tout le reste (les autres restent acceptés, avec tes préférences).</p>
+            {% for x in simple.series %}
+                <div class="regle"><div class="nom">{{ x.serie }}</div><div class="detail">Équipe préférée : <b>{{ x.equipe }}</b></div>
+                    <div class="actions"><form method="post" action="/regles/simple/serie" style="margin:0" data-confirme="Ne plus préférer {{ x.equipe }} pour « {{ x.serie }} » ?">
+                        <input type="hidden" name="retirer" value="{{ x.id }}"><button type="submit">🗑 Retirer</button></form></div></div>
+            {% endfor %}
+            {% if simple.enregistre %}
+            <form class="formulaire simple" method="post" action="/regles/simple/serie">
+                <label for="sserie">Série</label>
+                <input type="text" id="sserie" name="serie" list="sseries" required autocomplete="off" autocapitalize="words" placeholder="Nom de la série">
+                <datalist id="sseries">{% for n in toutes_series %}<option value="{{ n }}">{% endfor %}</datalist>
+                <label for="sequipe">Équipe</label>
+                <input type="text" id="sequipe" name="equipe" list="sequipes" required autocomplete="off" spellcheck="false" placeholder="ex. Neo Rip Club">
+                <datalist id="sequipes">{% for n in simple.equipes %}<option value="{{ n }}">{% endfor %}</datalist>
+                <button type="submit">➕ Ajouter</button>
+            </form>
+            {% else %}
+            <p class="note">Enregistre d'abord tes préférences ci-dessus pour pouvoir ajouter une série ici.</p>
+            {% endif %}
+            {% if simple.a_la_main %}
+            <h2>🧾 Séries réglées autrement</h2>
+            <p class="note">Ces séries ont leur propre règle, qui passe avant tes préférences. Elles se modifient dans l'onglet <a href="/regles?onglet=profils">Profils</a>.</p>
+            {% for x in simple.a_la_main %}
+                <div class="regle"><div class="nom">{{ x.nom }}{% if x.auto %} <span class="off">(tenu à jour tout seul)</span>{% endif %}</div><div class="detail">{{ x.series|join(', ') }}</div></div>
+            {% endfor %}
+            {% endif %}
+        {% endif %}
+
+        {% if onglet == 'simple' %}{% elif onglet == 'profils' %}
             <p class="note">Un profil <b>refuse</b> les torrents qui ne respectent pas ses conditions, et donne des <b>points</b> à chaque format reconnu. Comme dans Sonarr, <b>un seul profil</b> sert pour une série : celui qui la nomme, sinon le profil général (sans série). Sans série indiquée, il vaut pour toutes les séries. Les conditions « doit contenir » se valident si le titre contient <b>au moins un</b> des mots ; « ne doit pas contenir » refuse le torrent dès qu'un mot est présent. Ne compte pas les majuscules.</p>
             {% for p in profils %}
                 <div class="regle">

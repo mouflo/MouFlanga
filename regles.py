@@ -240,6 +240,8 @@ def profil_pour(serie: str = ""):
 def _points(f: dict, profil) -> int:
     if profil and f["id"] in (profil.get("scores") or {}):
         return profil["scores"][f["id"]]
+    if profil and (profil.get("simple") or profil.get("simple_serie")):
+        return 0                                # préférences simples : seuls les points écrits dans le profil comptent
     return f.get("score", 0)
 
 
@@ -291,6 +293,9 @@ def filtrer(resultats: list[dict], serie: str = "", avec_rejets: bool = False, p
         r["score"] = score
         r["formats"] = [f["nom"] for f in trouves]
         r["rejet"] = _refus(profil, r, score) if profil else ""
+        if r["rejet"]:
+            import regles_simples                 # import tardif : regles_simples importe regles
+            r["rejet"] = regles_simples.raison_claire(profil, r, r["rejet"])
         if not r["rejet"] and pas_un_manga(r.get("titre")):
             r["rejet"] = "pas un manga (audio ou vidéo) : jamais pris"
         if not r["rejet"] and est_anglais(r.get("titre")):
