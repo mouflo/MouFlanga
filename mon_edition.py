@@ -7,7 +7,9 @@ du torrent d'où le tome est venu (C411, TR4KER… : « ISBN : 9782344060483 » 
 page d'un éditeur, les ISBN des tomes doivent être ceux de cette édition, sinon on refuse (ce n'est pas la bonne).
 Rien n'est écrit ici : app.py enregistre (edition.ecrire) ; ce module lit, compare et décide.
 """
+import os
 import re
+import subprocess
 import zipfile
 from pathlib import Path
 
@@ -126,8 +128,23 @@ SEUIL_DECOUPAGE = 1.7              # au-delà (ou en deçà de l'inverse) le nom
 _PAGES = {}                        # (chemin, taille, date) → nombre de pages : un tome n'est ouvert qu'une fois tant qu'il ne change pas
 
 
+def _noms_archive(p: Path) -> list:
+    """Noms des fichiers d'une archive, sans l'extraire : le catalogue du zip (.cbz) ou, quand ce n'en est pas un (.cbr = RAR, .cb7), `bsdtar -tf`,
+    l'outil que l'importation utilise déjà. [] si l'archive est illisible ou si l'outil manque."""
+    try:
+        with zipfile.ZipFile(p) as z:
+            return z.namelist()
+    except (zipfile.BadZipFile, OSError):
+        pass
+    try:       # UTF-8 : en langue « C », bsdtar saute les noms accentués
+        r = subprocess.run(["bsdtar", "-tf", str(p)], capture_output=True, text=True, timeout=120, env={**os.environ, "LC_ALL": "C.UTF-8"})
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return r.stdout.splitlines() if r.returncode == 0 else []
+
+
 def nb_pages(chemin):
-    """Nombre de pages (images) d'un tome .cbz, lu dans le catalogue du fichier sans l'extraire ; None si ce n'est pas lisible."""
+    """Nombre de pages (images) d'un tome .cbz ou .cbr, lu dans le catalogue du fichier sans l'extraire ; None si ce n'est pas lisible."""
     p = Path(chemin)
     try:
         st = p.stat()
@@ -135,11 +152,7 @@ def nb_pages(chemin):
         return None
     cle = (str(p), st.st_size, int(st.st_mtime))
     if cle not in _PAGES:
-        try:
-            with zipfile.ZipFile(p) as z:
-                n = sum(1 for nom in z.namelist() if nom.lower().endswith(IMAGES))
-        except (zipfile.BadZipFile, OSError):
-            n = 0
+        n = sum(1 for nom in _noms_archive(p) if nom.lower().endswith(IMAGES))
         if len(_PAGES) > 3000:
             _PAGES.clear()
         _PAGES[cle] = n or None

@@ -8273,7 +8273,7 @@ def _decoupage_different(nom, source, job=None):
             tome_job, isbn_job = int(p["tomes"][0]), mon_edition.isbn13_dans(p.get("presentation") or "")
     out = []
     for f in torrents.fichiers_du_torrent(Path(source)):
-        if torrents.suffixe(f) not in (".cbz", ".zip"):
+        if torrents.suffixe(f) not in (".cbz", ".zip", ".cbr"):          # .cbr : pages comptées par bsdtar (mon_edition.nb_pages)
             continue
         t = _numero_tome(torrents.nom_sans_ext(f))
         ancien = tomes_cbz.fichier_tome(dossier, nom, t) if t is not None else None

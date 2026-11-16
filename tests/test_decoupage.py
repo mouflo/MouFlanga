@@ -33,6 +33,32 @@ class TestPages(unittest.TestCase):
             self.assertIsNone(mon_edition.nb_pages(Path(t) / "b.cbz"))
             self.assertIsNone(mon_edition.nb_pages(Path(t) / "absent.cbz"))
 
+    def test_un_cbr_est_compte_avec_bsdtar(self):
+        import io
+        import tarfile
+        import shutil
+        if not shutil.which("bsdtar"):
+            self.skipTest("bsdtar absent")
+        with tempfile.TemporaryDirectory() as t:
+            f = Path(t) / "t01.cbr"
+            with tarfile.open(f, "w") as tar:                 # pas un zip : seul bsdtar le lit (comme un vrai RAR)
+                for i in range(7):
+                    info = tarfile.TarInfo(f"é{i:03d}.jpg"); info.size = 1
+                    tar.addfile(info, io.BytesIO(b"x"))
+                info = tarfile.TarInfo("ComicInfo.xml"); info.size = 1
+                tar.addfile(info, io.BytesIO(b"x"))
+            self.assertEqual(mon_edition.nb_pages(f), 7)
+            (Path(t) / "mauvais.cbr").write_bytes(b"pas une archive")
+            self.assertIsNone(mon_edition.nb_pages(Path(t) / "mauvais.cbr"))
+
+    def test_sans_bsdtar_un_cbr_reste_inconnu_sans_planter(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as t:
+            f = Path(t) / "t02.cbr"
+            f.write_bytes(b"Rar!\x1a\x07\x00 pas un zip")
+            with mock.patch("mon_edition.subprocess.run", side_effect=FileNotFoundError):
+                self.assertIsNone(mon_edition.nb_pages(f))
+
     def test_decoupage_different(self):
         self.assertTrue(mon_edition.decoupage_different(384, 95))          # Rave : édition originale contre ancienne édition
         self.assertTrue(mon_edition.decoupage_different(95, 384))
@@ -157,6 +183,20 @@ class TestAppli(unittest.TestCase):
 
     def test_un_autre_decoupage_est_signale(self):
         cbz(self.torrent, 384)
+        self.assertEqual(self.A._decoupage_different("Rave", self.torrent.parent), [(5, 384, 95)])
+
+    def test_un_torrent_en_cbr_est_aussi_controle(self):
+        import io
+        import shutil
+        import tarfile
+        if not shutil.which("bsdtar"):
+            self.skipTest("bsdtar absent")
+        f = self.torrent.with_suffix(".cbr")
+        f.parent.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(f, "w") as tar:                     # pas un zip : seul bsdtar le lit (comme un RAR)
+            for i in range(384):
+                info = tarfile.TarInfo(f"{i:03d}.jpg"); info.size = 1
+                tar.addfile(info, io.BytesIO(b"x"))
         self.assertEqual(self.A._decoupage_different("Rave", self.torrent.parent), [(5, 384, 95)])
 
     def test_meme_decoupage_rien_a_signaler(self):
