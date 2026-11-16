@@ -455,6 +455,9 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .ed-boite .ed-msg { font-size:.88rem; min-height:1.2em; }
 .ed-boite .ed-msg.err { color:#ff8a80; }
 .ed-mixte { color:#ffb74d; }
+.tome-autre { display:inline-block; margin-left:6px; padding:1px 7px; border-radius:10px; background:rgba(255,183,77,.18); color:#ffb74d; font-size:.68rem; font-weight:600; white-space:nowrap; }
+.tc-nom .tome-autre { display:block; margin:3px 0 0; width:max-content; max-width:100%; }
+.tome-titre .tn .tome-autre { color:#ffb74d; }
 
 /* 🛠 Gérer la série : fenêtre à onglets (État · Identité · Tomes · Images) */
 .onglets-4 { grid-template-columns:repeat(2, 1fr); }

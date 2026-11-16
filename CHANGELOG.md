@@ -1,6 +1,7 @@
 # Historique des versions
 
 ## [Non publié]
+- 📖 **Chaque tome d'une autre édition porte une marque « autre édition »** (grille de couvertures et liste des tomes), en plus de la ligne « T1–T12 Édition originale · T13–T35 autre édition » ; `autres_editions` ajouté à la fiche.
 - 🏠 **Lecteur : un bouton vers l'accueil** dans la barre du haut (la flèche ← revient toujours à la série) ; le lecteur reste en plein écran, sans l'en-tête du kit.
 - 🧲 **« Comparé à ta bibliothèque » n'est plus écrit deux fois** (Télécharger → Torrents, téléphone) : la ligne avait la classe `.note`, que le kit recopie en bulle quand elle est hors de l'écran ; elle a maintenant sa propre classe.
 - 📝 **README** : paragraphes sur 🤖 Automatisations, ✨ Mes préférences et la grille de couvertures des tomes.

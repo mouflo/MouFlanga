@@ -1220,7 +1220,8 @@ def _infos_edition(name, files):
     return {"resolution": a.get("resolution", ""), "source": source, "devine": devine, "pourquoi": a.get("pourquoi", ""),
             "nfo": d.get("nfo", ""), "archives": d.get("archives", []), "analyse_faite": "analyse" in d,
             "edition": d.get("edition", ""), "sources_tomes": _resume_sources_tomes(d.get("sources_tomes") or {}),
-            "editions_tomes": _resume_editions(_classement_editions_vite(name), d.get("edition", ""))}
+            "editions_tomes": _resume_editions(_classement_editions_vite(name), d.get("edition", "")),
+            "autres_editions": sorted(t for t, c in _classement_editions_vite(name).items() if c == "autre")}
 
 
 def _resume_sources_tomes(st):

@@ -489,9 +489,11 @@
     lt.href = '/telecharger?torrent=' + encodeURIComponent(s.id) + '&serie=' + encodeURIComponent(s.id);
     // Chapitres groupés par tome (« Tome 02 », « Hors tome ») : un appui sur le titre ouvre ou ferme le tome.
     // Au départ, seul le tome en cours de lecture (ou le premier avec des chapitres à lire) est ouvert.
+    var autresEd = (s.edition && s.edition.autres_editions) || [];       // tomes d'une autre édition que celle choisie
+    var marqueAutre = '<small class="tome-autre" title="Ce tome vient d\'une autre édition que celle que tu as choisie">autre édition</small>';
     function ligne(c) {
       return '<div class="chap' + (c.read ? ' read' : '') + (c.key === s.current ? ' cur' : '') + '" data-path="' + esc(c.key) + '">' +
-        '<span class="dot"></span><span class="ct">' + esc(c.title) + (c.sous ? '<small class="ct2">' + esc(c.sous) + '</small>' : '') + '</span>' +
+        '<span class="dot"></span><span class="ct">' + esc(c.title) + (c.tome != null && c.hs == null && autresEd.indexOf(c.tome) >= 0 ? marqueAutre : '') + (c.sous ? '<small class="ct2">' + esc(c.sous) + '</small>' : '') + '</span>' +
         (c.tome != null || c.hs != null ? '<button class="tog tinfo' + (c.titres_ch ? ' vert' : '') + '" data-tinfo="' + (c.tome != null ? c.tome : c.hs) + '" title="Infos du tome">ⓘ</button>' : '') +
         '<span class="cs">' + taille(c.size_mb) + '</span>' +
         '<button class="tog" data-tog="' + esc(c.key) + '" title="Marquer ' + (c.read ? 'non lu' : 'lu') + '">' + (c.read ? '↺' : '✔') + '</button>' +
@@ -537,7 +539,7 @@
         '<div class="tc-img"><img loading="lazy" alt="" src="/api/tome/couverture?id=' + encodeURIComponent(s.id) + '&tome=' + t.n + '">' +
         (fini ? '<span class="tc-etat">✔</span>' : cur ? '<span class="tc-etat cours">▶ en cours</span>' : '') +
         '<button type="button" class="tc-info' + (t.chapitres.some(function (c) { return c.titres_ch; }) ? ' vert' : '') + '" data-tinfo="' + t.n + '" title="Infos du tome" aria-label="Infos du tome ' + t.n + '">i</button></div>' +
-        '<div class="tc-nom"><b>Tome ' + t.n + '</b></div>' +
+        '<div class="tc-nom"><b>Tome ' + t.n + '</b>' + (autresEd.indexOf(t.n) >= 0 ? marqueAutre : '') + '</div>' +
         (t.titre ? '<div class="tc-titre">' + esc(t.titre) + '</div>' : '') +
         '<div class="bar"><i style="width:' + (fini ? 100 : pct) + '%"></i></div></div>';
     }
@@ -553,7 +555,7 @@
       var cur = g.chapitres.some(function (c) { return c.key === s.current; });
       return '<div class="tome' + (ouvert ? ' ouvert' : '') + '">' +
         '<button class="tome-titre" data-tome="' + esc(g.nom) + '" aria-expanded="' + ouvert + '">' +
-        '<span class="fleche">▸</span><span class="tn">📚 ' + esc(g.nom) + (cur ? ' <small>· en cours</small>' : '') +
+        '<span class="fleche">▸</span><span class="tn">📚 ' + esc(g.nom) + (cur ? ' <small>· en cours</small>' : '') + (/^Tome \d+/.test(g.nom) && autresEd.indexOf(parseInt(g.nom.slice(5), 10)) >= 0 ? marqueAutre : '') +
         (g.titre ? '<small class="tome-nom">« ' + esc(g.titre) + ' »</small>' : '') + '</span>' +
         (/^Tome \d+/.test(g.nom) ? '<span class="tog tinfo' + (g.chapitres.some(function (c) { return c.titres_ch; }) ? ' vert' : '') + '" role="button" data-tinfo="' + parseInt(g.nom.slice(5), 10) + '" title="Infos du tome">ⓘ</span>' : '') +
         '<span class="tc">' + g.chapitres.length + ' ch. · ' + (lus === g.chapitres.length ? 'lu ✔' : lus + ' lu' + (lus > 1 ? 's' : '')) + '</span></button>' +
