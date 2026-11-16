@@ -15,7 +15,7 @@ Pour installer l'appli sur le serveur et la remettre en route après une panne, 
 
 ![La bibliothèque](docs/screenshots/liste.png)
 
-**Une série : chapitres lus ou non, bouton « Reprendre »**
+**Une série : ses tomes en grille de couvertures, avec la progression de lecture**
 
 ![Une série](docs/screenshots/serie.png)
 
@@ -26,6 +26,18 @@ Pour installer l'appli sur le serveur et la remettre en route après une panne, 
 **La page ⚙️ Réglages : dossier des mangas et préférences de lecture**
 
 ![La page Réglages](docs/screenshots/reglages.png)
+
+**✨ Mes préférences : quelques questions simples pour choisir les torrents**
+
+![Mes préférences](docs/screenshots/preferences.png)
+
+**Télécharger → Torrents : le meilleur choix en premier, comparé à ta bibliothèque**
+
+![Torrents](docs/screenshots/torrents.png)
+
+**⚙️ Réglages → 🤖 Automatisations : ce que l'appli fait toute seule quand un tome arrive**
+
+![Automatisations](docs/screenshots/automatisations.png)
 
 **La fenêtre « Journal » pour comprendre une panne**
 

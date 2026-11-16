@@ -1,6 +1,7 @@
 # Historique des versions
 
 ## [Non publié]
+- 📸 **Captures du README refaites** sur une bibliothèque de démonstration (titres inventés) : accueil, série en grille de couvertures, Réglages, téléphone, et trois nouvelles : ✨ Mes préférences, Télécharger → Torrents, 🤖 Automatisations.
 - ✨ **Mes préférences : les cases et pastilles étaient au-dessus de leur texte** (téléphone et ordinateur) : une règle de la page (`.formulaire label`) écrasait celle des choix ; elles sont de nouveau sur la même ligne.
 - 🎨 **Panneau Uniformité vu au téléphone (390 px)** : rien ne dépasse, le bouton « 🤖 Tout faire d'un coup » est assez grand ; le menu « Référence » passe de 13,6 à 16 px (le téléphone zoomait en le touchant).
 - 📱 **Pages revues au téléphone (390 px)** : l'historique de l'allègement tient sans faire défiler son tableau, les onglets de ⚙️ Réglages et les boutons des pages Couvertures (et de l'aperçu de l'envoi groupé) font au moins 44 px. Importer, Vérification et Découper étaient déjà bons.
