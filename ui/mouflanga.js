@@ -1174,6 +1174,7 @@
       var z = $('allCmp'); if (!z || !cmp) return;
       var choixOuvert = !!($('cmpChoix') && $('cmpChoix').open);
       z.className = (cmp.grand ? 'cmp-grand ' : '') + (cmp.zoom ? 'cmp-zoom' : '');
+      if (cmp.zoom) z.style.setProperty('--h-zoom', cmp.zoom[4] + 'px');
       if ($('allComparer')) $('allComparer').hidden = true;
       z.innerHTML = '<div class="cmp"><div class="cmp-barre cmp-haut">' +
         '<span class="cmp-modes">' + [['avant', 'Avant'], ['rideau', '↔'], ['apres', 'Après']].map(function (c) {
@@ -1279,8 +1280,9 @@
           var r = img.getBoundingClientRect(), sc = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight),
               dw = img.naturalWidth * sc, dh = img.naturalHeight * sc;
           var cw = Math.max(320, Math.min(1600, Math.round(r.width * (window.devicePixelRatio || 1))));        // un pixel de l'image = un pixel de l'écran
-          var ch = Math.max(240, Math.min(1600, Math.round(cw * Math.min(0.45 * window.innerHeight, r.width * 1.2) / r.width)));   // toute la largeur, pas toute la hauteur
-          cmp.zoom = [(e.clientX - r.left - (r.width - dw) / 2) / dw, (e.clientY - r.top - (r.height - dh) / 2) / dh, cw, ch];
+          var haut = Math.round(Math.min(0.25 * window.innerHeight, 0.66 * r.width));                  // toute la largeur, un quart de la hauteur de l'écran
+          var ch = Math.max(120, Math.round(cw * haut / r.width));
+          cmp.zoom = [(e.clientX - r.left - (r.width - dw) / 2) / dw, (e.clientY - r.top - (r.height - dh) / 2) / dh, cw, ch, haut];
         }
         dessinerComparaison();
       }

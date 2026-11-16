@@ -566,6 +566,8 @@ def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage=None, 
     avant = im if im.size == apres.size else im.resize(apres.size, Image.LANCZOS)   # même géométrie pour comparer
     if zoom:
         cw, ch = (int(zoom[2]), int(zoom[3])) if len(zoom) >= 4 else (640, 640)
+        if len(zoom) >= 4:                                   # page plus étroite que l'écran : toute sa largeur, et la hauteur suit la proportion demandée
+            cw, ch = min(cw, apres.width), round(min(cw, apres.width) * ch / cw)
         x0 = int(max(0, min(apres.width - cw, zoom[0] * apres.width - cw / 2)))
         y0 = int(max(0, min(apres.height - ch, zoom[1] * apres.height - ch / 2)))
         boite = (x0, y0, min(apres.width, x0 + cw), min(apres.height, y0 + ch))

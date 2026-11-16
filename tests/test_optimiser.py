@@ -99,6 +99,10 @@ class OptimiserTest(unittest.TestCase):
         self.assertEqual(a.size, b.size)                                  # même géométrie pour comparer
         z = optimiser.comparer(self.f, 2, 85, largeur_max=1200, zoom=(0.5, 0.5))
         self.assertEqual(Image.open(io.BytesIO(z["apres"])).size, (640, 640))
+        large = optimiser.comparer(self.f, 2, 85, largeur_max=1200, zoom=(0.5, 0.5, 900, 300))      # détail aussi large que l'écran, bas
+        self.assertEqual(Image.open(io.BytesIO(large["apres"])).size, (900, 300))
+        etroit = optimiser.comparer(self.f, 2, 85, largeur_max=1200, zoom=(0.5, 0.5, 1800, 600))    # écran plus large que la page : toute la largeur, même proportion
+        self.assertEqual(Image.open(io.BytesIO(etroit["apres"])).size, (1200, 400))
         rien = optimiser.comparer(self.f, 2, None)                       # tome laissé tel quel : mêmes octets
         self.assertTrue(rien["inchange"])
 
