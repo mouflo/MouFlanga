@@ -420,6 +420,7 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .reg-champ { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:8px 0; }
 .reg-champ > span { flex:none; font-weight:600; }
 .reg-champ select { flex:1; min-width:0; font-size:16px; }
+#unifRef { font-size:16px; }                     /* le menu « Référence » de l'uniformité restait à 13,6 px (le téléphone zoomait au toucher) */
 .reg-boutons { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
 .reg details summary { cursor:pointer; padding:8px 0; color:var(--accent, #52b54b); }
 .reg .amel-ligne:first-of-type { margin-top:4px; }
