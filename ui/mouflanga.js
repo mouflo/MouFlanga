@@ -929,6 +929,10 @@
         '<button type="button" class="mou-btn ghost small" id="allRien">Tout décocher</button>' +
         '<button type="button" class="mou-btn ghost small" id="allUnif" hidden>🎨 Seulement ceux à uniformiser</button></div>' +
         '<details id="allListe"><summary id="allResume">Choisir les tomes</summary><div id="allTomes" class="all-puces">…</div></details></section>' +
+        '<section class="reg" id="regRetour"><h3>↩️ Revenir en arrière</h3>' +
+        '<div class="reg-aide">Les anciens fichiers sont gardés à la corbeille (' + corb() + '). Ce bouton remet la <b>toute première version</b> (celle d\'avant tes modifications) des tomes sélectionnés ci-dessus. Les versions actuelles vont à leur tour à la corbeille : rien n\'est perdu.</div>' +
+        '<div id="retourEtat" class="dem-sous">…</div>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn" id="retourBouton" disabled>↩️ Remettre les tomes d\'origine</button></div></section>' +
         '<div class="onglets onglets-4" role="tablist">' + [['image', '✨ Image'], ['doubles', '📖 Doubles'], ['uniforme', '🎨 Uniformité'], ['parasites', '🧹 Parasites']].map(function (o, i) {
           return '<button type="button" class="mou-btn' + (i ? ' ghost' : '') + '" role="tab" data-onglet="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' +
 
@@ -987,6 +991,7 @@
       majRecap();
       suivreAllegement();
       ouvrirComparaison('');                                         // l'aperçu en direct est là dès l'ouverture, collé en haut
+      retourAttend = false; suivreRetour();
       posOnglets();
     });
     function posOnglets() {                                          // l'aperçu se colle juste sous la rangée d'onglets, quelle que soit sa hauteur
@@ -1023,6 +1028,43 @@
       var m = /(?:tome|t\.?)\s*0*(\d+)\s*$/i.exec(libelle || '');
       return m ? 'T' + (m[1].length < 2 ? '0' + m[1] : m[1]) : (hors ? 'HS ' : '') + String(libelle || '').replace(/^.*?[:\-–]\s*/, '').slice(0, 9);
     }
+    var retourInfos = {}, retourEnCours = false, retourAttend = false, suiviRetour = null;
+    function jourFr(j) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(j || ''); return m ? m[3] + '/' + m[2] : (j || ''); }
+    function majRetour() {                                         // « 17 tomes ont une version d'origine… » d'après les tomes cochés
+      var b = $('retourBouton'), e = $('retourEtat'); if (!b || !e || retourEnCours) return;
+      var coches = [].slice.call(document.querySelectorAll('.all-coche:checked')).map(function (c) { return c.value; });
+      var a = coches.filter(function (n) { return retourInfos[n] && retourInfos[n].origine && !retourInfos[n].origine.deja; });
+      var deja = coches.filter(function (n) { return retourInfos[n] && retourInfos[n].origine && retourInfos[n].origine.deja; }).length;
+      var sans = coches.length - a.length - deja;
+      var jours = []; a.forEach(function (n) { var j = jourFr(retourInfos[n].origine.jour); if (jours.indexOf(j) < 0) jours.push(j); });
+      e.textContent = !coches.length ? 'Aucun tome sélectionné.' :
+        (a.length ? a.length + ' tome' + (a.length > 1 ? 's ont' : ' a') + ' une version plus ancienne à la corbeille (rangée le ' + jours.join(', ') + ')' : 'Aucun tome sélectionné n\'a de version plus ancienne à la corbeille') +
+        (deja ? ' · ' + deja + ' déjà d\'origine' : '') + (sans > 0 ? ' · ' + sans + ' sans version gardée' : '') + '.';
+      b.disabled = !a.length;
+      b.textContent = a.length ? '↩️ Remettre l\'original de ' + (a.length > 1 ? 'ces ' + a.length + ' tomes' : 'ce tome') : '↩️ Rien à remettre';
+      b.dataset.fichiers = JSON.stringify(a);
+    }
+    async function suivreRetour() {
+      clearTimeout(suiviRetour);
+      if (!$('retourEtat') || !current) return;
+      var r = await api('/api/versions?series=' + encodeURIComponent(current.id));
+      if (!$('retourEtat')) return;
+      retourInfos = {}; (r.tomes || []).forEach(function (t) { retourInfos[t.nom] = t; });
+      var et = r.etat || {};
+      retourEnCours = !!et.en_cours;
+      if (retourEnCours) {
+        $('retourEtat').innerHTML = esc(et.message || 'En cours…') + ' ' + (et.fait || 0) + ' / ' + (et.total || '?') + ' tomes · tu peux fermer cette fenêtre, ça continue.<progress max="' + (et.total || 1) + '" value="' + (et.fait || 0) + '" style="width:100%"></progress>';
+        $('retourBouton').disabled = true;
+        suiviRetour = setTimeout(suivreRetour, 2000); return;
+      }
+      majRetour();
+      if (retourAttend && et.message) {
+        retourAttend = false;
+        window.MouToast && window.MouToast('↩️ ' + et.message, et.ok === false ? 'err' : 'ok');
+        if (current) rafraichirSerie(current.id);
+        if (cmp) majComparaison();
+      }
+    }
     function resumeSelection(n, total) {
       if (!total) return 'Aucun tome';
       if (n === total) return 'Tous les ' + total + ' tomes';
@@ -1051,6 +1093,7 @@
         b.disabled = !n;
         b.textContent = !n ? 'Aucun tome coché : touche les tomes en haut' : b.dataset.alleger === '1' ? '🪶 Appliquer à ' + quoi : '🔍 Analyser ' + quoi + ' (rien n\'est modifié)';
       });
+      majRetour();
       majRecap();
     }
     ['change', 'input', 'click'].forEach(function (ev) {            // le « ce qui sera fait » suit chaque réglage et chaque case cochée
@@ -1059,6 +1102,7 @@
     function ongletAmelioration(nom) {
       document.querySelectorAll('[data-onglet]').forEach(function (b) { b.classList.toggle('ghost', b.dataset.onglet !== nom); });
       document.querySelectorAll('[data-panneau]').forEach(function (p) { p.hidden = p.dataset.panneau !== nom; });
+      if ($('regRetour')) $('regRetour').hidden = nom === 'doubles' || nom === 'parasites';
       if ($('regTomes')) $('regTomes').hidden = nom === 'doubles' || nom === 'parasites';          // les doubles pages se choisissent tome par tome ; les parasites se cherchent dans toute la série
       if (nom === 'uniforme') unifCharger();
       if (nom === 'parasites') demarrerParasites();
@@ -1654,6 +1698,14 @@
         else { $('dblTome').innerHTML = '<div class="dem-sous">🎉 Dernier tome traité.</div>'; }
       }
     }
+    $('infosCorps').addEventListener('click', async function (e) {
+      var rb = e.target.closest('#retourBouton'); if (!rb) return;
+      var fichiers = JSON.parse(rb.dataset.fichiers || '[]'); if (!fichiers.length) return;
+      if (!await MouConfirm('Remettre ' + (fichiers.length > 1 ? 'les ' + fichiers.length + ' tomes' : 'ce tome') + ' à leur version d\'origine (celle d\'avant toutes tes modifications) ?\n\nLes versions actuelles vont à la corbeille (' + corb() + ') : tu pourras encore les récupérer.')) return;
+      var r = await post('/api/versions/origine', {series: current.id, fichiers: fichiers});
+      if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
+      retourAttend = true; retourEnCours = true; window.MouToast && window.MouToast('↩️ ' + r.message, 'ok'); suivreRetour();
+    });
     $('infosCorps').addEventListener('click', function (e) {          // cocher / décocher tous les tomes, ne garder que ceux à uniformiser, changer d'onglet
       var ch = e.target.closest('[data-changer]');
       if (ch) { if ($('allListe')) $('allListe').open = true; var carte = $('regTomes'); if (carte) carte.scrollIntoView({behavior: 'smooth', block: 'start'}); return; }

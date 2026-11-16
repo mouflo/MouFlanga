@@ -2038,6 +2038,78 @@ def api_optimiser_comparer():
     return jsonify(info)
 
 
+# ---------------- ↩️ Revenir aux versions d'avant (fichiers gardés à la corbeille) ----------------
+import versions
+
+
+@app.route("/api/versions")
+def api_versions():
+    """Pour chaque tome de la série : combien de versions plus anciennes sont gardées à la corbeille, et la plus ancienne (l'origine)."""
+    name = request.args.get("series", "")
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"tomes": [], "etat": {}})
+    out = []
+    for f in _fichiers_a_alleger(name):
+        vs = versions.versions_gardees(MANGA_DIR, CORBEILLE, f)
+        t = {"nom": f.name, "libelle": _libelle_tome(f, name), "versions": len(vs)}
+        if vs:
+            t["origine"] = {"jour": vs[0]["jour"], "taille_mo": round(vs[0]["taille"] / 1048576, 1), "deja": versions.est_meme(f, vs[0])}
+        out.append(t)
+    return jsonify({"tomes": out, "etat": dict(_VERSIONS_ETAT.get(name) or {})})
+
+
+def _remettre_versions(name, travaux):
+    """Remet, tome par tome, la version choisie à la place du tome actuel (voir versions.restaurer). Une panne sur un tome ne bloque pas les autres."""
+    etat = _VERSIONS_ETAT[name]
+    faits, echecs = 0, []
+    try:
+        for i, (f, v) in enumerate(travaux):
+            etat.update(fait=i, message=f"{_libelle_tome(f, name)}…")
+            try:
+                versions.restaurer(f, v, _vers_corbeille)
+                faits += 1
+            except (OSError, ValueError) as e:
+                logger.warning("Retour à la version d'origine de %s : %s", f, e)
+                echecs.append(_libelle_tome(f, name))
+        _scan_invalider()
+        msg = f"{faits} tome(s) remis à leur version d'origine (les versions d'avant sont à la corbeille, {_corbeille_phrase()})" \
+            + (f" · échec pour : {', '.join(echecs)}" if echecs else "") + "."
+        etat.update(en_cours=False, fait=len(travaux), message=msg, ok=not echecs)
+    except Exception as e:                                         # jamais un fil qui meurt en laissant « en cours »
+        logger.warning("Retour aux versions d'origine de « %s » : %s", name, e)
+        etat.update(en_cours=False, message=f"Arrêté : {e}", ok=False)
+    try:
+        if not reseau.EN_TEST:
+            import notifier
+            notifier.envoyer(f"↩️ MouFlanga : « {name} » : {etat['message']}")
+    except Exception as e:
+        logger.info("Telegram (retour aux versions d'origine) : %s", e)
+
+
+@app.route("/api/versions/origine", methods=["POST"])
+def api_versions_origine():
+    """POST {series, fichiers: [noms de tomes]} : remet la version d'origine (la plus ancienne gardée à la corbeille) de ces tomes."""
+    body = request.get_json(silent=True) or {}
+    name = str(body.get("series", ""))
+    if name not in _scan() or name == "(Sans série)":
+        return jsonify({"ok": False, "error": "Série introuvable"}), 404
+    if _serie_occupee(name) or uniformite.etat(name).get("en_cours"):
+        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    voulus = {str(x) for x in (body.get("fichiers") or [])}
+    travaux = []
+    for f in _fichiers_a_alleger(name):
+        if f.name not in voulus:
+            continue
+        vs = versions.versions_gardees(MANGA_DIR, CORBEILLE, f)
+        if vs and not versions.est_meme(f, vs[0]):
+            travaux.append((f, vs[0]["chemin"]))
+    if not travaux:
+        return jsonify({"ok": False, "error": "Aucun de ces tomes n'a de version plus ancienne à la corbeille (ou ils sont déjà d'origine)."}), 404
+    _VERSIONS_ETAT[name] = {"en_cours": True, "fait": 0, "total": len(travaux), "message": "Démarrage…"}
+    threading.Thread(target=_remettre_versions, args=(name, travaux), daemon=True).start()
+    return jsonify({"ok": True, "total": len(travaux), "message": f"{len(travaux)} tome(s) : retour à la version d'origine en cours."})
+
+
 # ---------------- 🎨 Uniformité des tomes d'une série (admin) ----------------
 import uniformite
 
@@ -2541,10 +2613,13 @@ def api_doubles_assembler():
 import parasites
 
 
+_VERSIONS_ETAT = {}                                               # {série: {"en_cours", "fait", "total", "message", "ok"}} : retour aux versions d'avant
+
+
 def _serie_occupee(name):
     return bool(_en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours") or optimiser.etat(name).get("en_cours")
                 or optimiser.coupes_etat(name).get("en_cours") or parasites.etat(name).get("en_cours")
-                or (_UNIF_TOUT.get(name) or {}).get("en_cours"))
+                or (_UNIF_TOUT.get(name) or {}).get("en_cours") or (_VERSIONS_ETAT.get(name) or {}).get("en_cours"))
 
 
 @_sous_verrou_infos
@@ -4599,6 +4674,7 @@ def _travaux_en_cours():
     raisons += [f"conversion de {n}" for n, e in list(_CONVERSION.items()) if e.get("en_cours")]
     raisons += [f"lecture des ISBN de {n}" for n, e in list(_ISBN_SERIE.items()) if e.get("en_cours")]
     raisons += [f"uniformisation de {n}" for n, e in list(_UNIF_TOUT.items()) if e.get("en_cours")]
+    raisons += [f"retour aux versions d'origine de {n}" for n, e in list(_VERSIONS_ETAT.items()) if e.get("en_cours")]
     return raisons
 
 
