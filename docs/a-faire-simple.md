@@ -3,6 +3,16 @@
 Liste écrite le 15/11/2026, à la fin de la refonte « tout automatique ». Chaque tâche est petite, indépendante, et peut être
 faite par un modèle moins puissant. Les tâches difficiles sont à part, tout en bas : ne pas les donner à un petit modèle.
 
+## ✅ Fait le 16/11/2026 : les 14 tâches des parties A, B et C
+Un commit par tâche (voir `git log`). Ce qui a différé de ce que la liste prévoyait :
+- **5** : la seconde ligne venait du kit (`mou-ui.js` recopie en bulle tout `.note` hors de l'écran) ; la ligne a maintenant sa classe `.tor-compare`, le kit n'est pas touché.
+- **8** : seuls l'historique de l'allègement, les onglets de Réglages et les boutons des pages Couvertures étaient à corriger ; Importer, Vérification et Découper étaient déjà bons.
+- **9** : un seul défaut, le menu « Référence » à 13,6 px (maintenant 16 px).
+- **10** : refaites sur une bibliothèque de démonstration à titres inventés : accueil, série en grille, Réglages, téléphone, et trois nouvelles (Mes préférences, Torrents, Automatisations). **Pas refaites** : lecteur, Journal, Apparence (inchangés).
+- **13** : en plus de `nb_pages`, `_decoupage_different` contrôle maintenant aussi les `.cbr` d'un torrent (il les ignorait).
+- **14** : `deploy.sh` avait déjà quitté le dépôt ; le travail a été de corriger `INSTALL.md` (nouvelle section « Mettre à jour »), le README et deux commentaires.
+- Trouvé en route et corrigé : sur ✨ Mes préférences, les cases et pastilles étaient au-dessus de leur texte (règle `.formulaire label` plus forte que `.choix`).
+
 ## Règles à respecter pour chaque tâche
 - Lire `/opt/CLAUDE.md` et `/opt/mouflanga/CLAUDE.md` d'abord. Tout en français.
 - Une tâche = un commit. Tests avant de pousser : `cd /opt/mouflanga && venv/bin/python -m unittest discover -s tests`.
