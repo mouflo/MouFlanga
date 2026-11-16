@@ -2958,11 +2958,82 @@ def _sommaire_sans_pages(lire_page, nb_pages) -> tuple:
     return meilleur, ou
 
 
-def _pages_credibles(chapitres) -> bool:
-    """Les pages lues dans un sommaire ressemblent à des pages : au moins 5 pages d'écart d'un chapitre au suivant, en général."""
+def _pages_credibles(chapitres, nb_pages=0) -> bool:
+    """Les pages lues dans un sommaire ressemblent à des pages : au moins 5 pages d'écart d'un chapitre au suivant, en général, pas plus
+    de 90 entre deux chapitres, et aucune au-delà de la fin du tome (« page 1163 » d'un tome de 92 images)."""
     pages = [c.get("page") for c in chapitres or [] if isinstance(c.get("page"), int)]
     ecarts = sorted(b - a for a, b in zip(pages, pages[1:]))
-    return len(pages) >= 3 and ecarts[len(ecarts) // 2] >= 5
+    if len(pages) < 3 or ecarts[len(ecarts) // 2] < 5 or ecarts[-1] > 90:
+        return False
+    return not nb_pages or max(pages) <= 2.2 * nb_pages + 10
+
+
+SCORE_TITRE = 2.5              # ressemblance mini entre un titre du sommaire et le texte d'une page pour y voir son ouverture
+ECART_OUVERTURES = 3           # deux chapitres ne commencent pas à moins de 3 images l'un de l'autre
+
+
+def _places_par_titres(liste, lire_page, nb_pages, depuis) -> dict:
+    """{numéro: image} : chaque chapitre de la liste placé sur l'image qui répète son titre (« Chapitre 8 : LES ATTAQUES… » sur la
+    page d'ouverture). Chaque moitié d'une double page est lue à part (lecteur moderne s'il est là : il lit mieux ces petits titres
+    stylisés). On garde la suite de places, dans l'ordre des chapitres, qui ressemble le plus ; à ressemblance égale, la place la plus
+    régulière. Un chapitre dont le titre n'est retrouvé nulle part n'est pas placé."""
+    mots = [(_mots_titre(c["titre"]), c["num"]) for c in liste]
+    _LOCAL.mode = "moderne" if _moteur() is not None else "tesseract"
+    candidats = []                                           # (image, rang du chapitre, ressemblance)
+    try:
+        for i in range(depuis, nb_pages):
+            try:
+                octets = lire_page(i)
+                morceaux = _moities(octets) if _est_paysage(octets) else [octets]
+                notes = {}
+                for morceau in morceaux:
+                    t = ocr(morceau)
+                    if len(liste_sans_pages(t)) >= 3:        # le sommaire lui-même : tous les titres y sont
+                        continue
+                    annonce = bool(re.search(r"(?i)chap[il1]tre", t))
+                    for k, (m, num) in enumerate(mots):
+                        if not m:
+                            continue
+                        sc = _score(t, m, num)
+                        if annonce and sc >= 1.5:
+                            sc += 2                          # « Chapitre … » écrit sur la page : c'est bien une ouverture
+                        if sc >= SCORE_TITRE and sc > notes.get(k, 0):
+                            notes[k] = sc
+                candidats += [(i, k, sc) for k, sc in notes.items()]
+            except Exception as e:
+                logger.info("Titres des pages d'ouverture, image %d : %s", i, e.__class__.__name__)
+    finally:
+        _LOCAL.mode = "tesseract"
+    candidats.sort()
+    meilleur = []                                            # pour chaque candidat : (total, précédent)
+    for j, (i, k, sc) in enumerate(candidats):
+        b = (sc, None)
+        for a in range(j):
+            ia, ka, _ = candidats[a]
+            if ka < k and i - ia >= ECART_OUVERTURES * (k - ka) and meilleur[a][0] + sc > b[0]:
+                b = (meilleur[a][0] + sc, a)
+        meilleur.append(b)
+    if not meilleur:
+        return {}
+    j = max(range(len(candidats)), key=lambda x: meilleur[x][0])
+    choix = {}
+    while j is not None:
+        choix[candidats[j][1]] = candidats[j]
+        j = meilleur[j][1]
+    if len(choix) >= 3:                                      # presque aussi ressemblant et plus régulier : on préfère
+        rangs = sorted(choix)
+        for k in rangs:
+            autres = [(r, choix[r][0]) for r in rangs if r != k]
+            (r0, i0), (r1, i1) = autres[0], autres[-1]
+            if r1 == r0:
+                continue
+            prevu = i0 + (i1 - i0) * (k - r0) / (r1 - r0)
+            avant = max((choix[r][0] for r in rangs if r < k), default=-1)
+            apres = min((choix[r][0] for r in rangs if r > k), default=nb_pages)
+            rivaux = [c for c in candidats if c[1] == k and c[2] >= 0.85 * choix[k][2] and avant < c[0] < apres]
+            if rivaux:
+                choix[k] = min(rivaux, key=lambda c: (abs(c[0] - prevu), -c[2]))
+    return {liste[k]["num"]: c[0] for k, c in choix.items()}
 
 
 def _estimer_places(chapitres, image_sommaire, nb_pages):
@@ -2993,18 +3064,16 @@ def _avec_liste_sans_pages(meilleur, lire_page, nb_pages, suite_de):
     """Sommaire sans numéros de page : les titres viennent de la liste, la place de chaque chapitre de sa page d'ouverture (qui
     annonce « Chapitre N »). Un chapitre dont la page d'ouverture n'est pas retrouvée garde son titre, sans page : à placer à la main."""
     ch = meilleur.get("chapitres") or []
-    if ch and (_pages_credibles(ch) or meilleur.get("source") == "noms des images"):
+    if ch and (_pages_credibles(ch, nb_pages) or meilleur.get("source") == "noms des images"):
         return meilleur
     liste, ou = _sommaire_sans_pages(lire_page, nb_pages)
     if len(liste) < 3 or len(liste) < len(ch):
         return meilleur
-    titres = {c["num"]: c["titre"] for c in liste}
-    try:
-        ouv = chapitres_par_ouvertures(lire_page, nb_pages, sorted(titres), suite_de, depuis=(ou or 0))
+    try:                                                     # la page d'ouverture répète le titre : c'est lui qu'on cherche
+        places = {n: {"image": i} for n, i in _places_par_titres(liste, lire_page, nb_pages, ou or 0).items()}
     except Exception as e:
-        logger.info("Sommaire sans pages (pages d'ouverture) : %s", e.__class__.__name__)
-        ouv = []
-    places = {float(c["num"]): c for c in ouv if c.get("num") is not None and float(c["num"]) in titres}
+        logger.info("Sommaire sans pages (titres des pages d'ouverture) : %s", e.__class__.__name__)
+        places = {}
     sortie = []
     for c in liste:
         o = places.get(c["num"]) or {}
