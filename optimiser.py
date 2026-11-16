@@ -21,6 +21,7 @@ from pathlib import Path
 
 import cv2
 import ia
+import reliure
 import numpy as np
 from PIL import Image, ImageOps
 
@@ -99,7 +100,8 @@ def est_couleur(im: Image.Image) -> bool:
 # ✨ Amélioration des vieux scans : chaque réglage va de 0 (non) à 3 (fort), appliqué dans cet ordre. « uniformiser » (0 ou 1) cale les
 # noirs, les blancs et la teinte du tome sur ceux des autres tomes de la série (voir uniformite.py) : il lui faut le calage du tome.
 # « ia » (0 à 3) : restauration par réseau de neurones des petits scans (agrandi ×2, voir ia.py) ; elle remplace débruiter, adoucir les trames, lisser et agrandir.
-AMELIORATIONS = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "agrandir", "uniformiser", "ia")
+# « dos » (0 à 3 : ombre du dos), « redresser » et « bords » (0 ou 1) : défauts d'un tome relié scanné à plat, voir reliure.py.
+AMELIORATIONS = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "agrandir", "uniformiser", "ia", "dos", "redresser", "bords")
 
 
 def reglages_amelioration(x) -> dict | None:
@@ -114,7 +116,7 @@ def reglages_amelioration(x) -> dict | None:
     r = {}
     for k in AMELIORATIONS:
         try:
-            r[k] = max(0, min(1 if k == "uniformiser" else 3, int(x.get(k) or 0)))
+            r[k] = max(0, min(1 if k in ("uniformiser", "redresser", "bords") else 3, int(x.get(k) or 0)))
         except (TypeError, ValueError):
             r[k] = 0
     return r if any(r.values()) else None
@@ -157,6 +159,11 @@ def ameliorer(im: Image.Image, reglages, calage=None) -> Image.Image:
     echelle = max(1.0, (w * h) / 1.2e6)                   # les tailles suivent la résolution de la page
     if r["uniformiser"] and calage:                       # d'abord : les niveaux d'origine sont ceux qui ont été mesurés
         g = _caler(g, calage)
+    if r["bords"]:                                        # bandes noires du scanner, avant tout : elles faussent les mesures qui suivent
+        g = reliure.bords_noirs(g)
+    if r["dos"]:                                          # ombre du dos : le papier s'assombrit vers la reliure
+        g = reliure.ombre_dos(g, r["dos"])
+    angle = reliure.angle_page(g) if r["redresser"] else None       # mesuré sur la page d'origine, appliqué à la fin (une rotation après l'agrandissement floute moins)
     if r["ia"] and ia.disponible() and h < ia.HAUTEUR_MAX:    # petit scan : le réseau agrandit ×2, débruite et lisse les traits à la place des réglages classiques
         g = ia.agrandir(g, r["ia"], niveaux_auto=not (r["uniformiser"] and calage))
         h, w = g.shape
@@ -219,6 +226,8 @@ def ameliorer(im: Image.Image, reglages, calage=None) -> Image.Image:
             g = cv2.resize(g, (w, h), interpolation=cv2.INTER_AREA)
     elif r["agrandir"] and h < 1700:
         g = cv2.resize(g, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+    if angle:
+        g = reliure.pivoter(g, angle)
     if r["nettete"]:                                      # masque flou : traits plus francs
         a = (0, 0.5, 0.9, 1.4)[r["nettete"]]
         g = cv2.addWeighted(g, 1 + a, cv2.GaussianBlur(g, (0, 0), 1.0), -a, 0)

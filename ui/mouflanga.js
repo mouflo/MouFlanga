@@ -1108,12 +1108,14 @@
       if (nom === 'parasites') demarrerParasites();
     }
     // ✨ Profils d'amélioration (ordre d'optimiser.AMELIORATIONS ; 0 = non … 3 = fort)
-    var PROFILS_AMEL = [['0,0,0,0,0,0,0,0,0,0', 'Non (image d\'origine)'], ['1,1,1,1,0,1,0,0,0,0', 'Légère (scan un peu gris)'],
-      ['2,2,2,1,1,2,0,0,0,0', 'Vieux scan (papier gris, trames, escaliers)'], ['3,3,3,2,2,3,0,0,0,0', 'Très abîmé (crado, délavé)'],
-      ['0,0,0,0,0,0,0,0,0,1', '🧠 IA Naturel (petit scan : dégradés fidèles, ≈ 10 s par page)'],
-      ['0,0,0,0,0,0,0,0,0,2', '🧠 IA Net (petit scan : texte et contours francs, ≈ 10 s par page)'],
-      ['0,0,0,0,0,0,0,0,0,3', '🧠 IA Maximum (8 passes, très lent : ≈ 75 s par page)'],
-      ['0,0,0,0,0,0,0,0,1,0', '🎨 Uniformiser (même noir et même blanc que les autres tomes)']];
+    var PROFILS_AMEL = [['0,0,0,0,0,0,0,0,0,0,0,0,0', 'Non (image d\'origine)'], ['1,1,1,1,0,1,0,0,0,0,0,0,0', 'Légère (scan un peu gris)'],
+      ['2,2,2,1,1,2,0,0,0,0,0,0,0', 'Vieux scan (papier gris, trames, escaliers)'], ['3,3,3,2,2,3,0,0,0,0,0,0,0', 'Très abîmé (crado, délavé)'],
+      ['0,0,0,0,0,0,0,0,0,1,0,0,0', '🧠 IA Naturel (petit scan : dégradés fidèles, ≈ 1,5 s par page sur la carte graphique)'],
+      ['0,0,0,0,0,0,0,0,0,2,0,0,0', '🧠 IA Net (petit scan : texte et contours francs, ≈ 1,5 s par page)'],
+      ['0,0,0,0,0,0,0,0,0,3,0,0,0', '🧠 IA Maximum (8 passes : ≈ 10 s par page)'],
+      ['0,0,0,0,0,0,0,0,0,0,2,1,1', '📖 Reliure seule (ombre du dos, page redressée, bords noirs enlevés)'],
+      ['0,0,0,0,0,0,0,0,0,2,2,1,1', '📖🧠 Reliure + IA Net'],
+      ['0,0,0,0,0,0,0,0,1,0,0,0,0', '🎨 Uniformiser (même noir et même blanc que les autres tomes)']];
     var REGLAGES_AMEL = [['debruit', '🌫 Enlever le grain', 'le grain et les petits carrés de compression'],
       ['trames', '▦ Adoucir les trames', 'aplats gris pointillés → gris uni ; fort = textures fines aussi lissées'],
       ['papier', '🧼 Blanchir le papier', 'fond gris ou jauni, bulles comprises ; fort = gris très pâles effacés'],
@@ -1123,7 +1125,10 @@
       ['nettete', '🔪 Plus net', 'à éviter avec « Lisser » ; fort = peut faire des contours'],
       ['agrandir', '🔍 Agrandir ×2', 'petits scans seulement : plus fin en zoomant, mais fichier 2 à 3 fois plus lourd', ['Non', '×2']],
       ['uniformiser', '🎨 Aligner sur les autres tomes', 'même noir, même blanc, sans teinte ; demande la mesure de l\'onglet 🎨 Uniformité', ['Non', 'Oui']],
-      ['ia', '🧠 Restauration IA', 'petits scans (moins de 1700 px de haut) : agrandi ×2 par un réseau de neurones pour mangas, texte et contours francs, remplace grain, trames, lisser et agrandir ; lent', ['Non', 'Naturel', 'Net', 'Maximum']]];
+      ['ia', '🧠 Restauration IA', 'petits scans (moins de 1700 px de haut) : agrandi ×2 par un réseau de neurones pour mangas, texte et contours francs, remplace grain, trames, lisser et agrandir', ['Non', 'Naturel', 'Net', 'Maximum']],
+      ['dos', '📖 Ombre du dos', 'le papier assombri vers la reliure est éclairci (double page : chaque moitié) ; fort = jusqu\'à 50 % de gain', ['Non', 'Léger', 'Moyen', 'Fort']],
+      ['redresser', '📐 Redresser la page', 'petite inclinaison du scan (de 0,2 à 3°), mesurée sur les bords de cases', ['Non', 'Oui']],
+      ['bords', '🧽 Bords noirs du scan', 'bandes sombres et étroites le long du bord de la page', ['Non', 'Oui']]];
     function amelioration() {
       return REGLAGES_AMEL.map(function (r) { var e = $('am_' + r[0]); return e ? e.value : '0'; }).join(',');
     }
