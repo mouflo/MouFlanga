@@ -55,7 +55,18 @@ venv/bin/pip install --no-deps realcugan-ncnn-py     # environ 46 Mo ; --no-deps
 systemctl restart mouflanga
 ```
 
-Les modèles sont livrés dans le paquet : rien d'autre à télécharger. Environ 9 secondes par page et la moitié des cœurs du processeur (`MOUFLANGA_IA_THREADS` pour changer).
+Les modèles sont livrés dans le paquet : rien d'autre à télécharger. Sur le processeur : environ 9 secondes par page, avec la moitié des cœurs (`MOUFLANGA_IA_THREADS` pour changer).
+
+**Beaucoup plus vite avec la carte graphique Intel (environ 1,5 seconde par page).** L'appli s'en sert toute seule quand le conteneur la voit (`ls /dev/dri/renderD128`). Sur l'hôte Proxmox, ajouter au fichier du conteneur (`/etc/pve/lxc/<numéro>.conf`) puis `pct reboot <numéro>` :
+
+```
+lxc.cgroup2.devices.allow: c 226:0 rwm
+lxc.cgroup2.devices.allow: c 226:128 rwm
+lxc.mount.entry: /dev/dri dev/dri none bind,optional,create=dir
+lxc.mount.entry: /dev/dri/renderD128 dev/dri/renderD128 none bind,optional,create=file
+```
+
+Le « Rapport » de l'appli (section « Carte graphique ») dit si elle est visible. Pour forcer le processeur : variable `MOUFLANGA_IA_GPU=non`.
 
 ## 5. Reconstruire après une panne
 

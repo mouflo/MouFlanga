@@ -17,8 +17,8 @@ import optimiser  # noqa: E402
 
 class FauxModele:
     """Agrandit ×2 par duplication de pixels (de quoi tester la chaîne sans le vrai réseau)."""
-    def __init__(self, bruit, tta):
-        self.bruit, self.tta, self.appels = bruit, tta, 0
+    def __init__(self, bruit):
+        self.bruit, self.appels = bruit, 0
 
     def process_pil(self, im):
         self.appels += 1
@@ -38,8 +38,8 @@ class IATest(unittest.TestCase):
         ia._CACHE.clear()
         self.modeles = {}
 
-        def fabrique(bruit, tta):
-            return self.modeles.setdefault((bruit, tta), FauxModele(bruit, tta))
+        def fabrique(bruit):
+            return self.modeles.setdefault(bruit, FauxModele(bruit))
         for p in (mock.patch.object(ia, "_modele", side_effect=fabrique), mock.patch.object(ia, "_DISPO", True)):
             p.start()
             self.addCleanup(p.stop)
@@ -51,19 +51,38 @@ class IATest(unittest.TestCase):
         self.assertLessEqual(int(sortie[250:350, 50:70].mean()), 5)                   # l'aplat noir reste noir
 
     def test_les_trois_niveaux_utilisent_les_bons_modeles(self):
-        for niveau, (bruit, tta) in {1: (1, False), 2: (2, False), 3: (2, True)}.items():
+        for niveau in (1, 2):
             ia.agrandir(page(), niveau)
-            self.assertIn((bruit, tta), self.modeles, f"niveau {niveau}")
-        self.assertEqual(sorted(self.modeles), [(1, False), (2, False), (2, True)])
+        self.assertEqual(sorted(self.modeles), [1, 2])
+        self.assertEqual((self.modeles[1].appels, self.modeles[2].appels), (1, 1))      # une passe pour Naturel et Net
+        ia.agrandir(page(), 3)
+        self.assertEqual(self.modeles[2].appels, 1 + 8)                                  # Maximum : huit orientations, jamais le mode natif de la bibliothèque
+
+    def test_huit_passes_remettent_chaque_orientation_a_l_endroit(self):
+        g = page()
+        g[40:60, 30:170] = 40
+        un = ia._huit_passes(FauxModele(2), Image.fromarray(g).convert("RGB"))
+        seule = FauxModele(2).process_pil(Image.fromarray(g).convert("RGB"))
+        self.assertEqual(np.asarray(un).tolist(), np.asarray(seule).tolist())            # un modèle sans défaut donne le même résultat sous toutes les orientations
+
+    def test_choix_de_la_carte_graphique(self):
+        with mock.patch.object(ia, "_SANS_CARTE", False):
+            with mock.patch.dict("os.environ", {"MOUFLANGA_IA_GPU": "auto"}):
+                with mock.patch("os.path.exists", return_value=True):
+                    self.assertEqual((ia._gpuid(), ia.mode()), (0, "carte graphique"))
+                with mock.patch("os.path.exists", return_value=False):
+                    self.assertEqual((ia._gpuid(), ia.mode()), (-1, "processeur"))    # sans /dev/dri : jamais le calcul logiciel de Vulkan
+            with mock.patch.dict("os.environ", {"MOUFLANGA_IA_GPU": "non"}), mock.patch("os.path.exists", return_value=True):
+                self.assertEqual(ia._gpuid(), -1)
 
     def test_cache_un_autre_reglage_ne_refait_pas_l_agrandissement(self):
         g = page()
         a = ia.agrandir(g, 2)
         b = ia.agrandir(g.copy(), 2)
         self.assertIs(a, b)
-        self.assertEqual(self.modeles[(2, False)].appels, 1)
+        self.assertEqual(self.modeles[2].appels, 1)
         ia.agrandir(g, 2, niveaux_auto=False)                       # autre finition : autre résultat
-        self.assertEqual(self.modeles[(2, False)].appels, 2)
+        self.assertEqual(self.modeles[2].appels, 2)
 
     def test_page_deja_haute_ou_presque_noire(self):
         grande = page(h=1800)
@@ -81,7 +100,7 @@ class IATest(unittest.TestCase):
 class AmeliorerAvecIATest(unittest.TestCase):
     def setUp(self):
         ia._CACHE.clear()
-        for p in (mock.patch.object(ia, "_modele", side_effect=lambda b, t: FauxModele(b, t)), mock.patch.object(ia, "_DISPO", True)):
+        for p in (mock.patch.object(ia, "_modele", side_effect=lambda b: FauxModele(b)), mock.patch.object(ia, "_DISPO", True)):
             p.start()
             self.addCleanup(p.stop)
 

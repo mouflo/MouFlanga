@@ -10,7 +10,10 @@ Trois niveaux (mêmes réglages que les exemples montrés le 16/11) :
 - 1 « Naturel » : débruitage léger, 30 % de la texture d'origine gardée (dégradés et trames plus naturels, un peu plus doux) ;
 - 2 « Net » : débruitage moyen (texte et contours les plus francs) ;
 - 3 « Maximum » : comme « Net » avec huit passes (le même agrandissement sous huit orientations, moyenné : moins d'artefacts), huit fois plus lent.
-Environ 10 s par page pour 1 et 2, 75 s pour 3 (processeur seul, 8 cœurs). Pas de carte graphique sur ce serveur.
+Vitesse par page (566 × 924 px, mesurée le 16/11/2026) : sur la carte graphique Intel Iris Xe (Vulkan, si le conteneur la voit : /dev/dri/renderD128) 1,3 s
+pour 1 et 2, 12 s pour 3 ; sur le processeur (4 fils) 9 s et 75 s. `MOUFLANGA_IA_GPU=non` force le processeur.
+Le mode « tta » natif de la bibliothèque fait PLANTER tout le processus (code 139) dès qu'un autre modèle a servi avant sur la carte : il n'est jamais utilisé,
+les huit orientations sont passées une à une dans le modèle normal puis moyennées ici (même résultat, sans plantage).
 
 Optionnel : sans le paquet (ou sans la bibliothèque système libomp5) `disponible()` rend False et l'appli se comporte comme avant.
 Installer : « apt install libomp5 » puis « venv/bin/pip install --no-deps realcugan-ncnn-py » (--no-deps : le paquet réclame opencv-python, déjà là en version « headless »).
@@ -51,12 +54,53 @@ def disponible() -> bool:
     return _DISPO
 
 
-def _modele(bruit: int, tta: bool):
-    cle = (bruit, tta)
-    if cle not in _MODELES:
+_SANS_CARTE = False              # la carte a refusé de travailler : on reste sur le processeur
+
+
+def _gpuid() -> int:
+    """0 = la carte graphique (Vulkan), -1 = le processeur. La carte n'est choisie que si le conteneur la voit : sans /dev/dri/renderD128, Vulkan ne proposerait
+    qu'un calcul logiciel (llvmpipe), plus lent que le processeur. MOUFLANGA_IA_GPU : « non » (processeur), « oui » (carte), sinon automatique."""
+    choix = (os.environ.get("MOUFLANGA_IA_GPU") or "auto").strip().lower()
+    if _SANS_CARTE or choix in ("0", "non", "cpu", "processeur"):
+        return -1
+    if choix in ("1", "oui", "gpu", "carte"):
+        return 0
+    return 0 if os.path.exists("/dev/dri/renderD128") else -1
+
+
+def mode() -> str:
+    return "carte graphique" if _gpuid() >= 0 else "processeur"
+
+
+def _modele(bruit: int):
+    if bruit not in _MODELES:
         from realcugan_ncnn_py import Realcugan
-        _MODELES[cle] = Realcugan(gpuid=-1, num_threads=THREADS, noise=bruit, scale=2, model="models-se", tta_mode=tta)
-    return _MODELES[cle]
+        _MODELES[bruit] = Realcugan(gpuid=_gpuid(), num_threads=THREADS, noise=bruit, scale=2, model="models-se", tta_mode=False)
+    return _MODELES[bruit]
+
+
+def _huit_passes(modele, rgb):
+    """Le mode « TTA » refait à la main : la page sous ses huit orientations (4 rotations × miroir) passe dans le modèle, chaque résultat est remis à l'endroit,
+    puis tout est moyenné. Moins d'artefacts qu'une seule passe."""
+    from PIL import Image
+    a = np.asarray(rgb)
+    sorties = []
+    for miroir in (False, True):
+        for k in range(4):
+            x = np.rot90(a, k)
+            x = x[:, ::-1] if miroir else x
+            y = np.asarray(modele.process_pil(Image.fromarray(np.ascontiguousarray(x))), dtype=np.float32)
+            y = y[:, ::-1] if miroir else y
+            sorties.append(np.rot90(y, -k))
+    return Image.fromarray(np.clip(np.mean(sorties, axis=0) + 0.5, 0, 255).astype(np.uint8))
+
+
+def _agrandir_modele(g: np.ndarray, n: dict) -> np.ndarray:
+    from PIL import Image
+    rgb = Image.fromarray(g).convert("RGB")
+    modele = _modele(n["bruit"])
+    sortie = (_huit_passes(modele, rgb) if n["tta"] else modele.process_pil(rgb)).convert("L")
+    return np.asarray(sortie, dtype=np.uint8)
 
 
 def _niveaux(L: np.ndarray) -> np.ndarray:
@@ -88,9 +132,16 @@ def agrandir(g: np.ndarray, niveau: int, niveaux_auto: bool = True) -> np.ndarra
         if cle in _CACHE:
             _CACHE.move_to_end(cle)
             return _CACHE[cle]
-        from PIL import Image
-        sortie = _modele(n["bruit"], n["tta"]).process_pil(Image.fromarray(g).convert("RGB")).convert("L")
-        grand = np.asarray(sortie, dtype=np.uint8)
+        global _SANS_CARTE
+        try:
+            grand = _agrandir_modele(g, n)
+        except Exception as e:
+            if _gpuid() < 0:
+                raise
+            logger.warning("Restauration IA : la carte graphique a échoué (%s: %s), le processeur prend le relais", e.__class__.__name__, e)
+            _SANS_CARTE = True
+            _MODELES.clear()
+            grand = _agrandir_modele(g, n)
         if n["texture"]:                                        # un peu de la texture d'origine : dégradés et trames plus naturels
             base = cv2.resize(g, (grand.shape[1], grand.shape[0]), interpolation=cv2.INTER_LANCZOS4).astype(np.float32)
             grand = np.clip((1 - n["texture"]) * grand + n["texture"] * base, 0, 255).astype(np.uint8)
