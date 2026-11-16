@@ -1748,7 +1748,10 @@ def _preferees(candidates):
 
 
 def _retour_couvertures(name, ok="", erreur=""):
-    return redirect("/couvertures?id=" + quote(name) + "&trouvees=oui" + ("&ok=" + quote(ok) if ok else "") + ("&erreur=" + quote(erreur) if erreur else ""))
+    """Retour à la page des couvertures, calée sur le tome qui vient d'être modifié (le formulaire envoie « tome ») : on enchaîne sans redescendre."""
+    tome = (request.form.get("tome") or "").strip()
+    ancre = "#t" + tome if tome.isdigit() else ""
+    return redirect("/couvertures?id=" + quote(name) + "&trouvees=oui" + ("&ok=" + quote(ok) if ok else "") + ("&erreur=" + quote(erreur) if erreur else "") + ancre)
 
 
 # ---------------- ✂️ Découper un gros fichier (intégrale en un seul .cbz) en tomes : admin ----------------
