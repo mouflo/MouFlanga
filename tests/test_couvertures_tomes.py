@@ -1,4 +1,4 @@
-"""Couvertures des tomes : remplacement à part du fichier, retour en arrière, sources en ligne acceptées seulement de MangaDex."""
+"""Couvertures des tomes : remplacement à part du fichier, retour en arrière, sources en ligne acceptées seulement de MangaDex et ZOO."""
 import io
 import json
 import sys
@@ -132,6 +132,58 @@ class CouverturesTest(unittest.TestCase):
                 with mock.patch.object(ct, "_mangadex_manga", return_value=None) as recherche:
                     self.assertEqual(ct.couvertures_en_ligne("Again", ["Again"]), {})
                     recherche.assert_called_once()
+
+
+PAGE_ZOO = ('<a href="manga/noritaka/21535-8-noritaka-le-roi-de-la-baston-t_8"><img src="https://cdn.zoolemag.com/red/alb/21535/426268-1.jpg"></a>'
+            '<a href="manga/noritaka/21536-9-noritaka-le-roi-de-la-baston-t_9"><img src="https://cdn.zoolemag.com/red/alb/21536/426269-1.jpg"></a>'
+            '<a href="manga/noritaka/21536-9-noritaka-le-roi-de-la-baston-t_9">doublon</a>')
+
+
+class ZooTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.ancien_cache = ct.DOSSIER_CACHE
+        ct.DOSSIER_CACHE = Path(self.tmp.name) / "cache"
+
+    def tearDown(self):
+        ct.DOSSIER_CACHE = self.ancien_cache
+        self.tmp.cleanup()
+
+    def test_adresse_normalisee_oubliee_ou_refusee(self):
+        self.assertEqual(ct.zoo_definir("Noritaka", "https://zoolemag.com/serie-5382-noritaka?x=1#a"), "https://zoolemag.com/serie-albums-5382-noritaka")
+        self.assertEqual(ct.zoo_adresse("Noritaka"), "https://zoolemag.com/serie-albums-5382-noritaka")
+        for mauvaise in ("https://exemple.org/serie-1-x", "https://zoolemag.com/manga/noritaka/21536-9-noritaka-t_9", "javascript:alert(1)"):
+            with self.assertRaises(ValueError):
+                ct.zoo_definir("Noritaka", mauvaise)
+        self.assertEqual(ct.zoo_definir("Noritaka", ""), "")
+        self.assertEqual(ct.zoo_adresse("Noritaka"), "")
+
+    def test_tomes_lus_sur_la_page_en_grand_format(self):
+        page = mock.Mock(statut=200, texte=PAGE_ZOO)
+        with mock.patch.object(ct.reseau, "get", return_value=page):
+            tomes = ct._zoo_tomes("https://zoolemag.com/serie-albums-5382-noritaka")
+        self.assertEqual(sorted(tomes), [8, 9])
+        self.assertEqual(len(tomes[9]), 1)
+        self.assertEqual(tomes[9][0]["url"], "https://cdn.zoolemag.com/red/alb/21536/720-sw/426269-1.jpg")
+        self.assertEqual(tomes[9][0]["langue"], "fr")
+
+    def test_zoo_passe_devant_et_une_panne_n_enleve_rien(self):
+        ct.zoo_definir("Noritaka", "https://zoolemag.com/serie-5382-noritaka")
+        md = {9: [{"url": ct.PREFIXE_MANGADEX + "a/b.jpg", "vignette": "", "langue": "fr"}]}
+        with mock.patch.object(ct, "_couvertures_mangadex", return_value=md), \
+                mock.patch.object(ct.reseau, "get", return_value=mock.Mock(statut=200, texte=PAGE_ZOO)):
+            tomes = ct.couvertures_en_ligne("Noritaka", ["Noritaka"])
+        self.assertEqual([c["url"].startswith(ct.PREFIXE_ZOO) for c in tomes[9]], [True, False])
+        self.assertEqual(len(md[9]), 1)                      # le résultat de MangaDex (gardé en cache) n'est pas modifié
+        with mock.patch.object(ct, "_couvertures_mangadex", return_value=md), \
+                mock.patch.object(ct.reseau, "get", side_effect=ct.reseau.Panne("zoo", "coupé")):
+            self.assertEqual(ct.couvertures_en_ligne("Noritaka", ["Noritaka"]), md)
+
+    def test_telechargement_zoo_accepte_et_retombe_sur_la_petite(self):
+        grande, petite = mock.Mock(status_code=404), mock.Mock(status_code=200, content=b"ok")
+        with mock.patch.object(ct._SESSION, "get", side_effect=[grande, petite]) as g:
+            self.assertEqual(ct.telecharger("https://cdn.zoolemag.com/red/alb/1/720-sw/x.jpg"), b"ok")
+        self.assertEqual(g.call_args_list[1].args[0], "https://cdn.zoolemag.com/red/alb/1/x.jpg")
 
 
 if __name__ == "__main__":

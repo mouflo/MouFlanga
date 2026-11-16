@@ -47,8 +47,15 @@
         {% if erreur %}<div class="msg err" role="alert">{{ erreur }}</div>{% endif %}
 
         <div class="cv-liens" style="margin-bottom: 12px;">
-            <a href="/couvertures?id={{ nom|urlencode }}&chercher=1">🔎 Chercher en ligne (MangaDex)</a>
+            <a href="/couvertures?id={{ nom|urlencode }}&chercher=1">🔎 Chercher en ligne (MangaDex{% if zoo %} + ZOO{% endif %})</a>
         </div>
+
+        <form class="cv-lot" method="post" action="/couvertures/zoo">
+            <input type="hidden" name="id" value="{{ nom }}">
+            <b>Série sur ZOO</b> (zoolemag.com) : quand MangaDex n'a pas les couvertures, collez ici l'adresse de la série sur ZOO (par exemple <code>https://zoolemag.com/serie-5382-noritaka</code>). Les couvertures de tous ses tomes sont alors proposées, en français et en grand format. Laissez vide pour oublier l'adresse.
+            <input type="url" name="url" value="{{ zoo }}" placeholder="https://zoolemag.com/serie-…" style="display:block;width:100%;box-sizing:border-box;padding:10px;font-size:16px;margin:10px 0;">
+            <button type="submit">Garder l'adresse et chercher</button>
+        </form>
 
         <form class="cv-lot" method="post" action="/couvertures/lot" enctype="multipart/form-data">
             <input type="hidden" name="id" value="{{ nom }}">
@@ -92,7 +99,7 @@
                 {% for c in l.candidates %}
                 <div class="cv-case">
                     <img src="{{ c.vignette }}" alt="Trouvée en ligne, tome {{ l.tome }}" loading="lazy">
-                    En ligne
+                    En ligne{% if c.source %} ({{ c.source }}){% endif %}
                     <div class="cv-langue">{{ c.langue or 'langue ?' }}</div>
                     <form method="post" action="/couvertures/appliquer" data-confirme="Remplacer la couverture ({{ l.nom }}) ?">
                         <input type="hidden" name="id" value="{{ nom }}"><input type="hidden" name="tome" value="{{ l.tome }}"><input type="hidden" name="url" value="{{ c.url }}">

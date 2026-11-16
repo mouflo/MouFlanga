@@ -2836,7 +2836,7 @@ def page_couvertures():
                "candidates": _preferees(trouvees.get(n, []))[:3]} for n in _tomes_presents(name)]
     lignes += [{"tome": n, "nom": f"Hors-série : {titre}", "remplacee": bool(couvertures_tomes.remplacement(dossier, n)), "candidates": []}
                for n, titre in _hs_presents(name)]                # pas de recherche en ligne : MangaDex ne range que les tomes
-    return render_template("couvertures.html", version=APP_VERSION, nom=name, lignes=lignes,
+    return render_template("couvertures.html", version=APP_VERSION, nom=name, lignes=lignes, zoo=couvertures_tomes.zoo_adresse(name),
                            total_trouvees=sum(1 for x in lignes if x["candidates"]),
                            ok=request.args.get("ok", ""), erreur=request.args.get("erreur", ""))
 
@@ -2869,6 +2869,20 @@ def couvertures_retirer():
     if couvertures_tomes.retirer(MANGA_DIR / name, tome):
         return _retour_couvertures(name, ok=f"{_nom_tome(name, tome)} : retour à la première page du fichier.")
     return _retour_couvertures(name, erreur="Ce tome n'a pas de remplacement.")
+
+
+@app.route("/couvertures/zoo", methods=["POST"])
+def couvertures_zoo():
+    """Garde (ou oublie, si vide) l'adresse de la série sur zoolemag.com ; la recherche en ligne la lit ensuite avec MangaDex."""
+    name = request.form.get("id", "")
+    if name not in _scan() or name == "(Sans série)":
+        return Response("Série introuvable", status=404)
+    try:
+        adresse = couvertures_tomes.zoo_definir(name, request.form.get("url", ""))
+    except ValueError as e:
+        return _retour_couvertures(name, erreur=str(e))
+    return redirect("/couvertures?id=" + quote(name) + "&chercher=1" + ("&ok=" + quote("Adresse ZOO gardée : couvertures cherchées.") if adresse
+                                                                         else "&ok=" + quote("Adresse ZOO oubliée.")))
 
 
 @app.route("/couvertures/appliquer", methods=["POST"])

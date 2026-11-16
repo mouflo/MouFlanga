@@ -121,6 +121,7 @@ SERVICES = {s.nom: s for s in (
     Service("vega", "Vega Livres (éditeur)", 2.0, ["www.vega-livres.fr"], pause_429=300),
     Service("ankama", "Ankama Boutique (éditeur)", 2.0, ["www.ankama-shop.com"], pause_429=300),
     Service("glenat", "Glénat (éditeur)", 2.0, ["www.glenat.com"], pause_429=300),
+    Service("zoo", "ZOO (zoolemag.com)", 2.0, ["zoolemag.com", "www.zoolemag.com"], pause_429=300),
     Service("kitsu", "Kitsu", 1.0, ["kitsu.io"]),
     Service("jikan", "MyAnimeList (Jikan)", 1.2, ["api.jikan.moe"], pause_429=60),
     Service("github", "GitHub (API)", 1.0, ["api.github.com"], pause_429=3600),

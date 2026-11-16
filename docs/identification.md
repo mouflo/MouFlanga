@@ -68,6 +68,10 @@ Glénat (glenat.com) : robots.txt, groupe « * », n'interdit que les adresses a
 paramètre, **jamais la recherche du site**, au rythme de `reseau` (2 s). Une adresse de page est donnée par la personne, jamais cherchée. Les pages sont
 en UTF-8 sans charset annoncé : `reseau._texte_utf8` (sinon « Édition originale » devenait « Ã\x89dition originale »).
 
+ZOO (zoolemag.com), **couvertures seulement** (`couvertures_tomes.py`) : pas de robots.txt (404). On ne lit que la page « Tous les albums » d'une série dont
+l'adresse est donnée par la personne (page 🖼 Couvertures, gardée dans `data/couvertures-zoo.json`), puis les images : la grande (`red/alb/<id>/720-sw/…`, 720 px) avec repli sur la petite.
+Jamais la recherche du site. Le numéro du tome est celui de l'adresse de l'album (`<id>-<tome>-…`).
+
 Examinées et **refusées** (ne pas relancer sans nouvelle raison) :
 - Manga-News : protégé par Cloudflare (« Just a moment… ») : on ne contourne jamais une protection anti-robot.
 - Bédéthèque et Livraddict : leur robots.txt interdit expressément ClaudeBot / Claude-Web / anthropic-ai.

@@ -5,6 +5,8 @@ Couvertures des tomes : une image de remplacement par tome, rangée à part du f
   quand elle est renommée). L'ancienne image est gardée en « NNN.ancienne.jpg ».
 - Sources en ligne : MangaDex (couvertures par volume, en bonne résolution). Les résultats sont gardés 7 jours dans
   « data/couvertures-trouvees/<série>.json ».
+- ZOO (zoolemag.com) : pour les séries que MangaDex n'a pas. L'adresse de la série est donnée par la personne (« data/couvertures-zoo.json »),
+  jamais cherchée : pas de robots.txt sur le site, on ne lit que la page « Tous les albums » de la série et les images, au rythme de `reseau`.
 """
 import hashlib
 import io
@@ -28,6 +30,10 @@ DUREE_CACHE = 7 * 86400
 # À augmenter quand la logique de recherche change : les résultats anciens (possiblement faux) sont alors refaits seuls.
 VERSION_CACHE = 2
 PREFIXE_MANGADEX = "https://uploads.mangadex.org/covers/"
+PREFIXE_ZOO = "https://cdn.zoolemag.com/"
+_SERIE_ZOO = re.compile(r"^https://(?:www\.)?zoolemag\.com/(?:serie|serie-albums)-(\d+)-([a-z0-9-]+)/?$")
+_ALBUM_ZOO = re.compile(r'href="(?:https://zoolemag\.com/)?/?[a-z-]+/[a-z0-9-]+/(\d+)-(\d{1,3})-[a-z0-9_-]+"')
+_IMAGE_ZOO = re.compile(r"cdn\.zoolemag\.com/red/alb/(\d+)/(\d+-\d+\.(?:jpg|png))")
 _SESSION = reseau.SESSION           # une seule session pour tout Internet (voir reseau.py)
 
 
@@ -174,7 +180,77 @@ def _mangadex_manga(titres: list[str]) -> str | None:
     return None
 
 
+# ---------------- ZOO : adresse de la série donnée par la personne ----------------
+def _fichier_zoo() -> Path:
+    return DOSSIER_CACHE.parent / "couvertures-zoo.json"
+
+
+def _adresses_zoo() -> dict:
+    try:
+        return json.loads(_fichier_zoo().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def zoo_adresse(serie: str) -> str:
+    return _adresses_zoo().get(serie, "")
+
+
+def zoo_definir(serie: str, url: str) -> str:
+    """Garde l'adresse de la série sur ZOO (page de la série ou « Tous les albums »). Adresse vide : on l'oublie.
+    ValueError si ce n'est pas une page de série de zoolemag.com. Rend l'adresse gardée."""
+    url = (url or "").strip().split("#")[0].split("?")[0]
+    adresses = _adresses_zoo()
+    if not url:
+        adresses.pop(serie, None)
+    else:
+        m = _SERIE_ZOO.match(url)
+        if not m:
+            raise ValueError("Ce n'est pas l'adresse d'une série sur zoolemag.com (elle ressemble à https://zoolemag.com/serie-5382-noritaka).")
+        adresses[serie] = f"https://zoolemag.com/serie-albums-{m[1]}-{m[2]}"
+    _fichier_zoo().parent.mkdir(parents=True, exist_ok=True)
+    tmp = _fichier_zoo().with_suffix(".tmp")
+    tmp.write_text(json.dumps(adresses, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, _fichier_zoo())
+    return adresses.get(serie, "")
+
+
+def _zoo_tomes(adresse: str) -> dict:
+    """{numéro de tome: [{"url", "vignette", "langue", "source"}]} lu sur la page « Tous les albums » d'une série ZOO.
+    La grande image (720 pixels de large) est dans le même dossier que la petite. ValueError : la page n'existe pas.
+    reseau.Panne : ZOO ne répond pas."""
+    r = reseau.get(adresse, attendu="texte", memo=300)
+    if r.statut == 404:
+        raise ValueError("Série introuvable sur ZOO.")
+    images = {}
+    for album, fichier in _IMAGE_ZOO.findall(r.texte):
+        images.setdefault(album, fichier)
+    tomes = {}
+    for album, numero in _ALBUM_ZOO.findall(r.texte):
+        fichier = images.get(album)
+        n = int(numero)
+        if not fichier or n < 1 or any(c["url"].split("/")[-3] == album for c in tomes.get(n, [])):
+            continue
+        base = f"{PREFIXE_ZOO}red/alb/{album}/"
+        tomes.setdefault(n, []).append({"url": f"{base}720-sw/{fichier}", "vignette": base + fichier, "langue": "fr", "source": "ZOO"})
+    return tomes
+
+
 def couvertures_en_ligne(serie: str, titres: list[str], forcer: bool = False) -> dict:
+    """{numéro de tome: [{"url", "vignette", "langue"}]} : MangaDex, puis ZOO si la personne a donné l'adresse de la série (ZOO passe
+    devant : français). Une panne de ZOO n'enlève rien : on garde ce que MangaDex a donné."""
+    tomes = {n: list(c) for n, c in _couvertures_mangadex(serie, titres, forcer).items()}
+    adresse = zoo_adresse(serie)
+    if adresse:
+        try:
+            for n, c in _zoo_tomes(adresse).items():
+                tomes[n] = c + tomes.get(n, [])
+        except (reseau.Panne, ValueError) as e:
+            logger.info("Couvertures ZOO de %s : %s", serie, e)
+    return tomes
+
+
+def _couvertures_mangadex(serie: str, titres: list[str], forcer: bool = False) -> dict:
     """{numéro de tome: [{"url", "vignette", "langue"}]} : couvertures trouvées sur MangaDex (gardées 7 jours). Quand MangaDex ne
     répond pas, rien n'est gardé comme « aucune couverture » : l'ancien résultat est rendu et on réessaiera."""
     DOSSIER_CACHE.mkdir(parents=True, exist_ok=True)
@@ -219,9 +295,11 @@ def couvertures_en_ligne(serie: str, titres: list[str], forcer: bool = False) ->
 
 
 def telecharger(url: str) -> bytes:
-    """Télécharge une couverture trouvée en ligne. Seules les adresses MangaDex connues sont acceptées."""
-    if not url.startswith(PREFIXE_MANGADEX):
+    """Télécharge une couverture trouvée en ligne. Seules les adresses MangaDex et ZOO connues sont acceptées."""
+    if not url.startswith((PREFIXE_MANGADEX, PREFIXE_ZOO)):
         raise ValueError("Adresse de couverture non reconnue.")
     r = _SESSION.get(url, timeout=30)
+    if r.status_code == 404 and url.startswith(PREFIXE_ZOO) and "/720-sw/" in url:
+        r = _SESSION.get(url.replace("/720-sw/", "/"), timeout=30)       # pas de grande image pour cet album : la petite
     r.raise_for_status()
     return r.content
