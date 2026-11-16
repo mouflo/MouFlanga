@@ -121,7 +121,7 @@
         const r = await (await fetch("/api/torrents/auto", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({serie, lancer})})).json();
         if (r.error && !r.torrents) { $("tor-auto-res").innerHTML = `<div class="note err">${esc(r.error)}</div>`; return; }
         const l = r.torrents || [];
-        const entete = `<div class="note ${r.ok ? "ok" : "err"}">${esc(r.message || r.error || "")}${r.profil ? ` Profil : « ${esc(r.profil)} ».` : " Aucun profil pour cette série."}
+        const entete = `<div class="note ${r.ok ? "ok" : "err"}">${esc(r.message || r.error || "")}${r.profil ? ` Règle : « ${esc(r.profil)} ».` : " Aucune règle pour cette série."}
             ${r.attendus ? ` ${r.possedes} tome(s) sur ${r.attendus} déjà là.` : ""}${(r.manquants || []).length ? ` Rien ne couvre : T${r.manquants.join(", T")}.` : ""}</div>`;
         $("tor-auto-res").innerHTML = entete + l.map(x => `<div class="tor-res"><div class="tor-info"><b>${x.type === "meilleur" ? "⬆️ " : "🆕 "}${x.score ? `<em class="tor-score">${x.score > 0 ? "+" : ""}${x.score}</em> ` : ""}${esc(x.titre)}</b>
             <small>${x.type === "meilleur" ? "Remplace" : "Ajoute"} T${x.tomes.join(", T")} · ${taille(x.taille)} · ${x.sources} source${x.sources > 1 ? "s" : ""} · ${esc(x.indexeur)}</small>

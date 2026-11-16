@@ -5075,7 +5075,7 @@ def api_suivies():
         if torrents.configure():
             threading.Thread(target=_verifier_serie, args=(nom,), daemon=True).start()
         return jsonify({"ok": True, "message": "🤖 Téléchargement automatique activé : les tomes manquants partent tout seuls dès qu'un torrent "
-                                               "accepté par ton profil est trouvé (un seul par tome, le mieux noté). Vérification lancée."})
+                                               "qui respecte tes préférences est trouvé (un seul par tome, le mieux noté). Vérification lancée."})
     if action == "qualite":
         with suivi._verrou:
             d = suivi.lire(); d["series"][nom]["qualite"] = "Digital" if body.get("qualite") == "Digital" else "Indifférente"; suivi.ecrire(d)
