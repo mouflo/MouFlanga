@@ -1021,7 +1021,11 @@
       var q = $('allQualMode').value;
       lignes.push('🗜 Compression : ' + (q === 'o' ? 'chaque page garde sa qualité d\'origine (une double page assemblée est en 95, les autres pages en 70, par exemple) : le poids reste à peu près le même, et peut baisser un peu quand la teinte retirée pesait dans le fichier' : q === 'm' ? 'qualité fixée à ' + $('allQual').value + ' / 100' : 'automatique, le poids des fichiers va changer (en général plus léger)'));
       var touche = l || q === '' || q === 'm';                      // ce qui peut encore s'appliquer à une page en couleur
-      lignes.push('🌈 Pages en couleur : elles restent en couleur, jamais améliorées ni passées en gris' + (touche ? ' ; seuls ' + (l ? 'la réduction' + (q !== 'o' ? ' et ' : '') : '') + (q !== 'o' ? 'l\'allègement' : '') + ' leur sont appliqués' : ' ; rien ne leur est fait'));
+      var iaCouleur = $('am_ia') && $('am_ia').value !== '0';        // la restauration IA sait traiter une page en couleur (couverture, illustration) ; les autres réglages non
+      var suite = touche ? (iaCouleur ? ', puis ' : ' ; seuls ') + (l ? 'la réduction' + (q !== 'o' ? ' et ' : '') : '') + (q !== 'o' ? 'l\'allègement' : '') + (iaCouleur ? ' s\'appliquent' : ' leur sont appliqués') : '';
+      lignes.push('🌈 Pages en couleur : ' + (iaCouleur
+        ? 'restaurées par l\'IA (agrandies ×2, teintes gardées, seulement celles de moins de 1700 px de haut), jamais passées en gris ; les autres réglages d\'image ne les touchent pas' + suite
+        : 'elles restent en couleur, jamais passées en gris ; seule la restauration IA les améliore (choisissez-la pour les couvertures)' + suite + (touche ? '' : ' ; sinon rien ne leur est fait')));
       z.innerHTML = '<h3>📝 Ce qui sera fait sur les ' + n + ' tome' + (n > 1 ? 's' : '') + ' cochés</h3><ul class="reg-recap"><li>' + lignes.join('</li><li>') + '</li></ul>';
     }
     function nomCourt(libelle, hors) {                                  // « Nori Taka - Tome 05 » → « T05 » ; un hors-série garde le début de son titre
