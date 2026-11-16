@@ -999,6 +999,21 @@
       if (o) document.documentElement.style.setProperty('--h-onglets', o.offsetHeight + 'px');
     }
     window.addEventListener('resize', posOnglets);
+    function dureeCourte(s) {
+      s = Math.max(0, Math.round(s));
+      return s < 90 ? s + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : Math.floor(s / 3600) + ' h ' + String(Math.round((s % 3600) / 60)).padStart(2, '0');
+    }
+    function avancementAllege(r) {                                  // pourcentage réel (pages et taille des tomes), tome et page en cours, temps écoulé et restant, alerte si plus rien n'avance
+      var pct = r.pourcent == null ? 0 : r.pourcent, tome = (r.tome || '').replace(/\.(cbz|zip)$/i, '');
+      var etape = r.phase === 'analyse' ? 'analyse des pages d\'essai' : r.phase === 'verification' ? 'vérification du fichier écrit' : (r.pages ? 'page ' + (r.page || 0) + ' / ' + r.pages : 'préparation');
+      var temps = 'écoulé ' + dureeCourte(r.ecoule_s || 0) + (r.reste_s != null ? ' · reste environ ' + dureeCourte(r.reste_s) : ' · estimation du temps restant dans un instant');
+      var bloque = (r.depuis_signe_s || 0) > 120
+        ? '<div class="all-bloque" role="alert">⚠ Aucune page traitée depuis ' + dureeCourte(r.depuis_signe_s) + ' : le travail est peut-être bloqué. Une page très lourde ou le NAS lent peuvent l\'expliquer ; sinon, dis-le-moi, le journal dira où ça s\'est arrêté.</div>' : '';
+      return '<div class="dem-sous"><b>' + pct + ' %</b> · ' + esc(r.message || '') + ' tome ' + Math.min((r.fait || 0) + 1, r.total || 1) + ' sur ' + (r.total || '?') +
+        (tome ? ' (' + esc(tome) + ')' : '') + ' · ' + etape + '<br>' + temps + ' · dernière page il y a ' + dureeCourte(r.depuis_signe_s || 0) +
+        '<br><small>Ça continue en arrière-plan, tu peux fermer cette fenêtre : une notification arrive à la fin.</small></div>' +
+        '<progress max="100" value="' + pct + '" style="width:100%"></progress>' + bloque;
+    }
     function actionsAmelioration() {                                // ce qui sera fait, en groupes de mots courts (aussi pour la confirmation)
       var am = amelioration(), uniq = $('am_uniformiser') && $('am_uniformiser').value === '1';
       var autres = REGLAGES_AMEL.some(function (r) { return r[0] !== 'uniformiser' && $('am_' + r[0]) && $('am_' + r[0]).value !== '0'; });
@@ -1172,8 +1187,7 @@
         return '<li>' + esc(x.fichier.replace(/\.(cbz|zip)$/i, '')) + (!r.appliquer && !r.en_cours && x.qualite ? ' <button type="button" class="tog" data-comparer="' + esc(x.fichier) + '" title="Comparer avant / après">👁</button>' : '') +
           ' <small>' + (x.alerte ? '⚠ ' + esc(x.alerte) + ' · ' : '') + detail + '</small></li>';
       }).join('');
-      $('allRes').innerHTML = (r.en_cours ? '<div class="dem-sous">' + esc(r.message || '') + ' ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' tomes · ça continue en arrière-plan, tu peux fermer cette fenêtre : une notification arrive à la fin.</div>' +
-          '<progress max="' + (r.total || 1) + '" value="' + (r.fait || 0) + '" style="width:100%"></progress>' : (r.message ? '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' : '')) +
+      $('allRes').innerHTML = (r.en_cours ? avancementAllege(r) : (r.message ? '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' : '')) +
         (lignes ? '<ol class="tchap">' + lignes + '</ol>' : '') +
         (!r.en_cours && r.message && !r.appliquer && (r.gain > 0 || r.eclairer) ? rappelSelection() + '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="1">🪶 Appliquer aux tomes cochés</button></div>' : '');
       majCompteTomes();

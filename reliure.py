@@ -76,7 +76,7 @@ def ombre_dos(g: np.ndarray, niveau: int = 2) -> np.ndarray:
     """Éclaircit le papier assombri vers le dos (et vers les bords) : gain par colonne mesuré sur le papier de chaque tranche, jamais sous 1 (on n'assombrit pas),
     plafonné selon le niveau (1 : 15 %, 2 : 30 %, 3 : 50 %). Une double page (plus large que haute) : chaque moitié séparément, le dos est au milieu."""
     h, w = g.shape
-    if w > 1.2 * h:
+    if w > 1.1 * h:                                    # même seuil que le repérage des doubles pages (optimiser._RATIO_DOUBLE)
         m = w // 2
         return np.hstack([_moitie_sans_ombre(g[:, :m], niveau), _moitie_sans_ombre(g[:, m:], niveau)])
     return _moitie_sans_ombre(g, niveau)

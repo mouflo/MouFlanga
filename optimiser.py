@@ -276,7 +276,10 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite
     eclairer = reglages_amelioration(eclairer)
     inchangees = set(images)
     if eclairer:
-        traitees = {n: ameliorer(im, eclairer, calage) for n, im in images.items()}
+        traitees = {}
+        for i, (n, im) in enumerate(images.items()):
+            traitees[n] = ameliorer(im, eclairer, calage)
+            _avancer("analyse", i + 1, len(images))
         inchangees = {n for n in images if traitees[n] is images[n]}
         images = traitees
     reduites = {n: reduire(im, largeur_max) for n, im in images.items()}
@@ -324,6 +327,8 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
     tmp = destination if destination is not None else chemin.with_name("." + chemin.name + ".allege")
     vu_comicinfo = False
     with zipfile.ZipFile(chemin) as src, zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as dst:
+        nb_images = sum(1 for i in src.infolist() if Path(i.filename).suffix.lower() in _IMAGES)
+        faites = 0
         for info in src.infolist():
             data = src.read(info.filename)
             compression = zipfile.ZIP_STORED
@@ -336,6 +341,8 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
                     nouveau = _jpeg(im2, (qualite_jpeg(im) or qualite) if fidele else qualite)
                     if im2 is not im or len(nouveau) < len(data):
                         data = nouveau
+                faites += 1
+                _avancer("ecriture", faites, nb_images)
             elif comicinfo is not None and info.filename == COMICINFO:
                 data, vu_comicinfo, compression = comicinfo(data), True, zipfile.ZIP_DEFLATED
             info2 = zipfile.ZipInfo(info.filename, date_time=info.date_time)
@@ -345,6 +352,7 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
             c = zipfile.ZipInfo(COMICINFO, date_time=time.localtime()[:6])
             c.compress_type = zipfile.ZIP_DEFLATED
             dst.writestr(c, comicinfo(None))
+    _avancer("verification", 1, 1)
     with zipfile.ZipFile(tmp) as z:                       # relecture : mêmes pages (et le ComicInfo), archive saine
         if z.testzip() is not None:
             tmp.unlink()
@@ -463,9 +471,49 @@ def lire_historique():
 _VERROU_HISTORIQUE = threading.Lock()
 
 
+_LOCAL = threading.local()       # la série traitée par CE fil : analyser() et reecrire() signalent ainsi leur avancement page par page sans changer de signature
+
+
+def _avancer(phase: str, k: int, n: int):
+    """Une page de plus de traitée (phase « analyse », « ecriture » ou « verification ») : alimente la barre de progression et le « dernier signe de vie »."""
+    serie = getattr(_LOCAL, "serie", None)
+    if not serie:
+        return
+    with _VERROU:
+        e = _ETAT.get(serie)
+        if e is not None and e.get("en_cours"):
+            e.update(phase=phase, page=k, pages=n, signe=time.time())
+
+
+def _completer(e: dict):
+    """Ajoute à l'état d'un travail en cours : pourcent (pondéré par la taille des tomes et l'avancement DANS le tome en cours), ecoule_s, reste_s (None tant que
+    c'est trop tôt pour estimer : moins de 2 % ou moins de 20 s), depuis_signe_s (secondes depuis la dernière page traitée : sert à repérer un blocage)."""
+    maintenant = time.time()
+    debut = e.get("debut") or maintenant
+    n = e.get("pages") or 0
+    part = 0.0
+    if n:
+        k = min(e.get("page") or 0, n)
+        if e.get("appliquer"):                                  # l'analyse (quelques pages d'essai) pèse peu devant la réécriture de toutes les pages
+            part = 0.1 * k / n if e.get("phase") == "analyse" else 0.1 + 0.9 * k / n
+        else:
+            part = k / n
+    total = e.get("octets_total") or 0
+    f = ((e.get("octets_faits") or 0) + part * (e.get("tome_octets") or 0)) / total if total else ((e.get("fait") or 0) + part) / max(1, e.get("total") or 1)
+    f = max(0.0, min(0.999, f))
+    ecoule = maintenant - debut
+    e["pourcent"] = int(f * 100)
+    e["ecoule_s"] = int(ecoule)
+    e["reste_s"] = int(ecoule * (1 - f) / f) if f >= 0.02 and ecoule >= 20 else None
+    e["depuis_signe_s"] = int(maintenant - (e.get("signe") or debut))
+
+
 def etat(serie):
     with _VERROU:
-        return dict(_ETAT.get(serie) or {})
+        e = dict(_ETAT.get(serie) or {})
+    if e.get("en_cours") and e.get("debut"):
+        _completer(e)
+    return e
 
 
 def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None, largeur_max=None, qualite_forcee=None, infos_de=None, calages=None):
@@ -481,9 +529,20 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
 
     def travail():
         gagne, avant_total, rapport = 0, 0, []
+        _LOCAL.serie = serie
+        tailles = {}
+        for f in fichiers:
+            try:
+                tailles[str(f)] = Path(f).stat().st_size
+            except OSError:
+                tailles[str(f)] = 0
+        with _VERROU:
+            _ETAT[serie].update(debut=time.time(), signe=time.time(), octets_total=sum(tailles.values()), octets_faits=0)
         try:
             for f in fichiers:
                 f = Path(f)
+                with _VERROU:
+                    _ETAT[serie].update(tome=f.name, tome_octets=tailles.get(str(f), 0), phase="analyse", page=0, pages=0, signe=time.time())
                 try:
                     if f.suffix.lower() not in (".cbz", ".zip") or not zipfile.is_zipfile(f):
                         rapport.append({"fichier": f.name, "note": "pas une archive ZIP : ignoré"})
@@ -535,6 +594,7 @@ def lancer(serie, fichiers, appliquer, vers_corbeille, eclairer=False, fini=None
                     rapport.append({"fichier": f.name, "note": f"erreur : {e}"})
                 with _VERROU:
                     _ETAT[serie]["fait"] += 1
+                    _ETAT[serie]["octets_faits"] = (_ETAT[serie].get("octets_faits") or 0) + tailles.get(str(f), 0)
                     _ETAT[serie]["rapport"] = list(rapport)
             go = lambda n: f"{n / 1048576:.0f} Mo" if abs(n) < 1073741824 else f"{n / 1073741824:.2f}".replace(".", ",") + " Go"
             traites = sum(1 for x in rapport if x.get("taille_mo") is not None)
@@ -618,7 +678,8 @@ def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage=None, 
 import archives                         # ordre et numérotation des pages tels que le lecteur les voit
 import xml.etree.ElementTree as ET
 
-_RATIO_DOUBLE = 1.2                     # largeur / hauteur à partir de laquelle une image est une double page
+_RATIO_DOUBLE = 1.1                     # largeur / hauteur à partir de laquelle une image est une double page (Nori Taka : des doubles à 1,177 – 1,199, 692 pages manquées avec 1,2 ;
+#                                          une page seule est toujours bien plus haute que large, et une vraie illustration en double se garde entière dans la planche)
 _DOUBLES_CACHE = {}                     # (fichier, date, taille) → liste repérée
 _COUPES_ETAT = {}                       # série → {"en_cours", "fait", "total", "message", "rapport"}
 _COUPE_FORMATS = (".jpg", ".jpeg", ".png", ".webp")

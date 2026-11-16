@@ -596,3 +596,5 @@ body.mou-skin .gerer-liste button:hover, body.mou-skin .gerer-liste a:hover { bo
 
 .amel-ligne.amel-grise { opacity:.45; }
 .amel-ligne.amel-grise select { cursor:not-allowed; }
+
+.all-bloque { margin:8px 0; padding:8px 10px; border-radius:8px; border:1px solid #6b2f35; background:#2a1416; color:#ffb4b4; font-size:.9rem; }
