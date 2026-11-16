@@ -426,8 +426,18 @@ body.lecteur .dem-nom { cursor:default; text-decoration:none; }
 .reg .amel-ligne:first-of-type { margin-top:4px; }
 .onglets { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin:12px 0; position:sticky; top:0; z-index:2; padding:6px 0; background:var(--surface, #1e1f22); box-shadow:0 -16px 0 var(--surface, #1e1f22); }
 .onglets .mou-btn { padding:10px 4px; font-size:.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.all-tome { display:flex; gap:10px; align-items:center; margin:6px 0; }
-.all-tome input { width:22px; height:22px; flex:none; }
+/* Les tomes à traiter : de grosses puces à toucher (au lieu d'une liste de cases repliée) */
+.all-puces { display:grid; grid-template-columns:repeat(auto-fill, minmax(68px, 1fr)); gap:8px; margin:8px 0; }
+.all-tome { position:relative; display:block; margin:0; }
+.all-tome input { position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:pointer; }
+.all-tome span { display:flex; align-items:center; justify-content:center; gap:4px; min-height:44px; padding:4px; box-sizing:border-box; border:1px solid #2c2f36; border-radius:10px; background:#1f2126; color:#9aa0aa; font-weight:600; white-space:nowrap; }
+.all-tome input:checked + span { background:var(--accent, #52b54b); border-color:var(--accent, #52b54b); color:#0b0c0e; }
+.all-tome input:checked + span::before { content:"✓"; }
+.all-tome input:focus-visible + span { outline:2px solid #fff; outline-offset:2px; }
+.all-tome .unif-flag { font-style:normal; }
+.all-rappel { margin:10px 0 2px; font-size:.95rem; }
+.all-rappel .lien { background:none; border:none; padding:10px 4px; min-height:44px; color:var(--accent, #52b54b); text-decoration:underline; font-size:inherit; cursor:pointer; }
+[data-alleger]:disabled { opacity:.55; }
 .unif-flag { color:var(--warn, #e6a028); }
 .unif-bilan { padding:8px 10px; border-radius:8px; margin:6px 0; line-height:1.4; border:1px solid transparent; }
 .unif-bilan.ok { background:color-mix(in srgb, var(--accent, #52b54b) 12%, transparent); border-color:color-mix(in srgb, var(--accent, #52b54b) 40%, transparent); }
@@ -556,3 +566,17 @@ body.mou-skin .gerer-liste button:hover, body.mou-skin .gerer-liste a:hover { bo
 .series-head::before { content:''; position:absolute; inset:0; z-index:-1; border-radius:12px; background:var(--fond, none) center/cover no-repeat; filter:blur(26px) saturate(1.3); opacity:.32; clip-path:inset(0 round 12px); pointer-events:none; }
 .series-head img { box-shadow:0 8px 24px rgba(0,0,0,.55); }
 @media (max-width:800px) { .series-head { padding:10px; } }
+
+/* 👁 Aperçu en direct : collé en haut du panneau ✨ Image, sous les onglets, pour voir l'effet de chaque réglage sans faire défiler */
+#allCmp:not(:empty) { position:sticky; top:var(--h-onglets, 56px); z-index:2; background:var(--surface, #1e1f22); padding-bottom:6px; box-shadow:0 8px 10px -6px rgba(0, 0, 0, .6); }
+#allCmp .cmp { margin:0; padding:6px 8px; }
+#allCmp .cmp-haut { margin:0 0 6px; flex-wrap:nowrap; justify-content:space-between; gap:6px; }
+#allCmp .cmp-modes, #allCmp .cmp-nav { display:flex; align-items:center; gap:4px; }
+#allCmp .cmp-haut .mou-btn { min-height:44px; min-width:40px; padding:6px 8px; font-size:.95rem; }
+#allCmp .cmp-img { max-height:26vh; }
+#allCmp.cmp-grand .cmp-img { max-height:58vh; }
+#allCmp #cmpRideau { margin:4px 0 0; }
+#allCmp .dem-sous { margin:2px 0; font-size:.8rem; }
+#allCmp #cmpInfo { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+#allCmp details summary { padding:8px 0; min-height:24px; cursor:pointer; color:var(--accent, #52b54b); }
+#regTomes { margin-bottom:22px; }          /* l'ombre des onglets collants masquait le bas de la carte */

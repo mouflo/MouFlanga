@@ -924,15 +924,15 @@
       var champ = function (etiquette, controle) { return '<label class="reg-champ"><span>' + etiquette + '</span>' + controle + '</label>'; };
       $('infosCorps').innerHTML =
         '<section class="reg" id="regTomes"><h3>📚 Tomes à traiter <span id="allCompte" class="reg-valeur"></span></h3>' +
-        '<div class="reg-aide">Pour l\'image et l\'uniformité. Les doubles pages se choisissent tome par tome.</div>' +
+        '<div class="reg-aide">Touche un tome pour le cocher ou le décocher. Vaut pour l\'image et l\'uniformité ; les doubles pages se choisissent tome par tome.</div>' +
         '<div class="reg-boutons"><button type="button" class="mou-btn ghost small" id="allTout">Tout cocher</button>' +
         '<button type="button" class="mou-btn ghost small" id="allRien">Tout décocher</button>' +
         '<button type="button" class="mou-btn ghost small" id="allUnif" hidden>🎨 Seulement ceux à uniformiser</button></div>' +
-        '<details id="allListe"><summary>Voir ou changer la sélection</summary><div id="allTomes" class="dem-sous">…</div></details></section>' +
+        '<div id="allTomes" class="all-puces">…</div></section>' +
         '<div class="onglets onglets-4" role="tablist">' + [['image', '✨ Image'], ['doubles', '📖 Doubles'], ['uniforme', '🎨 Uniformité'], ['parasites', '🧹 Parasites']].map(function (o, i) {
           return '<button type="button" class="mou-btn' + (i ? ' ghost' : '') + '" role="tab" data-onglet="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' +
 
-        '<div data-panneau="image">' +
+        '<div data-panneau="image"><div id="allCmp"></div>' +
         carte('✨ Améliorer l\'image', 'Vieux scans : papier gris, trames, escaliers, noirs délavés. Rien n\'est fait tout seul : choisis un niveau, regarde l\'aperçu, puis applique. Les pages en couleur ne sont jamais touchées.',
           champ('Niveau', '<select id="allProfil">' + PROFILS_AMEL.map(function (p) { return '<option value="' + p[0] + '">' + p[1] + '</option>'; }).join('') + '<option value="perso">Personnalisé</option></select>') +
           '<details id="allFin"><summary>Réglage fin</summary>' + REGLAGES_AMEL.map(function (r) {
@@ -945,9 +945,9 @@
           champ('Qualité', '<select id="allQualMode"><option value="">Automatique : plus léger</option><option value="o">Même qualité que l\'original</option><option value="m">Réglage fin (curseur)</option></select>') +
           '<div id="allQualManuelle" hidden><input type="range" id="allQual" min="40" max="98" step="1" value="85" style="width:100%"><div class="dem-sous"><b id="allQualVal">85</b> / 100 : 100 = identique à l\'original. 90 et plus : aucune différence visible ; 80-88 : visible seulement en zoomant ; sous 70 : défauts qui se voient.</div></div>') +
         '<section class="reg" id="allRecap"></section>' +
-        '<div class="ident-actions"><button type="button" class="mou-btn" id="allComparer">👁 Comparer avant / après (en direct)</button></div><div id="allCmp"></div>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn" id="allComparer" hidden>👁 Afficher l\'aperçu en direct</button></div>' +
         '<div class="ident-actions"><label><input type="checkbox" id="allInfos" checked> 📝 Écrire aussi les infos du tome (résumé, chapitres, provenance, ISBN…) dans la même passe</label></div>' +
-        '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser les tomes cochés (rien n\'est modifié)</button> <a class="mou-btn" href="/historique-allegement">📜 Historique de tous les tomes</a></div><div id="allRes"></div>' +
+        rappelSelection() + '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="0">🔍 Analyser les tomes cochés (rien n\'est modifié)</button> <a class="mou-btn" href="/historique-allegement">📜 Historique de tous les tomes</a></div><div id="allRes"></div>' +
         '</div>' +
 
         '<div data-panneau="doubles" hidden>' +
@@ -977,16 +977,23 @@
         var signales = {};
         ((unif && unif.tomes) || []).forEach(function (t) { if (t.a_uniformiser) signales[t.fichier] = t.ecarts.join(', '); });
         z.innerHTML = f.length ? f.map(function (x) {
-            return '<label class="all-tome"><input type="checkbox" class="all-coche" value="' + esc(x.nom) + '"' + (x.hors ? '' : ' checked') + '><span>' + esc(x.libelle) +
-              ' <small>(' + String(x.taille_mo).replace('.', ',') + ' Mo' + (x.hors ? ' · hors série, décoché d\'avance' : '') + ')</small>' +
-              (signales[x.nom] ? ' <small class="unif-flag" title="' + esc(signales[x.nom]) + '">🎨 ' + esc(signales[x.nom]) + '</small>' : '') + '</span></label>';
+            return '<label class="all-tome" title="' + esc(x.libelle) + ' · ' + String(x.taille_mo).replace('.', ',') + ' Mo' + (x.hors ? ' · hors série, décoché d\'avance' : '') +
+              (signales[x.nom] ? ' · 🎨 ' + esc(signales[x.nom]) : '') + '"><input type="checkbox" class="all-coche" value="' + esc(x.nom) + '"' + (x.hors ? '' : ' checked') + '><span>' +
+              esc(nomCourt(x.libelle, x.hors)) + (signales[x.nom] ? ' <i class="unif-flag">🎨</i>' : '') + '</span></label>';
           }).join('') : 'Aucun tome à alléger.';
         majCompteTomes();
         unifDessiner();
       });
       majRecap();
       suivreAllegement();
+      ouvrirComparaison('');                                         // l'aperçu en direct est là dès l'ouverture, collé en haut
+      posOnglets();
     });
+    function posOnglets() {                                          // l'aperçu se colle juste sous la rangée d'onglets, quelle que soit sa hauteur
+      var o = document.querySelector('.onglets');
+      if (o) document.documentElement.style.setProperty('--h-onglets', o.offsetHeight + 'px');
+    }
+    window.addEventListener('resize', posOnglets);
     function actionsAmelioration() {                                // ce qui sera fait, en groupes de mots courts (aussi pour la confirmation)
       var am = amelioration(), uniq = $('am_uniformiser') && $('am_uniformiser').value === '1';
       var autres = REGLAGES_AMEL.some(function (r) { return r[0] !== 'uniformiser' && $('am_' + r[0]) && $('am_' + r[0]).value !== '0'; });
@@ -1012,9 +1019,22 @@
       lignes.push('🌈 Pages en couleur : elles restent en couleur, jamais améliorées ni passées en gris' + (touche ? ' ; seuls ' + (l ? 'la réduction' + (q !== 'o' ? ' et ' : '') : '') + (q !== 'o' ? 'l\'allègement' : '') + ' leur sont appliqués' : ' ; rien ne leur est fait'));
       z.innerHTML = '<h3>📝 Ce qui sera fait sur les ' + n + ' tome' + (n > 1 ? 's' : '') + ' cochés</h3><ul class="reg-recap"><li>' + lignes.join('</li><li>') + '</li></ul>';
     }
+    function nomCourt(libelle, hors) {                                  // « Nori Taka - Tome 05 » → « T05 » ; un hors-série garde le début de son titre
+      var m = /(?:tome|t\.?)\s*0*(\d+)\s*$/i.exec(libelle || '');
+      return m ? 'T' + (m[1].length < 2 ? '0' + m[1] : m[1]) : (hors ? 'HS ' : '') + String(libelle || '').replace(/^.*?[:\-–]\s*/, '').slice(0, 9);
+    }
+    function rappelSelection() {                                        // « 📚 18 tomes sélectionnés · changer » au-dessus des boutons qui agissent sur la sélection
+      return '<div class="all-rappel">📚 <b class="all-compte-txt"></b> · <button type="button" class="lien" data-changer>changer la sélection</button></div>';
+    }
     function majCompteTomes() {
       var cs = [].slice.call(document.querySelectorAll('.all-coche')), n = cs.filter(function (c) { return c.checked; }).length;
+      var quoi = n === 1 ? 'le tome coché' : 'les ' + n + ' tomes cochés';
       if ($('allCompte')) $('allCompte').textContent = n + ' sur ' + cs.length + ' cochés';
+      document.querySelectorAll('.all-compte-txt').forEach(function (b) { b.textContent = n ? n + ' tome' + (n > 1 ? 's' : '') + ' sélectionné' + (n > 1 ? 's' : '') : 'aucun tome sélectionné'; });
+      document.querySelectorAll('[data-alleger]').forEach(function (b) {
+        b.disabled = !n;
+        b.textContent = !n ? 'Aucun tome coché : touche les tomes en haut' : b.dataset.alleger === '1' ? '🪶 Appliquer à ' + quoi : '🔍 Analyser ' + quoi + ' (rien n\'est modifié)';
+      });
       majRecap();
     }
     ['change', 'input', 'click'].forEach(function (ev) {            // le « ce qui sera fait » suit chaque réglage et chaque case cochée
@@ -1071,7 +1091,8 @@
       $('allRes').innerHTML = (r.en_cours ? '<div class="dem-sous">' + esc(r.message || '') + ' ' + (r.fait || 0) + ' / ' + (r.total || '?') + ' tomes · ça continue en arrière-plan, tu peux fermer cette fenêtre : une notification arrive à la fin.</div>' +
           '<progress max="' + (r.total || 1) + '" value="' + (r.fait || 0) + '" style="width:100%"></progress>' : (r.message ? '<div class="dem-sous"><b>' + esc(r.message) + '</b></div>' : '')) +
         (lignes ? '<ol class="tchap">' + lignes + '</ol>' : '') +
-        (!r.en_cours && r.message && !r.appliquer && (r.gain > 0 || r.eclairer) ? '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="1">🪶 Appliquer aux tomes cochés</button></div>' : '');
+        (!r.en_cours && r.message && !r.appliquer && (r.gain > 0 || r.eclairer) ? rappelSelection() + '<div class="ident-actions"><button type="button" class="mou-btn" data-alleger="1">🪶 Appliquer aux tomes cochés</button></div>' : '');
+      majCompteTomes();
       if (r.en_cours) suiviAllege = setTimeout(suivreAllegement, 3000);
     }
     // Bulle « terminé » même si la fenêtre est fermée (le travail, lui, tourne sur le serveur)
@@ -1111,7 +1132,7 @@
     }
     function ouvrirComparaison(fichier) {
       cmp = {fichier: fichier || '', page: 5, cote: 'rideau', rideau: 50, zoom: null, pages: 0, tomes: []};
-      dessinerComparaison(); $('allCmp').scrollIntoView({block: 'start'});
+      dessinerComparaison();
     }
     function majComparaison() {                                   // un réglage a bougé : l'image se recalcule (après une courte pause)
       if (!cmp) return;
@@ -1132,7 +1153,7 @@
         var sel = $('cmpTome');
         if (sel && !sel.options.length) { sel.innerHTML = i.tomes.map(function (n) { return '<option>' + esc(n) + '</option>'; }).join(''); }
         if (sel) sel.value = i.fichier;
-        $('cmpPage').textContent = 'page ' + (i.page + 1) + ' / ' + i.pages;
+        $('cmpPage').textContent = (i.page + 1) + ' / ' + i.pages;
         var al = $('cmpAller'); if (al && al.options.length !== i.pages + 1) { al.innerHTML = pagesCmp(); }
         var nu = $('cmpNum'); if (nu) { nu.max = i.pages; nu.value = i.page + 1; }
         var gain = i.avant_ko ? Math.round(100 * (1 - i.apres_ko / i.avant_ko)) : 0;
@@ -1151,22 +1172,26 @@
     }
     function dessinerComparaison() {
       var z = $('allCmp'); if (!z || !cmp) return;
-      z.innerHTML = '<div class="cmp"><div class="dem-titre">👁 Avant / après</div>' +
-        '<select id="cmpTome" class="mou-field" style="width:100%">' + (cmp.tomes || []).map(function (n) { return '<option' + (n === cmp.fichier ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select>' +
-        '<div class="cmp-barre"><button type="button" class="mou-btn ghost small" data-cmp="prec">◀</button>' +
-        '<span id="cmpPage">page ' + (cmp.page + 1) + (cmp.pages ? ' / ' + cmp.pages : '') + '</span>' +
-        '<button type="button" class="mou-btn ghost small" data-cmp="suiv">▶</button>' +
-        '<button type="button" class="mou-btn ghost small" data-cmp="fermer">✕</button></div>' +
-        '<div class="cmp-barre"><label>Aller à la page : <input type="number" id="cmpNum" class="mou-field" inputmode="numeric" min="1"' + (cmp.pages ? ' max="' + cmp.pages + '"' : '') +
-        ' value="' + (cmp.page + 1) + '" style="width:5.5em"></label> <select id="cmpAller" class="mou-field" aria-label="Choisir la page">' + pagesCmp() + '</select></div>' +
-        '<div class="cmp-cote">' + [['avant', 'Avant'], ['rideau', '↔ Rideau'], ['apres', 'Après']].map(function (c) {
-          return '<button type="button" class="mou-btn' + (cmp.cote === c[0] ? '' : ' ghost') + '" data-cmp="' + c[0] + '">' + c[1] + '</button>'; }).join('') + '</div>' +
+      var choixOuvert = !!($('cmpChoix') && $('cmpChoix').open);
+      z.className = cmp.grand ? 'cmp-grand' : '';
+      if ($('allComparer')) $('allComparer').hidden = true;
+      z.innerHTML = '<div class="cmp"><div class="cmp-barre cmp-haut">' +
+        '<span class="cmp-modes">' + [['avant', 'Avant'], ['rideau', '↔'], ['apres', 'Après']].map(function (c) {
+          return '<button type="button" class="mou-btn small' + (cmp.cote === c[0] ? '' : ' ghost') + '" data-cmp="' + c[0] + '">' + c[1] + '</button>'; }).join('') + '</span>' +
+        '<span class="cmp-nav"><button type="button" class="mou-btn ghost small" data-cmp="prec" aria-label="Page précédente">◀</button>' +
+        '<button type="button" class="mou-btn ghost small" data-cmp="suiv" aria-label="Page suivante">▶</button>' +
+        '<button type="button" class="mou-btn ghost small" data-cmp="taille" aria-label="Agrandir ou réduire l\'aperçu">' + (cmp.grand ? '⤡' : '⤢') + '</button></span></div>' +
         '<div class="cmp-boite" id="cmpBoite"><img id="cmpImg" class="cmp-img" alt="">' +
         '<img id="cmpImg2" class="cmp-img cmp-dessus" alt=""><div class="cmp-trait" id="cmpTrait"></div>' +
         '<span class="cmp-et g">Avant</span><span class="cmp-et d">Après</span></div>' +
         '<input type="range" id="cmpRideau" min="0" max="100" value="' + cmp.rideau + '" aria-label="Rideau avant / après">' +
         '<div class="dem-sous" id="cmpInfo">Calcul…</div>' +
-        '<div class="dem-sous">' + (cmp.zoom ? 'Détail à l\'échelle réelle : touche l\'image pour revenir à la page entière.' : 'Rideau : glisse le doigt sur l\'image (ou la barre) : à gauche l\'original, à droite le résultat. Touche un endroit pour le voir de près. Les réglages au-dessus mettent l\'image à jour.') + '</div></div>';
+        '<details id="cmpChoix"' + (choixOuvert ? ' open' : '') + '><summary>📄 Page <span id="cmpPage">' + (cmp.page + 1) + (cmp.pages ? ' / ' + cmp.pages : '') + '</span> · changer</summary>' +
+        '<select id="cmpTome" class="mou-field" style="width:100%">' + (cmp.tomes || []).map(function (n) { return '<option' + (n === cmp.fichier ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select>' +
+        '<div class="cmp-barre"><label>Aller à la page : <input type="number" id="cmpNum" class="mou-field" inputmode="numeric" min="1"' + (cmp.pages ? ' max="' + cmp.pages + '"' : '') +
+        ' value="' + (cmp.page + 1) + '" style="width:5.5em"></label> <select id="cmpAller" class="mou-field" aria-label="Choisir la page">' + pagesCmp() + '</select></div>' +
+        '<div class="dem-sous">' + (cmp.zoom ? 'Détail à l\'échelle réelle : touche l\'image pour revenir à la page entière.' : 'Rideau : glisse le doigt sur l\'image (ou la barre) : à gauche l\'original, à droite le résultat. Touche un endroit pour le voir de près. L\'aperçu reste en haut et se met à jour à chaque réglage.') + '</div>' +
+        '<div class="ident-actions"><button type="button" class="mou-btn ghost small" data-cmp="fermer">✕ Fermer l\'aperçu</button></div></details></div>';
       imagesCmp();
       chargerInfoCmp();
     }
@@ -1239,7 +1264,8 @@
       var b = e.target.closest('[data-cmp]');
       if (b && cmp) {
         var a = b.dataset.cmp;
-        if (a === 'fermer') { cmp = null; $('allCmp').innerHTML = ''; return; }
+        if (a === 'fermer') { cmp = null; $('allCmp').innerHTML = ''; $('allCmp').className = ''; if ($('allComparer')) $('allComparer').hidden = false; return; }
+        if (a === 'taille') { cmp.grand = !cmp.grand; dessinerComparaison(); return; }
         if (a === 'avant' || a === 'apres' || a === 'rideau') { cmp.cote = a; imagesCmp(); return; }
         cmp.page = Math.max(0, Math.min((cmp.pages || 1) - 1, cmp.page + (a === 'suiv' ? 1 : -1))); cmp.zoom = null; dessinerComparaison(); return;
       }
@@ -1324,7 +1350,7 @@
       document.querySelectorAll('.all-tome').forEach(function (l) {           // les tomes signalés portent leur pastille dans la liste du haut
         var c = l.querySelector('.all-coche'), t = u.tomes.filter(function (x) { return x.fichier === (c && c.value); })[0];
         var f = l.querySelector('.unif-flag'); if (f) f.remove();
-        if (t && t.a_uniformiser) l.querySelector('span').insertAdjacentHTML('beforeend', ' <small class="unif-flag">🎨 ' + esc(t.ecarts.join(', ')) + '</small>');
+        if (t && t.a_uniformiser) l.querySelector('span').insertAdjacentHTML('beforeend', ' <i class="unif-flag">🎨</i>');
       });
     }
     $('infosCorps').addEventListener('click', async function (e) {
@@ -1595,6 +1621,8 @@
       }
     }
     $('infosCorps').addEventListener('click', function (e) {          // cocher / décocher tous les tomes, ne garder que ceux à uniformiser, changer d'onglet
+      var ch = e.target.closest('[data-changer]');
+      if (ch) { var carte = $('regTomes'); if (carte) carte.scrollIntoView({behavior: 'smooth', block: 'start'}); return; }
       var o = e.target.closest('[data-onglet]');
       if (o) { ongletAmelioration(o.dataset.onglet); return; }
       var t = e.target.closest('#allTout, #allRien, #allUnif'); if (!t) return;
@@ -1615,7 +1643,7 @@
         '\n\nLes anciens fichiers vont à la corbeille (' + corb() + ').')) return;
       var r = await post('/api/optimiser', Object.assign({series: current.id, appliquer: appliquer}, opt));
       if (!r.ok) { MouAlert(r.error || 'Impossible'); return; }
-      if (appliquer) { cmp = null; if ($('allCmp')) $('allCmp').innerHTML = ''; }
+      if (appliquer) { cmp = null; if ($('allCmp')) { $('allCmp').innerHTML = ''; $('allCmp').className = ''; } if ($('allComparer')) $('allComparer').hidden = false; }
       setTimeout(suivreAllegement, 800);
       veillerAllegement(current.id);
     });
