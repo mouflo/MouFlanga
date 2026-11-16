@@ -1,6 +1,7 @@
 # Historique des versions
 
 ## [Non publié]
+- 📱 **Pages revues au téléphone (390 px)** : l'historique de l'allègement tient sans faire défiler son tableau, les onglets de ⚙️ Réglages et les boutons des pages Couvertures (et de l'aperçu de l'envoi groupé) font au moins 44 px. Importer, Vérification et Découper étaient déjà bons.
 - 📖 **Chaque tome d'une autre édition porte une marque « autre édition »** (grille de couvertures et liste des tomes), en plus de la ligne « T1–T12 Édition originale · T13–T35 autre édition » ; `autres_editions` ajouté à la fiche.
 - 🏠 **Lecteur : un bouton vers l'accueil** dans la barre du haut (la flèche ← revient toujours à la série) ; le lecteur reste en plein écran, sans l'en-tête du kit.
 - 🧲 **« Comparé à ta bibliothèque » n'est plus écrit deux fois** (Télécharger → Torrents, téléphone) : la ligne avait la classe `.note`, que le kit recopie en bulle quand elle est hors de l'écran ; elle a maintenant sa propre classe.

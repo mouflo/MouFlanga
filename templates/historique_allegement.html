@@ -16,6 +16,12 @@
         table.hs th { position:sticky; top:0; background:#1f2126; cursor:pointer; user-select:none; }
         table.hs td.t, table.hs th.t { text-align:left; white-space:normal; overflow-wrap:anywhere; min-width:180px; }
         .bon { color:#52b54b; } .mauvais { color:#e0a84a; } .peti { color:#999; font-size:.85em; }
+        @media (max-width:640px) {
+            table.hs { min-width:0; font-size:12px; }
+            table.hs th, table.hs td { padding:7px 4px; white-space:normal; }
+            table.hs td.t, table.hs th.t { min-width:90px; }
+            table.hs th:nth-child(5), table.hs td:nth-child(5) { display:none; }          /* « Gain (Mo) » : le pourcentage dit la même chose */
+        }
     </style>
 </head>
 <body>
