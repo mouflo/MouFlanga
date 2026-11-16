@@ -1195,8 +1195,6 @@
     function dessinerComparaison() {
       var z = $('allCmp'); if (!z || !cmp) return;
       var choixOuvert = !!($('cmpChoix') && $('cmpChoix').open);
-      if (cmp.zoom && !z.classList.contains('cmp-zoom')) cmp.hNormal = z.offsetHeight;          // la page ne saute pas quand la bande passe en plein écran
-      z.style.minHeight = cmp.zoom ? (cmp.hNormal || 0) + 'px' : '';
       z.className = (cmp.grand ? 'cmp-grand ' : '') + (cmp.zoom ? 'cmp-zoom' : '');
       if (cmp.zoom) z.style.setProperty('--h-zoom', cmp.zoom[4] + 'px');
       if ($('allComparer')) $('allComparer').hidden = true;
