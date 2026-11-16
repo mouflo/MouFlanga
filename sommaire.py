@@ -2889,6 +2889,139 @@ def _complet_et_sur(chapitres, numeros) -> bool:
     return len(nums) >= 3 and None not in nums and all(b - a == 1 for a, b in zip(nums, nums[1:]) if a == int(a) and b == int(b))
 
 
+_LIGNE_SANS_PAGE = re.compile(r"(?i)^\W{0,3}chap[il1]tre\s+(\S{1,3})\s*[:.\-–—]?\s+(\S.{2,})$")
+_CHIFFRES_MAL_LUS = str.maketrans("OoIlLSsGBZ", "0011155682")
+
+
+def liste_sans_pages(texte: str) -> list[dict]:
+    """Sommaire qui donne seulement « Chapitre 6 2 JOURS AVANT LE MATCH », sans numéro de page (Nori Taka) : [{"num", "titre"}].
+    [] s'il y a moins de 3 lignes ou si les lignes finissent par des numéros de page qui montent (sommaire ordinaire). Les numéros
+    mal lus (« S » pour 5, « G » pour 6, « 1 » pour 7) sont remis d'après la suite : les chapitres se suivent de 1 en 1."""
+    lignes = []
+    for brute in (texte or "").splitlines():
+        ligne = brute.strip().strip("|").strip()
+        m = _LIGNE_SANS_PAGE.match(ligne)
+        if m:
+            lignes.append({"jeton": m.group(1), "titre": m.group(2).strip(" |:;»«")})
+        elif lignes and ligne and len(ligne) <= 40 and not lignes[-1].get("suite") and re.search(r"[A-Za-zÀ-ÿ]{2}", ligne):
+            lignes[-1]["suite"] = ligne.strip(" |:;»«")       # titre sur deux lignes ; gardé seulement s'il y a un chapitre après
+        elif not ligne:
+            continue
+    if len(lignes) < 3:
+        return []
+    for k, x in enumerate(lignes):
+        if x.get("suite") and k < len(lignes) - 1:
+            x["titre"] = x["titre"] + " " + x["suite"]
+    fins = [int(m.group(1)) for m in (re.search(r"(\d{1,3})\s*$", x["titre"]) for x in lignes) if m]
+    if len(fins) >= max(3, 0.6 * len(lignes)) and all(b > a for a, b in zip(fins, fins[1:])) and fins[-1] - fins[0] >= 3 * len(fins):
+        return []                                            # numéros de page en bout de ligne : c'est un sommaire ordinaire
+    votes = Counter()
+    for k, x in enumerate(lignes):
+        j = x["jeton"].strip(".:,;")
+        if j.isdigit():
+            votes[int(j) - k] += 2
+        elif j.translate(_CHIFFRES_MAL_LUS).isdigit():
+            votes[int(j.translate(_CHIFFRES_MAL_LUS)) - k] += 1
+    if not votes:
+        return []
+    depart, poids = votes.most_common(1)[0]
+    if depart < 0 or poids < 4:                              # il faut au moins deux numéros bien lus qui se suivent
+        return []
+    return [{"num": float(depart + k), "titre": re.sub(r"\s+", " ", x["titre"]).strip()} for k, x in enumerate(lignes)]
+
+
+def _sommaire_sans_pages(lire_page, nb_pages) -> tuple:
+    """Cherche dans les premières images une liste de chapitres sans numéros de page (image entière, puis chaque moitié d'une double
+    page), avec les deux lecteurs de texte. Renvoie (liste, image du sommaire) ou ([], None)."""
+    meilleur, ou = [], None
+    for mode in ("tesseract", "moderne"):
+        if mode == "moderne" and _moteur() is None:
+            break
+        _LOCAL.mode = mode
+        for i in range(min(nb_pages, 8)):
+            try:
+                octets = lire_page(i)
+                morceaux = _moities(octets) if _est_paysage(octets) else [octets]   # double page : chaque moitié à part, sinon
+                                                                                    # le texte de la page d'en face se colle aux titres
+                for morceau in morceaux:
+                    t = ocr(morceau)
+                    if not re.search(r"(?i)chap[il1]tre", t):
+                        continue
+                    liste = liste_sans_pages(t)
+                    if len(liste) > len(meilleur) or (liste and mode == "moderne" and len(liste) == len(meilleur)):
+                        meilleur, ou = liste, i              # à égalité, le lecteur moderne : il lit mieux les titres stylisés
+            except Exception as e:
+                logger.info("Sommaire sans pages, image %d : %s", i, e.__class__.__name__)
+        if not meilleur:
+            break                                            # rien vu par tesseract : pas la peine de relire avec l'autre
+    _LOCAL.mode = "tesseract"
+    return meilleur, ou
+
+
+def _pages_credibles(chapitres) -> bool:
+    """Les pages lues dans un sommaire ressemblent à des pages : au moins 5 pages d'écart d'un chapitre au suivant, en général."""
+    pages = [c.get("page") for c in chapitres or [] if isinstance(c.get("page"), int)]
+    ecarts = sorted(b - a for a, b in zip(pages, pages[1:]))
+    return len(pages) >= 3 and ecarts[len(ecarts) // 2] >= 5
+
+
+def _estimer_places(chapitres, image_sommaire, nb_pages):
+    """Chapitres dont la page d'ouverture n'a pas été retrouvée : place estimée à intervalles réguliers entre les chapitres trouvés (le
+    premier juste après le sommaire, le dernier avant la fin du tome), marquée « estimee » : un point de départ pour la vérification."""
+    connus = [(-1, (image_sommaire if image_sommaire is not None else 0))]
+    connus += [(k, c["image"]) for k, c in enumerate(chapitres) if c.get("image") is not None]
+    if len(connus) < 3:                                      # il faut au moins deux pages d'ouverture retrouvées
+        return
+    connus.append((len(chapitres), nb_pages))
+    for (k0, i0), (k1, i1) in zip(connus, connus[1:]):
+        for k in range(k0 + 1, k1):
+            image = int(round(i0 + (i1 - i0) * (k - k0) / (k1 - k0)))
+            if k0 == -1 and k == 0:
+                image = min(i0 + 1, i1 - 1) if i1 - i0 > 1 else i0   # le premier chapitre commence juste après le sommaire
+            if 0 <= image < nb_pages:
+                chapitres[k]["image"] = image
+                chapitres[k]["estimee"] = True
+    images = [c.get("image") for c in chapitres]
+    if None in images or any(b <= a for a, b in zip(images, images[1:])):
+        for c in chapitres:                                  # estimation incohérente : on retire ce qui a été estimé
+            if c.get("estimee"):
+                c["image"] = None
+                c.pop("estimee", None)
+
+
+def _avec_liste_sans_pages(meilleur, lire_page, nb_pages, suite_de):
+    """Sommaire sans numéros de page : les titres viennent de la liste, la place de chaque chapitre de sa page d'ouverture (qui
+    annonce « Chapitre N »). Un chapitre dont la page d'ouverture n'est pas retrouvée garde son titre, sans page : à placer à la main."""
+    ch = meilleur.get("chapitres") or []
+    if ch and (_pages_credibles(ch) or meilleur.get("source") == "noms des images"):
+        return meilleur
+    liste, ou = _sommaire_sans_pages(lire_page, nb_pages)
+    if len(liste) < 3 or len(liste) < len(ch):
+        return meilleur
+    titres = {c["num"]: c["titre"] for c in liste}
+    try:
+        ouv = chapitres_par_ouvertures(lire_page, nb_pages, sorted(titres), suite_de, depuis=(ou or 0))
+    except Exception as e:
+        logger.info("Sommaire sans pages (pages d'ouverture) : %s", e.__class__.__name__)
+        ouv = []
+    places = {float(c["num"]): c for c in ouv if c.get("num") is not None and float(c["num"]) in titres}
+    sortie = []
+    for c in liste:
+        o = places.get(c["num"]) or {}
+        x = {"num": c["num"], "titre": c["titre"], "page": None, "image": o.get("image")}
+        if o.get("estimee") and o.get("image") is not None:
+            x["estimee"] = True
+        sortie.append(x)
+    images = [x["image"] for x in sortie if x["image"] is not None]
+    if any(b <= a for a, b in zip(images, images[1:])):      # places qui se croisent : on ne garde que les titres
+        for x in sortie:
+            x["image"] = None
+            x.pop("estimee", None)
+    _estimer_places(sortie, ou, nb_pages)
+    return {"chapitres": sortie, "page_sommaire": ou, "decalage": None, "source": "sommaire sans pages",
+            **({"isbn": meilleur["isbn"]} if meilleur.get("isbn") else {})}
+
+
 def _lire_tome(chemin, lire_page, nb_pages, noms=None, numeros=None, suite_de=None) -> dict:
     tesseract = shutil.which("tesseract") is not None
     moderne = _moteur() is not None
@@ -2922,6 +3055,10 @@ def _lire_tome(chemin, lire_page, nb_pages, noms=None, numeros=None, suite_de=No
                 _verifier_par_ouvertures(meilleur["chapitres"], lire_page, nb_pages, meilleur.get("page_sommaire"), douteux)
         except Exception as e:
             logger.info("Sommaire de %s (ouvertures à confirmer) : %s", chemin, e.__class__.__name__)
+    try:                                                     # sommaire sans numéros de page (« Chapitre 6 2 JOURS AVANT LE MATCH »)
+        meilleur = _avec_liste_sans_pages(meilleur, lire_page, nb_pages, suite_de)
+    except Exception as e:
+        logger.info("Sommaire de %s (liste sans pages) : %s", chemin, e.__class__.__name__)
     if not meilleur.get("chapitres"):
         try:                                                 # pas de sommaire : les pages d'ouverture des chapitres
             ouv = chapitres_par_ouvertures(lire_page, nb_pages, numeros, suite_de)
