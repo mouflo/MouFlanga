@@ -33,6 +33,7 @@ VERSION = 1                     # version de la confirmation (gardée avec le so
 SEUIL_DOUBLE = 1.1              # largeur / hauteur au-delà de laquelle une image est une double page (2 pages imprimées)
 RAYON = 40                      # un numéro imprimé ne vote que pour les chapitres à moins de 40 pages de lui
 VOTES_MINI = 2                  # il faut au moins deux pages d'accord pour retenir une place
+ECART_SUR = 5                   # une place déplacée de plus de 5 images par les numéros de page reste « à vérifier »
 ANCRES_MINI = 4                 # pages d'accord qu'il faut pour le calage d'ensemble du tome
 
 SOURCES_DEVINEES = ("pages d'ouverture", "pages d'équipe")     # chapitres devinés sans sommaire : toujours à vérifier
@@ -164,7 +165,9 @@ def confirmer(chapitres, ratios, folios) -> dict:
                 c["image_lue"] = lue
             c["image"] = image
             c["corrige"] = True                             # pour information : la place vient des numéros de page, qui font foi
-            c["confirme"] = True
+            if lue is None or abs(image - lue) <= ECART_SUR:
+                c["confirme"] = True
+            # écart plus grand : c'est peut-être la page du sommaire qui a été mal lue (« 107 » pour 151) : reste « à vérifier »
             c.pop("estimee", None)
             bilan["corriges"] += 1
         else:
@@ -179,7 +182,8 @@ def _defauts(chapitres) -> list:
     raisons = []
     sans_image = [c for c in chapitres if c.get("image") is None]
     estimes = [c for c in chapitres if c.get("estimee") and c.get("image") is not None]
-    corriges = [c for c in chapitres if c.get("corrige") and not c.get("confirme") and c.get("image_lue") is None]
+    corriges = [c for c in chapitres if c.get("corrige") and not c.get("confirme")
+                and (c.get("image_lue") is None or c.get("image") is None or abs(c["image"] - c["image_lue"]) > ECART_SUR)]
     if sans_image:
         raisons.append(f"{len(sans_image)} chapitre{'s' if len(sans_image) > 1 else ''} sans page")
     if estimes:
@@ -208,7 +212,8 @@ def douteux(lu) -> list:
     """Numéros (ou rangs) des chapitres qu'il vaut mieux regarder : sans page, page estimée, place corrigée."""
     out = []
     for i, c in enumerate((lu or {}).get("chapitres") or []):
-        if c.get("image") is None or c.get("estimee"):
+        if c.get("image") is None or c.get("estimee") or (c.get("corrige") and not c.get("confirme") and c.get("image_lue") is not None
+                                                          and abs(c["image"] - c["image_lue"]) > ECART_SUR):
             out.append(c.get("num") if c.get("num") is not None else i + 1)
     return out
 

@@ -95,6 +95,14 @@ class ConfirmerTest(unittest.TestCase):
         self.assertEqual(ca.douteux({"chapitres": ch}), [])
         self.assertNotEqual(ca.confiance({"chapitres": ch})["niveau"], "a_verifier")
 
+    def test_grand_ecart_reste_a_verifier(self):
+        ratios, folios = _tome(120, premiere_page=1)
+        ch = [{"num": 3.0, "titre": "", "page": 30, "image": 70}]   # 41 images d'écart : la page du sommaire est peut-être mal lue
+        ca.confirmer(ch, ratios, folios)
+        self.assertEqual(ch[0]["image"], 29)
+        self.assertNotIn("confirme", ch[0])
+        self.assertEqual(ca.confiance({"chapitres": ch})["niveau"], "a_verifier")
+
     def test_sans_numeros_rien_ne_change(self):
         ratios, _ = _tome(60)
         ch = [{"num": 1.0, "titre": "", "page": 5, "image": 9, "estimee": True}]
