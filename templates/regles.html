@@ -54,11 +54,11 @@
         .simple-etat small { color: #aaa; }
         .formulaire.simple h2 { margin: 18px 0 8px; font-size: 1.05em; }
         .formulaire.simple h2:first-child { margin-top: 0; }
-        .choix { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid #2c2f36; border-radius: 10px; margin: 8px 0; cursor: pointer; background: #0f1012; }
-        .choix input { width: 22px; height: 22px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
-        .choix span { display: block; }
-        .choix small { display: block; color: #aaa; margin-top: 3px; line-height: 1.4; }
-        .choix:has(input:checked) { border-color: var(--accent); }
+        .formulaire .choix { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid #2c2f36; border-radius: 10px; margin: 8px 0; cursor: pointer; background: #0f1012; }
+        .formulaire .choix input { width: 22px; height: 22px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+        .formulaire .choix span { display: block; }
+        .formulaire .choix small { display: block; color: #aaa; margin-top: 3px; line-height: 1.4; }
+        .formulaire .choix:has(input:checked) { border-color: var(--accent); }
     </style>
 <link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
