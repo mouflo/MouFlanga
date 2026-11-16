@@ -1,6 +1,7 @@
 # Historique des versions
 
 ## [Non publié]
+- 📝 **README** : paragraphes sur 🤖 Automatisations, ✨ Mes préférences et la grille de couvertures des tomes.
 - ✏️ **Textes plus simples** : l'intro de Télécharger → Torrents n'a plus de jargon (Prowlarr, qBittorrent, catégorie), et les messages disent « Règle » / « tes préférences » au lieu de « profil » (fiche d'une série, téléchargement automatique, onglet Torrents).
 - 🔁 **Série suivie renommée pour une autre œuvre** (Basilisk « Ouka » ↔ « Kouga ») : la fiche de l'ancienne (AniList, couverture, année, titres cherchés) est oubliée, sinon la surveillance cherchait les torrents de l'autre série ; elle reste gardée de côté (`avant_renommage`), les propositions en attente de l'ancienne sont retirées. Les séries déjà croisées sont réparées toutes seules au démarrage (`suivi.recaler_tout`). Un simple changement d'écriture garde tout.
 - 📑 **Chapitre présent dans deux tomes voisins** (« chapitre 31 » à la fin du tome 2 et au début du tome 3) : le tome le moins sûr passe « 🟠 à vérifier » avec la raison écrite ; rien n'est corrigé tout seul, un tome validé n'est jamais signalé.
