@@ -181,7 +181,7 @@ class ZooTest(unittest.TestCase):
 
     def test_telechargement_zoo_accepte_et_retombe_sur_la_petite(self):
         grande, petite = mock.Mock(status_code=404), mock.Mock(status_code=200, content=b"ok")
-        with mock.patch.object(ct._SESSION, "get", side_effect=[grande, petite]) as g:
+        with mock.patch.object(ct._SESSION, "get", side_effect=[grande, petite]) as g, mock.patch.object(ct, "ZOO_INTERVALLE", 0):
             self.assertEqual(ct.telecharger("https://cdn.zoolemag.com/red/alb/1/720-sw/x.jpg"), b"ok")
         self.assertEqual(g.call_args_list[1].args[0], "https://cdn.zoolemag.com/red/alb/1/x.jpg")
 

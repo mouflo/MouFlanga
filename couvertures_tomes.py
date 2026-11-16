@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import shutil
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -294,12 +295,34 @@ def _couvertures_mangadex(serie: str, titres: list[str], forcer: bool = False) -
     return tomes
 
 
+_ZOO_VERROU = threading.Lock()
+_ZOO_DERNIER = [0.0]
+ZOO_INTERVALLE = 2.0                # secondes entre deux images ZOO (le CDN répond 503 quand on va plus vite)
+
+
+def _get_zoo(url: str):
+    """Une image ZOO, au rythme du site : 2 s entre deux téléchargements, et jusqu'à 4 essais (pause qui double) sur 503 / 429."""
+    pause = 4.0
+    for essai in range(4):
+        with _ZOO_VERROU:
+            time.sleep(max(0.0, _ZOO_DERNIER[0] + ZOO_INTERVALLE - time.monotonic()))
+            r = _SESSION.get(url, timeout=30)
+            _ZOO_DERNIER[0] = time.monotonic()
+        if r.status_code not in (429, 503) or essai == 3:
+            return r
+        time.sleep(pause)
+        pause *= 2
+
+
 def telecharger(url: str) -> bytes:
     """Télécharge une couverture trouvée en ligne. Seules les adresses MangaDex et ZOO connues sont acceptées."""
     if not url.startswith((PREFIXE_MANGADEX, PREFIXE_ZOO)):
         raise ValueError("Adresse de couverture non reconnue.")
-    r = _SESSION.get(url, timeout=30)
-    if r.status_code == 404 and url.startswith(PREFIXE_ZOO) and "/720-sw/" in url:
-        r = _SESSION.get(url.replace("/720-sw/", "/"), timeout=30)       # pas de grande image pour cet album : la petite
+    if url.startswith(PREFIXE_ZOO):
+        r = _get_zoo(url)
+        if r.status_code == 404 and "/720-sw/" in url:
+            r = _get_zoo(url.replace("/720-sw/", "/"))       # pas de grande image pour cet album : la petite
+    else:
+        r = _SESSION.get(url, timeout=30)
     r.raise_for_status()
     return r.content
