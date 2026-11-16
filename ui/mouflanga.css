@@ -593,3 +593,6 @@ body.mou-skin .gerer-liste button:hover, body.mou-skin .gerer-liste a:hover { bo
 #allCmp.cmp-zoom .cmp-boite { margin:0; }
 #allCmp.cmp-zoom .cmp-img { border-radius:0; }
 #allCmp.cmp-zoom #cmpInfo, #allCmp.cmp-zoom details { display:none; }
+
+.amel-ligne.amel-grise { opacity:.45; }
+.amel-ligne.amel-grise select { cursor:not-allowed; }

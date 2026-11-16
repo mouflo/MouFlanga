@@ -937,12 +937,12 @@
           return '<button type="button" class="mou-btn' + (i ? ' ghost' : '') + '" role="tab" data-onglet="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' +
 
         '<div data-panneau="image"><div id="allCmp"></div>' +
-        carte('✨ Améliorer l\'image', 'Vieux scans : papier gris, trames, escaliers, noirs délavés. Rien n\'est fait tout seul : choisis un niveau, regarde l\'aperçu, puis applique. Les pages en couleur ne sont jamais touchées.',
+        carte('✨ Améliorer l\'image', 'Vieux scans : papier gris, trames, escaliers, noirs délavés. Rien n\'est fait tout seul : choisis un niveau, regarde l\'aperçu, puis applique. Une page en couleur (couverture, illustration) ne reçoit que la restauration IA.',
           champ('Niveau', '<select id="allProfil">' + PROFILS_AMEL.map(function (p) { return '<option value="' + p[0] + '">' + p[1] + '</option>'; }).join('') + '<option value="perso">Personnalisé</option></select>') +
           '<details id="allFin"><summary>Réglage fin</summary>' + REGLAGES_AMEL.map(function (r) {
             return '<div class="amel-ligne"><label for="am_' + r[0] + '">' + r[1] + '<small>' + r[2] + '</small></label><select id="am_' + r[0] + '" data-am="' + r[0] + '">' +
               (r[3] || ['Non', 'Léger', 'Moyen', 'Fort']).map(function (n, i) { return '<option value="' + i + '">' + n + '</option>'; }).join('') + '</select></div>';
-          }).join('') + '</details>') +
+          }).join('') + '<div class="reg-aide" id="amelIaNote" hidden>🧠 Avec la restauration IA, « Enlever le grain », « Adoucir les trames », « Lisser les traits » et « Agrandir ×2 » sont faits par l\'IA : ils sont grisés. Les réglages de papier, de noirs, de poussières et de netteté restent actifs (appliqués après l\'IA). Sur une page de plus de 1700 px de haut, l\'IA ne s\'applique pas : ces quatre réglages ne servent alors à rien.</div></details>') +
         carte('📐 Taille des pages', 'Par défaut les pages gardent leur taille. Pour alléger, on peut réduire les pages plus larges que l\'écran (une page déjà plus étroite ne change pas).',
           champ('Largeur', '<select id="allLargeur"><option value="" selected>Garder la largeur d\'origine</option><option value="1600">Réduire à 1600 px (tablette)</option><option value="1200">Réduire à 1200 px (téléphone)</option></select>')) +
         carte('🗜 Compression', 'Toute modification réécrit les images. « Automatique » choisit la qualité la plus légère qui reste invisible (le poids du tome change, souvent en mieux) ; « Même qualité que l\'original » garde le poids à peu près identique. Les tomes encore partagés par qBittorrent sont traités à part : le torrent n\'est jamais touché. Anciens fichiers à la corbeille — ' + corb() + '.',
@@ -1129,6 +1129,17 @@
       ['dos', '📖 Ombre du dos', 'le papier assombri vers la reliure est éclairci (double page : chaque moitié) ; fort = jusqu\'à 50 % de gain', ['Non', 'Léger', 'Moyen', 'Fort']],
       ['redresser', '📐 Redresser la page', 'petite inclinaison du scan (de 0,2 à 3°), mesurée sur les bords de cases', ['Non', 'Oui']],
       ['bords', '🧽 Bords noirs du scan', 'bandes sombres et étroites le long du bord de la page', ['Non', 'Oui']]];
+    var REMPLACES_PAR_IA = ['debruit', 'trames', 'lisser', 'agrandir'];       // ce que la restauration IA fait déjà à leur place (voir optimiser.ameliorer)
+    function griserIA() {                                           // IA choisie : ces quatre réglages sont remis à « Non » et grisés ; papier, noirs, poussières, netteté… restent libres
+      var ia = $('am_ia') && $('am_ia').value !== '0';
+      REMPLACES_PAR_IA.forEach(function (k) {
+        var e = $('am_' + k); if (!e) return;
+        if (ia) e.value = '0';
+        e.disabled = ia;
+        if (e.parentNode) e.parentNode.classList.toggle('amel-grise', ia);
+      });
+      var n = $('amelIaNote'); if (n) n.hidden = !ia;
+    }
     function amelioration() {
       return REGLAGES_AMEL.map(function (r) { var e = $('am_' + r[0]); return e ? e.value : '0'; }).join(',');
     }
@@ -1326,12 +1337,14 @@
       else if (e.target.id === 'allProfil') {
         if (e.target.value !== 'perso') { var v = e.target.value.split(','); REGLAGES_AMEL.forEach(function (r, i) { $('am_' + r[0]).value = v[i]; }); }
         else $('allFin').open = true;
+        griserIA();
         if (e.target.value === PROFILS_AMEL[PROFILS_AMEL.length - 1][0]) {        // « seulement uniformiser » : ni la taille ni le poids ne bougent
           $('allLargeur').value = ''; $('allQualMode').value = 'o'; $('allQualManuelle').hidden = true;
         }
         if (!cmp) ouvrirComparaison(''); else majComparaison();
       }
       else if (e.target.dataset && e.target.dataset.am) {
+        griserIA();
         var am = amelioration(); $('allProfil').value = PROFILS_AMEL.some(function (p) { return p[0] === am; }) ? am : 'perso';
         if (!cmp) ouvrirComparaison(''); else majComparaison();
       }
