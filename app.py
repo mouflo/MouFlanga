@@ -4550,7 +4550,7 @@ def api_import_torrents():
 
 @app.route("/api/occupe")
 def api_occupe():
-    """L'appli fait-elle un travail long ? (lu par deploy.sh avant de redémarrer : seulement depuis le serveur lui-même)"""
+    """L'appli fait-elle un travail long ? (à lire avant de redémarrer le service à la main : seulement depuis le serveur lui-même)"""
     if not auth.appel_local():
         return jsonify({"error": "réservé au serveur"}), 403
     raisons = _travaux_en_cours()

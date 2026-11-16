@@ -14,9 +14,9 @@ Le script `install.sh` :
 - crée l'environnement Python (`venv`) et installe les dépendances ;
 - essaie d'installer un outil de décompression RAR (`bsdtar`), utile seulement pour les vrais `.cbr` ;
 - installe et démarre le service `mouflanga` (port **5002**) ;
-- ajoute **une ligne** à la crontab pour la mise à jour automatique, sans toucher aux autres lignes.
+- ne touche pas à la crontab : il n'y a pas de mise à jour automatique.
 
-Si le dépôt est privé, `git clone` demande un accès : crée un jeton GitHub en lecture seule limité à ce dépôt (*Settings → Developer settings → Fine-grained tokens*), et ne le colle jamais dans une conversation. Le jeton n'est utile qu'au clonage (le `git pull` automatique le garde dans la configuration de git sur le serveur).
+Si le dépôt est privé, `git clone` demande un accès : crée un jeton GitHub en lecture seule limité à ce dépôt (*Settings → Developer settings → Fine-grained tokens*), et ne le colle jamais dans une conversation. Le jeton n'est utile qu'au clonage (`git pull` le garde ensuite dans la configuration de git sur le serveur).
 
 ## 2. Définir l'identifiant
 
@@ -30,11 +30,18 @@ Le script demande un identifiant et un mot de passe (8 caractères minimum). Seu
 
 Ouvre `http://IP-DU-SERVEUR:5002`, clique sur ⚙️ Réglages, puis sur 📂 Parcourir. Valeur par défaut : `/mnt/mouflosyno/Manga`. L'appli redémarre toute seule après l'enregistrement.
 
-## 4. Mise à jour automatique
+## 4. Mettre à jour
 
-Chaque minute, `deploy.sh` compare le serveur à GitHub. S'il y a du nouveau, il met le code à jour, installe les dépendances si besoin et redémarre l'appli. Les réglages et la progression de lecture (dossier `data/`) ne sont jamais touchés.
+Rien ne se met à jour tout seul. Quand il y a du nouveau sur GitHub :
 
-- Journal du déploiement : `tail -f /var/log/mouflanga-cron.log`
+```bash
+cd /opt/mouflanga && git pull && venv/bin/pip install -r requirements.txt
+curl -s http://127.0.0.1:5002/api/occupe        # doit répondre "occupe": false
+systemctl restart mouflanga
+```
+
+Les réglages et la progression de lecture (dossier `data/`) ne sont jamais touchés. Si l'appli est occupée (import, rangement, téléchargement), attends la fin avant de la redémarrer.
+
 - Journal de l'appli : `journalctl -u mouflanga -n 50`
 - Tout est aussi visible dans l'appli, bouton 🩺 **Journal**
 

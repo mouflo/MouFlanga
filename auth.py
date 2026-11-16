@@ -109,7 +109,7 @@ def utilisateur():
 
 
 def appel_local():
-    """Requête venue du serveur lui-même (deploy.sh, curl local), sans passer par le relais : l'adresse vue par le
+    """Requête venue du serveur lui-même (curl local), sans passer par le relais : l'adresse vue par le
     socket, pas celle d'un en-tête X-Forwarded-For (inventable par n'importe qui qui joint le port directement)."""
     orig = request.environ.get("werkzeug.proxy_fix.orig") or {}
     adresse = orig.get("REMOTE_ADDR", request.environ.get("REMOTE_ADDR", ""))

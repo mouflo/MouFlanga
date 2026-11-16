@@ -1,6 +1,7 @@
 # Historique des versions
 
 ## [Non publié]
+- 🧹 **Plus de trace de `deploy.sh`** : le fichier avait déjà quitté le dépôt le 03/11 ; INSTALL.md ne promet plus de mise à jour automatique (nouvelle section « Mettre à jour » : `git pull`, vérifier `/api/occupe`, redémarrer), le README et deux commentaires du code sont corrigés.
 - 🛡️ **Garde-fou « autre découpage » : les .cbr sont lus** (`mon_edition.nb_pages` ne comptait que les .cbz) : sinon un tome RAR de 384 pages remplaçait sans alerte un tome de 95 pages. Les pages d'un .cbr (ou .cb7) sont comptées avec `bsdtar -tf`, sans extraire ; un torrent en .cbr est maintenant contrôlé comme un .cbz.
 - ↩️ **« Revenir à mes anciennes règles »** (Règles → ✨ Mes préférences) : désactive tes préférences (elles restent gardées avec leurs choix) et réactive les profils généraux que leur enregistrement avait désactivés (`desactives` dans le profil ; jamais ce que tu avais éteint toi-même, les règles d'équipe par série ne bougent pas). Avec confirmation.
 - 🧪 **Règles → Essayer : la phrase « ⭐ Tes préférences : … »** (la même que dans Télécharger) est en tête de l'onglet ; les gros boutons de la page font au moins 44 px.

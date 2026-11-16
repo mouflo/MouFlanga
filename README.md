@@ -64,7 +64,7 @@ Pour installer l'appli sur le serveur et la remettre en route après une panne, 
 - ⏭️ **Chapitre suivant automatique** en arrivant à la fin, avec reprise exactement à la page où tu t'étais arrêté
 - ☰ **Chapitres d'un tome dans le lecteur** : ⏮ ⏭ sautent d'un chapitre à l'autre à l'intérieur d'un tome complet, et ☰ donne la liste des chapitres. Pour l'administrateur, 🎯 **Vérifier les pages au lecteur** passe les chapitres d'un tome un par un (✅ bonne page, ou 📍 « le chapitre commence ici »), tout est enregistré au fur et à mesure, et l'appli apprend l'écart propre à la série pour corriger seule les autres tomes.
 - ✔️ **Suivi de lecture** enregistré sur le serveur : chapitres lus, « Tout marquer lu / non lu »
-- 📥 **Téléchargeur de mangas** (page « Télécharger des mangas ») : choisis une série, coche les chapitres, l'appli les récupère et crée un `.cbz` par chapitre dans ton dossier des mangas. Elle utilise un navigateur Chromium sous écran virtuel (Xvfb), installé automatiquement par le déploiement
+- 📥 **Téléchargeur de mangas** (page « Télécharger des mangas ») : choisis une série, coche les chapitres, l'appli les récupère et crée un `.cbz` par chapitre dans ton dossier des mangas. Elle utilise un navigateur Chromium sous écran virtuel (Xvfb), installé par `install.sh`
 - 🛡️ **Vérification Cloudflare faite par toi** : si le site demande de prouver que tu es humain, le téléchargement se met en pause et l'appli t'envoie une alerte **Telegram** (les réglages Telegram d'une autre appli du serveur sont repris automatiquement ; sinon à régler dans ⚙️ Réglages → Alertes Telegram). Tu ouvres la page « Vérification », tu vois le navigateur du serveur, tu cliques sur la case, et le téléchargement reprend tout seul. Le navigateur utilisé (Google Chrome ou Camoufox) se choisit dans ⚙️ Réglages → Navigateur du scraper. Le serveur garde ensuite ton autorisation en mémoire : la vérification n'est redemandée que de temps en temps
 - 🔒 **Connexion** par identifiant et mot de passe (le mot de passe n'est jamais stocké en clair)
 - 🩺 **Journal** : un rapport complet à copier-coller pour comprendre un problème, sans se connecter au serveur
@@ -72,7 +72,7 @@ Pour installer l'appli sur le serveur et la remettre en route après une panne, 
 - ✨ **Mes préférences** (page Règles de recherche) : quelques questions simples (français seulement ou d'abord, numérique officiel, intégrale, PDF, taille, équipes préférées ou refusées, une équipe préférée pour une série) remplacent les profils, formats et points. Un refus est expliqué en clair, et le meilleur choix porte une pastille « ⭐ Le meilleur choix » dans Télécharger → Torrents. Les profils avancés restent dans leur onglet.
 - 🖼️ **Couvertures des tomes** : la fiche d'une série montre ses tomes en grille de couvertures (avec le numéro et la progression de lecture), avec une bascule grille / liste.
 - ⚙️ **Réglages** : dossier des mangas (avec un explorateur de dossiers) et préférences de lecture
-- 🔄 **Mise à jour automatique** : le serveur vérifie GitHub chaque minute et se met à jour tout seul
+- 🔄 **Mise à jour à la main** : `git pull`, puis redémarrage du service (voir `INSTALL.md`) ; plus rien ne se met à jour tout seul
 
 ## 🆕 Nouveautés de la 2.0
 - **👥 Comptes lecteurs** : tes proches lisent avec leur propre progression, sans pouvoir rien modifier ; ils peuvent **📮 demander un manga**.
