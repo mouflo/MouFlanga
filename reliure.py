@@ -126,3 +126,80 @@ def pivoter(g: np.ndarray, angle: float) -> np.ndarray:
     papier = int(min(255, max(200, _papier(g))))
     m = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)         # OpenCV : angle positif = sens inverse des aiguilles ; une page tournée de +a (horaire) se remet avec +a
     return cv2.warpAffine(g, m, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=papier)
+
+
+TROP_COUPE = 0.08                # on ne coupe jamais plus de 8 % de la largeur ou de la hauteur d'un côté : au-delà, ce n'est plus une bande de scanner mais le dessin
+
+
+def _debut_papier(profil: np.ndarray, seuil: float, maxi: int) -> int:
+    """Nombre de lignes (ou colonnes) à couper au début du profil (« niveau du papier » de chaque ligne) : une bande sombre (sous le seuil) qui TOUCHE le bord (elle commence dans les 3
+    premières positions : un trait de cadre à 70 px du bord n'est pas une bande), suivie jusqu'à son bout (un trou clair d'une seule position ne l'interrompt pas), à condition que du papier
+    la suive (médiane des `maxi // 2` positions suivantes au niveau du papier). Un dégradé d'ombre dont le tout dernier pixel est clair est donc coupé quand même ; une zone sombre qui va
+    jusqu'au bout des `maxi` positions (ce n'est plus une bande mais le dessin ou un dos de livre) n'est pas coupée : on ne devine pas."""
+    debut = np.where(profil[:3] < seuil)[0]
+    if debut.size == 0:
+        return 0
+    i = int(debut.max())
+    while i + 1 < maxi and (profil[i + 1] < seuil or (i + 2 < maxi and profil[i + 2] < seuil)):
+        i += 1
+    if i + 1 >= maxi:
+        return 0
+    tenue = max(2, maxi // 2)
+    return i + 1 if float(np.median(profil[i + 1:i + 1 + tenue])) >= seuil else 0
+
+
+def bords_page(g: np.ndarray):
+    """Les bords du papier d'une page scannée : (x0, y0, x1, y1) à garder, en pixels. Chaque bord est repéré sur le profil des colonnes (ou des lignes) au 80e centile : le papier
+    est clair, la bande d'ombre de la page voisine, la bande du scanner ou le reste de la couverture sont plus sombres (moins de 82 % du papier). On coupe jusqu'à cette bande, au
+    plus 8 % par côté ; un côté sans bande franche reste tel quel. Une page presque toute sombre n'est pas touchée."""
+    h, w = g.shape
+    papier = float(np.percentile(g, 90))
+    if papier < 150:
+        return (0, 0, w, h)
+    seuil = 0.82 * papier
+    colonnes = np.percentile(g, 80, axis=0)
+    lignes = np.percentile(g, 80, axis=1)
+    mx, my = int(TROP_COUPE * w), int(TROP_COUPE * h)
+    x0 = _debut_papier(colonnes, seuil, mx)
+    x1 = w - _debut_papier(colonnes[::-1], seuil, mx)
+    y0 = _debut_papier(lignes, seuil, my)
+    y1 = h - _debut_papier(lignes[::-1], seuil, my)
+    return (x0, y0, x1, y1)
+
+
+def cadre_tome(pages):
+    """Taille commune d'un tome, mesurée sur des pages d'échantillon (liste de tableaux gris) : {"w", "h" (taille du papier de chaque page, médiane), "pw", "ph" (taille d'une page de
+    départ)} ou None quand il y a moins de six pages de la taille habituelle. Les pages d'une autre taille (couverture, double page : à plus de 10 % de la médiane) ne comptent pas."""
+    if not pages:
+        return None
+    ph, pw = int(np.median([g.shape[0] for g in pages])), int(np.median([g.shape[1] for g in pages]))
+    tailles = []
+    for g in pages:
+        if abs(g.shape[1] - pw) > 0.1 * pw or abs(g.shape[0] - ph) > 0.1 * ph:
+            continue
+        x0, y0, x1, y1 = bords_page(g)
+        tailles.append((x1 - x0, y1 - y0))
+    if len(tailles) < 6:
+        return None
+    a = np.array(tailles)
+    return {"w": int(np.median(a[:, 0])), "h": int(np.median(a[:, 1])), "pw": pw, "ph": ph}
+
+
+def recadrer(g: np.ndarray, cadre: dict) -> np.ndarray:
+    """Page recadrée à la taille commune du tome (cadre["w"] × cadre["h"]) : d'abord coupée aux bords de son papier (bords_page : ombres et bandes du bord enlevées), puis centrée
+    dans la taille commune (un peu de papier en moins ou en plus de chaque côté ; ce qui manque est rempli du ton du papier). Jamais de zoom ni de déformation. Une page d'une autre
+    taille que celles du tome (à plus de 10 %) : rendue telle quelle."""
+    h, w = g.shape
+    if abs(w - cadre["pw"]) > 0.1 * cadre["pw"] or abs(h - cadre["ph"]) > 0.1 * cadre["ph"]:
+        return g
+    x0, y0, x1, y1 = bords_page(g)
+    papier = int(min(255, max(200, _papier(g))))
+    p = g[y0:y1, x0:x1]
+    W, H = cadre["w"], cadre["h"]
+    sortie = np.full((H, W), papier, g.dtype)
+    dx, dy = (W - p.shape[1]) // 2, (H - p.shape[0]) // 2                        # > 0 : de la marge à ajouter, < 0 : du papier en trop à couper
+    sx, sy = max(0, -dx), max(0, -dy)
+    cw, ch = min(p.shape[1] - sx, W - max(0, dx)), min(p.shape[0] - sy, H - max(0, dy))
+    if cw > 0 and ch > 0:
+        sortie[max(0, dy):max(0, dy) + ch, max(0, dx):max(0, dx) + cw] = p[sy:sy + ch, sx:sx + cw]
+    return sortie

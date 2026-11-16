@@ -94,7 +94,9 @@ def est_couleur(im: Image.Image) -> bool:
     pixels et garde les vraies zones. Mesuré le 16/11/2026 : 46 des 93 pages du tome 4 de Nori Taka étaient prises pour de la couleur (0,2 à 1 % de pixels colorés,
     tous en franges, 0,01 % après ouverture) alors que les couvertures en ont 37 à 89 % ; les franges les plus fortes de la bibliothèque (Nanatsu no Taizai) restent
     sous 0,46 % après ouverture, et un vrai petit élément de couleur (le « D » rouge d'un titre d'Area-D) fait 0,7 à 1,8 %. Le seuil est à 0,5 %.
-    Se tromper vers « couleur » ne coûte rien (la page est laissée telle quelle) ; se tromper vers « noir et blanc » passerait une vraie couleur en gris."""
+    Une page noir et blanc avec un PETIT accent de couleur (le « D » rouge d'un titre d'Area-D : 0,7 à 1,8 % de la page) reste une page noir et blanc : le seuil est à 3 %
+    de la page après ouverture. Seules les pages de la bibliothèque entre 0,5 % et 3 % sont dans ce cas (trois pages d'Area-D) ; les couvertures et pages en couleur en ont 20 à 90 %.
+    Une telle page est donc passée en gris par les améliorations : l'accent de couleur disparaît, ce qui est le choix de la personne."""
     if im.mode in ("L", "1"):
         return False
     petit = np.asarray(im.convert("RGB").resize((400, 600), Image.BOX), dtype=np.int16)
@@ -102,14 +104,14 @@ def est_couleur(im: Image.Image) -> bool:
         return True
     colore = ((petit.max(axis=2) - petit.min(axis=2)) > 40).astype(np.uint8)
     colore = cv2.morphologyEx(colore, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-    return float(colore.mean()) > 0.005
+    return float(colore.mean()) > 0.03
 
 
 # ✨ Amélioration des vieux scans : chaque réglage va de 0 (non) à 3 (fort), appliqué dans cet ordre. « uniformiser » (0 ou 1) cale les
 # noirs, les blancs et la teinte du tome sur ceux des autres tomes de la série (voir uniformite.py) : il lui faut le calage du tome.
 # « ia » (0 à 3) : restauration par réseau de neurones des petits scans (agrandi ×2, voir ia.py) ; elle remplace débruiter, adoucir les trames, lisser et agrandir.
 # « dos » (0 à 3 : ombre du dos), « redresser » et « bords » (0 ou 1) : défauts d'un tome relié scanné à plat, voir reliure.py.
-AMELIORATIONS = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "agrandir", "uniformiser", "ia", "dos", "redresser", "bords")
+AMELIORATIONS = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "agrandir", "uniformiser", "ia", "dos", "redresser", "bords", "recadrer")
 
 
 def reglages_amelioration(x) -> dict | None:
@@ -124,7 +126,7 @@ def reglages_amelioration(x) -> dict | None:
     r = {}
     for k in AMELIORATIONS:
         try:
-            r[k] = max(0, min(1 if k in ("uniformiser", "redresser", "bords") else 3, int(x.get(k) or 0)))
+            r[k] = max(0, min(1 if k in ("uniformiser", "redresser", "bords", "recadrer") else 3, int(x.get(k) or 0)))
         except (TypeError, ValueError):
             r[k] = 0
     return r if any(r.values()) else None
@@ -154,13 +156,13 @@ def _caler(g, calage):
     return cv2.LUT(g, np.clip(np.round(lut), 0, 255).astype(np.uint8))
 
 
-def ameliorer(im: Image.Image, reglages, calage=None) -> Image.Image:
+def ameliorer(im: Image.Image, reglages, calage=None, cadre=None) -> Image.Image:
     """Page noir et blanc d'un vieux scan, rendue plus propre (renvoyée en gris). Une page en couleur n'est touchée que par la restauration IA (renvoyée en couleur).
     « lisser » travaille sur la page doublée (il faut de la place pour arrondir) puis la ramène à sa taille : les bords
     restent lisses (anticrénelage) sans alourdir le fichier. « agrandir » garde la page doublée (petits scans de moins
     de 1700 px de haut seulement) : plus fin en zoomant, mais fichier bien plus lourd."""
     r = reglages_amelioration(reglages)
-    if not r:
+    if not r or not any(v for k, v in r.items() if not (k == "recadrer" and not cadre)):          # « recadrer » seul, sans cadre mesuré : rien à faire
         return im
     if est_couleur(im):                                   # couverture ou illustration : seule la restauration IA (en couleur) la touche, tous les autres réglages sont faits pour le noir et blanc
         if r["ia"] and ia.disponible() and im.height < ia.HAUTEUR_MAX:
@@ -173,6 +175,9 @@ def ameliorer(im: Image.Image, reglages, calage=None) -> Image.Image:
         g = _caler(g, calage)
     if r["bords"]:                                        # bandes noires du scanner, avant tout : elles faussent les mesures qui suivent
         g = reliure.bords_noirs(g)
+    if r["recadrer"] and cadre:                           # toutes les pages à la même taille, cadres alignés ; coupe les ombres et bandes du bord (voir reliure.cadre_tome)
+        g = reliure.recadrer(g, cadre)
+        h, w = g.shape
     if r["dos"]:                                          # ombre du dos : le papier s'assombrit vers la reliure
         g = reliure.ombre_dos(g, r["dos"])
     angle = reliure.angle_page(g) if r["redresser"] else None       # mesuré sur la page d'origine, appliqué à la fin (une rotation après l'agrandissement floute moins)
@@ -280,11 +285,12 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite
         qualite_forcee = max(60, min(98, int(np.median(trouvees)))) if trouvees else 90      # pour une page dont la qualité n'est pas lisible
         qpage = {n: (q or qualite_forcee) for n, q in qpage.items()}
     eclairer = reglages_amelioration(eclairer)
+    cadre = cadre_du_tome(chemin, eclairer)
     inchangees = set(images)
     if eclairer:
         traitees = {}
         for i, (n, im) in enumerate(images.items()):
-            traitees[n] = ameliorer(im, eclairer, calage)
+            traitees[n] = ameliorer(im, eclairer, calage, cadre)
             _avancer("analyse", i + 1, len(images))
         inchangees = {n for n in images if traitees[n] is images[n]}
         images = traitees
@@ -330,6 +336,7 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
     autres pages d'un tome en 70 : « qualite » ne sert que pour une page dont la qualité n'est pas lisible), et une page que les filtres n'ont pas touchée
     (une page en couleur) et qui n'est pas réduite garde ses octets d'origine, sans nouvelle compression."""
     eclairer = reglages_amelioration(eclairer)
+    cadre = cadre_du_tome(chemin, eclairer)
     tmp = destination if destination is not None else chemin.with_name("." + chemin.name + ".allege")
     vu_comicinfo = False
     with zipfile.ZipFile(chemin) as src, zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as dst:
@@ -341,7 +348,7 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
             if qualite and Path(info.filename).suffix.lower() in _IMAGES:
                 im = Image.open(io.BytesIO(data))
                 im.load()
-                traitee = ameliorer(im, eclairer, calage) if eclairer else im
+                traitee = ameliorer(im, eclairer, calage, cadre) if eclairer else im
                 im2 = reduire(traitee, largeur_max)
                 if not (fidele and im2 is im):
                     nouveau = _jpeg(im2, (qualite_jpeg(im) or qualite) if fidele else qualite)
@@ -378,6 +385,36 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
     chemin.rename(chemin.with_name(chemin.name + ".avant"))
     tmp.rename(chemin)
     return gagne
+
+
+_CADRES = {}                     # {(chemin, date du fichier): cadre commun du tome} : mesuré une fois, l'aperçu et l'écriture donnent le même résultat
+
+
+def cadre_du_tome(chemin: Path, eclairer) -> dict | None:
+    """Cadre commun du tome (reliure.cadre_tome) quand le réglage « recadrer » est demandé, mesuré sur 60 pages réparties dans le tome ; None sinon, ou si le tome n'a pas
+    assez de pages à cadre (le recadrage ne fait alors rien plutôt que de deviner)."""
+    if not (eclairer or {}).get("recadrer"):
+        return None
+    chemin = Path(chemin)
+    cle = (str(chemin), chemin.stat().st_mtime_ns)
+    if cle in _CADRES:
+        return _CADRES[cle]
+    pages = []
+    with zipfile.ZipFile(chemin) as z:
+        noms = _pages(z)
+        pas = max(1, len(noms) // 60)
+        for n in noms[::pas][:60]:
+            try:
+                im = Image.open(io.BytesIO(z.read(n)))
+                if not est_couleur(im):
+                    pages.append(np.asarray(im.convert("L")))
+            except Exception:
+                continue
+    cadre = reliure.cadre_tome(pages)
+    if len(_CADRES) > 32:
+        _CADRES.clear()
+    _CADRES[cle] = cadre
+    return cadre
 
 
 def _copier_sans_droits(source, destination):
@@ -653,7 +690,7 @@ def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage=None, 
     im = Image.open(io.BytesIO(data))
     im.load()
     couleur = bool(eclairer) and est_couleur(im)
-    traitee = ameliorer(im, eclairer, calage) if eclairer else im
+    traitee = ameliorer(im, eclairer, calage, cadre_du_tome(chemin, eclairer)) if eclairer else im
     im2 = reduire(traitee, largeur_max)
     q_page = (qualite_jpeg(im) or qualite) if fidele else qualite                  # mode « même qualité » : celle de CETTE page
     nouveau = _jpeg(im2, q_page) if qualite and not (fidele and im2 is im) else data
@@ -661,7 +698,12 @@ def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage=None, 
         nouveau = data                                   # une page qui ne gagne rien garde ses octets d'origine
     apres = Image.open(io.BytesIO(nouveau))
     apres.load()
-    avant = im if im.size == apres.size else im.resize(apres.size, Image.LANCZOS)   # même géométrie pour comparer
+    if im.size == apres.size:
+        avant = im
+    elif abs(im.width / im.height - apres.width / apres.height) < 0.02:
+        avant = im.resize(apres.size, Image.LANCZOS)         # même géométrie pour comparer
+    else:                                                  # recadrage : une autre forme de page ; on pose l'original sur un fond blanc sans le déformer
+        avant = ImageOps.pad(im.convert("RGB"), apres.size, Image.LANCZOS, color=(255, 255, 255))
     if zoom:
         cw, ch = (int(zoom[2]), int(zoom[3])) if len(zoom) >= 4 else (640, 640)
         if len(zoom) >= 4:                                   # page plus étroite que l'écran : toute sa largeur, et la hauteur suit la proportion demandée

@@ -32,13 +32,13 @@ class FrangesTest(unittest.TestCase):
 
     def test_une_vraie_zone_de_couleur_reste_de_la_couleur(self):
         a = page_grise()
-        a[100:260, 100:300] = (200, 20, 30)                             # un titre rouge : environ 4 % de la page
+        a[100:300, 100:400] = (200, 20, 30)                             # une grande zone rouge : environ 9 % de la page
         self.assertTrue(optimiser.est_couleur(Image.fromarray(a)))
 
-    def test_petit_element_colore_un_pour_cent_reconnu(self):
+    def test_petit_accent_de_couleur_laisse_la_page_en_noir_et_blanc(self):
         a = page_grise()
-        a[700:760, 100:230] = (180, 10, 20)                             # ≈ 1,1 % de la page (le « D » d'un titre)
-        self.assertTrue(optimiser.est_couleur(Image.fromarray(a)))
+        a[700:760, 100:230] = (180, 10, 20)                             # ≈ 1,1 % de la page (le « D » rouge d'un titre : la page reste noir et blanc)
+        self.assertFalse(optimiser.est_couleur(Image.fromarray(a)))
 
     def test_page_teintee_mais_grise_et_page_en_niveaux_de_gris(self):
         jaune = page_grise().astype(np.int16)

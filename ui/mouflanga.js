@@ -1032,7 +1032,8 @@
       var autres = REGLAGES_AMEL.some(function (r) { return r[0] !== 'uniformiser' && $('am_' + r[0]) && $('am_' + r[0]).value !== '0'; });
       lignes.push('✨ Image : ' + (am === PROFILS_AMEL[0][0] ? 'aucune amélioration' : uniq && !autres ? 'seulement les noirs et blancs alignés sur la référence (la teinte disparaît)' : (prof ? prof[1].toLowerCase() : 'réglage personnalisé') + (uniq ? ', noirs et blancs alignés' : '')));
       var l = $('allLargeur').value;
-      lignes.push('📐 Taille : ' + (l ? 'pages plus larges que ' + l + ' px réduites' : 'inchangée'));
+      var recad = $('am_recadrer') && $('am_recadrer').value === '1';
+      lignes.push('📐 Taille : ' + (l ? 'pages plus larges que ' + l + ' px réduites' : 'inchangée') + (recad ? ' ; toutes les pages recadrées à la même taille (bandes du bord coupées)' : ''));
       var q = $('allQualMode').value;
       lignes.push('🗜 Compression : ' + (q === 'o' ? 'chaque page garde sa qualité d\'origine (une double page assemblée est en 95, les autres pages en 70, par exemple) : le poids reste à peu près le même, et peut baisser un peu quand la teinte retirée pesait dans le fichier' : q === 'm' ? 'qualité fixée à ' + $('allQual').value + ' / 100' : 'automatique, le poids des fichiers va changer (en général plus léger)'));
       var touche = l || q === '' || q === 'm';                      // ce qui peut encore s'appliquer à une page en couleur
@@ -1127,14 +1128,14 @@
       if (nom === 'parasites') demarrerParasites();
     }
     // ✨ Profils d'amélioration (ordre d'optimiser.AMELIORATIONS ; 0 = non … 3 = fort)
-    var PROFILS_AMEL = [['0,0,0,0,0,0,0,0,0,0,0,0,0', 'Non (image d\'origine)'], ['1,1,1,1,0,1,0,0,0,0,0,0,0', 'Légère (scan un peu gris)'],
-      ['2,2,2,1,1,2,0,0,0,0,0,0,0', 'Vieux scan (papier gris, trames, escaliers)'], ['3,3,3,2,2,3,0,0,0,0,0,0,0', 'Très abîmé (crado, délavé)'],
-      ['0,0,0,0,0,0,0,0,0,1,0,0,0', '🧠 IA Naturel (petit scan : dégradés fidèles, ≈ 1,5 s par page sur la carte graphique)'],
-      ['0,0,0,0,0,0,0,0,0,2,0,0,0', '🧠 IA Net (petit scan : texte et contours francs, ≈ 1,5 s par page)'],
-      ['0,0,0,0,0,0,0,0,0,3,0,0,0', '🧠 IA Maximum (8 passes : ≈ 10 s par page)'],
-      ['0,0,0,0,0,0,0,0,0,0,2,1,1', '📖 Reliure seule (ombre du dos, page redressée, bords noirs enlevés)'],
-      ['0,0,0,0,0,0,0,0,0,2,2,1,1', '📖🧠 Reliure + IA Net'],
-      ['0,0,0,0,0,0,0,0,1,0,0,0,0', '🎨 Uniformiser (même noir et même blanc que les autres tomes)']];
+    var PROFILS_AMEL = [['0,0,0,0,0,0,0,0,0,0,0,0,0,0', 'Non (image d\'origine)'], ['1,1,1,1,0,1,0,0,0,0,0,0,0,0', 'Légère (scan un peu gris)'],
+      ['2,2,2,1,1,2,0,0,0,0,0,0,0,0', 'Vieux scan (papier gris, trames, escaliers)'], ['3,3,3,2,2,3,0,0,0,0,0,0,0,0', 'Très abîmé (crado, délavé)'],
+      ['0,0,0,0,0,0,0,0,0,1,0,0,0,0', '🧠 IA Naturel (petit scan : dégradés fidèles, ≈ 1,5 s par page sur la carte graphique)'],
+      ['0,0,0,0,0,0,0,0,0,2,0,0,0,0', '🧠 IA Net (petit scan : texte et contours francs, ≈ 1,5 s par page)'],
+      ['0,0,0,0,0,0,0,0,0,3,0,0,0,0', '🧠 IA Maximum (8 passes : ≈ 10 s par page)'],
+      ['0,0,0,0,0,0,0,0,0,0,2,1,1,1', '📖 Reliure seule (ombre du dos, page redressée, bords noirs enlevés, pages recadrées à la même taille)'],
+      ['0,0,0,0,0,0,0,0,0,2,2,1,1,1', '📖🧠 Reliure + IA Net'],
+      ['0,0,0,0,0,0,0,0,1,0,0,0,0,0', '🎨 Uniformiser (même noir et même blanc que les autres tomes)']];
     var REGLAGES_AMEL = [['debruit', '🌫 Enlever le grain', 'le grain et les petits carrés de compression'],
       ['trames', '▦ Adoucir les trames', 'aplats gris pointillés → gris uni ; fort = textures fines aussi lissées'],
       ['papier', '🧼 Blanchir le papier', 'fond gris ou jauni, bulles comprises ; fort = gris très pâles effacés'],
@@ -1147,7 +1148,8 @@
       ['ia', '🧠 Restauration IA', 'petits scans (moins de 1700 px de haut) : agrandi ×2 par un réseau de neurones pour mangas, texte et contours francs, remplace grain, trames, lisser et agrandir', ['Non', 'Naturel', 'Net', 'Maximum']],
       ['dos', '📖 Ombre du dos', 'le papier assombri vers la reliure est éclairci (double page : chaque moitié) ; fort = jusqu\'à 50 % de gain', ['Non', 'Léger', 'Moyen', 'Fort']],
       ['redresser', '📐 Redresser la page', 'petite inclinaison du scan (de 0,2 à 3°), mesurée sur les bords de cases', ['Non', 'Oui']],
-      ['bords', '🧽 Bords noirs du scan', 'bandes sombres et étroites le long du bord de la page', ['Non', 'Oui']]];
+      ['bords', '🧽 Bords noirs du scan', 'bandes sombres et étroites le long du bord de la page', ['Non', 'Oui']],
+      ['recadrer', '✂️ Recadrer et aligner', 'toutes les pages à la même taille (aucun zoom) ; coupe les bandes d\'ombre des pages voisines et les bords du scan, sur les bords gauche, droit, haut et bas. Pages simples : découpez d\'abord les doubles', ['Non', 'Oui']]];
     var REMPLACES_PAR_IA = ['debruit', 'trames', 'lisser', 'agrandir'];       // ce que la restauration IA fait déjà à leur place (voir optimiser.ameliorer)
     function griserIA() {                                           // IA choisie : ces quatre réglages sont remis à « Non » et grisés ; papier, noirs, poussières, netteté… restent libres
       var ia = $('am_ia') && $('am_ia').value !== '0';
