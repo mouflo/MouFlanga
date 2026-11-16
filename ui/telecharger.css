@@ -410,3 +410,5 @@ body.mou-skin .serie-ligne { background: none; color: var(--text, #eee); font-we
 .tor-plus[open] summary { color:var(--text, #eee); }
 .tor-plus .sub { margin-top:0; }
 .tor-meilleur { display:inline-block !important; width:fit-content; align-self:flex-start; color:#0b0c0e !important; background:var(--accent, #52b54b); font-weight:700; border-radius:9px; padding:1px 9px; margin:3px 0; }
+/* Ligne « Comparé à ta bibliothèque » : pas la classe .note, que le kit recopie en bulle quand elle est hors de l'écran (elle apparaissait deux fois) */
+.tor-compare { padding:10px 12px; border-radius:4px; font-size:.9rem; margin:10px 0 0; border:1px solid var(--line, #2c2c2c); background:rgba(255,255,255,.04); }

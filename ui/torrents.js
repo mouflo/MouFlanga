@@ -45,7 +45,7 @@
         const meilleur = res.findIndex(x => !x.rejet && !x.deja && x.sources > 0);      // la liste arrive triée : le premier acceptable est le meilleur
         const plage = a => { const o = []; for (let i = 0; i < a.length; i++) { let j = i; while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++; o.push(i === j ? "T" + a[i] : "T" + a[i] + "–T" + a[j]); i = j; } return o.join(", "); };
         const compare = x => !x.tomes ? "" : x.deja ? `<small class="tor-deja">✅ Déjà dans ta bibliothèque (${plage(x.tomes)})</small>` : `<small class="tor-nouveau">🆕 Apporte ${plage(x.nouveaux)}</small>`;
-        $("tor-res").innerHTML = (bib ? `<div class="note">Comparé à ta bibliothèque : « ${esc(bib.serie)} » (${bib.possedes} tomes).</div>` : "") + (liste.length ? liste.map(([x, i]) => `<div class="tor-res${x.rejet ? " refuse" : ""}${x.deja ? " deja" : ""}" data-i="${i}">
+        $("tor-res").innerHTML = (bib ? `<div class="tor-compare">Comparé à ta bibliothèque : « ${esc(bib.serie)} » (${bib.possedes} tomes).</div>` : "") + (liste.length ? liste.map(([x, i]) => `<div class="tor-res${x.rejet ? " refuse" : ""}${x.deja ? " deja" : ""}" data-i="${i}">
             <div class="tor-info"><b>${x.score ? `<em class="tor-score">${x.assez_bon ? "⭐ " : ""}${x.score > 0 ? "+" : ""}${x.score}</em> ` : ""}${esc(x.titre)}</b>
             <small>${taille(x.taille)} · <span class="${x.sources ? "" : "tor-zero"}">${x.sources} source${x.sources > 1 ? "s" : ""}</span> · ${esc(x.indexeur)}${x.date ? " · " + esc(x.date) : ""}</small>
             ${i === meilleur && liste.length > 1 ? '<small class="tor-meilleur">⭐ Le meilleur choix</small>' : ""}${compare(x)}
