@@ -147,12 +147,16 @@ def _caler(g, calage):
 
 
 def ameliorer(im: Image.Image, reglages, calage=None) -> Image.Image:
-    """Page noir et blanc d'un vieux scan, rendue plus propre (renvoyée en gris). Une page en couleur n'est pas touchée.
+    """Page noir et blanc d'un vieux scan, rendue plus propre (renvoyée en gris). Une page en couleur n'est touchée que par la restauration IA (renvoyée en couleur).
     « lisser » travaille sur la page doublée (il faut de la place pour arrondir) puis la ramène à sa taille : les bords
     restent lisses (anticrénelage) sans alourdir le fichier. « agrandir » garde la page doublée (petits scans de moins
     de 1700 px de haut seulement) : plus fin en zoomant, mais fichier bien plus lourd."""
     r = reglages_amelioration(reglages)
-    if not r or est_couleur(im):
+    if not r:
+        return im
+    if est_couleur(im):                                   # couverture ou illustration : seule la restauration IA (en couleur) la touche, tous les autres réglages sont faits pour le noir et blanc
+        if r["ia"] and ia.disponible() and im.height < ia.HAUTEUR_MAX:
+            return Image.fromarray(ia.agrandir_couleur(np.asarray(im.convert("RGB")), r["ia"]))
         return im
     g = np.asarray(im.convert("L"))                       # une teinte (page un peu violette ou jaune) disparaît ici : tout est rendu en gris
     h, w = g.shape
@@ -829,6 +833,72 @@ def couper(chemin: Path, indices, sens_manga=True, destination=None) -> dict:
         if archives._names(z) != nouvel_ordre:
             tmp.unlink()
             raise RuntimeError("pages différentes après coupe")
+    res = {"carte": carte, "pages_avant": len(ordre), "pages": nb}
+    if destination is not None:
+        return res
+    avant = chemin.with_name(chemin.name + ".avant")
+    chemin.rename(avant)
+    tmp.rename(chemin)
+    res["avant"] = avant
+    return res
+
+
+def couverture_dans_fichier(chemin: Path, octets: bytes, mode: str = "remplacer", destination=None) -> dict:
+    """Met une image de couverture DANS le tome : mode « remplacer » (elle prend la place de la première page, qui disparaît) ou « ajouter » (elle devient une
+    nouvelle première page, l'ancienne suit). Même principe que couper : version à côté (ou « destination » pour un fichier partagé), relue, puis remplacée ;
+    l'ancien part dans « avant » (corbeille). Renvoie {"carte": {ancien numéro: nouveau}, "pages_avant", "pages", "avant"}.
+    L'image est recodée en JPEG (RVB). Pour « ajouter », la page s'appelle « 0000-couverture.jpg » : le tri naturel la place avant n'importe quelle autre
+    page (« 0001.jpg », « c0001.00-p001.jpg »…) sans rien renommer, et elle n'est dans aucun chapitre."""
+    import tomes_cbz
+    if mode not in ("remplacer", "ajouter"):
+        raise ValueError("mode inconnu")
+    chemin = Path(chemin)
+    im = Image.open(io.BytesIO(octets))
+    im.load()
+    tampon = io.BytesIO()
+    im.convert("RGB").save(tampon, "JPEG", quality=95)
+    jpeg = tampon.getvalue()
+    ordre = archives.pages(chemin)
+    if not ordre:
+        raise RuntimeError("aucune page dans ce tome")
+    premiere = ordre[0]
+    if mode == "remplacer":
+        nom_neuf = str(Path(premiere).with_suffix(".jpg")) if Path(premiere).suffix.lower() != ".jpg" else premiere
+        nouvel_ordre = [nom_neuf] + ordre[1:]
+        carte = {i: i for i in range(len(ordre))}
+        carte.pop(0)                                                # l'ancienne première page n'existe plus
+    else:
+        nom_neuf = "0000-couverture.jpg"
+        if nom_neuf in ordre:
+            raise RuntimeError("ce tome a déjà une page « 0000-couverture.jpg » : remplacez-la plutôt")
+        nouvel_ordre = [nom_neuf] + ordre
+        carte = {i: i + 1 for i in range(len(ordre))}
+    if sorted(nouvel_ordre, key=archives.natural_key) != nouvel_ordre:
+        raise RuntimeError("l'image ne se placerait pas en première page")
+    nb = len(nouvel_ordre)
+    tmp = Path(destination) if destination is not None else chemin.with_name("." + chemin.name + ".couverture")
+    with zipfile.ZipFile(chemin) as src, zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as dst:
+        if mode == "ajouter":
+            info = zipfile.ZipInfo(nom_neuf, date_time=src.infolist()[0].date_time)
+            info.compress_type = zipfile.ZIP_STORED
+            dst.writestr(info, jpeg)
+        for info in src.infolist():
+            data = src.read(info.filename)
+            nom = info.filename
+            if mode == "remplacer" and nom == premiere:
+                nom, data = nom_neuf, jpeg
+            elif Path(nom).name == "ComicInfo.xml":
+                data = _comicinfo_maj(data, carte, nb)
+            info2 = zipfile.ZipInfo(nom, date_time=info.date_time)
+            info2.compress_type = zipfile.ZIP_STORED
+            dst.writestr(info2, data)
+    with zipfile.ZipFile(tmp) as z:                     # relecture : archive saine, pages attendues dans l'ordre attendu
+        if z.testzip() is not None:
+            tmp.unlink()
+            raise RuntimeError("archive illisible après la mise en place de la couverture")
+        if archives._names(z) != nouvel_ordre:
+            tmp.unlink()
+            raise RuntimeError("pages différentes après la mise en place de la couverture")
     res = {"carte": carte, "pages_avant": len(ordre), "pages": nb}
     if destination is not None:
         return res

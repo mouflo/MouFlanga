@@ -2951,6 +2951,60 @@ def couvertures_envoyer():
     return _retour_couvertures(name, ok=f"{_nom_tome(name, tome)} : couverture remplacée (l'ancienne est gardée).")
 
 
+@app.route("/couvertures/dans-le-fichier", methods=["POST"])
+def couvertures_dans_le_fichier():
+    """Met la couverture choisie du tome (image de remplacement) DANS son fichier : « remplacer » la première page, ou « ajouter » une page avant elle."""
+    name = request.form.get("id", "")
+    if name not in _scan() or name == "(Sans série)":
+        return Response("Série introuvable", status=404)
+    try:
+        tome = int(request.form.get("tome", ""))
+    except ValueError:
+        return _retour_couvertures(name, erreur="Tome inconnu.")
+    mode = "ajouter" if request.form.get("mode") == "ajouter" else "remplacer"
+    image = couvertures_tomes.remplacement(MANGA_DIR / name, tome)
+    rel = _fichier_du_tome(name, tome)
+    chemin = MANGA_DIR / rel if rel else None
+    if not image:
+        return _retour_couvertures(name, erreur="Choisissez d'abord une image pour ce tome.")
+    if not chemin or not chemin.is_file() or not zipfile.is_zipfile(chemin):
+        return _retour_couvertures(name, erreur="Fichier du tome introuvable (ou ce n'est pas un CBZ).")
+    if _en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours") or optimiser.etat(name).get("en_cours") or optimiser.coupes_etat(name).get("en_cours"):
+        return _retour_couvertures(name, erreur="Cette série est en cours de traitement : attendez la fin.")
+    avant_travail = _avant_travail(name, [chemin])
+    octets = image.read_bytes()
+    try:
+        if chemin.stat().st_nlink > 1 and not optimiser._dossier_a_lui(chemin, name):
+            return _retour_couvertures(name, erreur="Fichier partagé par qBittorrent hors d'un dossier de tome : jamais modifié.")
+        if chemin.stat().st_nlink > 1:
+            res = {}
+
+            def ecrire(dest):
+                res.update(optimiser.couverture_dans_fichier(chemin, octets, mode, destination=dest))
+                return True
+            optimiser.echanger_dossier(chemin, ecrire, _vers_corbeille)
+        else:
+            res = optimiser.couverture_dans_fichier(chemin, octets, mode)
+            _vers_corbeille(res.pop("avant"))
+    except Exception as e:
+        logger.warning("Couverture dans le fichier de %s tome %s : %s", name, tome, e)
+        return _retour_couvertures(name, erreur=f"Impossible : {e}")
+    _recaler_progression(name, _rel(chemin), res["carte"])
+
+    @_sous_verrou_infos
+    def apres():
+        import edition
+        infos = edition.lire(MANGA_DIR / name)
+        _suivre_sommaire(infos, chemin, res["carte"])
+        _noter_travail(name, chemin, avant_travail.get(chemin.name), {"couverture": {"detail": "couverture remplacée dans le fichier" if mode == "remplacer"
+                                                                                       else "couverture ajoutée en première page"}}, infos=infos)
+        edition.ecrire(MANGA_DIR / name, infos)
+        edition.invalider(MANGA_DIR / name)
+    apres()
+    return _retour_couvertures(name, ok=f"{_nom_tome(name, tome)} : couverture " + ("mise à la place de la première page" if mode == "remplacer" else "ajoutée en première page") +
+                                        " du fichier (l'ancien fichier est à la corbeille : ↩️ Revenir en arrière).")
+
+
 @app.route("/couvertures/retirer", methods=["POST"])
 def couvertures_retirer():
     name = request.form.get("id", "")

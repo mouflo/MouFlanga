@@ -15,6 +15,9 @@ pour 1 et 2, 12 s pour 3 ; sur le processeur (4 fils) 9 s et 75 s. `MOUFLANGA_IA
 Le mode « tta » natif de la bibliothèque fait PLANTER tout le processus (code 139) dès qu'un autre modèle a servi avant sur la carte : il n'est jamais utilisé,
 les huit orientations sont passées une à une dans le modèle normal puis moyennées ici (même résultat, sans plantage).
 
+Pages en couleur (couvertures, pages d'illustration) : `agrandir_couleur` passe la page RGB dans le même réseau (il travaille en couleur de toute façon), garde les
+teintes telles quelles (ni recalage du papier ni du noir) et ne rend plus nets que les traits (masque flou sur la luminance seule : pas de franges colorées).
+
 Optionnel : sans le paquet (ou sans la bibliothèque système libomp5) `disponible()` rend False et l'appli se comporte comme avant.
 Installer : « apt install libomp5 » puis « venv/bin/pip install --no-deps realcugan-ncnn-py » (--no-deps : le paquet réclame opencv-python, déjà là en version « headless »).
 """
@@ -95,6 +98,13 @@ def _huit_passes(modele, rgb):
     return Image.fromarray(np.clip(np.mean(sorties, axis=0) + 0.5, 0, 255).astype(np.uint8))
 
 
+def _agrandir_rgb(a: np.ndarray, n: dict) -> np.ndarray:
+    from PIL import Image
+    rgb = Image.fromarray(a)
+    modele = _modele(n["bruit"])
+    return np.asarray((_huit_passes(modele, rgb) if n["tta"] else modele.process_pil(rgb)).convert("RGB"), dtype=np.uint8)
+
+
 def _agrandir_modele(g: np.ndarray, n: dict) -> np.ndarray:
     from PIL import Image
     rgb = Image.fromarray(g).convert("RGB")
@@ -119,6 +129,45 @@ def _nettete(L: np.ndarray, sigma=1.0, force=0.6, seuil=6) -> np.ndarray:
     d = f - cv2.GaussianBlur(f, (0, 0), sigma)
     d = np.where(np.abs(d) < seuil, 0, d)                       # pas de grain amplifié dans les aplats
     return np.clip(f + force * d, 0, 255).astype(np.uint8)
+
+
+def _nettete_couleur(a: np.ndarray, sigma=1.0, force=0.5, seuil=4) -> np.ndarray:
+    """Masque flou sur la luminance (Lab) seulement : les contours gagnent en mordant, les couleurs ne bougent pas."""
+    lab = cv2.cvtColor(a, cv2.COLOR_RGB2LAB).astype(np.float32)
+    lum = lab[..., 0]
+    d = lum - cv2.GaussianBlur(lum, (0, 0), sigma)
+    lab[..., 0] = np.clip(lum + force * np.where(np.abs(d) < seuil, 0, d), 0, 255)
+    return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2RGB)
+
+
+def agrandir_couleur(a: np.ndarray, niveau: int) -> np.ndarray:
+    """Page en couleur (RGB uint8, hauteur × largeur × 3) agrandie ×2 et finie, au niveau 1, 2 ou 3. Une page déjà haute est rendue telle quelle."""
+    n = NIVEAUX[max(1, min(3, int(niveau)))]
+    if a.shape[0] >= HAUTEUR_MAX:
+        return a
+    cle = (hashlib.blake2b(a.tobytes(), digest_size=16).hexdigest(), a.shape, niveau, "couleur")
+    with _VERROU:
+        if cle in _CACHE:
+            _CACHE.move_to_end(cle)
+            return _CACHE[cle]
+        global _SANS_CARTE
+        try:
+            grand = _agrandir_rgb(a, n)
+        except Exception as e:
+            if _gpuid() < 0:
+                raise
+            logger.warning("Restauration IA : la carte graphique a échoué (%s: %s), le processeur prend le relais", e.__class__.__name__, e)
+            _SANS_CARTE = True
+            _MODELES.clear()
+            grand = _agrandir_rgb(a, n)
+        if n["texture"]:
+            base = cv2.resize(a, (grand.shape[1], grand.shape[0]), interpolation=cv2.INTER_LANCZOS4).astype(np.float32)
+            grand = np.clip((1 - n["texture"]) * grand + n["texture"] * base, 0, 255).astype(np.uint8)
+        grand = _nettete_couleur(grand)
+        _CACHE[cle] = grand
+        while len(_CACHE) > _CACHE_MAX:
+            _CACHE.popitem(last=False)
+        return grand
 
 
 def agrandir(g: np.ndarray, niveau: int, niveaux_auto: bool = True) -> np.ndarray:

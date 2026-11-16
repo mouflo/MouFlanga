@@ -93,6 +93,14 @@
                         <input type="hidden" name="id" value="{{ nom }}"><input type="hidden" name="tome" value="{{ l.tome }}">
                         <button type="submit">Retirer le remplacement</button>
                     </form>
+                    <form method="post" action="/couvertures/dans-le-fichier" data-confirme="Mettre cette image à la place de la première page du fichier ({{ l.nom }}) ? L'ancien fichier va à la corbeille.">
+                        <input type="hidden" name="id" value="{{ nom }}"><input type="hidden" name="tome" value="{{ l.tome }}"><input type="hidden" name="mode" value="remplacer">
+                        <button type="submit" class="vert">📕 Mettre dans le fichier, à la place de la 1ʳᵉ page</button>
+                    </form>
+                    <form method="post" action="/couvertures/dans-le-fichier" data-confirme="Ajouter cette image avant la première page du fichier ({{ l.nom }}) ? L'ancien fichier va à la corbeille.">
+                        <input type="hidden" name="id" value="{{ nom }}"><input type="hidden" name="tome" value="{{ l.tome }}"><input type="hidden" name="mode" value="ajouter">
+                        <button type="submit">➕ Ajouter avant la 1ʳᵉ page</button>
+                    </form>
                     {% endif %}
                 </div>
 

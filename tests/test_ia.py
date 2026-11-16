@@ -115,9 +115,19 @@ class AmeliorerAvecIATest(unittest.TestCase):
         r = optimiser.reglages_amelioration("0,0,0,0,0,0,0,0,1")
         self.assertEqual((r["uniformiser"], r["ia"]), (1, 0))
 
-    def test_page_en_couleur_et_page_haute_ne_sont_pas_touchees(self):
-        couleur = Image.fromarray(np.dstack([np.full((300, 200), v, np.uint8) for v in (230, 120, 60)]))
-        self.assertIs(optimiser.ameliorer(couleur, "0,0,0,0,0,0,0,0,0,2"), couleur)
+    def test_page_en_couleur_seule_l_ia_la_touche_et_elle_reste_en_couleur(self):
+        a = np.dstack([np.full((300, 200), v, np.uint8) for v in (230, 120, 60)])
+        a[100:140, 50:150] = (20, 20, 160)
+        couleur = Image.fromarray(a)
+        self.assertIs(optimiser.ameliorer(couleur, "3,3,3,3,3,3,3,1,0,0,3,1,1"), couleur)         # aucun réglage noir et blanc ne la touche
+        sortie = optimiser.ameliorer(couleur, "3,3,3,3,3,3,3,1,0,2,3,1,1")
+        self.assertEqual((sortie.mode, sortie.size), ("RGB", (400, 600)))
+        s = np.asarray(sortie)
+        self.assertTrue(np.all(np.abs(s[10:20, 10:20].astype(int) - (230, 120, 60)) <= 3))       # la teinte du fond n'a pas bougé (ni gris, ni papier blanchi)
+        self.assertTrue(np.all(np.abs(s[220:260, 150:250].astype(int) - (20, 20, 160)) <= 3))
+        self.assertEqual(ia.agrandir_couleur(np.asarray(couleur), 2).shape, (600, 400, 3))
+
+    def test_page_haute_non_touchee(self):
         haute = Image.fromarray(page(h=1800))
         self.assertEqual(optimiser.ameliorer(haute, "0,0,0,0,0,0,0,0,0,2").size, haute.size)
 
