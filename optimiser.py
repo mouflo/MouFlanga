@@ -20,6 +20,7 @@ import zipfile
 from pathlib import Path
 
 import cv2
+import ia
 import numpy as np
 from PIL import Image, ImageOps
 
@@ -97,7 +98,8 @@ def est_couleur(im: Image.Image) -> bool:
 
 # ✨ Amélioration des vieux scans : chaque réglage va de 0 (non) à 3 (fort), appliqué dans cet ordre. « uniformiser » (0 ou 1) cale les
 # noirs, les blancs et la teinte du tome sur ceux des autres tomes de la série (voir uniformite.py) : il lui faut le calage du tome.
-AMELIORATIONS = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "agrandir", "uniformiser")
+# « ia » (0 à 3) : restauration par réseau de neurones des petits scans (agrandi ×2, voir ia.py) ; elle remplace débruiter, adoucir les trames, lisser et agrandir.
+AMELIORATIONS = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "agrandir", "uniformiser", "ia")
 
 
 def reglages_amelioration(x) -> dict | None:
@@ -155,6 +157,11 @@ def ameliorer(im: Image.Image, reglages, calage=None) -> Image.Image:
     echelle = max(1.0, (w * h) / 1.2e6)                   # les tailles suivent la résolution de la page
     if r["uniformiser"] and calage:                       # d'abord : les niveaux d'origine sont ceux qui ont été mesurés
         g = _caler(g, calage)
+    if r["ia"] and ia.disponible() and h < ia.HAUTEUR_MAX:    # petit scan : le réseau agrandit ×2, débruite et lisse les traits à la place des réglages classiques
+        g = ia.agrandir(g, r["ia"], niveaux_auto=not (r["uniformiser"] and calage))
+        h, w = g.shape
+        echelle = max(1.0, (w * h) / 1.2e6)
+        r = {**r, "debruit": 0, "trames": 0, "lisser": 0, "agrandir": 0}
     if r["debruit"]:                                      # grain et petits carrés de la compression JPEG
         g = cv2.fastNlMeansDenoising(g, None, h=(0, 4, 7, 10)[r["debruit"]], templateWindowSize=7, searchWindowSize=21)
     if r["trames"]:                                       # aplats gris pointillés (trames) → gris uni, traits gardés
@@ -232,6 +239,8 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite
     """Choisit la qualité d'un tome : {"qualite", "gain_estime" (0-1), "psnr_min", "taille"} (qualite None : rien à gagner).
     qualite_forcee : réglage manuel, seule cette qualité est essayée (sans seuil d'écart : c'est ton choix) ; None si elle ne gagne rien."""
     taille = chemin.stat().st_size
+    if (reglages_amelioration(eclairer) or {}).get("ia"):
+        nb_essai = min(nb_essai, 3)                      # chaque page d'essai passe par le réseau (≈ 10 s)
     with zipfile.ZipFile(chemin) as z:
         noms = _pages(z)
         if not noms:
@@ -577,7 +586,8 @@ def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage=None, 
         sortie = [_jpeg(avant, 100), nouveau]
     res = {"avant": sortie[0], "apres": sortie[1], "avant_ko": round(len(data) / 1024), "apres_ko": round(len(nouveau) / 1024),
            "page": index, "pages": len(noms), "inchange": nouveau is data, "dimensions": [list(im.size), list(apres.size)],
-           "ameliore": traitee is not im, "couleur": couleur, "qualite_page": q_page if qualite else None}
+           "ameliore": traitee is not im, "couleur": couleur, "qualite_page": q_page if qualite else None,
+           "ia_indisponible": bool((eclairer or {}).get("ia")) and not ia.disponible()}
     return res
 
 

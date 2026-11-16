@@ -143,3 +143,10 @@ Sorti de `CLAUDE.md` pour l'alléger : lire la section utile avant de toucher au
 - **Page Télécharger → Torrents** : `preferences` (phrase) passé au gabarit ; `ui/torrents.js` : pastille `.tor-meilleur` = premier résultat ni refusé, ni déjà possédé, avec au moins une source, quand il y a plusieurs résultats affichés.
 - **Couvertures des tomes sur la fiche** (commit 544484d) : grille `.tcarte` (bascule grille/liste `data-vue-tomes`, mémorisée dans le navigateur), image par `/api/tome/couverture?id=…&tome=…&l=…` (fabriquée une fois puis gardée), accessible au rôle lecteur.
 - **Reste à faire, tâches simples** : `docs/a-faire-simple.md`.
+
+## 🧠 Restauration IA des petits scans (16/11/2026)
+- `ia.py` : Real-CUGAN (`realcugan-ncnn-py`, modèles « se », processeur, 4 fils) ×2 puis finition (`_niveaux` : papier → blanc, noir profond → noir, sauf page presque noire ; `_nettete` : masque flou sans amplifier le grain). Niveaux dans `NIVEAUX` (1 Naturel : bruit 1 + 30 % de la page d'origine ; 2 Net : bruit 2 ; 3 Maximum : bruit 2 + TTA). Réglage `ia` (10e valeur d'`optimiser.AMELIORATIONS`, 0 à 3) : remplace débruiter, trames, lisser, agrandir ; la page doit faire moins de 1700 px de haut (`ia.HAUTEUR_MAX`), sinon rien. Avec « Aligner sur les autres tomes », le recalage automatique du papier et du noir est sauté (la mesure de la série fait foi).
+- Mesuré sur la page 35 du tome 1 de Nori Taka (566 × 924, 49 Ko) : le résultat de `ameliorer(…, ia=2)` est identique, au pixel près, à l'exemple « Net » ; 9 s par page, 75 s en Maximum (TTA).
+- À savoir : les trames sont réinterprétées (les dégradés deviennent lisses, des hachures peuvent se rejoindre) ; l'aperçu avant/après reste le moyen de juger. Un tome de 130 pages prend ≈ 20 min (Net), 18 tomes ≈ 6 h ; le fichier devient 5 à 10 fois plus lourd (page ×2 et plus détaillée).
+- Optionnel : `disponible()` est False sans le paquet ou sans libomp5 ; `comparer` renvoie alors `ia_indisponible` et l'aperçu affiche un avertissement.
+

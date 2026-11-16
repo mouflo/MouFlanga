@@ -45,6 +45,18 @@ Les réglages et la progression de lecture (dossier `data/`) ne sont jamais touc
 - Journal de l'appli : `journalctl -u mouflanga -n 50`
 - Tout est aussi visible dans l'appli, bouton 🩺 **Journal**
 
+## Option : la restauration IA des petits scans (✨ Améliorer → 🧠)
+
+Sans rien installer, l'appli fonctionne comme avant (le réglage est ignoré et l'aperçu l'indique). Pour l'activer, sur le serveur (calcul sur processeur, aucune carte graphique nécessaire) :
+
+```bash
+apt install libomp5
+venv/bin/pip install --no-deps realcugan-ncnn-py     # environ 46 Mo ; --no-deps car il réclame opencv-python, déjà présent en version « headless »
+systemctl restart mouflanga
+```
+
+Les modèles sont livrés dans le paquet : rien d'autre à télécharger. Environ 9 secondes par page et la moitié des cœurs du processeur (`MOUFLANGA_IA_THREADS` pour changer).
+
 ## 5. Reconstruire après une panne
 
 1. Refaire l'étape 1 (cloner et lancer `install.sh`).
