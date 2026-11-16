@@ -64,20 +64,28 @@ def _valide(chemin: Path) -> bool:
         return False
 
 
+def copier(source: Path, destination: Path) -> None:
+    """Copie le contenu et la date, JAMAIS les droits : sur le NAS (NFS), un chmod (donc shutil.copy2, copymode, copystat) rend le fichier impossible à renommer
+    et à effacer (« Permission denied »), l'allègement, l'IA et toute autre réécriture du tome échouent ensuite. Constaté le 16/11/2026."""
+    shutil.copyfile(source, destination)
+    st = Path(source).stat()
+    os.utime(destination, ns=(st.st_atime_ns, st.st_mtime_ns))
+
+
 def restaurer(fichier: Path, version: Path, vers_corbeille) -> None:
     """Remet `version` (un fichier de la corbeille) à la place du tome `fichier`. `vers_corbeille(p)` range le tome actuel à la corbeille.
     Lève OSError / ValueError si ce n'est pas possible ; dans ce cas le tome actuel est laissé tel quel."""
     fichier, version = Path(fichier), Path(version)
     tmp = fichier.with_name("." + fichier.name + ".restauration")        # caché (commence par un point) : la bibliothèque l'ignore
     try:
-        shutil.copy2(version, tmp)
+        copier(version, tmp)
         if not _valide(tmp):
             raise ValueError(f"« {version.name} » est abîmé : le tome actuel n'a pas été touché.")
         vers_corbeille(fichier)
         try:
             os.replace(tmp, fichier)
         except OSError:                                                   # le tome actuel est déjà à la corbeille : on recopie la version
-            shutil.copy2(version, fichier)
+            copier(version, fichier)
     finally:
         try:
             tmp.unlink()

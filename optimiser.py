@@ -14,6 +14,8 @@ partagé par qBittorrent (lien physique) n'est jamais touché.
 import io
 import json
 import logging
+import os
+import shutil
 import threading
 import time
 import zipfile
@@ -364,6 +366,14 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
     return gagne
 
 
+def _copier_sans_droits(source, destination):
+    """Contenu et date, jamais les droits : sur le NAS un chmod rend le fichier impossible à renommer ou effacer (voir versions.copier)."""
+    shutil.copyfile(source, destination)
+    st = Path(source).stat()
+    os.utime(destination, ns=(st.st_atime_ns, st.st_mtime_ns))
+    return destination
+
+
 def echanger_dossier(chemin: Path, ecrire, vers_corbeille) -> bool:
     """Fichier partagé par qBittorrent (lien physique) : le NAS refuse de le renommer ou de l'effacer, mais accepte de
     renommer un DOSSIER. « ecrire(destination) » écrit la nouvelle version du fichier dans un dossier voisin caché
@@ -384,7 +394,7 @@ def echanger_dossier(chemin: Path, ecrire, vers_corbeille) -> bool:
             return False
         for x in dossier.iterdir():                       # le reste du dossier (couverture, infos) suit
             if x != chemin and not x.name.startswith("."):
-                shutil.copy2(x, nouveau / x.name) if x.is_file() else shutil.copytree(x, nouveau / x.name)
+                shutil.copytree(x, nouveau / x.name, copy_function=_copier_sans_droits) if x.is_dir() else _copier_sans_droits(x, nouveau / x.name)
         dossier.rename(ancien)
         try:
             nouveau.rename(dossier)

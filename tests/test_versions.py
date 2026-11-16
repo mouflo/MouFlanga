@@ -84,5 +84,35 @@ class VersionsTest(unittest.TestCase):
         self.assertEqual([p.name for p in self.tome.parent.iterdir()], [self.tome.name])
 
 
+
+class CopieSansDroitsTest(unittest.TestCase):
+    """Sur le NAS (NFS), un chmod rend le fichier impossible à renommer ou effacer (constaté le 16/11/2026 sur 18 tomes de Nori Taka) :
+    les copies de tomes ne doivent JAMAIS toucher aux droits (pas de shutil.copy2 / copymode / copystat / os.chmod)."""
+    def test_copier_garde_contenu_et_date_sans_chmod(self):
+        import os
+        import tempfile
+        from unittest import mock
+        import optimiser
+        import versions
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "a.cbz"
+            src.write_bytes(b"contenu")
+            os.utime(src, (1_000_000_000, 1_000_000_000))
+            for copie in (versions.copier, optimiser._copier_sans_droits):
+                dest = Path(tmp) / "b.cbz"
+                with mock.patch("os.chmod") as chmod, mock.patch("shutil.copymode") as copymode, mock.patch("shutil.copystat") as copystat:
+                    copie(src, dest)
+                    self.assertFalse(chmod.called or copymode.called or copystat.called)
+                self.assertEqual(dest.read_bytes(), b"contenu")
+                self.assertEqual(int(dest.stat().st_mtime), 1_000_000_000)
+                dest.unlink()
+
+    def test_aucune_copie_de_tome_ne_passe_par_copy2(self):
+        import re
+        for nom in ("versions.py", "optimiser.py"):
+            code = (Path(__file__).resolve().parent.parent / nom).read_text(encoding="utf-8")
+            self.assertIsNone(re.search(r"shutil\.(copy2|copystat|copymode)\(|os\.chmod\(", code), nom)
+
+
 if __name__ == "__main__":
     unittest.main()
