@@ -17,6 +17,7 @@
 <body class="reader-body{% if role == 'lecteur' %} lecteur{% endif %}{% if role == 'admin' %} admin{% endif %}">
 <div id="bar" class="bar">
     <a href="/" id="rBack" class="rbtn" title="Retour à la série">← Retour</a>
+    <a href="/" id="rHome" class="rbtn" title="Accueil de la bibliothèque">🏠</a>
     <div class="rtitle"><span id="rSeries"></span><small id="rChapter"></small></div>
     <span id="rCount" class="rcount"></span>
     <button class="rbtn" id="optChap" title="Chapitres du tome" hidden>☰</button>
@@ -102,6 +103,7 @@
             <li><b>↕ / ↔</b> : la page entière dans l'écran, ou la largeur de l'écran (on fait défiler la page vers le bas).</li>
             <li><b>⇆ / ◫ / ▭</b> : doubles pages. ⇆ = la double page prend toute la hauteur et se fait glisser au doigt pour voir tous les détails (on tourne la page en glissant encore une fois une fois au bord) ; ◫ = découpée en deux moitiés ; ▭ = entière. Tourne le téléphone en paysage pour voir la double page entière.</li>
             <li><b>⛶</b> : plein écran.</li>
+            <li><b>🏠</b> : retour à l'accueil de la bibliothèque (la flèche ← revient à la série).</li>
             {% if role == 'admin' %}<li><b>🗑</b> (en bas) : retirer la page affichée du tome (page parasite d'une équipe de scan). L'ancien fichier va à la corbeille (durée réglable dans ⚙️ Réglages).</li>{% endif %}
             <li><b>13 / 172</b> : page actuelle du chapitre ; la barre du bas permet d'aller directement à une page.</li>
             <li><b>⏮ ⏭</b> (en bas) : chapitre précédent ou suivant, même à l'intérieur d'un tome complet quand ses chapitres sont connus.</li>

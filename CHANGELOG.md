@@ -1,6 +1,7 @@
 # Historique des versions
 
 ## [Non publié]
+- 🏠 **Lecteur : un bouton vers l'accueil** dans la barre du haut (la flèche ← revient toujours à la série) ; le lecteur reste en plein écran, sans l'en-tête du kit.
 - 🧲 **« Comparé à ta bibliothèque » n'est plus écrit deux fois** (Télécharger → Torrents, téléphone) : la ligne avait la classe `.note`, que le kit recopie en bulle quand elle est hors de l'écran ; elle a maintenant sa propre classe.
 - 📝 **README** : paragraphes sur 🤖 Automatisations, ✨ Mes préférences et la grille de couvertures des tomes.
 - ✏️ **Textes plus simples** : l'intro de Télécharger → Torrents n'a plus de jargon (Prowlarr, qBittorrent, catégorie), et les messages disent « Règle » / « tes préférences » au lieu de « profil » (fiche d'une série, téléchargement automatique, onglet Torrents).
