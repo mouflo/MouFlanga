@@ -924,11 +924,11 @@
       var champ = function (etiquette, controle) { return '<label class="reg-champ"><span>' + etiquette + '</span>' + controle + '</label>'; };
       $('infosCorps').innerHTML =
         '<section class="reg" id="regTomes"><h3>📚 Tomes à traiter <span id="allCompte" class="reg-valeur"></span></h3>' +
-        '<div class="reg-aide">Touche un tome pour le cocher ou le décocher. Vaut pour l\'image et l\'uniformité ; les doubles pages se choisissent tome par tome.</div>' +
+        '<div class="reg-aide">Pour l\'image et l\'uniformité (les doubles pages se choisissent tome par tome). « Tout cocher » ou « Tout décocher » d\'un geste ; ouvre la liste pour toucher les tomes un par un.</div>' +
         '<div class="reg-boutons"><button type="button" class="mou-btn ghost small" id="allTout">Tout cocher</button>' +
         '<button type="button" class="mou-btn ghost small" id="allRien">Tout décocher</button>' +
         '<button type="button" class="mou-btn ghost small" id="allUnif" hidden>🎨 Seulement ceux à uniformiser</button></div>' +
-        '<div id="allTomes" class="all-puces">…</div></section>' +
+        '<details id="allListe"><summary id="allResume">Choisir les tomes</summary><div id="allTomes" class="all-puces">…</div></details></section>' +
         '<div class="onglets onglets-4" role="tablist">' + [['image', '✨ Image'], ['doubles', '📖 Doubles'], ['uniforme', '🎨 Uniformité'], ['parasites', '🧹 Parasites']].map(function (o, i) {
           return '<button type="button" class="mou-btn' + (i ? ' ghost' : '') + '" role="tab" data-onglet="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' +
 
@@ -1023,6 +1023,21 @@
       var m = /(?:tome|t\.?)\s*0*(\d+)\s*$/i.exec(libelle || '');
       return m ? 'T' + (m[1].length < 2 ? '0' + m[1] : m[1]) : (hors ? 'HS ' : '') + String(libelle || '').replace(/^.*?[:\-–]\s*/, '').slice(0, 9);
     }
+    function resumeSelection(n, total) {
+      if (!total) return 'Aucun tome';
+      if (n === total) return 'Tous les ' + total + ' tomes';
+      if (!n) return 'Aucun tome coché';
+      var nums = [], autres = 0;
+      document.querySelectorAll('.all-coche:checked').forEach(function (c) {
+        var m = /^T(\d+)/.exec(((c.nextElementSibling || {}).textContent || '').replace(/^\s*✓?\s*/, ''));
+        if (m) nums.push(parseInt(m[1], 10)); else autres++;
+      });
+      nums.sort(function (a, b) { return a - b; });
+      var p2 = function (x) { return x < 10 ? '0' + x : '' + x; }, plages = [], i = 0;
+      while (i < nums.length) { var j = i; while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++; plages.push(j > i ? 'T' + p2(nums[i]) + '–' + p2(nums[j]) : 'T' + p2(nums[i])); i = j + 1; }
+      var txt = plages.join(', ') + (autres ? (plages.length ? ' + ' : '') + autres + ' hors-série' + (autres > 1 ? 's' : '') : '');
+      return n + ' sur ' + total + ' : ' + (txt.length > 38 ? txt.slice(0, 36) + '…' : txt);
+    }
     function rappelSelection() {                                        // « 📚 18 tomes sélectionnés · changer » au-dessus des boutons qui agissent sur la sélection
       return '<div class="all-rappel">📚 <b class="all-compte-txt"></b> · <button type="button" class="lien" data-changer>changer la sélection</button></div>';
     }
@@ -1030,6 +1045,7 @@
       var cs = [].slice.call(document.querySelectorAll('.all-coche')), n = cs.filter(function (c) { return c.checked; }).length;
       var quoi = n === 1 ? 'le tome coché' : 'les ' + n + ' tomes cochés';
       if ($('allCompte')) $('allCompte').textContent = n + ' sur ' + cs.length + ' cochés';
+      if ($('allResume')) $('allResume').textContent = '📋 ' + resumeSelection(n, cs.length) + ' · changer';
       document.querySelectorAll('.all-compte-txt').forEach(function (b) { b.textContent = n ? n + ' tome' + (n > 1 ? 's' : '') + ' sélectionné' + (n > 1 ? 's' : '') : 'aucun tome sélectionné'; });
       document.querySelectorAll('[data-alleger]').forEach(function (b) {
         b.disabled = !n;
@@ -1628,7 +1644,7 @@
     }
     $('infosCorps').addEventListener('click', function (e) {          // cocher / décocher tous les tomes, ne garder que ceux à uniformiser, changer d'onglet
       var ch = e.target.closest('[data-changer]');
-      if (ch) { var carte = $('regTomes'); if (carte) carte.scrollIntoView({behavior: 'smooth', block: 'start'}); return; }
+      if (ch) { if ($('allListe')) $('allListe').open = true; var carte = $('regTomes'); if (carte) carte.scrollIntoView({behavior: 'smooth', block: 'start'}); return; }
       var o = e.target.closest('[data-onglet]');
       if (o) { ongletAmelioration(o.dataset.onglet); return; }
       var t = e.target.closest('#allTout, #allRien, #allUnif'); if (!t) return;
