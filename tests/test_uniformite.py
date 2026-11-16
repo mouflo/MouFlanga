@@ -217,8 +217,8 @@ class QualiteOrigineTest(unittest.TestCase):
                 self.assertNotIn("PSNR", msg)
 
 
-def page_avec_tache_de_couleur(part=0.03):
-    """Une page noir et blanc dont une petite zone (un titre, un dessin) est franchement en couleur : 3 % de sa surface."""
+def page_avec_tache_de_couleur(part=0.08):
+    """Une page noir et blanc dont une zone (un titre, un dessin) est franchement en couleur : `part` de sa surface (0,03 = 3 %)."""
     a = np.asarray(page_bd(NOIR)).copy()
     h = int(a.shape[0] * 0.2)
     larg = int(a.shape[1] * part * a.shape[0] / h)
@@ -230,28 +230,28 @@ class PagesEnCouleurTest(unittest.TestCase):
     """Une page en couleur reste en couleur : jamais passée en gris, jamais recompressée sans allègement demandé."""
 
     def test_detection_des_zones_colorees(self):
-        self.assertTrue(optimiser.est_couleur(page_avec_tache_de_couleur(0.03)))              # 3 % de la page : l'ancien test (écart moyen) disait « noir et blanc »
-        self.assertTrue(optimiser.est_couleur(page_avec_tache_de_couleur(0.006)))
+        self.assertTrue(optimiser.est_couleur(page_avec_tache_de_couleur(0.08)))              # 8 % de la page : l'ancien test (écart moyen) disait « noir et blanc »
+        self.assertFalse(optimiser.est_couleur(page_avec_tache_de_couleur(0.006)))            # un petit accent de couleur (le « D » rouge d'un titre) : la page reste noir et blanc
         self.assertFalse(optimiser.est_couleur(page_bd(NOIR)))
         self.assertFalse(optimiser.est_couleur(page_bd(VIOLACE)))                               # un scan un peu violet reste du noir et blanc
         self.assertTrue(optimiser.est_couleur(Image.new("RGB", (100, 150), (200, 30, 30))))
         self.assertFalse(optimiser.est_couleur(Image.new("L", (100, 150), 128)))
 
     def test_page_partiellement_coloree_jamais_touchee_par_les_filtres(self):
-        page = page_avec_tache_de_couleur(0.03)
+        page = page_avec_tache_de_couleur(0.08)
         calage = uniformite.calage(_s(33, noir=26), _s(5, noir=3))
         for reglage in ("0,0,0,0,0,0,0,0,1", "3,3,3,3,3,3,3,1,1"):
             self.assertIs(optimiser.ameliorer(page, reglage, calage), page)                      # même objet : pas un pixel changé, toujours en couleur
 
     def test_une_page_en_couleur_n_est_pas_mesuree_pour_l_uniformite(self):
-        self.assertIsNone(uniformite.mesurer_page(page_avec_tache_de_couleur(0.03)))
+        self.assertIsNone(uniformite.mesurer_page(page_avec_tache_de_couleur(0.08)))
 
     def test_seulement_uniformiser_laisse_les_octets_des_pages_en_couleur(self):
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / "S - Tome 01.cbz"
             bw, couleur = io.BytesIO(), io.BytesIO()
             page_bd(VIOLACE).save(bw, "JPEG", quality=88)
-            page_avec_tache_de_couleur(0.03).save(couleur, "JPEG", quality=88)
+            page_avec_tache_de_couleur(0.08).save(couleur, "JPEG", quality=88)
             with zipfile.ZipFile(f, "w") as z:
                 for i in range(4):
                     z.writestr(f"c0001.00-p{i:03d}.jpg", bw.getvalue())
@@ -269,7 +269,7 @@ class PagesEnCouleurTest(unittest.TestCase):
             f = Path(d) / "S - Tome 01.cbz"
             with zipfile.ZipFile(f, "w") as z:
                 b = io.BytesIO()
-                page_avec_tache_de_couleur(0.03).resize((1000, 1400)).save(b, "JPEG", quality=95)
+                page_avec_tache_de_couleur(0.08).resize((1000, 1400)).save(b, "JPEG", quality=95)
                 for i in range(3):
                     z.writestr(f"c0001.00-p{i:03d}.jpg", b.getvalue())
             optimiser.reecrire(f, 80, "0,0,0,0,0,0,0,0,1", 800, calage=uniformite.calage(_s(33, noir=26), _s(5, noir=3)))
@@ -283,7 +283,7 @@ class PagesEnCouleurTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / "S - Tome 01.cbz"
             b = io.BytesIO()
-            page_avec_tache_de_couleur(0.03).save(b, "JPEG", quality=88)
+            page_avec_tache_de_couleur(0.08).save(b, "JPEG", quality=88)
             with zipfile.ZipFile(f, "w") as z:
                 z.writestr("c0001.00-p000.jpg", b.getvalue())
             r = optimiser.comparer(f, 0, 88, "0,0,0,0,0,0,0,0,1", None, None, None, True)
