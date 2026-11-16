@@ -87,16 +87,22 @@ def qualite_origine(chemin: Path, nb_essai=5) -> int:
 
 
 def est_couleur(im: Image.Image) -> bool:
-    """Page en couleur (pas un scan noir et blanc, même légèrement teinté). Deux signes : un écart moyen entre canaux, ou une petite zone franchement
-    colorée (un titre, un dessin, une illustration sur le quart de la page…). Sur 1 060 pages réelles, aucune page noir et blanc n'a plus de 0,05 %
-    de pixels très colorés (écart > 40) et toutes les pages en couleur en ont plus de 0,5 % : le seuil est à 0,15 %. L'ancien test (écart moyen seul)
-    prenait pour du noir et blanc des pages dont 2 à 10 % étaient en couleur, qui auraient été passées en gris."""
+    """Page en couleur (pas un scan noir et blanc, même légèrement teinté). Deux signes : un écart moyen entre canaux, ou une zone franchement colorée
+    (un titre, un dessin, une illustration sur le quart de la page…).
+    Les FRANGES de couleur du scanner (liseré rouge ou vert le long des traits noirs, reste de la couverture sur le bord d'une page de tome relié) ne comptent pas :
+    les pixels très colorés (écart > 40 entre canaux) sont d'abord « ouverts » (carré 3 × 3 sur la page réduite à 400 × 600), ce qui efface les traits d'un ou deux
+    pixels et garde les vraies zones. Mesuré le 16/11/2026 : 46 des 93 pages du tome 4 de Nori Taka étaient prises pour de la couleur (0,2 à 1 % de pixels colorés,
+    tous en franges, 0,01 % après ouverture) alors que les couvertures en ont 37 à 89 % ; les franges les plus fortes de la bibliothèque (Nanatsu no Taizai) restent
+    sous 0,46 % après ouverture, et un vrai petit élément de couleur (le « D » rouge d'un titre d'Area-D) fait 0,7 à 1,8 %. Le seuil est à 0,5 %.
+    Se tromper vers « couleur » ne coûte rien (la page est laissée telle quelle) ; se tromper vers « noir et blanc » passerait une vraie couleur en gris."""
     if im.mode in ("L", "1"):
         return False
     petit = np.asarray(im.convert("RGB").resize((400, 600), Image.BOX), dtype=np.int16)
     if float(np.mean(np.abs(petit[..., 0] - petit[..., 1]) + np.abs(petit[..., 1] - petit[..., 2]))) > 12:
         return True
-    return float(((petit.max(axis=2) - petit.min(axis=2)) > 40).mean()) > 0.0015
+    colore = ((petit.max(axis=2) - petit.min(axis=2)) > 40).astype(np.uint8)
+    colore = cv2.morphologyEx(colore, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    return float(colore.mean()) > 0.005
 
 
 # ✨ Amélioration des vieux scans : chaque réglage va de 0 (non) à 3 (fort), appliqué dans cet ordre. « uniformiser » (0 ou 1) cale les
