@@ -21,6 +21,10 @@ def _image(taille=(300, 450), couleur=(200, 30, 30)):
 
 class CouverturesTest(unittest.TestCase):
     def setUp(self):
+        for cible, retour in (("couvertures", {}), ("chercher_serie", (0, 0, []))):      # jamais les vraies données ni Internet
+            p = mock.patch.object(ct.editeurs, cible, return_value=retour)
+            p.start()
+            self.addCleanup(p.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.serie = Path(self.tmp.name) / "Worst"
         self.serie.mkdir()
@@ -141,6 +145,10 @@ PAGE_ZOO = ('<a href="manga/noritaka/21535-8-noritaka-le-roi-de-la-baston-t_8"><
 
 class ZooTest(unittest.TestCase):
     def setUp(self):
+        for cible, retour in (("couvertures", {}), ("chercher_serie", (0, 0, []))):
+            p = mock.patch.object(ct.editeurs, cible, return_value=retour)
+            p.start()
+            self.addCleanup(p.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.ancien_cache = ct.DOSSIER_CACHE
         ct.DOSSIER_CACHE = Path(self.tmp.name) / "cache"

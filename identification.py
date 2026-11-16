@@ -28,6 +28,7 @@ import tomes
 import vega
 import ankama
 import glenat
+import editeurs
 
 logger = logging.getLogger("mouflanga")
 
@@ -260,6 +261,12 @@ def etape_notices(serie: str, forcer: bool = False) -> Bilan:
                 tomes.modifier(serie, noter_glenat)
             except reseau.Panne as e:
                 pannes.append(e)
+    # 1 quater. Le site de l'éditeur de chaque tome (Pika, Glénat, Kana, Kazé, Ki-oon, Kurokawa…) dès que l'ISBN est connu : résumé, date,
+    # pages et couverture viennent de celui qui a publié le livre. Un tome cherché sans succès n'est pas redemandé avant un mois.
+    def chez_les_editeurs():
+        _, _, p = editeurs.chercher_serie(serie, noms, voulus=voulus, forcer=forcer)
+        pannes.extend(p)
+    chez_les_editeurs()
     # 2. Google Books : ce qu'il manque encore, une recherche de toute la série puis quelques tomes un à un
     google_utilisable = bool(googlebooks.cle())
     g_avant = _etat_recherche(serie, "google")
@@ -283,6 +290,7 @@ def etape_notices(serie: str, forcer: bool = False) -> Bilan:
             tomes.modifier(serie, noter_google)
         except reseau.Panne as e:                                      # quota atteint, Google injoignable…
             pannes.append(e)
+    chez_les_editeurs()                                    # les ISBN que Google vient de donner
     # Une série dont le résumé n'est qu'en anglais prend en français celui de son plus petit tome (qui la présente)
     if (((tomes._charger(serie) or {}).get("statut_officiel") or {}).get("resume_langue")) not in ("fr", None):
         premier = min(voulus)

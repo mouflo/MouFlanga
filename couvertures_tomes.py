@@ -22,6 +22,8 @@ from pathlib import Path
 
 import requests
 
+import editeurs
+import notices
 import reseau
 
 logger = logging.getLogger(__name__)
@@ -248,6 +250,14 @@ def couvertures_en_ligne(serie: str, titres: list[str], forcer: bool = False) ->
                 tomes[n] = c + tomes.get(n, [])
         except (reseau.Panne, ValueError) as e:
             logger.info("Couvertures ZOO de %s : %s", serie, e)
+    # Les sites d'éditeurs (cherchés avec l'identification ; « Chercher en ligne » les relance) passent devant : c'est la source officielle
+    if forcer:
+        try:
+            editeurs.chercher_serie(serie, [t for t in titres if t], forcer=True)
+        except Exception as e:
+            logger.warning("Couvertures des éditeurs de %s : %s: %s", serie, e.__class__.__name__, e)
+    for n, c in editeurs.couvertures(serie).items():
+        tomes[n] = c + tomes.get(n, [])
     return tomes
 
 
@@ -300,8 +310,8 @@ _ZOO_DERNIER = [0.0]
 ZOO_INTERVALLE = 2.0                # secondes entre deux images ZOO (le CDN répond 503 quand on va plus vite)
 
 
-def _get_zoo(url: str):
-    """Une image ZOO, au rythme du site : 2 s entre deux téléchargements, et jusqu'à 4 essais (pause qui double) sur 503 / 429."""
+def _get_lent(url: str):
+    """Une image de ZOO ou d'un éditeur, au rythme du site : 2 s entre deux téléchargements, et jusqu'à 4 essais (pause qui double) sur 503 / 429."""
     pause = 4.0
     for essai in range(4):
         with _ZOO_VERROU:
@@ -315,14 +325,14 @@ def _get_zoo(url: str):
 
 
 def telecharger(url: str) -> bytes:
-    """Télécharge une couverture trouvée en ligne. Seules les adresses MangaDex et ZOO connues sont acceptées."""
-    if not url.startswith((PREFIXE_MANGADEX, PREFIXE_ZOO)):
+    """Télécharge une couverture trouvée en ligne. Seules les adresses de MangaDex, de ZOO et des éditeurs connus sont acceptées."""
+    if not url.startswith((PREFIXE_MANGADEX, PREFIXE_ZOO)) and not editeurs.image_autorisee(url):
         raise ValueError("Adresse de couverture non reconnue.")
-    if url.startswith(PREFIXE_ZOO):
-        r = _get_zoo(url)
-        if r.status_code == 404 and "/720-sw/" in url:
-            r = _get_zoo(url.replace("/720-sw/", "/"))       # pas de grande image pour cet album : la petite
-    else:
+    if url.startswith(PREFIXE_MANGADEX):
         r = _SESSION.get(url, timeout=30)
+    else:
+        r = _get_lent(url)
+        if r.status_code == 404 and "/720-sw/" in url:
+            r = _get_lent(url.replace("/720-sw/", "/"))      # pas de grande image pour cet album : la petite
     r.raise_for_status()
     return r.content

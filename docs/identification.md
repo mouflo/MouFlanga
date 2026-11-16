@@ -68,6 +68,15 @@ Glénat (glenat.com) : robots.txt, groupe « * », n'interdit que les adresses a
 paramètre, **jamais la recherche du site**, au rythme de `reseau` (2 s). Une adresse de page est donnée par la personne, jamais cherchée. Les pages sont
 en UTF-8 sans charset annoncé : `reseau._texte_utf8` (sinon « Édition originale » devenait « Ã\x89dition originale »).
 
+**Sites d'éditeurs** (`editeurs.py`, ajoutés le 16/11/2026) : Pika (`www.pika.fr/products.xml`), Glénat (`www.glenat.com/products.xml`, page lue par `glenat.lire_page`),
+Kurokawa (plans de `www.lisez.com/sitemap.xml`, 25 pages de 5 000 adresses : 5 minutes la première fois, puis 7 jours de cache, seulement les préfixes Kurokawa gardés),
+Kana (`www.kana.fr/produit/<série>-t<N>/`, repli : couverture `bdi.dlpdomain.com/album/<isbn>-couv-M480x676.jpg`), Kazé (boutique Shopify : `kazemanga.fr/search/suggest.json?q=<isbn>`),
+Ki-oon (`api.ki-oon.com/images/volumes/<isbn>.webp`, couverture seulement). Leurs robots.txt n'interdisent pas ces pages (Pika : seulement `/recherche/?s=`, Kana : seulement `/wp-admin/`,
+Ki-oon : aucun robots.txt). **Preuve de l'ISBN obligatoire** : `editeurs.analyser` ne prend une page que si ses données structurées (Book / Product), son tableau « ISBN / EAN »
+ou son adresse donnent l'ISBN du tome (une fiche cite les ISBN des autres tomes). Ajouter un éditeur : un lecteur `_nom(isbn, noms, tome)`, une ligne dans `REGISTRE`, ses préfixes dans `PREFIXES`,
+son service dans `reseau.SERVICES`. Refusés : Delcourt / Tonkam / Tokebi (robots.txt interdit anthropic-ai et Claude-Web), Panini (salle d'attente Queue-it), Crunchyroll Éditions et J'ai lu (inaccessibles).
+Pas encore de lecteur (pas d'ISBN trouvable sans recherche du site) : Soleil, Akata, Mangetsu, Meian.
+
 ZOO (zoolemag.com), **couvertures seulement** (`couvertures_tomes.py`) : pas de robots.txt (404). On ne lit que la page « Tous les albums » d'une série dont
 l'adresse est donnée par la personne (page 🖼 Couvertures, gardée dans `data/couvertures-zoo.json`), puis les images : la grande (`red/alb/<id>/720-sw/…`, 720 px) avec repli sur la petite.
 Jamais la recherche du site. Le numéro du tome est celui de l'adresse de l'album (`<id>-<tome>-…`).
