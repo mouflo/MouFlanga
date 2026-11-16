@@ -1,6 +1,7 @@
 # Historique des versions
 
 ## [Non publié]
+- 🧪 **Règles → Essayer : la phrase « ⭐ Tes préférences : … »** (la même que dans Télécharger) est en tête de l'onglet ; les gros boutons de la page font au moins 44 px.
 - 📸 **Captures du README refaites** sur une bibliothèque de démonstration (titres inventés) : accueil, série en grille de couvertures, Réglages, téléphone, et trois nouvelles : ✨ Mes préférences, Télécharger → Torrents, 🤖 Automatisations.
 - ✨ **Mes préférences : les cases et pastilles étaient au-dessus de leur texte** (téléphone et ordinateur) : une règle de la page (`.formulaire label`) écrasait celle des choix ; elles sont de nouveau sur la même ligne.
 - 🎨 **Panneau Uniformité vu au téléphone (390 px)** : rien ne dépasse, le bouton « 🤖 Tout faire d'un coup » est assez grand ; le menu « Référence » passe de 13,6 à 16 px (le téléphone zoomait en le touchant).

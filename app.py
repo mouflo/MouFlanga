@@ -7696,11 +7696,13 @@ def page_regles():
     if edit and cle == "formats":
         modif = next((x for x in regles.formats() if x["id"] == edit), None)
     cle = tomes.cle_google_books()
+    etat_simple = regles_simples.etat()
     return render_template("regles.html", version=APP_VERSION, onglet=onglet, profils=regles.profils(),
                            formats=regles.formats(), modif=modif, types_conditions=regles.TYPES, toutes_series=sorted((n for n in _scan() if n != "(Sans série)"), key=str.lower),
                            cle_gb=("…" + cle[-4:]) if len(cle) >= 8 else "",
                            cle_claude=("…" + os.getenv("CLAUDE_API_KEY", "").strip()[-4:]) if len(os.getenv("CLAUDE_API_KEY", "").strip()) >= 8 else "",
-                           simple=regles_simples.etat() if onglet == "simple" else None, phrase_simple=regles_simples.phrase,
+                           simple=etat_simple if onglet == "simple" else None, phrase_simple=regles_simples.phrase,
+                           preferences=regles_simples.phrase(etat_simple["prefs"]) if etat_simple["actif"] else "",
                            ok=request.args.get("ok", ""), erreur=request.args.get("erreur", ""))
 
 

@@ -32,6 +32,7 @@
         .cond { border: 1px solid #2c2f36; border-radius: 10px; padding: 10px; margin-top: 10px; background: #0f1012; }
         .cond select, .cond input[type=text] { width: 100%; box-sizing: border-box; font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid #2c2f36; background: #17181c; color: #eee; margin-top: 6px; }
         .cond .coche { margin-top: 8px; }
+        .formulaire button:not(.mini) { min-height: 44px; }
         .formulaire button.mini { width: auto; margin-top: 8px; padding: 8px 12px; font-size: 15px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; font-weight: 400; }
         .formulaire button.mini.danger { background: #3a1f22; color: #ffb4b4; border-color: #6b2f35; }
         .points-liste { display: grid; grid-template-columns: 1fr 90px; gap: 6px 10px; align-items: center; margin-top: 6px; }
@@ -313,6 +314,7 @@
             </form>
             {% if modif and onglet == 'formats' %}<p><a href="/regles?onglet=formats">Annuler la modification</a></p>{% endif %}
         {% elif onglet == 'tester' %}
+            <div class="simple-etat">{% if preferences %}⭐ <b>Tes préférences :</b> {{ preferences }} <a href="/regles">⚙️ Modifier</a>{% else %}<a href="/regles">✨ Régler mes préférences</a> (français, édition officielle, équipes…) pour que le meilleur torrent soit choisi tout seul.{% endif %}</div>
             <p class="note">Lance une vraie recherche dans Prowlarr et montre, pour chaque torrent, son score, les formats reconnus et pourquoi il est refusé. Change de profil pour comparer. Rien n'est téléchargé.</p>
             <div class="formulaire">
                 <label for="tq">Recherche</label>
