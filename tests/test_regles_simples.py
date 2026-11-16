@@ -118,6 +118,72 @@ class PreferencesTest(Base):
         self.assertEqual(len({f["nom"] for f in regles.formats()}), len(regles.formats()))
 
 
+class RevenirTest(Base):
+    def test_revenir_reactive_les_anciennes_regles_et_garde_les_preferences(self):
+        regles.enregistrer_profil("", "Manga · Français", True, "", "", [], "")
+        S.enregistrer({"pdf": True})
+        self.assertEqual(S.etat()["anciennes"], ["Manga · Français"])
+        self.assertEqual(S.revenir(), {"reactives": ["Manga · Français"]})
+        self.assertEqual(regles.profil_pour("N'importe")["nom"], "Manga · Français")
+        e = S.etat()
+        self.assertFalse(e["actif"])
+        self.assertTrue(e["enregistre"])
+        self.assertTrue(e["prefs"]["pdf"])                                    # les choix sont gardés
+        self.assertEqual(e["anciennes"], [])
+
+    def test_ce_qui_etait_eteint_a_la_main_reste_eteint(self):
+        regles.enregistrer_profil("", "Ancien éteint", False, "", "", [], "")
+        regles.enregistrer_profil("", "Manga · Français", True, "", "", [], "")
+        S.enregistrer({})
+        S.revenir()
+        actifs = {p["nom"] for p in regles.profils() if p["actif"]}
+        self.assertEqual(actifs, {"Manga · Français"})
+
+    def test_deux_enregistrements_puis_revenir(self):
+        regles.enregistrer_profil("", "Manga · Français", True, "", "", [], "")
+        S.enregistrer({})
+        S.enregistrer({"pdf": True})                                          # le 2e ne trouve plus rien à désactiver
+        self.assertEqual(S.revenir()["reactives"], ["Manga · Français"])
+
+    def test_revenir_puis_reenregistrer_redonne_la_main_aux_preferences(self):
+        regles.enregistrer_profil("", "Manga · Français", True, "", "", [], "")
+        S.enregistrer({})
+        S.revenir()
+        out = S.enregistrer({})
+        self.assertEqual(out["desactives"], ["Manga · Français"])
+        self.assertTrue(S.etat()["actif"])
+        self.assertEqual(regles.profil_pour("N'importe")["nom"], S.NOM)
+        self.assertEqual(S.revenir()["reactives"], ["Manga · Français"])
+
+    def test_sans_ancienne_regle_les_preferences_sont_juste_desactivees(self):
+        S.enregistrer({})
+        self.assertEqual(S.revenir(), {"reactives": []})
+        self.assertIsNone(regles.profil_pour("N'importe"))
+
+    def test_revenir_sans_preferences_actives_est_refuse(self):
+        with self.assertRaises(ValueError):
+            S.revenir()
+        S.enregistrer({})
+        S.revenir()
+        with self.assertRaises(ValueError):                                   # déjà revenu
+            S.revenir()
+
+    def test_une_regle_de_serie_reste_en_place(self):
+        S.enregistrer({})
+        S.regler_serie("Rave", "PapriKa")
+        S.revenir()
+        self.assertEqual([x["serie"] for x in S.etat()["series"]], ["Rave"])
+
+    def test_un_profil_supprime_entre_temps_ne_gene_pas(self):
+        regles.enregistrer_profil("", "Manga · Français", True, "", "", [], "")
+        S.enregistrer({})
+        ancien = next(p for p in regles.profils() if p["nom"] == "Manga · Français")
+        d = regles._lire()
+        d["profils"] = [x for x in d["profils"] if x["id"] != ancien["id"]]
+        regles._ecrire(d)
+        self.assertEqual(S.revenir(), {"reactives": []})
+
+
 class SerieTest(Base):
     def test_il_faut_des_preferences(self):
         with self.assertRaises(ValueError):

@@ -55,6 +55,9 @@
         .simple-etat small { color: #aaa; }
         .formulaire.simple h2 { margin: 18px 0 8px; font-size: 1.05em; }
         .formulaire.simple h2:first-child { margin-top: 0; }
+        .revenir { margin: 0 0 14px; }
+        .revenir button { width: 100%; min-height: 44px; padding: 10px 14px; font-size: 15px; border-radius: 10px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; cursor: pointer; }
+        .revenir small { display: block; color: #aaa; margin-top: 6px; line-height: 1.4; }
         .formulaire .choix { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid #2c2f36; border-radius: 10px; margin: 8px 0; cursor: pointer; background: #0f1012; }
         .formulaire .choix input { width: 22px; height: 22px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
         .formulaire .choix span { display: block; }
@@ -88,6 +91,10 @@
             {% set p = simple.prefs %}
             {% if simple.actif %}
                 <div class="simple-etat ok">✅ Tes préférences servent pour toutes les recherches.<br><small>{{ phrase_simple(p) }}</small></div>
+                <form class="revenir" method="post" action="/regles/simple/revenir" data-confirme="Revenir à tes anciennes règles ? Tes préférences seront désactivées mais gardées.">
+                    <button type="submit">↩️ Revenir à mes anciennes règles</button>
+                    <small>{% if simple.anciennes %}Reviendront : {{ simple.anciennes|join(', ') }}. {% endif %}Tes préférences restent gardées.</small>
+                </form>
             {% elif simple.general %}
                 <div class="simple-etat">Aujourd'hui, c'est le profil « <b>{{ simple.general }}</b> » (onglet Profils) qui décide. Les choix ci-dessous lui ressemblent : en les enregistrant, ils le remplacent. Il sera <b>désactivé mais gardé</b>, tu pourras le réactiver.</div>
             {% else %}

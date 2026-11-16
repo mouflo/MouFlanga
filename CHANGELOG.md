@@ -1,6 +1,7 @@
 # Historique des versions
 
 ## [Non publié]
+- ↩️ **« Revenir à mes anciennes règles »** (Règles → ✨ Mes préférences) : désactive tes préférences (elles restent gardées avec leurs choix) et réactive les profils généraux que leur enregistrement avait désactivés (`desactives` dans le profil ; jamais ce que tu avais éteint toi-même, les règles d'équipe par série ne bougent pas). Avec confirmation.
 - 🧪 **Règles → Essayer : la phrase « ⭐ Tes préférences : … »** (la même que dans Télécharger) est en tête de l'onglet ; les gros boutons de la page font au moins 44 px.
 - 📸 **Captures du README refaites** sur une bibliothèque de démonstration (titres inventés) : accueil, série en grille de couvertures, Réglages, téléphone, et trois nouvelles : ✨ Mes préférences, Télécharger → Torrents, 🤖 Automatisations.
 - ✨ **Mes préférences : les cases et pastilles étaient au-dessus de leur texte** (téléphone et ordinateur) : une règle de la page (`.formulaire label`) écrasait celle des choix ; elles sont de nouveau sur la même ligne.

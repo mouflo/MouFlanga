@@ -7724,6 +7724,21 @@ def regles_simple():
     return redirect("/regles?ok=" + quote(msg))
 
 
+@app.route("/regles/simple/revenir", methods=["POST"])
+def regles_simple_revenir():
+    """↩️ Revenir à mes anciennes règles : les préférences simples sont désactivées (gardées), les profils qu'elles avaient désactivés reviennent."""
+    try:
+        b = regles_simples.revenir()
+    except ValueError as e:
+        return redirect("/regles?erreur=" + quote(str(e)))
+    if b["reactives"]:
+        msg = "Tes anciennes règles servent de nouveau : " + ", ".join(b["reactives"]) + ". Tes préférences sont gardées (désactivées) : tu peux les réenregistrer quand tu veux."
+    else:
+        msg = "Tes préférences sont désactivées (gardées). Il n'y avait pas d'ancienne règle à réactiver : tous les torrents trouvés sont proposés."
+    logger.info("Règles simples quittées (profils réactivés : %s)", ", ".join(b["reactives"]) or "aucun")
+    return redirect("/regles?ok=" + quote(msg))
+
+
 @app.route("/regles/simple/serie", methods=["POST"])
 def regles_simple_serie():
     """✨ Une série préfère une équipe (ou ne la préfère plus)."""

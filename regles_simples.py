@@ -136,6 +136,7 @@ def etat() -> dict:
     return {"enregistre": bool(p), "actif": bool(p and p.get("actif") and general is p),
             "prefs": valider(p.get("preferences")) if p else dict(DEFAUT),
             "general": general["nom"] if general and general is not p else "",
+            "anciennes": [x["nom"] for x in d["profils"] if p and x["id"] in (p.get("desactives") or []) and not x.get("actif")],
             "series": sorted(({"id": x["id"], "serie": (x.get("series") or [""])[0], "equipe": x.get("equipe", "")}
                               for x in d["profils"] if x.get("simple_serie")), key=lambda s: s["serie"].lower()),
             "a_la_main": [{"nom": x["nom"], "series": x["series"], "auto": bool(x.get("auto"))} for x in d["profils"]
@@ -155,15 +156,38 @@ def enregistrer(recu) -> dict:
     p["preferences"] = prefs
     p["series"] = []
     _profil(d, prefs, p)
-    desactives = []
+    desactives, ids = [], []
     for x in d["profils"]:
         if x is not p and x.get("actif") and not x.get("series"):
             x["actif"] = False
             desactives.append(x["nom"])
+            ids.append(x["id"])
         if x.get("simple_serie"):
             _profil(d, prefs, x, x.get("equipe", ""))
+    existants = {x["id"] for x in d["profils"]}
+    # de quoi « revenir à mes anciennes règles » : ce que ces préférences ont désactivé, de tous les enregistrements (jamais ce que tu avais éteint toi-même)
+    p["desactives"] = [i for i in (p.get("desactives") or []) if i in existants] + [i for i in ids if i not in (p.get("desactives") or [])]
     regles._ecrire(d)
     return {"desactives": desactives}
+
+
+def revenir() -> dict:
+    """« Revenir à mes anciennes règles » : les préférences sont désactivées (gardées, avec leurs choix) et les profils généraux que leur
+    enregistrement avait désactivés sont réactivés. Les règles d'une série (équipe préférée) restent comme elles sont. Renvoie {reactives: [noms]}."""
+    d = regles._lire()
+    p = _simple(d)
+    if p is None or not p.get("actif"):
+        raise ValueError("Tes préférences ne servent pas pour l'instant : il n'y a rien à quitter.")
+    anciens = set(p.get("desactives") or [])
+    reactives = []
+    for x in d["profils"]:
+        if x is not p and x["id"] in anciens and not x.get("actif"):
+            x["actif"] = True
+            reactives.append(x["nom"])
+    p["actif"] = False
+    p["desactives"] = []
+    regles._ecrire(d)
+    return {"reactives": reactives}
 
 
 def regler_serie(serie: str, equipe: str) -> str:

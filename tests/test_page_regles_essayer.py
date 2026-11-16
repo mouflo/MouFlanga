@@ -52,5 +52,26 @@ class PageReglesEssayerTest(unittest.TestCase):
         self.assertNotIn('id="tq"', html)
 
 
+    def test_le_bouton_revenir_n_est_la_que_si_les_preferences_servent(self):
+        import regles_simples
+        self.assertNotIn("/regles/simple/revenir", self.client.get("/regles").get_data(as_text=True))
+        self.regles.enregistrer_profil("", "Manga · Français", True, "", "", [], "")
+        regles_simples.enregistrer({})
+        html = self.client.get("/regles").get_data(as_text=True)
+        self.assertIn("Revenir à mes anciennes règles", html)
+        self.assertIn("Manga · Français", html)                              # dit lesquelles reviennent
+
+    def test_revenir_reactive_les_anciennes_regles_par_la_page(self):
+        import regles_simples
+        self.regles.enregistrer_profil("", "Manga · Français", True, "", "", [], "")
+        regles_simples.enregistrer({})
+        rep = self.client.post("/regles/simple/revenir")
+        self.assertEqual(rep.status_code, 302)
+        self.assertEqual(self.regles.profil_pour("X")["nom"], "Manga · Français")
+        rep = self.client.post("/regles/simple/revenir")                     # déjà revenu : un message, pas une erreur 500
+        self.assertEqual(rep.status_code, 302)
+        self.assertIn("erreur=", rep.headers["Location"])
+
+
 if __name__ == "__main__":
     unittest.main()
