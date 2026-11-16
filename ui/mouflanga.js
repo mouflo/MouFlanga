@@ -1140,11 +1140,17 @@
     }
     // 👁 Comparer avant / après EN DIRECT : mêmes réglages que « Appliquer » (largeur, éclaircir, qualité) ; toucher l'image = détail à l'échelle réelle
     var cmp = null, cmpMinuterie = null;
+    var NIVEAUX_ZOOM = [1.5, 2, 2.5, 3.5, 5];                       // zoom du détail : N pixels d'écran pour un pixel de l'image
+    function tailleZoom() {                                         // un morceau de l'image qui, agrandi ×N, remplit toute la largeur de l'écran
+      var w = window.innerWidth, n = NIVEAUX_ZOOM[cmp.niveau == null ? 2 : cmp.niveau];
+      var cw = Math.max(120, Math.min(1800, Math.round(w * (window.devicePixelRatio || 1) / n)));
+      return {cw: cw, ch: Math.max(80, Math.round(cw * cmp.zoom[4] / w)), n: n};
+    }
     function urlCmp(cote) {
       var o = optionsAllegement();
       return '/api/optimiser/comparer?series=' + encodeURIComponent(current.id) + '&fichier=' + encodeURIComponent(cmp.fichier) + '&page=' + cmp.page +
         '&largeur=' + encodeURIComponent(o.largeur) + '&am=' + encodeURIComponent(o.amelio) + '&q=' + encodeURIComponent(o.qualite) +
-        (cmp.zoom ? '&fx=' + cmp.zoom[0].toFixed(3) + '&fy=' + cmp.zoom[1].toFixed(3) + '&cw=' + cmp.zoom[2] + '&ch=' + cmp.zoom[3] : '') + '&cote=' + cote;
+        (cmp.zoom ? '&fx=' + cmp.zoom[0].toFixed(3) + '&fy=' + cmp.zoom[1].toFixed(3) + '&cw=' + tailleZoom().cw + '&ch=' + tailleZoom().ch : '') + '&cote=' + cote;
     }
     function ouvrirComparaison(fichier) {
       cmp = {fichier: fichier || '', page: 5, cote: 'rideau', rideau: 50, zoom: null, pages: 0, tomes: []};
@@ -1189,15 +1195,20 @@
     function dessinerComparaison() {
       var z = $('allCmp'); if (!z || !cmp) return;
       var choixOuvert = !!($('cmpChoix') && $('cmpChoix').open);
+      if (cmp.zoom && !z.classList.contains('cmp-zoom')) cmp.hNormal = z.offsetHeight;          // la page ne saute pas quand la bande passe en plein écran
+      z.style.minHeight = cmp.zoom ? (cmp.hNormal || 0) + 'px' : '';
       z.className = (cmp.grand ? 'cmp-grand ' : '') + (cmp.zoom ? 'cmp-zoom' : '');
       if (cmp.zoom) z.style.setProperty('--h-zoom', cmp.zoom[4] + 'px');
       if ($('allComparer')) $('allComparer').hidden = true;
       z.innerHTML = '<div class="cmp"><div class="cmp-barre cmp-haut">' +
         '<span class="cmp-modes">' + [['avant', 'Avant'], ['rideau', '↔'], ['apres', 'Après']].map(function (c) {
           return '<button type="button" class="mou-btn small' + (cmp.cote === c[0] ? '' : ' ghost') + '" data-cmp="' + c[0] + '">' + c[1] + '</button>'; }).join('') + '</span>' +
-        '<span class="cmp-nav"><button type="button" class="mou-btn ghost small" data-cmp="prec" aria-label="Page précédente">◀</button>' +
-        '<button type="button" class="mou-btn ghost small" data-cmp="suiv" aria-label="Page suivante">▶</button>' +
-        '<button type="button" class="mou-btn ghost small" data-cmp="taille" aria-label="Agrandir ou réduire l\'aperçu">' + (cmp.grand ? '⤡' : '⤢') + '</button></span></div>' +
+        (cmp.zoom ? '<span class="cmp-nav"><button type="button" class="mou-btn ghost small" data-cmp="moins" aria-label="Zoom arrière">−</button>' +
+          '<button type="button" class="mou-btn ghost small" data-cmp="plus" aria-label="Zoom avant">+</button>' +
+          '<button type="button" class="mou-btn ghost small" data-cmp="dezoomer" aria-label="Revenir à la page entière" title="Revenir à la page entière">⤡</button></span></div>'
+        : '<span class="cmp-nav"><button type="button" class="mou-btn ghost small" data-cmp="prec" aria-label="Page précédente">◀</button>' +
+          '<button type="button" class="mou-btn ghost small" data-cmp="suiv" aria-label="Page suivante">▶</button>' +
+          '<button type="button" class="mou-btn ghost small" data-cmp="taille" aria-label="Agrandir ou réduire l\'aperçu">' + (cmp.grand ? '⤡' : '⤢') + '</button></span></div>') +
         '<div class="cmp-boite" id="cmpBoite"><img id="cmpImg" class="cmp-img" alt="">' +
         '<img id="cmpImg2" class="cmp-img cmp-dessus" alt=""><div class="cmp-trait" id="cmpTrait"></div>' +
         '<span class="cmp-et g">Avant</span><span class="cmp-et d">Après</span></div>' +
@@ -1285,6 +1296,11 @@
         var a = b.dataset.cmp;
         if (a === 'fermer') { cmp = null; $('allCmp').innerHTML = ''; $('allCmp').className = ''; if ($('allComparer')) $('allComparer').hidden = false; return; }
         if (a === 'taille') { cmp.grand = !cmp.grand; dessinerComparaison(); return; }
+        if (a === 'dezoomer') { cmp.zoom = null; dessinerComparaison(); return; }
+        if (a === 'plus' || a === 'moins') {
+          var ni = (cmp.niveau == null ? 2 : cmp.niveau) + (a === 'plus' ? 1 : -1);
+          cmp.niveau = Math.max(0, Math.min(NIVEAUX_ZOOM.length - 1, ni)); dessinerComparaison(); return;
+        }
         if (a === 'avant' || a === 'apres' || a === 'rideau') { cmp.cote = a; imagesCmp(); return; }
         cmp.page = Math.max(0, Math.min((cmp.pages || 1) - 1, cmp.page + (a === 'suiv' ? 1 : -1))); cmp.zoom = null; dessinerComparaison(); return;
       }
@@ -1295,10 +1311,8 @@
         else {                                   // position réelle dans l'image (elle est centrée dans son cadre)
           var r = img.getBoundingClientRect(), sc = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight),
               dw = img.naturalWidth * sc, dh = img.naturalHeight * sc;
-          var cw = Math.max(320, Math.min(1600, Math.round(r.width * (window.devicePixelRatio || 1))));        // un pixel de l'image = un pixel de l'écran
-          var haut = Math.round(Math.min(0.25 * window.innerHeight, 0.66 * r.width));                  // toute la largeur, un quart de la hauteur de l'écran
-          var ch = Math.max(120, Math.round(cw * haut / r.width));
-          cmp.zoom = [(e.clientX - r.left - (r.width - dw) / 2) / dw, (e.clientY - r.top - (r.height - dh) / 2) / dh, cw, ch, haut];
+          var haut = Math.round(Math.min(0.27 * window.innerHeight, 0.62 * window.innerWidth));       // bande pleine largeur, un peu plus d'un quart de l'écran
+          cmp.zoom = [(e.clientX - r.left - (r.width - dw) / 2) / dw, (e.clientY - r.top - (r.height - dh) / 2) / dh, 0, 0, haut];
         }
         dessinerComparaison();
       }

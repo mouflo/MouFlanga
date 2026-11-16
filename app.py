@@ -2003,7 +2003,7 @@ def api_optimiser_comparer():
         try:
             zoom = (min(1.0, max(0.0, float(request.args["fx"]))), min(1.0, max(0.0, float(request.args["fy"]))))
             if request.args.get("cw", "").isdigit() and request.args.get("ch", "").isdigit():          # taille du détail : celle de l'écran
-                zoom += (min(1800, max(240, int(request.args["cw"]))), min(1800, max(240, int(request.args["ch"]))))
+                zoom += (min(1800, max(120, int(request.args["cw"]))), min(1800, max(80, int(request.args["ch"]))))
         except ValueError:
             zoom = None
     largeur = int(request.args["largeur"]) if request.args.get("largeur", "").isdigit() and int(request.args["largeur"]) >= 800 else None

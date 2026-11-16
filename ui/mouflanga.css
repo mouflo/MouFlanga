@@ -585,3 +585,8 @@ body.mou-skin .gerer-liste button:hover, body.mou-skin .gerer-liste a:hover { bo
 #allCmp.cmp-zoom .cmp-img { width:100%; height:var(--h-zoom, 22vh); max-height:none; object-fit:cover; cursor:zoom-out; }
 #allCmp.cmp-zoom .cmp-boite .cmp-dessus { height:100%; }
 #allListe summary { cursor:pointer; padding:12px 0; min-height:24px; color:var(--accent, #52b54b); font-weight:600; }
+#allCmp.cmp-zoom .cmp { position:fixed; top:0; left:0; right:0; z-index:60; margin:0; padding:6px 0; border-radius:0; border-width:0 0 1px; background:var(--surface, #1e1f22); box-shadow:0 8px 14px rgba(0, 0, 0, .55); }
+#allCmp.cmp-zoom .cmp-haut { padding:0 8px; }
+#allCmp.cmp-zoom .cmp-boite { margin:0; }
+#allCmp.cmp-zoom .cmp-img { border-radius:0; }
+#allCmp.cmp-zoom #cmpInfo, #allCmp.cmp-zoom details { display:none; }
