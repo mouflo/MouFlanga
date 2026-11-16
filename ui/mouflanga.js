@@ -1128,7 +1128,7 @@
       var o = optionsAllegement();
       return '/api/optimiser/comparer?series=' + encodeURIComponent(current.id) + '&fichier=' + encodeURIComponent(cmp.fichier) + '&page=' + cmp.page +
         '&largeur=' + encodeURIComponent(o.largeur) + '&am=' + encodeURIComponent(o.amelio) + '&q=' + encodeURIComponent(o.qualite) +
-        (cmp.zoom ? '&fx=' + cmp.zoom[0].toFixed(3) + '&fy=' + cmp.zoom[1].toFixed(3) : '') + '&cote=' + cote;
+        (cmp.zoom ? '&fx=' + cmp.zoom[0].toFixed(3) + '&fy=' + cmp.zoom[1].toFixed(3) + '&cw=' + cmp.zoom[2] + '&ch=' + cmp.zoom[3] : '') + '&cote=' + cote;
     }
     function ouvrirComparaison(fichier) {
       cmp = {fichier: fichier || '', page: 5, cote: 'rideau', rideau: 50, zoom: null, pages: 0, tomes: []};
@@ -1173,7 +1173,7 @@
     function dessinerComparaison() {
       var z = $('allCmp'); if (!z || !cmp) return;
       var choixOuvert = !!($('cmpChoix') && $('cmpChoix').open);
-      z.className = cmp.grand ? 'cmp-grand' : '';
+      z.className = (cmp.grand ? 'cmp-grand ' : '') + (cmp.zoom ? 'cmp-zoom' : '');
       if ($('allComparer')) $('allComparer').hidden = true;
       z.innerHTML = '<div class="cmp"><div class="cmp-barre cmp-haut">' +
         '<span class="cmp-modes">' + [['avant', 'Avant'], ['rideau', '↔'], ['apres', 'Après']].map(function (c) {
@@ -1190,7 +1190,7 @@
         '<select id="cmpTome" class="mou-field" style="width:100%">' + (cmp.tomes || []).map(function (n) { return '<option' + (n === cmp.fichier ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select>' +
         '<div class="cmp-barre"><label>Aller à la page : <input type="number" id="cmpNum" class="mou-field" inputmode="numeric" min="1"' + (cmp.pages ? ' max="' + cmp.pages + '"' : '') +
         ' value="' + (cmp.page + 1) + '" style="width:5.5em"></label> <select id="cmpAller" class="mou-field" aria-label="Choisir la page">' + pagesCmp() + '</select></div>' +
-        '<div class="dem-sous">' + (cmp.zoom ? 'Détail à l\'échelle réelle : touche l\'image pour revenir à la page entière.' : 'Rideau : glisse le doigt sur l\'image (ou la barre) : à gauche l\'original, à droite le résultat. Touche un endroit pour le voir de près. L\'aperçu reste en haut et se met à jour à chaque réglage.') + '</div>' +
+        '<div class="dem-sous">' + (cmp.zoom ? 'Détail à l\'échelle réelle, sur toute la largeur : touche l\'image pour revenir à la page entière.' : 'Rideau : glisse le doigt sur l\'image (ou la barre) : à gauche l\'original, à droite le résultat. Touche un endroit pour le voir de près. L\'aperçu reste en haut et se met à jour à chaque réglage.') + '</div>' +
         '<div class="ident-actions"><button type="button" class="mou-btn ghost small" data-cmp="fermer">✕ Fermer l\'aperçu</button></div></details></div>';
       imagesCmp();
       chargerInfoCmp();
@@ -1278,7 +1278,9 @@
         else {                                   // position réelle dans l'image (elle est centrée dans son cadre)
           var r = img.getBoundingClientRect(), sc = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight),
               dw = img.naturalWidth * sc, dh = img.naturalHeight * sc;
-          cmp.zoom = [(e.clientX - r.left - (r.width - dw) / 2) / dw, (e.clientY - r.top - (r.height - dh) / 2) / dh];
+          var cw = Math.max(320, Math.min(1600, Math.round(r.width * (window.devicePixelRatio || 1))));        // un pixel de l'image = un pixel de l'écran
+          var ch = Math.max(240, Math.min(1600, Math.round(cw * Math.min(0.45 * window.innerHeight, r.width * 1.2) / r.width)));   // toute la largeur, pas toute la hauteur
+          cmp.zoom = [(e.clientX - r.left - (r.width - dw) / 2) / dw, (e.clientY - r.top - (r.height - dh) / 2) / dh, cw, ch];
         }
         dessinerComparaison();
       }

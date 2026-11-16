@@ -528,7 +528,8 @@ _CACHE_COMPARAISON = {}
 
 def comparer(chemin: Path, index: int, qualite, eclairer=False, largeur_max=None, zoom=None, calage=None, fidele=False) -> dict:
     """Une page du tome AVANT / APRÈS, avec exactement ce que « Appliquer » écrirait (même qualité, même largeur, même éclaircissement).
-    zoom = (fx, fy) entre 0 et 1 : un détail de 640 px à l'échelle réelle plutôt que la page entière.
+    zoom = (fx, fy) entre 0 et 1 : un détail de 640 px à l'échelle réelle plutôt que la page entière ; (fx, fy, largeur, hauteur) pour
+    un détail de cette taille en pixels (l'écran du téléphone : le détail remplit toute sa largeur).
     Renvoie {"avant", "apres" (JPEG), "avant_ko", "apres_ko", "page", "pages", "inchange", "dimensions": [avant, après]}."""
     eclairer = reglages_amelioration(eclairer)
     cle = (str(chemin), chemin.stat().st_mtime_ns, index, qualite, tuple((eclairer or {}).values()), largeur_max, zoom, tuple(sorted((calage or {}).items())), fidele)
@@ -564,10 +565,10 @@ def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage=None, 
     apres.load()
     avant = im if im.size == apres.size else im.resize(apres.size, Image.LANCZOS)   # même géométrie pour comparer
     if zoom:
-        c = 640
-        x0 = int(max(0, min(apres.width - c, zoom[0] * apres.width - c / 2)))
-        y0 = int(max(0, min(apres.height - c, zoom[1] * apres.height - c / 2)))
-        boite = (x0, y0, min(apres.width, x0 + c), min(apres.height, y0 + c))
+        cw, ch = (int(zoom[2]), int(zoom[3])) if len(zoom) >= 4 else (640, 640)
+        x0 = int(max(0, min(apres.width - cw, zoom[0] * apres.width - cw / 2)))
+        y0 = int(max(0, min(apres.height - ch, zoom[1] * apres.height - ch / 2)))
+        boite = (x0, y0, min(apres.width, x0 + cw), min(apres.height, y0 + ch))
         sortie = [_jpeg(x.crop(boite), 100) for x in (avant, apres)]
     else:
         # Vue entière : la page « Après » est exactement ce que « Appliquer » écrirait (pas de recompression en plus)
