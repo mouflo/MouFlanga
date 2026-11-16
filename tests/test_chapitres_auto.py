@@ -91,7 +91,9 @@ class ConfirmerTest(unittest.TestCase):
         self.assertEqual(ch[0]["image"], 27)
         self.assertEqual(ch[0]["image_lue"], 29)
         self.assertTrue(ch[0]["corrige"])
-        self.assertNotIn("confirme", ch[0])
+        self.assertTrue(ch[0]["confirme"])              # les numéros de page font foi : la place n'est plus « à vérifier »
+        self.assertEqual(ca.douteux({"chapitres": ch}), [])
+        self.assertNotEqual(ca.confiance({"chapitres": ch})["niveau"], "a_verifier")
 
     def test_sans_numeros_rien_ne_change(self):
         ratios, _ = _tome(60)

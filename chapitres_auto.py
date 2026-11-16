@@ -15,6 +15,10 @@ Trois outils, sans rien écrire nulle part (l'appli décide quoi en faire) :
    « vote » pour l'image où doit tomber la page 77, en comptant une double page pour deux pages. Mesuré sur 224 chapitres
    de tomes validés à la main : quand le lecteur de sommaire et les votes disent la même image, c'est juste 93 fois sur
    100 ; quand ils diffèrent et que les votes sont nets, ce sont les votes qui ont raison 14 fois sur 15.
+   ATTENTION (dit par l'utilisatrice le 16/11/2026) : ses validations à la main ne sont PAS une vérité, elle a pu se tromper
+   (souvent la page qui porte le titre, qui n'est pas toujours la première du chapitre). Ces chiffres ne valent donc pas
+   grand-chose. La règle : le sommaire donne la page, les numéros imprimés disent quelle image porte cette page, c'est tout.
+   Une place posée d'après des votes nets est donc « confirmée », pas « à vérifier ».
 
 3. `nommer(...)` : les titres vides reçoivent le titre officiel (fiche de la série) ou le nom régulier de la série
    (« Trick 12 ») appris sur ses autres tomes. Un vrai titre déjà lu n'est jamais remplacé.
@@ -132,8 +136,9 @@ def confirmer(chapitres, ratios, folios) -> dict:
     """Compare la place de chaque chapitre (son « image ») à ce que disent les numéros de page imprimés, et marque
     les chapitres EN PLACE :
       - même image des deux côtés                         → `confirme: True` (et plus de marque « estimee ») ;
-      - votes nets et unanimes pour une AUTRE image        → l'image des numéros de page est prise, l'ancienne gardée dans
-        `image_lue`, `corrige: True` : le chapitre reste « à vérifier » ;
+      - votes nets et unanimes pour une AUTRE image        → l'image des numéros de page est prise (ils font foi : le sommaire dit
+        « page 77 », le chapitre commence sur l'image qui porte la page 77, même si le titre est écrit sur une autre), l'ancienne
+        est gardée dans `image_lue`, `corrige: True` et `confirme: True` : ce n'est plus « à vérifier » ;
       - sinon rien ne change.
     Renvoie le bilan {"confirmes", "corriges", "sans_avis", "total"}."""
     bilan = {"confirmes": 0, "corriges": 0, "sans_avis": 0, "total": 0}
@@ -158,7 +163,8 @@ def confirmer(chapitres, ratios, folios) -> dict:
             if lue is not None:
                 c["image_lue"] = lue
             c["image"] = image
-            c["corrige"] = True
+            c["corrige"] = True                             # pour information : la place vient des numéros de page, qui font foi
+            c["confirme"] = True
             c.pop("estimee", None)
             bilan["corriges"] += 1
         else:
@@ -173,7 +179,7 @@ def _defauts(chapitres) -> list:
     raisons = []
     sans_image = [c for c in chapitres if c.get("image") is None]
     estimes = [c for c in chapitres if c.get("estimee") and c.get("image") is not None]
-    corriges = [c for c in chapitres if c.get("corrige")]
+    corriges = [c for c in chapitres if c.get("corrige") and not c.get("confirme") and c.get("image_lue") is None]
     if sans_image:
         raisons.append(f"{len(sans_image)} chapitre{'s' if len(sans_image) > 1 else ''} sans page")
     if estimes:
@@ -202,7 +208,7 @@ def douteux(lu) -> list:
     """Numéros (ou rangs) des chapitres qu'il vaut mieux regarder : sans page, page estimée, place corrigée."""
     out = []
     for i, c in enumerate((lu or {}).get("chapitres") or []):
-        if c.get("image") is None or c.get("estimee") or c.get("corrige"):
+        if c.get("image") is None or c.get("estimee"):
             out.append(c.get("num") if c.get("num") is not None else i + 1)
     return out
 

@@ -687,6 +687,7 @@ def _entrees_calculees(files):
                         "titres_ch": bool(c["titre"]) or wiki_fr(f.relative_to(MANGA_DIR).parts[0], info.get("tome"))
                                       or _sommaire_connu(f.relative_to(MANGA_DIR).parts[0], info.get("tome")),
                         "size_mb": round(taille * c["nb"] / total / 1048576, 1)})
+    _cles_uniques(out)
     dernier = max((e["tome"] for e in out if e.get("tome") is not None), default=None)
     for e in out:                                        # « Naruto Gaiden » sans autre indication : épilogue, après le dernier tome
         if e.get("groupe") == HORS_SERIE and not e.get("apres_tome") and dernier and re.search(r"\bgaiden\b", e.get("path") or "", re.I):
@@ -694,6 +695,22 @@ def _entrees_calculees(files):
     if any(e["groupe"] or e.get("tome") is not None for e in out):
         out.sort(key=_ordre_entree)
     return out
+
+
+def _cles_uniques(entrees):
+    """Deux tomes dont les chapitres portent les mêmes numéros (numérotation qui repart à 1 à chaque tome, ou chapitres « 0 ») avaient
+    la même clé « #1 » : toucher la couverture du tome 5 ouvrait le tome 1. Le premier garde sa clé (la progression de lecture déjà
+    enregistrée reste valable), les suivants reçoivent la leur : « #1@Tome 05 »."""
+    vues = set()
+    for e in entrees:
+        cle = e.get("key")
+        if cle in vues and str(cle).startswith("#"):
+            cle = f"{cle}@{e.get('groupe') or e.get('path')}"
+            if cle in vues:                              # même numéro deux fois dans le même tome
+                cle = f"{cle}@{e.get('debut', 0)}"
+            e["key"] = cle
+        vues.add(cle)
+    return entrees
 
 
 def _title_of(p: Path):
