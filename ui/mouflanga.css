@@ -570,9 +570,10 @@ body.mou-skin .gerer-liste button:hover, body.mou-skin .gerer-liste a:hover { bo
 /* 👁 Aperçu en direct : collé en haut du panneau ✨ Image, sous les onglets, pour voir l'effet de chaque réglage sans faire défiler */
 #allCmp:not(:empty) { position:sticky; top:var(--h-onglets, 56px); z-index:2; background:var(--surface, #1e1f22); padding-bottom:6px; box-shadow:0 8px 10px -6px rgba(0, 0, 0, .6); }
 #allCmp .cmp { margin:0; padding:6px 8px; }
-#allCmp .cmp-haut { margin:0 0 6px; flex-wrap:nowrap; justify-content:space-between; gap:6px; }
+#allCmp .cmp-haut { display:grid; grid-template-columns:1.5fr 1fr 1.5fr 1fr 1fr 1fr; gap:4px; margin:0 0 6px; }
+#allCmp .cmp-haut .cmp-modes, #allCmp .cmp-haut .cmp-nav { display:contents; }
 #allCmp .cmp-modes, #allCmp .cmp-nav { display:flex; align-items:center; gap:4px; }
-#allCmp .cmp-haut .mou-btn { min-height:44px; min-width:40px; padding:6px 8px; font-size:.95rem; }
+#allCmp .cmp-haut .mou-btn { min-height:44px; min-width:0; width:100%; padding:6px 2px; font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:clip; }
 #allCmp .cmp-img { max-height:26vh; }
 #allCmp.cmp-grand .cmp-img { max-height:58vh; }
 #allCmp #cmpRideau { margin:4px 0 0; }
@@ -580,3 +581,4 @@ body.mou-skin .gerer-liste button:hover, body.mou-skin .gerer-liste a:hover { bo
 #allCmp #cmpInfo { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 #allCmp details summary { padding:8px 0; min-height:24px; cursor:pointer; color:var(--accent, #52b54b); }
 #regTomes { margin-bottom:22px; }          /* l'ombre des onglets collants masquait le bas de la carte */
+#allCmp #cmpRideau { max-width:100%; box-sizing:border-box; }

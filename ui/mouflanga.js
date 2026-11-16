@@ -1215,6 +1215,8 @@
           x = (bw - dw) / 2 + dw * cmp.rideau / 100;
       b.style.clipPath = 'inset(0 0 0 ' + x + 'px)';
       t.style.left = x + 'px';
+      var barre = $('cmpRideau');
+      if (barre) { barre.style.width = Math.round(dw) + 'px'; barre.style.marginLeft = Math.round((bw - dw) / 2) + 'px'; }
       if ($('cmpRideau')) $('cmpRideau').value = Math.round(cmp.rideau);
     }
     var glisse = null;                          // doigt qui fait glisser le rideau (sinon : simple toucher = zoom)
