@@ -54,11 +54,14 @@
         #rgMsg.err { background: #2a1416; color: #ffb4b4; border-color: #6b2f35; }
         #rgReglages, #rgRapide { display: none; }
         @media (max-width: 760px) {
-            #rg { height: 100dvh; bottom: auto; grid-template-columns: 1fr; grid-template-rows: auto 1fr auto auto; }
+            #rg { grid-template-columns: 1fr; padding-bottom: env(safe-area-inset-bottom); grid-template-rows: auto 1fr auto auto; }
             #rgBarre, #rgPuces { grid-column: 1; }
             #rgBarre { flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding: 4px 6px; }
             #rgBarre a, #rgBarre button { min-height: 38px; padding: 4px 9px; flex: 0 0 auto; }
-            #rgBarre a.rg-accueil, #rgTitre, #rgSur { display: none; }
+            #rgBarre a.rg-accueil, #rgTitre, #rgSur, #rgZoom, #rgBarre a.rg-tomes span, #rgVue .rg-lib { display: none; }
+            #rgBarre { overflow-x: hidden; }
+            #rgBarre button, #rgBarre a { padding: 4px 8px; }
+            #rgBarre input { width: 46px; padding: 0 4px; }
             #rgBarre input { width: 52px; }
             #rgReglages { display: inline-flex; }
             #rgRapide { display: flex; gap: 6px; padding: 5px 6px; background: #15171b; border-top: 1px solid #2c2f36; }
@@ -68,7 +71,7 @@
             #rg.reglages #rgPanneau { display: block; }
             #rgPuces { padding: 3px 6px; } #rgPuces b { min-width: 30px; height: 28px; line-height: 28px; }
             .rg-poi { width: 30px; height: 30px; margin: -15px 0 0 -15px; }
-            #rgMsg { bottom: 130px; }
+            #rgMsg { bottom: auto; top: 52px; }
         }
     </style>
 <link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
@@ -93,15 +96,15 @@
 <div id="rg">
     <div id="rgBarre">
         <a href="/" class="rg-accueil" title="Accueil MouFlanga">🏠</a>
-        <a href="/rogner?id={{ nom|urlencode }}">← Tomes</a>
+        <a href="/rogner?id={{ nom|urlencode }}" class="rg-tomes">←<span> Tomes</span></a>
         <span id="rgTitre">{{ tome.libelle }}</span>
         <button id="rgPrec" title="Page précédente (←)">◀</button>
         <input id="rgNum" type="number" min="1" value="1" aria-label="Numéro de page">
         <span id="rgSur"></span>
         <button id="rgSuiv" title="Page suivante (→)">▶</button>
         <button id="rgMoins" title="Zoom arrière (-)">🔍−</button><span id="rgZoom">100 %</span><button id="rgPlus" title="Zoom avant (+)">🔍+</button>
-        <button id="rgVue" title="Voir la page telle qu'elle sera rognée (V)">👁 Résultat</button>
-        <button id="rgReglages" title="Réglages">⚙</button>
+        <button id="rgVue" title="Voir la page telle qu'elle sera rognée (V)">👁<span class="rg-lib"> Résultat</span></button>
+        <button id="rgReglages" title="Angle, taille, appliquer au tome…">⚙ Réglages</button>
     </div>
     <div id="rgScene"><div id="rgMonde">
         <img id="rgPage" alt="">
@@ -250,6 +253,7 @@
         var img = $('rgPage');
         img.onload = function () { disposer(); };
         img.src = url(i, Math.min(2600, S.tailles[i][0]));
+        $('rgRValider').textContent = i >= S.tailles.length - 1 ? '✓ Valider · terminer' : '✓ Valider · suivante';
         disposer(); puces();
         [i + 1, i - 1].forEach(function (j) { if (j >= 0 && j < S.tailles.length) { var p = new Image(); p.src = url(j, Math.min(2600, S.tailles[j][0])); } });
     }
@@ -361,7 +365,11 @@
     $('rgReglages').addEventListener('click', function () { $('rg').classList.toggle('reglages'); });
     $('rgRPrec').addEventListener('click', function () { aller(S.n - 1); });
     $('rgRSuiv').addEventListener('click', function () { aller(S.n + 1); });
-    $('rgRValider').addEventListener('click', function () { $('rgValider').click(); });
+    $('rgRValider').addEventListener('click', function () {
+        var derniere = S.n >= S.tailles.length - 1;
+        $('rgValider').click();
+        if (derniere) { $('rg').classList.add('reglages'); $('rgAppliquer').scrollIntoView(); msg('Dernière page validée. Touchez « Appliquer au tome » pour enregistrer.'); }
+    });
     $('rgPrec').addEventListener('click', function () { aller(S.n - 1); });
     $('rgSuiv').addEventListener('click', function () { aller(S.n + 1); });
     $('rgNum').addEventListener('change', function () { aller((+this.value || 1) - 1); });
