@@ -58,6 +58,21 @@ class RoutesRognerTest(unittest.TestCase):
         self.assertEqual(d["tailles"], [[300, 500]] * 3)
         self.assertIsNone(d["brouillon"])
 
+    def test_la_liste_des_tomes_dit_lesquels_sont_deja_rognes(self):
+        import edition
+        import traitements
+        with self.A.app.test_request_context("/rogner", query_string={"id": "Serie"}):
+            avant = self.A.page_rogner()
+        self.assertNotIn("rogné", avant)
+        racine = Path(self.tmp.name)
+        infos = edition.lire(racine / "Serie")
+        traitements.noter(infos, self.cbz.name, self.cbz.stat().st_size, self.cbz.stat().st_size, {"rognage": {"detail": "3 page(s) rognée(s) à la main"}}, date="2026-11-17")
+        edition.ecrire(racine / "Serie", infos)
+        with self.A.app.test_request_context("/rogner", query_string={"id": "Serie"}):
+            apres = self.A.page_rogner()
+        self.assertIn("rogné le 17/11/2026", apres)
+        self.assertIn("3 page(s) rognée(s) à la main", apres)
+
     def test_tome_ou_serie_inconnus(self):
         self.assertEqual(self._get("/api/rogner/infos", series="Serie", fichier="autre.cbz")[1], 404)
         self.assertEqual(self._get("/api/rogner/infos", series="Autre", fichier=self.cbz.name)[1], 404)

@@ -9,6 +9,9 @@
     <style>
         .rg-liste a { display: block; padding: 14px; margin: 8px 0; border-radius: 10px; background: #17181c; border: 1px solid #2c2f36; color: #ddd; text-decoration: none; min-height: 44px; box-sizing: border-box; }
         .rg-liste small { color: #8fd19e; margin-left: 8px; }
+        .rg-liste small.fait { display: block; margin: 4px 0 0 28px; }
+        .rg-liste a.fait-tome { border-color: #2f6b3a; }
+        .rg-liste small:not(.fait) { color: #e6b94c; }
         body.rg-ed { margin: 0; overflow: hidden; background: #0c0d0f; color: #ddd; }
         #rg { position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: 1fr 290px; font-size: 14px; }
         #rgBarre { grid-column: 1 / 3; display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #15171b; border-bottom: 1px solid #2c2f36; flex-wrap: wrap; }
@@ -90,7 +93,7 @@
         <p class="sub">{{ nom }}</p>
         <p class="note">Choisissez un tome : chaque page s'affiche en grand, vous placez le cadre vous-même. Le cadre a la même taille pour toutes les pages du tome, vous réglez seulement sa position (et un petit angle si la page penche). Rien n'est écrit tant que vous n'avez pas appuyé sur « Appliquer ».</p>
         <div class="rg-liste">
-            {% for t in tomes %}<a href="/rogner?id={{ nom|urlencode }}&fichier={{ t.fichier|urlencode }}">✂️ {{ t.libelle }}{% if t.brouillon %}<small>travail en cours</small>{% endif %}</a>{% else %}<p>Aucun tome.</p>{% endfor %}
+            {% for t in tomes %}<a href="/rogner?id={{ nom|urlencode }}&fichier={{ t.fichier|urlencode }}"{% if t.rogne %} class="fait-tome"{% endif %}>{% if t.rogne %}✅{% else %}✂️{% endif %} {{ t.libelle }}{% if t.rogne %}<small class="fait">rogné{% if t.rogne.date %} le {{ t.rogne.date }}{% endif %}{% if t.rogne.detail %} · {{ t.rogne.detail }}{% endif %}</small>{% endif %}{% if t.brouillon %}<small>travail en cours</small>{% endif %}</a>{% else %}<p>Aucun tome.</p>{% endfor %}
         </div>
     </div>
 </body>

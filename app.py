@@ -2574,8 +2574,18 @@ def page_rogner():
     if name not in _scan() or name == "(Sans série)":
         return Response("Série introuvable", status=404)
     brouillons = (_rognages_lire().get(name) or {})
-    tomes_ = [{"fichier": f.name, "libelle": _libelle_tome(f, name), "brouillon": f.name in brouillons}
-              for f in _fichiers_a_alleger(name) if zipfile.is_zipfile(f)]
+    import edition
+    infos = edition.lire(MANGA_DIR / name)
+    tomes_ = []
+    for f in _fichiers_a_alleger(name):
+        if not zipfile.is_zipfile(f):
+            continue
+        marque = traitements.lire(infos, f.name, _taille_fichier(f)).get("rognage")          # valable tant que le fichier n'a pas été remplacé
+        jour = ""
+        if marque and re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(marque.get("date", ""))):
+            jour = "/".join(reversed(marque["date"].split("-")))
+        tomes_.append({"fichier": f.name, "libelle": _libelle_tome(f, name), "brouillon": f.name in brouillons,
+                       "rogne": {"date": jour, "detail": str(marque.get("detail", ""))} if marque else None})
     f = next((t for t in tomes_ if t["fichier"] == request.args.get("fichier", "")), None)
     return render_template("rogner.html", version=APP_VERSION, nom=name, tomes=tomes_, tome=f)
 
