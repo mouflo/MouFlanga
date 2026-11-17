@@ -2634,7 +2634,7 @@ def api_rogner_image():
         jpeg = optimiser.page_jpeg(f, int(request.args.get("n", "0")), largeur)
     except (ValueError, archives.ArchiveError) as e:
         return Response(str(e), status=404)
-    return Response(jpeg, mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
+    return _page_revalidee(jpeg, "image/jpeg", f, f"r{request.args.get('n', '0')}-{largeur}")
 
 
 @app.route("/api/rogner/propositions")
@@ -3514,6 +3514,16 @@ def api_pages():
     return jsonify({"count": n, "title": _title_of(full)})
 
 
+def _page_revalidee(data, mime, fichier, cle):
+    """Image de page d'un fichier d'archive : le navigateur la redemande à chaque fois (réponse 304 si rien n'a changé). Sans ça, un tome réécrit (rognage, coupe…) montrait
+    encore l'ancienne page pendant une heure : le lecteur affichait des bandes qui n'existaient plus dans le fichier."""
+    st = Path(fichier).stat()
+    resp = Response(data, mimetype=mime)
+    resp.set_etag(hashlib.sha1(f"{st.st_mtime_ns}-{st.st_size}-{cle}".encode()).hexdigest())
+    resp.headers["Cache-Control"] = "private, no-cache"
+    return resp.make_conditional(request)
+
+
 @app.route("/api/page")
 def api_page():
     full = _safe_path(request.args.get("path", ""))
@@ -3526,9 +3536,7 @@ def api_page():
         return Response("Numéro de page invalide", status=400)
     except archives.ArchiveError as e:
         return Response(str(e), status=404)
-    resp = Response(data, mimetype=mime)
-    resp.headers["Cache-Control"] = "private, max-age=3600"
-    return resp
+    return _page_revalidee(data, mime, full, index)
 
 
 @app.route("/api/progress", methods=["POST"])
