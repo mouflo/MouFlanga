@@ -798,6 +798,7 @@
     if (l) { e.preventDefault(); readChapter(l.dataset.cle); }
   });
   $('sCouvertures').addEventListener('click', function () { location.href = '/couvertures?id=' + encodeURIComponent(current.id); });
+  $('sRogner').addEventListener('click', function () { location.href = '/rogner?id=' + encodeURIComponent(current.id); });
 
   // 🔎 Identification d'un hors-série : résultats AniList / MangaDex, saisie à la main, ou retrait
   var hsCandidats = [], hsCle = '', hsDernier = null;

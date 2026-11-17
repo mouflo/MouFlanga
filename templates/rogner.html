@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rogner · MouFlanga</title>
+    <link rel="stylesheet" href="/ui/mou-ui.css?v={{ version|urlencode }}">
+    <link rel="stylesheet" href="/ui/mou-settings.css?v={{ version|urlencode }}">
+    <style>
+        .rg-liste a { display: block; padding: 14px; margin: 8px 0; border-radius: 10px; background: #17181c; border: 1px solid #2c2f36; color: #ddd; text-decoration: none; min-height: 44px; box-sizing: border-box; }
+        .rg-liste small { color: #8fd19e; margin-left: 8px; }
+        body.rg-ed { margin: 0; overflow: hidden; background: #0c0d0f; color: #ddd; }
+        #rg { position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: 1fr 290px; font-size: 14px; }
+        #rgBarre { grid-column: 1 / 3; display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #15171b; border-bottom: 1px solid #2c2f36; flex-wrap: wrap; }
+        #rgBarre a, #rgBarre button { min-height: 40px; padding: 6px 12px; border-radius: 8px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; cursor: pointer; text-decoration: none; font-size: 14px; display: inline-flex; align-items: center; }
+        #rgBarre button.on { background: var(--accent); color: #0b0c0e; border-color: var(--accent); font-weight: 600; }
+        #rgBarre input { width: 64px; min-height: 40px; box-sizing: border-box; background: #0f1012; color: #ddd; border: 1px solid #2c2f36; border-radius: 8px; padding: 0 8px; font-size: 15px; }
+        #rgTitre { flex: 1; min-width: 120px; font-weight: 600; }
+        #rgScene { position: relative; overflow: auto; user-select: none; background: #0c0d0f; }
+        #rgMonde { position: relative; }
+        #rgPage { position: absolute; left: 0; top: 0; transform-origin: 50% 50%; pointer-events: none; max-width: none; }
+        #rgCadre { position: absolute; touch-action: none; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .55); outline: 2px solid var(--accent); cursor: move; box-sizing: border-box; }
+        #rgCadre.prop { outline-style: dashed; outline-color: #e6b94c; }
+        .rg-poi { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; background: var(--accent); border: 2px solid #0b0c0e; border-radius: 50%; box-sizing: border-box; }
+        .rg-poi[data-p="no"] { left: 0; top: 0; } .rg-poi[data-p="n"] { left: 50%; top: 0; } .rg-poi[data-p="ne"] { left: 100%; top: 0; } .rg-poi[data-p="e"] { left: 100%; top: 50%; }
+        .rg-poi[data-p="se"] { left: 100%; top: 100%; } .rg-poi[data-p="s"] { left: 50%; top: 100%; } .rg-poi[data-p="so"] { left: 0; top: 100%; } .rg-poi[data-p="o"] { left: 0; top: 50%; }
+        .rg-poi[data-p="n"], .rg-poi[data-p="s"] { cursor: ns-resize; } .rg-poi[data-p="e"], .rg-poi[data-p="o"] { cursor: ew-resize; }
+        .rg-poi[data-p="no"], .rg-poi[data-p="se"] { cursor: nwse-resize; } .rg-poi[data-p="ne"], .rg-poi[data-p="so"] { cursor: nesw-resize; }
+        #rgResultat { position: absolute; overflow: hidden; background: #fff; display: none; box-shadow: 0 0 0 1px #444; }
+        #rgResultat img { position: absolute; transform-origin: 0 0; max-width: none; }
+        #rgPanneau { background: #15171b; border-left: 1px solid #2c2f36; padding: 10px; overflow-y: auto; }
+        #rgPanneau h3 { margin: 12px 0 6px; font-size: 13px; color: #9aa; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+        #rgPanneau .ligne { display: flex; gap: 6px; margin: 6px 0; align-items: center; }
+        #rgPanneau label { width: 34px; color: #9aa; }
+        #rgPanneau input[type=number] { flex: 1; min-width: 0; min-height: 40px; box-sizing: border-box; background: #0f1012; color: #ddd; border: 1px solid #2c2f36; border-radius: 8px; padding: 0 8px; font-size: 15px; }
+        #rgPanneau input[type=range] { flex: 1; min-height: 40px; }
+        #rgPanneau button { width: 100%; min-height: 44px; margin: 4px 0; padding: 8px; border-radius: 8px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; cursor: pointer; font-size: 14px; text-align: left; }
+        #rgPanneau button.vert { background: var(--accent); color: #0b0c0e; border-color: var(--accent); font-weight: 600; text-align: center; }
+        #rgPanneau .ligne button { width: auto; flex: 1; text-align: center; }
+        #rgPanneau .note { color: #8a8f98; font-size: 12.5px; line-height: 1.4; margin: 6px 0; }
+        #rgBilan { color: #b9c; font-size: 13px; margin: 8px 0; }
+        #rgPuces { grid-column: 1 / 3; display: flex; gap: 4px; overflow-x: auto; padding: 6px 10px; background: #15171b; border-top: 1px solid #2c2f36; }
+        #rgPuces b { flex: 0 0 auto; min-width: 34px; height: 34px; line-height: 34px; text-align: center; border-radius: 6px; background: #1f2126; color: #aaa; border: 1px solid #2c2f36; cursor: pointer; font-weight: 400; font-size: 13px; }
+        #rgPuces b.ok { background: #1c3a24; color: #9be3a6; border-color: #2f6b3a; }
+        #rgPuces b.def { background: #1d2a3a; color: #9cc4ee; border-color: #35557a; }
+        #rgPuces b.exc { background: #3a1c1f; color: #ffb4b4; border-color: #6b2f35; text-decoration: line-through; }
+        #rgPuces b.cur { outline: 2px solid var(--accent); }
+        #rgMsg { position: fixed; left: 12px; bottom: 56px; right: 12px; z-index: 50; padding: 10px 12px; border-radius: 8px; background: #14291a; color: #9be3a6; border: 1px solid #2f6b3a; display: none; cursor: pointer; }
+        #rgMsg.err { background: #2a1416; color: #ffb4b4; border-color: #6b2f35; }
+        @media (max-width: 760px) { #rg { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto auto; } #rgBarre, #rgPuces { grid-column: 1; } #rgPanneau { max-height: 38vh; border-left: none; border-top: 1px solid #2c2f36; } }
+    </style>
+<link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
+<script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
+</head>
+{% if not tome %}
+<body>
+    <div class="container">
+        <div id="mou-header" data-app="mouflanga" data-prefix="MouFl" data-rest="anga" data-version="{{ version }}" data-sub="✂️ Rogner à la main"></div>
+        <div class="cv-tete"><a href="/#{{ nom|urlencode }}" class="back">← Retour à la série</a></div>
+        <h2>✂️ Rogner les pages à la main</h2>
+        <p class="sub">{{ nom }}</p>
+        <p class="note">Choisissez un tome : chaque page s'affiche en grand, vous placez le cadre vous-même. Le cadre a la même taille pour toutes les pages du tome, vous réglez seulement sa position (et un petit angle si la page penche). Rien n'est écrit tant que vous n'avez pas appuyé sur « Appliquer ».</p>
+        <div class="rg-liste">
+            {% for t in tomes %}<a href="/rogner?id={{ nom|urlencode }}&fichier={{ t.fichier|urlencode }}">✂️ {{ t.libelle }}{% if t.brouillon %}<small>travail en cours</small>{% endif %}</a>{% else %}<p>Aucun tome.</p>{% endfor %}
+        </div>
+    </div>
+</body>
+</html>
+{% else %}
+<body class="rg-ed">
+<div id="rg">
+    <div id="rgBarre">
+        <a href="/" title="Accueil MouFlanga">🏠</a>
+        <a href="/rogner?id={{ nom|urlencode }}">← Tomes</a>
+        <span id="rgTitre">{{ tome.libelle }}</span>
+        <button id="rgPrec" title="Page précédente (←)">◀</button>
+        <input id="rgNum" type="number" min="1" value="1" aria-label="Numéro de page">
+        <span id="rgSur"></span>
+        <button id="rgSuiv" title="Page suivante (→)">▶</button>
+        <button id="rgMoins" title="Zoom arrière (-)">🔍−</button><span id="rgZoom">100 %</span><button id="rgPlus" title="Zoom avant (+)">🔍+</button>
+        <button id="rgVue" title="Voir la page telle qu'elle sera rognée (V)">👁 Résultat</button>
+    </div>
+    <div id="rgScene"><div id="rgMonde">
+        <img id="rgPage" alt="">
+        <div id="rgCadre"><i class="rg-poi" data-p="no"></i><i class="rg-poi" data-p="n"></i><i class="rg-poi" data-p="ne"></i><i class="rg-poi" data-p="e"></i>
+            <i class="rg-poi" data-p="se"></i><i class="rg-poi" data-p="s"></i><i class="rg-poi" data-p="so"></i><i class="rg-poi" data-p="o"></i></div>
+        <div id="rgResultat"><img alt=""></div>
+    </div></div>
+    <div id="rgPanneau">
+        <h3>Cadre de cette page</h3>
+        <div class="ligne"><label>X</label><input type="number" id="rgX" step="1"><label>Y</label><input type="number" id="rgY" step="1"></div>
+        <div class="ligne"><label>Larg.</label><input type="number" id="rgL" step="1"><label>Haut.</label><input type="number" id="rgH" step="1"></div>
+        <p class="note" id="rgNoteTaille"></p>
+        <h3>Angle</h3>
+        <div class="ligne"><input type="range" id="rgAng" min="-3" max="3" step="0.05" value="0"><input type="number" id="rgAngN" step="0.05" style="max-width: 78px;"></div>
+        <p class="note">Positif : la page est tournée dans le sens des aiguilles d'une montre. Pour se repérer, regardez un trait de case ou le bord de la page.</p>
+        <h3>Voir un bord de près</h3>
+        <div class="ligne"><button data-bord="haut">▲ Haut</button><button data-bord="bas">▼ Bas</button></div>
+        <div class="ligne"><button data-bord="gauche">◀ Gauche</button><button data-bord="droite">▶ Droite</button></div>
+        <button id="rgAjuste" style="text-align:center">⤢ Page entière</button>
+        <h3>Cette page</h3>
+        <button id="rgValider" class="vert">✓ Valider et page suivante (Entrée)</button>
+        <button id="rgExclure">🚫 Ne pas rogner cette page (E)</button>
+        <h3>Gagner du temps</h3>
+        <button id="rgCopiePar">📋 Même position pour toutes les pages <span id="rgParite"></span> non validées</button>
+        <button id="rgCopieTout">📋 Même position pour toutes les pages non validées</button>
+        <label style="width:auto;display:block;margin:4px 0;"><input type="checkbox" id="rgAvecAngle" checked> avec l'angle</label>
+        <p class="note">Flèches ← → : changer de page. Ctrl + flèches : déplacer le cadre d'un pixel (Maj : dix). V : voir le résultat, en gardant les flèches pour comparer l'alignement d'une page à l'autre. + / − : zoom (le cadre se centre ; l'ascenseur déplace la vue).</p>
+        <div id="rgBilan"></div>
+        <button id="rgAppliquer" class="vert">✂️ Appliquer au tome</button>
+        <p class="note">L'ancien fichier part à la corbeille (↩️ Revenir en arrière le remet). Le travail est gardé automatiquement : vous pouvez quitter et revenir.</p>
+    </div>
+    <div id="rgPuces"></div>
+</div>
+<div id="rgMsg"></div>
+<script>
+(function () {
+    var SERIE = {{ nom|tojson }}, FICHIER = {{ tome.fichier|tojson }};
+    var $ = function (id) { return document.getElementById(id); };
+    var S = { n: 0, tailles: [], W: 0, H: 0, pages: {}, defaut: {}, vue: false, occupe: false };
+    var echelle = 1, decal = { x: 0, y: 0 }, zoom = 1;
+
+    function q(url) { return fetch(url).then(function (r) { return r.json(); }); }
+    function msg(t, erreur) { var m = $('rgMsg'); m.textContent = t; m.className = erreur ? 'err' : ''; m.style.display = 'block'; if (!erreur) setTimeout(function () { m.style.display = 'none'; }, 7000); }
+    $('rgMsg').addEventListener('click', function () { this.style.display = 'none'; });
+    function url(n, w) { return '/api/rogner/image?series=' + encodeURIComponent(SERIE) + '&fichier=' + encodeURIComponent(FICHIER) + '&n=' + n + '&w=' + w; }
+
+    function double(i) { var t = S.tailles[i]; return t[0] > 1.1 * t[1]; }
+    function simples() { return S.tailles.filter(function (t) { return t[0] <= 1.1 * t[1]; }); }
+    function mediane(a) { a = a.slice().sort(function (x, y) { return x - y; }); return a.length ? a[a.length >> 1] : 0; }
+    function largeurSimpleRef() { return mediane(simples().map(function (t) { return t[0]; })) || S.W; }
+
+    // Le cadre d'une page : sa position validée, sinon celle des pages de même parité, sinon centré (simple proposition, en pointillés).
+    function cadre(i) {
+        var t = S.tailles[i], p = S.pages[i];
+        if (p && p.exclue) return null;
+        var w = double(i) ? ((p && p.w) || Math.round(t[0] - (largeurSimpleRef() - S.W))) : S.W, h = S.H;
+        if (p && p.ok) return { x: p.x, y: p.y, w: w, h: h, a: p.a || 0, etat: 'ok' };
+        var d = S.defaut[i % 2];
+        if (d) return { x: d.x, y: d.y, w: w, h: h, a: d.a || 0, etat: 'def' };
+        return { x: Math.round((t[0] - w) / 2), y: Math.round((t[1] - h) / 2), w: w, h: h, a: 0, etat: 'prop' };
+    }
+
+    function enregistrer(i, c) {            // toute modification valide la page
+        var p = S.pages[i] || {};
+        p.x = Math.round(c.x); p.y = Math.round(c.y); p.a = Math.round((c.a || 0) * 100) / 100; p.ok = true; delete p.exclue;
+        if (double(i)) p.w = Math.round(c.w);
+        S.pages[i] = p; sauver(); puces(); bilan();
+    }
+
+    var minuteur = null;
+    function sauver() {
+        clearTimeout(minuteur);
+        minuteur = setTimeout(function () {
+            fetch('/api/rogner/brouillon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ series: SERIE, fichier: FICHIER, brouillon: { W: S.W, H: S.H, pages: S.pages, defaut: S.defaut } }) }).catch(function () {});
+        }, 700);
+    }
+
+    function disposer(recentrer) {          // image et cadre dans le « monde » (défilable quand on zoome)
+        var sc = $('rgScene'), mo = $('rgMonde'), t = S.tailles[S.n], c = cadre(S.n);
+        var fit = Math.min((sc.clientWidth - 24) / t[0], (sc.clientHeight - 24) / t[1]);
+        echelle = fit * zoom;
+        var iw = t[0] * echelle, ih = t[1] * echelle, k = 1;
+        var cw = iw, ch = ih;
+        if (S.vue && c) { k = Math.min((sc.clientWidth - 24) / c.w, (sc.clientHeight - 24) / c.h) * zoom; cw = c.w * k; ch = c.h * k; }
+        var mw = Math.max(sc.clientWidth, cw + 24), mh = Math.max(sc.clientHeight, ch + 24);
+        mo.style.width = mw + 'px'; mo.style.height = mh + 'px';
+        decal.x = (mw - iw) / 2; decal.y = (mh - ih) / 2;
+        var img = $('rgPage');
+        img.style.width = iw + 'px'; img.style.height = ih + 'px'; img.style.left = decal.x + 'px'; img.style.top = decal.y + 'px';
+        img.style.transform = c ? 'rotate(' + c.a + 'deg)' : 'none';
+        var cd = $('rgCadre');
+        cd.style.display = (!c || S.vue) ? 'none' : 'block';
+        if (c) {
+            cd.style.left = (decal.x + c.x * echelle) + 'px'; cd.style.top = (decal.y + c.y * echelle) + 'px';
+            cd.style.width = (c.w * echelle) + 'px'; cd.style.height = (c.h * echelle) + 'px';
+            cd.className = c.etat === 'prop' ? 'prop' : '';
+        }
+        var r = $('rgResultat');
+        if (S.vue && c) {                    // la page telle qu'elle sera rognée : la fenêtre a la taille du cadre, l'image est tournée puis décalée
+            r.style.display = 'block'; r.style.width = cw + 'px'; r.style.height = ch + 'px';
+            r.style.left = ((mw - cw) / 2) + 'px'; r.style.top = ((mh - ch) / 2) + 'px';
+            var ri = r.firstChild; ri.src = $('rgPage').src;
+            ri.style.width = (t[0] * k) + 'px'; ri.style.height = (t[1] * k) + 'px';
+            ri.style.left = (-c.x * k) + 'px'; ri.style.top = (-c.y * k) + 'px';
+            ri.style.transformOrigin = (t[0] * k / 2) + 'px ' + (t[1] * k / 2) + 'px';
+            ri.style.transform = 'rotate(' + c.a + 'deg)';
+            img.style.visibility = 'hidden';
+        } else { r.style.display = 'none'; img.style.visibility = 'visible'; }
+        if (recentrer === true && c && zoom > 1) {
+            sc.scrollLeft = decal.x + (c.x + c.w / 2) * echelle - sc.clientWidth / 2; sc.scrollTop = decal.y + (c.y + c.h / 2) * echelle - sc.clientHeight / 2;
+        }
+        $('rgZoom').textContent = Math.round(zoom * 100) + ' %';
+        champs(c);
+    }
+
+    function champs(c) {
+        var vide = !c;
+        ['rgX', 'rgY', 'rgL', 'rgH', 'rgAng', 'rgAngN'].forEach(function (id) { $(id).disabled = vide; });
+        if (vide) { $('rgNoteTaille').textContent = 'Cette page est exclue : elle restera telle quelle.'; $('rgExclure').textContent = '↩ Rogner de nouveau cette page (E)'; return; }
+        $('rgExclure').textContent = '🚫 Ne pas rogner cette page (E)';
+        $('rgX').value = Math.round(c.x); $('rgY').value = Math.round(c.y); $('rgL').value = Math.round(c.w); $('rgH').value = Math.round(c.h);
+        $('rgAng').value = c.a; $('rgAngN').value = c.a;
+        $('rgNoteTaille').textContent = (c.etat === 'prop' ? 'Proposition (pas encore validée). ' : c.etat === 'def' ? 'Position copiée d\'une autre page (pas encore validée). ' : '')
+            + 'La taille ' + Math.round(S.W) + ' × ' + Math.round(S.H) + ' est la même pour toutes les pages' + (double(S.n) ? ' (double page : sa propre largeur, même hauteur)' : '') + '.';
+    }
+
+    function aller(i) {
+        i = Math.max(0, Math.min(S.tailles.length - 1, i)); S.n = i;
+        $('rgNum').value = i + 1;
+        var img = $('rgPage');
+        img.onload = function () { disposer(); };
+        img.src = url(i, Math.min(2600, S.tailles[i][0]));
+        disposer(); puces();
+        [i + 1, i - 1].forEach(function (j) { if (j >= 0 && j < S.tailles.length) { var p = new Image(); p.src = url(j, Math.min(2600, S.tailles[j][0])); } });
+    }
+
+    function puces() {
+        var h = '';
+        for (var i = 0; i < S.tailles.length; i++) {
+            var p = S.pages[i], cl = (p && p.exclue) ? 'exc' : (p && p.ok) ? 'ok' : S.defaut[i % 2] ? 'def' : '';
+            h += '<b class="' + cl + (i === S.n ? ' cur' : '') + '" data-i="' + i + '">' + (i + 1) + '</b>';
+        }
+        var z = $('rgPuces'); z.innerHTML = h;
+        var cur = z.querySelector('.cur'); if (cur) cur.scrollIntoView({ inline: 'center', block: 'nearest' });
+        $('rgSur').textContent = '/ ' + S.tailles.length;
+        $('rgParite').textContent = (S.n % 2 ? 'paires' : 'impaires');
+    }
+    $('rgPuces').addEventListener('click', function (e) { var b = e.target.closest('b[data-i]'); if (b) aller(+b.dataset.i); });
+
+    function liste() {
+        var out = {}, ok = 0, def = 0, exc = 0, rien = 0;
+        for (var i = 0; i < S.tailles.length; i++) {
+            var c = cadre(i);
+            if (!c) { exc++; continue; }
+            if (c.etat === 'prop') { rien++; continue; }
+            if (c.etat === 'ok') ok++; else def++;
+            out[i] = { x: c.x, y: c.y, w: c.w, h: c.h, a: c.a };
+        }
+        return { boites: out, ok: ok, def: def, exc: exc, rien: rien };
+    }
+    function bilan() {
+        var l = liste();
+        $('rgBilan').textContent = l.ok + ' validée(s) · ' + l.def + ' avec la position copiée · ' + l.exc + ' exclue(s) · ' + l.rien + ' pas encore réglée(s) (elles resteront telles quelles)';
+    }
+
+    // Modifier le cadre de la page courante
+    function courant() { var c = cadre(S.n); return c ? { x: c.x, y: c.y, w: c.w, h: c.h, a: c.a } : null; }
+    function poser(c, taille) {
+        if (taille) { S.W = Math.max(50, double(S.n) ? S.W : c.w); S.H = Math.max(50, c.h); }
+        enregistrer(S.n, c); disposer();
+    }
+    ['rgX', 'rgY'].forEach(function (id) { $(id).addEventListener('change', function () { var c = courant(); if (!c) return; c.x = +$('rgX').value; c.y = +$('rgY').value; poser(c); }); });
+    ['rgL', 'rgH'].forEach(function (id) { $(id).addEventListener('change', function () { var c = courant(); if (!c) return; c.w = Math.max(50, +$('rgL').value); c.h = Math.max(50, +$('rgH').value); poser(c, true); }); });
+    $('rgAng').addEventListener('input', function () { var c = courant(); if (!c) return; c.a = +this.value; poser(c); });
+    $('rgAngN').addEventListener('change', function () { var c = courant(); if (!c) return; c.a = Math.max(-3, Math.min(3, +this.value)); poser(c); });
+
+    // Glisser le cadre et ses poignées
+    var drag = null;
+    $('rgCadre').addEventListener('pointerdown', function (e) {
+        var c = courant(); if (!c) return;
+        var poi = e.target.closest('.rg-poi');
+        drag = { mode: poi ? poi.dataset.p : 'deplacer', x0: e.clientX, y0: e.clientY, c: c };
+        this.setPointerCapture(e.pointerId); e.preventDefault();
+    });
+    $('rgCadre').addEventListener('pointermove', function (e) {
+        if (!drag) return;
+        var dx = (e.clientX - drag.x0) / echelle, dy = (e.clientY - drag.y0) / echelle, c = { x: drag.c.x, y: drag.c.y, w: drag.c.w, h: drag.c.h, a: drag.c.a }, m = drag.mode;
+        if (m === 'deplacer') { c.x += dx; c.y += dy; }
+        else {
+            if (m.indexOf('o') >= 0) { c.x += dx; c.w -= dx; }
+            if (m.indexOf('e') >= 0) { c.w += dx; }
+            if (m.indexOf('n') >= 0) { c.y += dy; c.h -= dy; }
+            if (m.indexOf('s') >= 0) { c.h += dy; }
+            if (c.w < 50 || c.h < 50) return;
+        }
+        poser(c, m !== 'deplacer');
+    });
+    function lacher() { drag = null; }
+    $('rgCadre').addEventListener('pointerup', lacher); $('rgCadre').addEventListener('pointercancel', lacher);
+
+    // Boutons
+    function changerZoom(d) { zoom = Math.max(1, Math.min(5, Math.round((zoom + d) * 2) / 2)); disposer(true); }
+    $('rgPlus').addEventListener('click', function () { changerZoom(0.5); });
+    $('rgMoins').addEventListener('click', function () { changerZoom(-0.5); });
+    function versBord(cote) {                 // zoom ×2 (au moins) et la vue sur le milieu du bord choisi : on règle le bord au pixel près
+        var c = courant(); if (!c) return;
+        if (zoom < 2) zoom = 2;
+        disposer(false);
+        var sc = $('rgScene'), cx = c.x + c.w / 2, cy = c.y + c.h / 2;
+        if (cote === 'gauche') cx = c.x; else if (cote === 'droite') cx = c.x + c.w; else if (cote === 'haut') cy = c.y; else cy = c.y + c.h;
+        sc.scrollLeft = decal.x + cx * echelle - sc.clientWidth / 2; sc.scrollTop = decal.y + cy * echelle - sc.clientHeight / 2;
+    }
+    document.querySelectorAll('[data-bord]').forEach(function (b) { b.addEventListener('click', function () { versBord(b.dataset.bord); }); });
+    $('rgAjuste').addEventListener('click', function () { zoom = 1; disposer(true); });
+    $('rgPrec').addEventListener('click', function () { aller(S.n - 1); });
+    $('rgSuiv').addEventListener('click', function () { aller(S.n + 1); });
+    $('rgNum').addEventListener('change', function () { aller((+this.value || 1) - 1); });
+    $('rgVue').addEventListener('click', function () { S.vue = !S.vue; this.classList.toggle('on', S.vue); disposer(); });
+    $('rgValider').addEventListener('click', function () { var c = courant(); if (c) enregistrer(S.n, c); aller(S.n + 1); });
+    $('rgExclure').addEventListener('click', function () {
+        var p = S.pages[S.n] || {};
+        if (p.exclue) { delete p.exclue; } else { p.exclue = true; delete p.ok; }
+        S.pages[S.n] = p; sauver(); disposer(); puces(); bilan();
+    });
+    function copier(paritaire) {
+        var c = courant(); if (!c) return;
+        var d = { x: Math.round(c.x), y: Math.round(c.y), a: $('rgAvecAngle').checked ? c.a : 0 };
+        if (paritaire) S.defaut[S.n % 2] = d; else { S.defaut[0] = d; S.defaut[1] = d; }
+        enregistrer(S.n, c); disposer(); puces(); bilan(); sauver();
+        msg(paritaire ? 'Position copiée vers les pages ' + (S.n % 2 ? 'paires' : 'impaires') + ' non validées.' : 'Position copiée vers toutes les pages non validées.');
+    }
+    $('rgCopiePar').addEventListener('click', function () { copier(true); });
+    $('rgCopieTout').addEventListener('click', function () { copier(false); });
+
+    $('rgAppliquer').addEventListener('click', async function () {
+        var l = liste();
+        var n = Object.keys(l.boites).length;
+        if (!n) { msg('Aucune page n\'est encore réglée.', true); return; }
+        if (!confirm('Rogner ' + n + ' page(s) à ' + Math.round(S.W) + ' × ' + Math.round(S.H) + ' ?\n' + l.rien + ' page(s) pas réglée(s) resteront telles quelles.\nL\'ancien fichier part à la corbeille.')) return;
+        var r = await fetch('/api/rogner/appliquer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ series: SERIE, fichier: FICHIER, boites: l.boites }) }).then(function (x) { return x.json(); });
+        if (!r.ok) { msg(r.error || 'Échec', true); return; }
+        msg('Rognage en cours…'); suivre();
+    });
+    async function suivre() {
+        var e = await q('/api/doubles/etat?series=' + encodeURIComponent(SERIE));
+        if (e.en_cours) { setTimeout(suivre, 1500); return; }
+        var ligne = (e.rapport || [])[0] || {};
+        if ((e.message || '').indexOf('Erreur') === 0 || (ligne.note || '').indexOf('erreur') === 0) { msg((ligne.note || e.message), true); return; }
+        msg('✓ ' + (e.message || 'Terminé') + (ligne.note ? ' (' + ligne.note + ')' : ''));
+        S.pages = {}; S.defaut = {}; await charger();
+    }
+
+    // Clavier
+    document.addEventListener('keydown', function (e) {
+        var champ = /^(INPUT|TEXTAREA)$/.test((e.target || {}).tagName || '') && e.target.type !== 'range' && e.target.type !== 'checkbox';
+        if (champ && e.key !== 'Enter') return;
+        if (e.ctrlKey && e.key.indexOf('Arrow') === 0) {
+            var c = courant(); if (!c) return; var pas = e.shiftKey ? 10 : 1;
+            if (e.key === 'ArrowLeft') c.x -= pas; if (e.key === 'ArrowRight') c.x += pas; if (e.key === 'ArrowUp') c.y -= pas; if (e.key === 'ArrowDown') c.y += pas;
+            poser(c); e.preventDefault(); return;
+        }
+        if (champ) { e.target.blur(); return; }
+        if (e.key === 'ArrowLeft') { aller(S.n - 1); e.preventDefault(); }
+        else if (e.key === 'ArrowRight') { aller(S.n + 1); e.preventDefault(); }
+        else if (e.key === 'Enter') { $('rgValider').click(); e.preventDefault(); }
+        else if (e.key === 'v' || e.key === 'V') $('rgVue').click();
+        else if (e.key === '+' || e.key === '=') changerZoom(0.5);
+        else if (e.key === '-') changerZoom(-0.5);
+        else if (e.key === 'e' || e.key === 'E') $('rgExclure').click();
+    });
+    window.addEventListener('resize', function () { disposer(); });
+
+    async function charger() {
+        var d = await q('/api/rogner/infos?series=' + encodeURIComponent(SERIE) + '&fichier=' + encodeURIComponent(FICHIER));
+        if (d.error) { msg(d.error, true); return; }
+        S.tailles = d.tailles;
+        var simp = simples(), ref = simp.length ? simp : S.tailles;
+        S.W = mediane(ref.map(function (t) { return t[0]; })); S.H = mediane(ref.map(function (t) { return t[1]; }));
+        var b = d.brouillon;
+        if (b) { S.W = b.W || S.W; S.H = b.H || S.H; S.pages = b.pages || {}; S.defaut = b.defaut || {}; msg('Travail en cours retrouvé (' + (b.date || '') + ').'); }
+        else { S.pages = {}; S.defaut = {}; }
+        S.n = Math.min(S.n, S.tailles.length - 1); aller(S.n); bilan();
+    }
+    charger();
+})();
+</script>
+</body>
+</html>
+{% endif %}

@@ -1314,6 +1314,101 @@ def assembler(chemin: Path, indices, sens_manga=True, destination=None, ajust=No
     return res
 
 
+def tailles_pages(chemin: Path) -> list:
+    """[[largeur, hauteur], …] de chaque page du tome (seul l'en-tête de l'image est lu : rapide)."""
+    chemin = Path(chemin)
+    out = []
+    with zipfile.ZipFile(chemin) as z:
+        for nom in archives.pages(chemin):
+            with z.open(nom) as f, Image.open(f) as im:
+                out.append([im.width, im.height])
+    return out
+
+
+def page_jpeg(chemin: Path, index: int, largeur=2200, qualite=90) -> bytes:
+    """Une page du tome en JPEG, à sa taille (réduite seulement au-delà de `largeur`) : l'écran de rognage."""
+    data, _ = archives.read_page(Path(chemin), index)
+    im = Image.open(io.BytesIO(data))
+    im.load()
+    im = im.convert("RGB")
+    if im.width > largeur:
+        im = im.resize((largeur, max(1, round(im.height * largeur / im.width))), Image.LANCZOS)
+    return _jpeg(im, qualite)
+
+
+def _rogner_image(im, boite):
+    """La page tournée de `a` degrés (sens horaire, autour de son centre) puis coupée au rectangle x, y, w, h (pixels de la page d'origine) ;
+    ce qui dépasse de la page est rempli du ton du papier. Aucun zoom : la taille de sortie est exactement w × h."""
+    if im.mode not in ("L", "RGB"):
+        im = im.convert("RGB")
+    a = np.array(im)
+    h, w = a.shape[:2]
+    echantillon = a[::4, ::4]
+    papier = np.percentile(echantillon.reshape(-1, 1 if a.ndim == 2 else a.shape[2]), 90, axis=0)
+    valeur = int(papier[0]) if a.ndim == 2 else tuple(int(v) for v in papier)
+    angle = float(boite.get("a", 0) or 0)
+    if abs(angle) > 0.005:
+        m = cv2.getRotationMatrix2D((w / 2, h / 2), -angle, 1.0)                    # OpenCV : positif = sens inverse ; ici positif = sens horaire
+        a = cv2.warpAffine(a, m, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=valeur)
+    x, y, largeur, hauteur = (int(round(float(boite[k]))) for k in ("x", "y", "w", "h"))
+    sortie = np.empty((hauteur, largeur) + a.shape[2:], np.uint8)
+    sortie[...] = valeur
+    x0, y0, x1, y1 = max(0, x), max(0, y), min(w, x + largeur), min(h, y + hauteur)
+    if x1 > x0 and y1 > y0:
+        sortie[y0 - y:y1 - y, x0 - x:x1 - x] = a[y0:y1, x0:x1]
+    return Image.fromarray(sortie)
+
+
+def rogner(chemin: Path, indices, sens_manga=True, destination=None, boites=None) -> dict:
+    """Rogne les pages données : boites = {numéro de page: {"x", "y", "w", "h", "a"}} (voir _rogner_image). Même principe que `couper` : version écrite à côté, relue,
+    puis mise en place ; l'ancien fichier part dans « .avant ». Le nombre de pages ne change pas : {"carte": identité, "pages_avant", "pages", "avant"}."""
+    chemin = Path(chemin)
+    ordre = archives.pages(chemin)
+    boites = {int(i): b for i, b in (boites or {}).items() if 0 <= int(i) < len(ordre)}
+    if not boites:
+        raise RuntimeError("aucune page à rogner")
+    par_nom = {ordre[i]: b for i, b in boites.items()}
+    tmp = Path(destination) if destination is not None else chemin.with_name("." + chemin.name + ".rogne")
+    attendu = {}
+    with zipfile.ZipFile(chemin) as z, zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as dst:
+        for info in z.infolist():
+            data = z.read(info.filename)
+            boite = par_nom.get(info.filename)
+            if boite:
+                im = Image.open(io.BytesIO(data))
+                im.load()
+                sortie = _rogner_image(im, boite)
+                data = _octets_page(sortie, info.filename)
+                attendu[info.filename] = list(sortie.size)
+            info2 = zipfile.ZipInfo(info.filename, date_time=info.date_time)
+            info2.compress_type = zipfile.ZIP_STORED
+            dst.writestr(info2, data)
+    with zipfile.ZipFile(tmp) as z:                    # relecture : archive saine, mêmes pages, bonnes tailles
+        if z.testzip() is not None:
+            tmp.unlink()
+            raise RuntimeError("archive rognée illisible")
+        if archives._names(z) != ordre:
+            tmp.unlink()
+            raise RuntimeError("pages différentes après le rognage")
+        for nom, taille in attendu.items():
+            with z.open(nom) as f, Image.open(f) as im:
+                if [im.width, im.height] != taille:
+                    tmp.unlink()
+                    raise RuntimeError("une page rognée n'a pas la taille prévue")
+    res = {"carte": {i: i for i in range(len(ordre))}, "pages_avant": len(ordre), "pages": len(ordre)}
+    if destination is not None:
+        return res
+    avant = chemin.with_name(chemin.name + ".avant")
+    chemin.rename(avant)
+    tmp.rename(chemin)
+    res["avant"] = avant
+    return res
+
+
+rogner.reglage = "boites"                              # lancer_coupes : le 3e élément d'un travail est passé sous ce nom
+rogner.libelle = lambda pages, tomes: f"{pages} page(s) rognée(s) dans {tomes} tome(s)"
+
+
 def lancer_coupes(serie, travaux, sens_manga, vers_corbeille, apres=None, operation=None) -> bool:
     """En arrière-plan : coupe les pages doubles de chaque tome (ou, avec operation=assembler, colle des paires de pages). travaux = [(chemin, {numéros de page})].
     apres(chemin, carte) est appelé après chaque tome (pour recaler la position de lecture). Un fichier partagé par
@@ -1327,7 +1422,7 @@ def lancer_coupes(serie, travaux, sens_manga, vers_corbeille, apres=None, operat
         rapport, pages_coupees = [], 0
         try:
             for chemin, indices, *reste in travaux:
-                reglage = {"ajust": reste[0]} if reste and operation else {}
+                reglage = {getattr(operation, "reglage", "ajust"): reste[0]} if reste and operation else {}
                 chemin = Path(chemin)
                 ligne = {"fichier": chemin.name}
                 try:
@@ -1356,7 +1451,8 @@ def lancer_coupes(serie, travaux, sens_manga, vers_corbeille, apres=None, operat
                 with _VERROU:
                     _COUPES_ETAT[serie]["fait"] += 1
                     _COUPES_ETAT[serie]["rapport"] = list(rapport)
-            msg = (f"{pages_coupees} double(s) page(s) créée(s) dans {len(travaux)} tome(s)" if operation else
+            msg = (operation.libelle(pages_coupees, len(travaux)) if hasattr(operation, "libelle") else
+                   f"{pages_coupees} double(s) page(s) créée(s) dans {len(travaux)} tome(s)" if operation else
                    f"{pages_coupees} page(s) coupée(s) dans {len(travaux)} tome(s)")
         except Exception as e:
             msg = f"Erreur : {e}"
