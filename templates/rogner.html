@@ -62,6 +62,8 @@
             #rgBarre { overflow-x: hidden; }
             #rgBarre button, #rgBarre a { padding: 4px 8px; }
             #rgBarre input { width: 46px; padding: 0 4px; }
+            #rgPrec, #rgSuiv { display: none; }                       /* déjà dans la barre du bas */
+            #rgReglages { margin-left: auto; background: var(--accent) !important; color: #0b0c0e !important; font-weight: 600; }
             #rgBarre input { width: 52px; }
             #rgReglages { display: inline-flex; }
             #rgRapide { display: flex; gap: 6px; padding: 5px 6px; background: #15171b; border-top: 1px solid #2c2f36; }
@@ -69,10 +71,12 @@
             #rgRapide button.vert { flex: 1; background: var(--accent); color: #0b0c0e; border-color: var(--accent); font-weight: 600; }
             #rgPanneau { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; max-height: 62dvh; border-left: none; border-top: 2px solid var(--accent); box-shadow: 0 -8px 24px rgba(0, 0, 0, .6); }
             #rg.reglages #rgPanneau { display: block; }
+            #rgReglages { min-width: 48px; justify-content: center; }
             #rgPuces { padding: 3px 6px; } #rgPuces b { min-width: 30px; height: 28px; line-height: 28px; }
             .rg-poi { width: 30px; height: 30px; margin: -15px 0 0 -15px; }
             #rgMsg { bottom: auto; top: 52px; }
         }
+        @media (max-width: 430px) { #rgReglages .rg-lib2 { display: none; } }
     </style>
 <link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
@@ -104,7 +108,7 @@
         <button id="rgSuiv" title="Page suivante (→)">▶</button>
         <button id="rgMoins" title="Zoom arrière (-)">🔍−</button><span id="rgZoom">100 %</span><button id="rgPlus" title="Zoom avant (+)">🔍+</button>
         <button id="rgVue" title="Voir la page telle qu'elle sera rognée (V)">👁<span class="rg-lib"> Résultat</span></button>
-        <button id="rgReglages" title="Angle, taille, appliquer au tome…">⚙ Réglages</button>
+        <button id="rgReglages" title="Angle, taille, appliquer au tome…">⚙<span class="rg-lib2"> Réglages</span></button>
     </div>
     <div id="rgScene"><div id="rgMonde">
         <img id="rgPage" alt="">
