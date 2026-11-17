@@ -180,7 +180,7 @@
         if (p && p.ok) return { x: p.x, y: p.y, w: w, h: h, a: p.a || 0, etat: 'ok' };
         var d = S.defaut[i % 2];
         if (d) return { x: d.x, y: d.y, w: w, h: h, a: d.a || 0, etat: 'def' };
-        if (S.deja && !double(i)) return { x: 0, y: 0, w: t[0], h: t[1], a: 0, etat: 'prop' };   // tome déjà rogné : une page pas touchée s'affiche telle qu'elle est enregistrée (cadre = page entière)
+        if (S.deja && !double(i)) return autreTaille(i) ? { x: 0, y: 0, w: t[0], h: t[1], a: 0, etat: 'prop' } : { x: Math.round((t[0] - S.W) / 2), y: Math.round((t[1] - S.H) / 2), w: S.W, h: S.H, a: 0, etat: 'prop' };   // tome déjà rogné : une page pas touchée s'affiche telle qu'elle est enregistrée (cadre = page entière)
         var au = S.auto[i];
         if (au && !double(i)) {               // proposition d'après les bords détectés (jamais appliquée sans être acceptée)
             var cx = (au.g !== null && au.g !== undefined && au.d !== null && au.d !== undefined) ? (au.g + au.d) / 2 - w / 2 : (au.g !== null && au.g !== undefined) ? au.g + 2 : au.d - w;
@@ -297,6 +297,7 @@
                 if (autreTaille(i)) autre++; else { rien++; aRemplir.push(i); }
                 continue;
             }
+            if (S.deja && c.etat === 'ok' && !c.a && !double(i) && Math.abs(c.x - (S.tailles[i][0] - S.W) / 2) < 1 && Math.abs(c.y - (S.tailles[i][1] - S.H) / 2) < 1) { rien++; continue; }
             if (c.etat === 'ok') ok++; else def++;
             out[i] = { x: c.x, y: c.y, w: c.w, h: c.h, a: c.a };
             regles.push(i);
@@ -325,7 +326,7 @@
     // Modifier le cadre de la page courante
     function courant() { var c = cadre(S.n); return c ? { x: c.x, y: c.y, w: c.w, h: c.h, a: c.a } : null; }
     function poser(c, taille) {
-        if (taille && !(S.deja && autreTaille(S.n))) { S.W = Math.max(50, double(S.n) ? S.W : c.w); S.H = Math.max(50, c.h); }
+        if (taille && !S.deja) { S.W = Math.max(50, double(S.n) ? S.W : c.w); S.H = Math.max(50, c.h); }
         enregistrer(S.n, c); disposer();
     }
     ['rgX', 'rgY'].forEach(function (id) { $(id).addEventListener('change', function () { var c = courant(); if (!c) return; c.x = +$('rgX').value; c.y = +$('rgY').value; poser(c); }); });
@@ -497,6 +498,7 @@
         var simp = simples(), ref = simp.length ? simp : S.tailles;
         S.W = mediane(ref.map(function (t) { return t[0]; })); S.H = mediane(ref.map(function (t) { return t[1]; }));
         var b = d.brouillon;
+        if (b && d.deja_rogne && (Math.abs((b.W || 0) - S.W) > 1 || Math.abs((b.H || 0) - S.H) > 1)) b = null;   // brouillon à une autre taille que le tome actuel : il ne correspond plus à ce qu'on voit
         if (b) { S.W = b.W || S.W; S.H = b.H || S.H; S.pages = b.pages || {}; S.defaut = b.defaut || {}; msg('Travail en cours retrouvé (' + (b.date || '') + ').'); }
         else { S.pages = {}; S.defaut = {}; }
         S.deja = !!d.deja_rogne;
