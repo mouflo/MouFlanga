@@ -2610,6 +2610,19 @@ def api_rogner_image():
     return Response(jpeg, mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=600"})
 
 
+@app.route("/api/rogner/propositions")
+def api_rogner_propositions():
+    """Bords de page détectés pour proposer un cadre (jamais appliqués sans accord) : {"pages": {numéro: {g, d, a}}, "largeur", "analysees"}. Voir bords_pages.py."""
+    f = _tome_a_rogner(request.args.get("series", ""), request.args.get("fichier", ""))
+    if f is None:
+        return jsonify({"error": "Tome introuvable."}), 404
+    import bords_pages
+    try:
+        return jsonify(bords_pages.proposer(f))
+    except (archives.ArchiveError, zipfile.BadZipFile, OSError, ValueError) as e:
+        return jsonify({"error": f"Analyse impossible : {e}"}), 500
+
+
 def _nombre(v, mini, maxi, defaut=0.0):
     try:
         x = float(v)

@@ -21,6 +21,7 @@
         #rgPage { position: absolute; left: 0; top: 0; transform-origin: 50% 50%; pointer-events: none; max-width: none; }
         #rgCadre { position: absolute; touch-action: none; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .55); outline: 2px solid var(--accent); cursor: move; box-sizing: border-box; }
         #rgCadre.prop { outline-style: dashed; outline-color: #e6b94c; }
+        #rgCadre.auto { outline-style: dashed; outline-color: #b48cf0; }
         .rg-poi { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; background: var(--accent); border: 2px solid #0b0c0e; border-radius: 50%; box-sizing: border-box; }
         .rg-poi[data-p="no"] { left: 0; top: 0; } .rg-poi[data-p="n"] { left: 50%; top: 0; } .rg-poi[data-p="ne"] { left: 100%; top: 0; } .rg-poi[data-p="e"] { left: 100%; top: 50%; }
         .rg-poi[data-p="se"] { left: 100%; top: 100%; } .rg-poi[data-p="s"] { left: 50%; top: 100%; } .rg-poi[data-p="so"] { left: 0; top: 100%; } .rg-poi[data-p="o"] { left: 0; top: 50%; }
@@ -43,6 +44,7 @@
         #rgPuces b { flex: 0 0 auto; min-width: 34px; height: 34px; line-height: 34px; text-align: center; border-radius: 6px; background: #1f2126; color: #aaa; border: 1px solid #2c2f36; cursor: pointer; font-weight: 400; font-size: 13px; }
         #rgPuces b.ok { background: #1c3a24; color: #9be3a6; border-color: #2f6b3a; }
         #rgPuces b.def { background: #1d2a3a; color: #9cc4ee; border-color: #35557a; }
+        #rgPuces b.auto { background: #2a2140; color: #cbb4f5; border-color: #5b4690; }
         #rgPuces b.exc { background: #3a1c1f; color: #ffb4b4; border-color: #6b2f35; text-decoration: line-through; }
         #rgPuces b.cur { outline: 2px solid var(--accent); }
         #rgMsg { position: fixed; left: 12px; bottom: 56px; right: 12px; z-index: 50; padding: 10px 12px; border-radius: 8px; background: #14291a; color: #9be3a6; border: 1px solid #2f6b3a; display: none; cursor: pointer; }
@@ -102,6 +104,9 @@
         <button id="rgValider" class="vert">✓ Valider et page suivante (Entrée)</button>
         <button id="rgExclure">🚫 Ne pas rogner cette page (E)</button>
         <h3>Gagner du temps</h3>
+        <button id="rgProposer">🪄 Proposer d'après les bords détectés</button>
+        <button id="rgAccepter" class="vert" style="display:none">✓ Accepter les propositions (<span id="rgNbAuto">0</span>)</button>
+        <p class="note" id="rgNoteAuto" style="display:none">Propositions en pointillés violets : rien n'est appliqué tant que vous ne les acceptez pas. Elles sont fausses quand le vrai bord n'a pas de trait continu (dessin pleine page) ou quand un trait de cadre ressemble à un bord : parcourez les pages avec les flèches (V pour le résultat) avant d'accepter.</p>
         <button id="rgCopiePar">📋 Même position pour toutes les pages <span id="rgParite"></span> non validées</button>
         <button id="rgCopieTout">📋 Même position pour toutes les pages non validées</button>
         <label style="width:auto;display:block;margin:4px 0;"><input type="checkbox" id="rgAvecAngle" checked> avec l'angle</label>
@@ -117,7 +122,7 @@
 (function () {
     var SERIE = {{ nom|tojson }}, FICHIER = {{ tome.fichier|tojson }};
     var $ = function (id) { return document.getElementById(id); };
-    var S = { n: 0, tailles: [], W: 0, H: 0, pages: {}, defaut: {}, vue: false, occupe: false };
+    var S = { n: 0, tailles: [], W: 0, H: 0, pages: {}, defaut: {}, auto: {}, vue: false, occupe: false };
     var echelle = 1, decal = { x: 0, y: 0 }, zoom = 1;
 
     function q(url) { return fetch(url).then(function (r) { return r.json(); }); }
@@ -138,6 +143,11 @@
         if (p && p.ok) return { x: p.x, y: p.y, w: w, h: h, a: p.a || 0, etat: 'ok' };
         var d = S.defaut[i % 2];
         if (d) return { x: d.x, y: d.y, w: w, h: h, a: d.a || 0, etat: 'def' };
+        var au = S.auto[i];
+        if (au && !double(i)) {               // proposition d'après les bords détectés (jamais appliquée sans être acceptée)
+            var cx = (au.g !== null && au.g !== undefined && au.d !== null && au.d !== undefined) ? (au.g + au.d) / 2 - w / 2 : (au.g !== null && au.g !== undefined) ? au.g + 2 : au.d - w;
+            return { x: Math.round(cx), y: Math.round((t[1] - h) / 2), w: w, h: h, a: au.a || 0, etat: 'auto' };
+        }
         return { x: Math.round((t[0] - w) / 2), y: Math.round((t[1] - h) / 2), w: w, h: h, a: 0, etat: 'prop' };
     }
 
@@ -174,7 +184,7 @@
         if (c) {
             cd.style.left = (decal.x + c.x * echelle) + 'px'; cd.style.top = (decal.y + c.y * echelle) + 'px';
             cd.style.width = (c.w * echelle) + 'px'; cd.style.height = (c.h * echelle) + 'px';
-            cd.className = c.etat === 'prop' ? 'prop' : '';
+            cd.className = c.etat === 'prop' ? 'prop' : c.etat === 'auto' ? 'auto' : '';
         }
         var r = $('rgResultat');
         if (S.vue && c) {                    // la page telle qu'elle sera rognée : la fenêtre a la taille du cadre, l'image est tournée puis décalée
@@ -201,7 +211,7 @@
         $('rgExclure').textContent = '🚫 Ne pas rogner cette page (E)';
         $('rgX').value = Math.round(c.x); $('rgY').value = Math.round(c.y); $('rgL').value = Math.round(c.w); $('rgH').value = Math.round(c.h);
         $('rgAng').value = c.a; $('rgAngN').value = c.a;
-        $('rgNoteTaille').textContent = (c.etat === 'prop' ? 'Proposition (pas encore validée). ' : c.etat === 'def' ? 'Position copiée d\'une autre page (pas encore validée). ' : '')
+        $('rgNoteTaille').textContent = (c.etat === 'prop' ? 'Proposition (pas encore validée). ' : c.etat === 'auto' ? 'Proposée d\'après les bords détectés (à vérifier, pas encore acceptée). ' : c.etat === 'def' ? 'Position copiée d\'une autre page (pas encore validée). ' : '')
             + 'La taille ' + Math.round(S.W) + ' × ' + Math.round(S.H) + ' est la même pour toutes les pages' + (double(S.n) ? ' (double page : sa propre largeur, même hauteur)' : '') + '.';
     }
 
@@ -218,7 +228,7 @@
     function puces() {
         var h = '';
         for (var i = 0; i < S.tailles.length; i++) {
-            var p = S.pages[i], cl = (p && p.exclue) ? 'exc' : (p && p.ok) ? 'ok' : S.defaut[i % 2] ? 'def' : '';
+            var p = S.pages[i], cl = (p && p.exclue) ? 'exc' : (p && p.ok) ? 'ok' : S.defaut[i % 2] ? 'def' : S.auto[i] ? 'auto' : '';
             h += '<b class="' + cl + (i === S.n ? ' cur' : '') + '" data-i="' + i + '">' + (i + 1) + '</b>';
         }
         var z = $('rgPuces'); z.innerHTML = h;
@@ -229,19 +239,21 @@
     $('rgPuces').addEventListener('click', function (e) { var b = e.target.closest('b[data-i]'); if (b) aller(+b.dataset.i); });
 
     function liste() {
-        var out = {}, ok = 0, def = 0, exc = 0, rien = 0;
+        var out = {}, ok = 0, def = 0, exc = 0, rien = 0, prop = 0;
         for (var i = 0; i < S.tailles.length; i++) {
             var c = cadre(i);
             if (!c) { exc++; continue; }
             if (c.etat === 'prop') { rien++; continue; }
+            if (c.etat === 'auto') { prop++; rien++; continue; }
             if (c.etat === 'ok') ok++; else def++;
             out[i] = { x: c.x, y: c.y, w: c.w, h: c.h, a: c.a };
         }
-        return { boites: out, ok: ok, def: def, exc: exc, rien: rien };
+        return { boites: out, ok: ok, def: def, exc: exc, rien: rien, prop: prop };
     }
     function bilan() {
         var l = liste();
-        $('rgBilan').textContent = l.ok + ' validée(s) · ' + l.def + ' avec la position copiée · ' + l.exc + ' exclue(s) · ' + l.rien + ' pas encore réglée(s) (elles resteront telles quelles)';
+        $('rgBilan').textContent = l.ok + ' validée(s) · ' + l.def + ' avec la position copiée · ' + l.exc + ' exclue(s) · ' + l.rien + ' pas encore réglée(s) (elles resteront telles quelles)' + (l.prop ? ' · dont ' + l.prop + ' proposée(s) d\'après les bords, à accepter' : '');
+        $('rgNbAuto').textContent = l.prop; $('rgAccepter').style.display = l.prop ? 'block' : 'none'; $('rgNoteAuto').style.display = Object.keys(S.auto).length ? 'block' : 'none';
     }
 
     // Modifier le cadre de la page courante
@@ -313,6 +325,26 @@
     $('rgCopiePar').addEventListener('click', function () { copier(true); });
     $('rgCopieTout').addEventListener('click', function () { copier(false); });
 
+    $('rgProposer').addEventListener('click', async function () {
+        var bouton = this; bouton.disabled = true; msg('Analyse des bords de toutes les pages (une dizaine de secondes)…');
+        try {
+            var d = await q('/api/rogner/propositions?series=' + encodeURIComponent(SERIE) + '&fichier=' + encodeURIComponent(FICHIER));
+            if (d.error) { msg(d.error, true); return; }
+            S.auto = {}; Object.keys(d.pages || {}).forEach(function (k) { S.auto[+k] = d.pages[k]; });
+            var valides = Object.keys(S.pages).some(function (k) { return S.pages[k].ok; });
+            if (d.largeur && !valides) S.W = d.largeur;               // taille commune : la largeur médiane entre les deux bords, tant que rien n'est validé
+            msg(Object.keys(S.auto).length + ' page(s) sur ' + d.analysees + ' ont un bord proposé' + (d.largeur && !valides ? ' ; largeur commune ' + d.largeur + ' px' : '') + '.');
+            disposer(true); puces(); bilan(); sauver();
+        } catch (e) { msg('Analyse impossible : ' + e, true); } finally { bouton.disabled = false; }
+    });
+    $('rgAccepter').addEventListener('click', function () {
+        var n = 0;
+        for (var i = 0; i < S.tailles.length; i++) {
+            var c = cadre(i);
+            if (c && c.etat === 'auto') { S.pages[i] = { x: Math.round(c.x), y: Math.round(c.y), a: Math.round((c.a || 0) * 100) / 100, ok: true }; n++; }
+        }
+        sauver(); disposer(); puces(); bilan(); msg(n + ' proposition(s) acceptée(s) : vous pouvez encore corriger chaque page.');
+    });
     $('rgAppliquer').addEventListener('click', async function () {
         var l = liste();
         var n = Object.keys(l.boites).length;
