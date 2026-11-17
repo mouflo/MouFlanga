@@ -2621,7 +2621,9 @@ def api_rogner_infos():
         pw, ph = _mediane_page(tailles)
         if abs(pw - ref.get("pw", 0)) > 0.08 * ref.get("pw", 1) or abs(ph - ref.get("ph", 0)) > 0.08 * ref.get("ph", 1) or ref.get("tome") == fichier:
             ref = None                                                       # autre résolution (la même taille en pixels n'aurait pas de sens) ou c'est ce tome lui-même
-    return jsonify({"tailles": tailles, "brouillon": b, "libelle": _libelle_tome(f, name), "reference": ref})
+    import edition
+    deja = bool(traitements.lire(edition.lire(MANGA_DIR / name), f.name, _taille_fichier(f)).get("rognage"))       # tome déjà rogné : on ne réécrit que les pages modifiées
+    return jsonify({"tailles": tailles, "brouillon": b, "libelle": _libelle_tome(f, name), "reference": ref, "deja_rogne": deja})
 
 
 @app.route("/api/rogner/image")

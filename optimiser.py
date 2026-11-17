@@ -1338,7 +1338,8 @@ def page_jpeg(chemin: Path, index: int, largeur=2200, qualite=90) -> bytes:
 
 def _rogner_image(im, boite):
     """La page tournée de `a` degrés (sens horaire, autour de son centre) puis coupée au rectangle x, y, w, h (pixels de la page d'origine) ;
-    ce qui dépasse de la page est rempli du ton du papier. Aucun zoom : la taille de sortie est exactement w × h."""
+    ce qui dépasse de la page est rempli du ton du papier quand le bord de la page est clair, sinon (couverture, dessin pleine page : bord sombre ou coloré) par le prolongement
+    de son propre bord, jamais une bande de ton « papier » tirée du dessin (la bande rose des couvertures). Aucun zoom : la taille de sortie est exactement w × h."""
     if im.mode not in ("L", "RGB"):
         im = im.convert("RGB")
     a = np.array(im)
@@ -1346,11 +1347,20 @@ def _rogner_image(im, boite):
     echantillon = a[::4, ::4]
     papier = np.percentile(echantillon.reshape(-1, 1 if a.ndim == 2 else a.shape[2]), 90, axis=0)
     valeur = int(papier[0]) if a.ndim == 2 else tuple(int(v) for v in papier)
+    bande = max(2, min(h, w) // 100)
+    bord = np.concatenate([a[:bande].reshape(-1, *a.shape[2:]), a[-bande:].reshape(-1, *a.shape[2:]), a[:, :bande].reshape(-1, *a.shape[2:]), a[:, -bande:].reshape(-1, *a.shape[2:])])
+    clair = float(np.median(bord.mean(axis=-1) if a.ndim == 3 else bord)) >= 190         # bord de papier : on prolonge avec le ton du papier ; sinon avec le bord lui-même
+    mode = cv2.BORDER_CONSTANT if clair else cv2.BORDER_REPLICATE
     angle = float(boite.get("a", 0) or 0)
     if abs(angle) > 0.005:
         m = cv2.getRotationMatrix2D((w / 2, h / 2), -angle, 1.0)                    # OpenCV : positif = sens inverse ; ici positif = sens horaire
-        a = cv2.warpAffine(a, m, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=valeur)
+        a = cv2.warpAffine(a, m, (w, h), flags=cv2.INTER_CUBIC, borderMode=mode, borderValue=valeur)
     x, y, largeur, hauteur = (int(round(float(boite[k]))) for k in ("x", "y", "w", "h"))
+    if not clair:
+        haut, bas, gauche, droite = max(0, -y), max(0, y + hauteur - h), max(0, -x), max(0, x + largeur - w)
+        if haut or bas or gauche or droite:
+            a = cv2.copyMakeBorder(a, haut, bas, gauche, droite, cv2.BORDER_REPLICATE)
+            x, y, w, h = x + gauche, y + haut, w + gauche + droite, h + haut + bas
     sortie = np.empty((hauteur, largeur) + a.shape[2:], np.uint8)
     sortie[...] = valeur
     x0, y0, x1, y1 = max(0, x), max(0, y), min(w, x + largeur), min(h, y + hauteur)
