@@ -15,6 +15,7 @@
         #rgBarre a, #rgBarre button { min-height: 40px; padding: 6px 12px; border-radius: 8px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; cursor: pointer; text-decoration: none; font-size: 14px; display: inline-flex; align-items: center; }
         #rgBarre button.on { background: var(--accent); color: #0b0c0e; border-color: var(--accent); font-weight: 600; }
         #rgBarre input { width: 64px; min-height: 40px; box-sizing: border-box; background: #0f1012; color: #ddd; border: 1px solid #2c2f36; border-radius: 8px; padding: 0 8px; font-size: 15px; }
+        #rgZoom { white-space: nowrap; }
         #rgTitre { flex: 1; min-width: 120px; font-weight: 600; }
         #rgScene { position: relative; overflow: auto; user-select: none; background: #0c0d0f; }
         #rgMonde { position: relative; }
@@ -49,7 +50,24 @@
         #rgPuces b.cur { outline: 2px solid var(--accent); }
         #rgMsg { position: fixed; left: 12px; bottom: 56px; right: 12px; z-index: 50; padding: 10px 12px; border-radius: 8px; background: #14291a; color: #9be3a6; border: 1px solid #2f6b3a; display: none; cursor: pointer; }
         #rgMsg.err { background: #2a1416; color: #ffb4b4; border-color: #6b2f35; }
-        @media (max-width: 760px) { #rg { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto auto; } #rgBarre, #rgPuces { grid-column: 1; } #rgPanneau { max-height: 38vh; border-left: none; border-top: 1px solid #2c2f36; } }
+        #rgReglages, #rgRapide { display: none; }
+        @media (max-width: 760px) {
+            #rg { height: 100dvh; bottom: auto; grid-template-columns: 1fr; grid-template-rows: auto 1fr auto auto; }
+            #rgBarre, #rgPuces { grid-column: 1; }
+            #rgBarre { flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding: 4px 6px; }
+            #rgBarre a, #rgBarre button { min-height: 38px; padding: 4px 9px; flex: 0 0 auto; }
+            #rgBarre a.rg-accueil, #rgTitre, #rgSur { display: none; }
+            #rgBarre input { width: 52px; }
+            #rgReglages { display: inline-flex; }
+            #rgRapide { display: flex; gap: 6px; padding: 5px 6px; background: #15171b; border-top: 1px solid #2c2f36; }
+            #rgRapide button { min-height: 46px; border-radius: 8px; background: #1f2126; color: #ddd; border: 1px solid #2c2f36; font-size: 15px; padding: 0 12px; }
+            #rgRapide button.vert { flex: 1; background: var(--accent); color: #0b0c0e; border-color: var(--accent); font-weight: 600; }
+            #rgPanneau { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; max-height: 62dvh; border-left: none; border-top: 2px solid var(--accent); box-shadow: 0 -8px 24px rgba(0, 0, 0, .6); }
+            #rg.reglages #rgPanneau { display: block; }
+            #rgPuces { padding: 3px 6px; } #rgPuces b { min-width: 30px; height: 28px; line-height: 28px; }
+            .rg-poi { width: 30px; height: 30px; margin: -15px 0 0 -15px; }
+            #rgMsg { bottom: 130px; }
+        }
     </style>
 <link rel="stylesheet" href="{{ skin_url(request.args.get('skin') == 'off') }}">
 <script src="/ui/mou-ui.js?v={{ version|urlencode }}" defer></script>
@@ -72,7 +90,7 @@
 <body class="rg-ed">
 <div id="rg">
     <div id="rgBarre">
-        <a href="/" title="Accueil MouFlanga">🏠</a>
+        <a href="/" class="rg-accueil" title="Accueil MouFlanga">🏠</a>
         <a href="/rogner?id={{ nom|urlencode }}">← Tomes</a>
         <span id="rgTitre">{{ tome.libelle }}</span>
         <button id="rgPrec" title="Page précédente (←)">◀</button>
@@ -81,6 +99,7 @@
         <button id="rgSuiv" title="Page suivante (→)">▶</button>
         <button id="rgMoins" title="Zoom arrière (-)">🔍−</button><span id="rgZoom">100 %</span><button id="rgPlus" title="Zoom avant (+)">🔍+</button>
         <button id="rgVue" title="Voir la page telle qu'elle sera rognée (V)">👁 Résultat</button>
+        <button id="rgReglages" title="Réglages">⚙</button>
     </div>
     <div id="rgScene"><div id="rgMonde">
         <img id="rgPage" alt="">
@@ -116,6 +135,7 @@
         <button id="rgAppliquer" class="vert">✂️ Appliquer au tome</button>
         <p class="note">L'ancien fichier part à la corbeille (↩️ Revenir en arrière le remet). Le travail est gardé automatiquement : vous pouvez quitter et revenir.</p>
     </div>
+    <div id="rgRapide"><button id="rgRPrec">◀</button><button id="rgRValider" class="vert">✓ Valider · suivante</button><button id="rgRSuiv">▶</button></div>
     <div id="rgPuces"></div>
 </div>
 <div id="rgMsg"></div>
@@ -171,13 +191,15 @@
         }, 700);
     }
 
-    function disposer(recentrer) {          // image et cadre dans le « monde » (défilable quand on zoome)
+    function disposer(recentrer) {
+        if (!S.tailles.length) return;        // image et cadre dans le « monde » (défilable quand on zoome)
         var sc = $('rgScene'), mo = $('rgMonde'), t = S.tailles[S.n], c = cadre(S.n);
-        var fit = Math.min((sc.clientWidth - 24) / t[0], (sc.clientHeight - 24) / t[1]);
+        var M = window.innerWidth <= 760 ? 34 : 24;
+        var fit = Math.min((sc.clientWidth - M) / t[0], (sc.clientHeight - M) / t[1]);
         echelle = fit * zoom;
         var iw = t[0] * echelle, ih = t[1] * echelle, k = 1;
         var cw = iw, ch = ih;
-        if (S.vue && c) { k = Math.min((sc.clientWidth - 24) / c.w, (sc.clientHeight - 24) / c.h) * zoom; cw = c.w * k; ch = c.h * k; }
+        if (S.vue && c) { k = Math.min((sc.clientWidth - M) / c.w, (sc.clientHeight - M) / c.h) * zoom; cw = c.w * k; ch = c.h * k; }
         var mw = Math.max(sc.clientWidth, cw + 24), mh = Math.max(sc.clientHeight, ch + 24);
         mo.style.width = mw + 'px'; mo.style.height = mh + 'px';
         decal.x = (mw - iw) / 2; decal.y = (mh - ih) / 2;
@@ -324,6 +346,10 @@
     }
     document.querySelectorAll('[data-bord]').forEach(function (b) { b.addEventListener('click', function () { versBord(b.dataset.bord); }); });
     $('rgAjuste').addEventListener('click', function () { zoom = 1; disposer(true); });
+    $('rgReglages').addEventListener('click', function () { $('rg').classList.toggle('reglages'); });
+    $('rgRPrec').addEventListener('click', function () { aller(S.n - 1); });
+    $('rgRSuiv').addEventListener('click', function () { aller(S.n + 1); });
+    $('rgRValider').addEventListener('click', function () { $('rgValider').click(); });
     $('rgPrec').addEventListener('click', function () { aller(S.n - 1); });
     $('rgSuiv').addEventListener('click', function () { aller(S.n + 1); });
     $('rgNum').addEventListener('change', function () { aller((+this.value || 1) - 1); });
