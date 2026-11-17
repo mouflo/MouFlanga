@@ -177,6 +177,7 @@
         var t = S.tailles[i], p = S.pages[i];
         if (p && p.exclue) return null;
         var w = double(i) ? ((p && p.w) || Math.round(t[0] - (largeurSimpleRef() - S.W))) : S.W, h = S.H;
+        if (p && p.gomme) return { x: p.gomme.x, y: p.gomme.y, w: p.gomme.w, h: p.gomme.h, a: 0, etat: 'gomme' };   // tome déjà rogné : zone gardée, le reste de la page est repeint couleur papier
         if (p && p.ok) return { x: p.x, y: p.y, w: w, h: h, a: p.a || 0, etat: 'ok' };
         var d = S.defaut[i % 2];
         if (d) return { x: d.x, y: d.y, w: w, h: h, a: d.a || 0, etat: 'def' };
@@ -298,6 +299,7 @@
                 continue;
             }
             if (S.deja && c.etat === 'ok' && !c.a && !double(i) && Math.abs(c.x - (S.tailles[i][0] - S.W) / 2) < 1 && Math.abs(c.y - (S.tailles[i][1] - S.H) / 2) < 1) { rien++; continue; }
+            if (c.etat === 'gomme') { ok++; out[i] = { x: 0, y: 0, w: S.tailles[i][0], h: S.tailles[i][1], a: 0, gomme: { x: c.x, y: c.y, w: c.w, h: c.h } }; continue; }
             if (c.etat === 'ok') ok++; else def++;
             out[i] = { x: c.x, y: c.y, w: c.w, h: c.h, a: c.a };
             regles.push(i);
@@ -326,6 +328,13 @@
     // Modifier le cadre de la page courante
     function courant() { var c = cadre(S.n); return c ? { x: c.x, y: c.y, w: c.w, h: c.h, a: c.a } : null; }
     function poser(c, taille) {
+        var pg = S.pages[S.n];
+        if (S.deja && (taille || (pg && pg.gomme))) {          // tome déjà rogné : réduire le cadre = gommer le bord (la page garde sa taille et sa place)
+            var t = S.tailles[S.n], g = { x: Math.max(0, Math.round(c.x)), y: Math.max(0, Math.round(c.y)), w: 0, h: 0 };
+            g.w = Math.max(50, Math.min(t[0] - g.x, Math.round(c.w))); g.h = Math.max(50, Math.min(t[1] - g.y, Math.round(c.h)));
+            pg = pg || {}; pg.gomme = g; pg.x = 0; pg.y = 0; pg.a = 0; pg.ok = true; delete pg.exclue;
+            S.pages[S.n] = pg; sauver(); puces(); bilan(); disposer(); return;
+        }
         if (taille && !S.deja) { S.W = Math.max(50, double(S.n) ? S.W : c.w); S.H = Math.max(50, c.h); }
         enregistrer(S.n, c); disposer();
     }

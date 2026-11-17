@@ -1369,6 +1369,23 @@ def _rogner_image(im, boite):
     return Image.fromarray(sortie)
 
 
+def _gommer_image(im, gomme):
+    """La page garde sa taille et sa place : ce qui est hors du rectangle `gomme` (x, y, w, h) est repeint du ton du papier (reste de la page voisine, bord sale)."""
+    if im.mode not in ("L", "RGB"):
+        im = im.convert("RGB")
+    a = np.array(im)
+    h, w = a.shape[:2]
+    papier = np.percentile(a[::4, ::4].reshape(-1, 1 if a.ndim == 2 else a.shape[2]), 90, axis=0)
+    valeur = int(papier[0]) if a.ndim == 2 else tuple(int(v) for v in papier)
+    x, y, largeur, hauteur = (int(round(float(gomme[k]))) for k in ("x", "y", "w", "h"))
+    x0, y0, x1, y1 = max(0, x), max(0, y), min(w, x + largeur), min(h, y + hauteur)
+    sortie = np.empty_like(a)
+    sortie[...] = valeur
+    if x1 > x0 and y1 > y0:
+        sortie[y0:y1, x0:x1] = a[y0:y1, x0:x1]
+    return Image.fromarray(sortie)
+
+
 def rogner(chemin: Path, indices, sens_manga=True, destination=None, boites=None) -> dict:
     """Rogne les pages données : boites = {numéro de page: {"x", "y", "w", "h", "a"}} (voir _rogner_image). Même principe que `couper` : version écrite à côté, relue,
     puis mise en place ; l'ancien fichier part dans « .avant ». Le nombre de pages ne change pas : {"carte": identité, "pages_avant", "pages", "avant"}."""
@@ -1387,7 +1404,7 @@ def rogner(chemin: Path, indices, sens_manga=True, destination=None, boites=None
             if boite:
                 im = Image.open(io.BytesIO(data))
                 im.load()
-                sortie = _rogner_image(im, boite)
+                sortie = _gommer_image(im, boite["gomme"]) if boite.get("gomme") else _rogner_image(im, boite)
                 data = _octets_page(sortie, info.filename)
                 attendu[info.filename] = list(sortie.size)
             info2 = zipfile.ZipInfo(info.filename, date_time=info.date_time)

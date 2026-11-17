@@ -32,5 +32,16 @@ class AjoutHorsPageTest(unittest.TestCase):
         self.assertEqual(sortie.size, (215, 330))
 
 
+class GommeTest(unittest.TestCase):
+    def test_le_bord_est_repeint_et_la_page_garde_sa_taille(self):
+        a = np.full((300, 200), 238, np.uint8)
+        a[:, 150:] = 120                                       # reste de la page voisine à droite
+        a[100:200, 50:100] = 20
+        sortie = np.array(optimiser._gommer_image(Image.fromarray(a), {"x": 0, "y": 0, "w": 150, "h": 300}))
+        self.assertEqual(sortie.shape, (300, 200))
+        self.assertTrue((sortie[:, 150:] >= 230).all())          # la bande grise est devenue du papier
+        self.assertTrue((sortie[100:200, 50:100] == 20).all())    # le dessin n'a pas bougé
+
+
 if __name__ == "__main__":
     unittest.main()

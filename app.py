@@ -2682,6 +2682,9 @@ def api_rogner_brouillon():
             p = {"x": _nombre(v.get("x"), -5000, 20000), "y": _nombre(v.get("y"), -5000, 20000), "a": _nombre(v.get("a"), -10, 10)}
             if v.get("w") is not None:
                 p["w"] = _nombre(v.get("w"), 50, 20000, 50)
+            g = v.get("gomme")
+            if isinstance(g, dict):
+                p["gomme"] = {c: _nombre(g.get(c), 0, 20000) for c in ("x", "y", "w", "h")}
             if v.get("exclue"):
                 p["exclue"] = True
             if v.get("ok"):
@@ -2717,7 +2720,11 @@ def api_rogner_appliquer():
             continue
         b = {"x": _nombre(v.get("x"), -5000, 20000), "y": _nombre(v.get("y"), -5000, 20000), "w": _nombre(v.get("w"), 0, 20000, 0),
              "h": _nombre(v.get("h"), 0, 20000, 0), "a": _nombre(v.get("a"), -10, 10)}
-        if b["w"] >= 50 and b["h"] >= 50:
+        g = v.get("gomme")
+        if isinstance(g, dict):                                  # tome déjà rogné : on repeint le bord de la page, sa taille ne change pas
+            b["gomme"] = {"x": _nombre(g.get("x"), 0, 20000), "y": _nombre(g.get("y"), 0, 20000), "w": _nombre(g.get("w"), 1, 20000, 1), "h": _nombre(g.get("h"), 1, 20000, 1)}
+            boites[int(k)] = b
+        elif b["w"] >= 50 and b["h"] >= 50:
             boites[int(k)] = b
     if not boites:
         return jsonify({"ok": False, "error": "Aucune page à rogner."}), 400
@@ -2726,8 +2733,9 @@ def api_rogner_appliquer():
     except (archives.ArchiveError, zipfile.BadZipFile, OSError) as e:
         return jsonify({"ok": False, "error": f"Lecture impossible : {e}"}), 500
     simples = set(_simples_rognage(tailles))
-    dims = {(round(b["w"]), round(b["h"])) for i, b in boites.items() if i in simples}
-    if len(dims) > 1 or len({round(b["h"]) for b in boites.values()}) > 1:       # garde-fou : un tome rogné garde partout la même taille (les doubles : même hauteur)
+    rognees = {i: b for i, b in boites.items() if "gomme" not in b}
+    dims = {(round(b["w"]), round(b["h"])) for i, b in rognees.items() if i in simples}
+    if len(dims) > 1 or len({round(b["h"]) for b in rognees.values()}) > 1:       # garde-fou : un tome rogné garde partout la même taille (les doubles : même hauteur)
         return jsonify({"ok": False, "error": "Les pages n'auraient pas toutes la même taille : rien n'a été écrit."}), 400
     avant_travail = _avant_travail(name, [f])
 
@@ -2740,12 +2748,12 @@ def api_rogner_appliquer():
         edition.invalider(MANGA_DIR / name)
         d = _rognages_lire()                                  # le brouillon ne vaut plus rien : les pages ont changé
         (d.get(name) or {}).pop(chemin.name, None)
-        simples_b = [b for i, b in boites.items() if i in simples]
+        simples_b = [b for i, b in rognees.items() if i in simples]
         if simples_b:                                         # la référence de la série : taille et positions (médianes par parité), reprises sur les autres tomes
             pw, ph = _mediane_page(tailles)
             par = {}
             for k in ("0", "1"):
-                v = [(boites[i]["x"], boites[i]["y"], boites[i]["a"]) for i in boites if i in simples and str(i % 2) == k]
+                v = [(rognees[i]["x"], rognees[i]["y"], rognees[i]["a"]) for i in rognees if i in simples and str(i % 2) == k]
                 if v:
                     par[k] = {c: sorted(x[n] for x in v)[len(v) // 2] for n, c in enumerate(("x", "y", "a"))}
             d.setdefault("__reference__", {})[name] = {"W": simples_b[0]["w"], "H": simples_b[0]["h"], "pw": pw, "ph": ph, "defaut": par, "tome": chemin.name}
