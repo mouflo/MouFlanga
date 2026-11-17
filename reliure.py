@@ -190,12 +190,15 @@ def recadrer(g: np.ndarray, cadre: dict) -> np.ndarray:
     dans la taille commune (un peu de papier en moins ou en plus de chaque côté ; ce qui manque est rempli du ton du papier). Jamais de zoom ni de déformation. Une page d'une autre
     taille que celles du tome (à plus de 10 %) : rendue telle quelle."""
     h, w = g.shape
-    if abs(w - cadre["pw"]) > 0.1 * cadre["pw"] or abs(h - cadre["ph"]) > 0.1 * cadre["ph"]:
+    if abs(h - cadre["ph"]) > 0.1 * cadre["ph"]:
+        return g
+    double = w > 1.1 * h and 1.5 * cadre["pw"] <= w <= 2.3 * cadre["pw"]        # vraie double page gardée : même hauteur que les pages simples, sa propre largeur
+    if not double and abs(w - cadre["pw"]) > 0.1 * cadre["pw"]:
         return g
     x0, y0, x1, y1 = bords_page(g)
     papier = int(min(255, max(200, _papier(g))))
     p = g[y0:y1, x0:x1]
-    W, H = cadre["w"], cadre["h"]
+    W, H = (p.shape[1] if double else cadre["w"]), cadre["h"]
     sortie = np.full((H, W), papier, g.dtype)
     dx, dy = (W - p.shape[1]) // 2, (H - p.shape[0]) // 2                        # > 0 : de la marge à ajouter, < 0 : du papier en trop à couper
     sx, sy = max(0, -dx), max(0, -dy)

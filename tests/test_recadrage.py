@@ -78,8 +78,18 @@ class CadreTest(unittest.TestCase):
 
     def test_page_d_une_autre_taille_rendue_telle_quelle(self):
         cadre = reliure.cadre_tome(self._tome())
-        double = np.full((H, 2 * W), 235, np.uint8)
-        self.assertIs(reliure.recadrer(double, cadre), double)
+        petite = np.full((H // 2, W // 2), 235, np.uint8)
+        self.assertIs(reliure.recadrer(petite, cadre), petite)
+
+    def test_double_page_gardee_prend_la_hauteur_des_pages_simples(self):
+        cadre = reliure.cadre_tome(self._tome())
+        double = np.hstack([page(gauche=30, bas=12, dy=3), page(droite=25, bas=12, dy=3)])
+        sortie = reliure.recadrer(double, cadre)
+        self.assertEqual(sortie.shape[0], cadre["h"])                            # même hauteur que les simples
+        self.assertLess(sortie.shape[1], double.shape[1])                        # bandes des deux bords coupées
+        self.assertGreater(sortie.shape[1], 1.8 * cadre["w"])                    # mais toujours une double page, sans zoom
+        self.assertGreater(int(sortie[:, :4].mean()), 200)
+        self.assertGreater(int(sortie[:, -4:].mean()), 200)
 
     def test_dans_ameliorer_le_reglage_recadrer_agit_seulement_avec_un_cadre(self):
         cadre = reliure.cadre_tome(self._tome())
