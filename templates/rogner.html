@@ -18,7 +18,9 @@
         #rgZoom { white-space: nowrap; }
         #rgTitre { flex: 1; min-width: 120px; font-weight: 600; }
         #rgScene { position: relative; overflow: auto; user-select: none; background: #0c0d0f; }
-        #rgMonde { position: relative; }
+        #rgMonde { position: relative; overflow: hidden; }          /* les poignées qui dépassent ne doivent pas agrandir la zone défilable (la vue sautait) */
+        #rgScene { overscroll-behavior: contain; }
+        #rgScene.tient { overflow: hidden; }                        /* doigt sur une poignée : la vue ne bouge plus */
         #rgPage { position: absolute; left: 0; top: 0; transform-origin: 50% 50%; pointer-events: none; max-width: none; }
         #rgCadre { position: absolute; touch-action: none; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .55); outline: 2px solid var(--accent); cursor: move; box-sizing: border-box; }
         #rgCadre.prop { outline-style: dashed; outline-color: #e6b94c; }
@@ -313,12 +315,22 @@
     $('rgCadre').addEventListener('pointerdown', function (e) {
         var c = courant(); if (!c) return;
         var poi = e.target.closest('.rg-poi');
-        drag = { mode: poi ? poi.dataset.p : 'deplacer', x0: e.clientX, y0: e.clientY, c: c };
+        drag = { mode: poi ? poi.dataset.p : 'deplacer', x0: e.clientX, y0: e.clientY, c: c, sx: $('rgScene').scrollLeft, sy: $('rgScene').scrollTop };
+        if (e.pointerType !== 'mouse') $('rgScene').classList.add('tient');
         this.setPointerCapture(e.pointerId); e.preventDefault();
     });
+    var attente = null;
     $('rgCadre').addEventListener('pointermove', function (e) {
         if (!drag) return;
-        var dx = (e.clientX - drag.x0) / echelle, dy = (e.clientY - drag.y0) / echelle, c = { x: drag.c.x, y: drag.c.y, w: drag.c.w, h: drag.c.h, a: drag.c.a }, m = drag.mode;
+        attente = { x: e.clientX, y: e.clientY };
+        if (drag.raf) return;
+        drag.raf = requestAnimationFrame(function () {          // un seul recalcul par image affichée : plus de saccades
+            if (!drag) return;
+            drag.raf = 0; deplacerCadre(attente.x, attente.y);
+        });
+    });
+    function deplacerCadre(px, py) {
+        var dx = (px - drag.x0) / echelle, dy = (py - drag.y0) / echelle, c = { x: drag.c.x, y: drag.c.y, w: drag.c.w, h: drag.c.h, a: drag.c.a }, m = drag.mode;
         if (m === 'deplacer') { c.x += dx; c.y += dy; }
         else {
             if (m.indexOf('o') >= 0) { c.x += dx; c.w -= dx; }
@@ -328,8 +340,8 @@
             if (c.w < 50 || c.h < 50) return;
         }
         poser(c, m !== 'deplacer');
-    });
-    function lacher() { drag = null; }
+    }
+    function lacher() { if (drag && drag.raf) cancelAnimationFrame(drag.raf); drag = null; $('rgScene').classList.remove('tient'); }
     $('rgCadre').addEventListener('pointerup', lacher); $('rgCadre').addEventListener('pointercancel', lacher);
 
     // Boutons
