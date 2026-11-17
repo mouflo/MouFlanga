@@ -85,6 +85,29 @@ class RoutesRognerTest(unittest.TestCase):
             self.assertEqual(code, 400)
         self.assertEqual(self.cbz.read_bytes(), avant)
 
+    def test_appliquer_refuse_des_tailles_differentes_et_ne_touche_a_rien(self):
+        avant = self.cbz.read_bytes()
+        boites = {"0": {"x": 0, "y": 0, "w": 200, "h": 300, "a": 0}, "1": {"x": 0, "y": 0, "w": 210, "h": 300, "a": 0}}        # deux pages simples, deux tailles
+        rep, code = self._post("/api/rogner/appliquer", {"series": "Serie", "fichier": self.cbz.name, "boites": boites})
+        self.assertEqual(code, 400)
+        self.assertIn("même taille", rep.get_json()["error"])
+        boites = {"0": {"x": 0, "y": 0, "w": 200, "h": 300, "a": 0}, "1": {"x": 0, "y": 0, "w": 200, "h": 320, "a": 0}}        # une hauteur différente
+        self.assertEqual(self._post("/api/rogner/appliquer", {"series": "Serie", "fichier": self.cbz.name, "boites": boites})[1], 400)
+        self.assertEqual(self.cbz.read_bytes(), avant)
+
+    def test_la_reference_de_la_serie_est_rendue_aux_autres_tomes_de_meme_resolution(self):
+        d = self.A._rognages_lire()
+        d["__reference__"] = {"Serie": {"W": 250, "H": 450, "pw": 300, "ph": 500, "defaut": {"0": {"x": 10, "y": 5, "a": 0}}, "tome": "Serie - Tome 02.cbz"}}
+        self.A._rognages_ecrire(d)
+        ref = self._get("/api/rogner/infos", series="Serie", fichier=self.cbz.name)[0].get_json()["reference"]
+        self.assertEqual((ref["W"], ref["H"]), (250, 450))                              # ce tome a la même résolution : il reprend la taille
+        d["__reference__"]["Serie"]["pw"] = 600                                         # tome de l'autre résolution : la même taille en pixels n'aurait pas de sens
+        self.A._rognages_ecrire(d)
+        self.assertIsNone(self._get("/api/rogner/infos", series="Serie", fichier=self.cbz.name)[0].get_json()["reference"])
+        d["__reference__"]["Serie"].update(pw=300, tome=self.cbz.name)                  # la référence est ce tome lui-même : rien à reprendre
+        self.A._rognages_ecrire(d)
+        self.assertIsNone(self._get("/api/rogner/infos", series="Serie", fichier=self.cbz.name)[0].get_json()["reference"])
+
 
 if __name__ == "__main__":
     unittest.main()

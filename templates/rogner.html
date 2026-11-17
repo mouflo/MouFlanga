@@ -104,6 +104,7 @@
         <button id="rgValider" class="vert">✓ Valider et page suivante (Entrée)</button>
         <button id="rgExclure">🚫 Ne pas rogner cette page (E)</button>
         <h3>Gagner du temps</h3>
+        <button id="rgRef" style="display:none">↩ Reprendre la taille et les positions du tome précédent</button>
         <button id="rgProposer">🪄 Proposer d'après les bords détectés</button>
         <button id="rgAccepter" class="vert" style="display:none">✓ Accepter les propositions (<span id="rgNbAuto">0</span>)</button>
         <p class="note" id="rgNoteAuto" style="display:none">Propositions en pointillés violets : rien n'est appliqué tant que vous ne les acceptez pas. Elles sont fausses quand le vrai bord n'a pas de trait continu (dessin pleine page) ou quand un trait de cadre ressemble à un bord : parcourez les pages avec les flèches (V pour le résultat) avant d'accepter.</p>
@@ -122,7 +123,7 @@
 (function () {
     var SERIE = {{ nom|tojson }}, FICHIER = {{ tome.fichier|tojson }};
     var $ = function (id) { return document.getElementById(id); };
-    var S = { n: 0, tailles: [], W: 0, H: 0, pages: {}, defaut: {}, auto: {}, vue: false, occupe: false };
+    var S = { n: 0, tailles: [], W: 0, H: 0, pages: {}, defaut: {}, auto: {}, ref: null, vue: false, occupe: false };
     var echelle = 1, decal = { x: 0, y: 0 }, zoom = 1;
 
     function q(url) { return fetch(url).then(function (r) { return r.json(); }); }
@@ -133,6 +134,10 @@
     function double(i) { var t = S.tailles[i]; return t[0] > 1.1 * t[1]; }
     function simples() { return S.tailles.filter(function (t) { return t[0] <= 1.1 * t[1]; }); }
     function mediane(a) { a = a.slice().sort(function (x, y) { return x - y; }); return a.length ? a[a.length >> 1] : 0; }
+    function autreTaille(i) {               // couverture, image d'une autre résolution : rognée au même cadre elle serait entourée de blanc, on la laisse
+        var t = S.tailles[i], ref = simples(), mw = mediane(ref.map(function (x) { return x[0]; })), mh = mediane(ref.map(function (x) { return x[1]; }));
+        return !double(i) && (Math.abs(t[0] - mw) > 0.1 * mw || Math.abs(t[1] - mh) > 0.1 * mh);
+    }
     function largeurSimpleRef() { return mediane(simples().map(function (t) { return t[0]; })) || S.W; }
 
     // Le cadre d'une page : sa position validée, sinon celle des pages de même parité, sinon centré (simple proposition, en pointillés).
@@ -238,21 +243,35 @@
     }
     $('rgPuces').addEventListener('click', function (e) { var b = e.target.closest('b[data-i]'); if (b) aller(+b.dataset.i); });
 
-    function liste() {
-        var out = {}, ok = 0, def = 0, exc = 0, rien = 0, prop = 0;
+    function liste(completer) {
+        var out = {}, ok = 0, def = 0, exc = 0, rien = 0, prop = 0, autre = 0, remplies = 0, regles = [], aRemplir = [];
         for (var i = 0; i < S.tailles.length; i++) {
             var c = cadre(i);
             if (!c) { exc++; continue; }
-            if (c.etat === 'prop') { rien++; continue; }
-            if (c.etat === 'auto') { prop++; rien++; continue; }
+            if (c.etat === 'prop' || c.etat === 'auto') {
+                if (c.etat === 'auto') prop++;
+                if (autreTaille(i)) autre++; else { rien++; aRemplir.push(i); }
+                continue;
+            }
             if (c.etat === 'ok') ok++; else def++;
             out[i] = { x: c.x, y: c.y, w: c.w, h: c.h, a: c.a };
+            regles.push(i);
         }
-        return { boites: out, ok: ok, def: def, exc: exc, rien: rien, prop: prop };
+        if (completer && regles.length) {      // toutes les pages d'un tome gardent la même taille et le même alignement : une page non réglée prend la position de la page réglée la plus proche (même parité d'abord)
+            aRemplir.forEach(function (i) {
+                var meme = regles.filter(function (j) { return j % 2 === i % 2; }), pool = meme.length ? meme : regles;
+                var proche = pool.reduce(function (m, j) { return Math.abs(j - i) < Math.abs(m - i) ? j : m; }, pool[0]);
+                var c = cadre(i), r = out[proche];
+                out[i] = { x: double(i) ? Math.round((S.tailles[i][0] - c.w) / 2) : r.x, y: r.y, w: c.w, h: c.h, a: r.a };
+                remplies++;
+            });
+            rien -= remplies;
+        }
+        return { boites: out, ok: ok, def: def, exc: exc, rien: rien, prop: prop, autre: autre, remplies: remplies };
     }
     function bilan() {
         var l = liste();
-        $('rgBilan').textContent = l.ok + ' validée(s) · ' + l.def + ' avec la position copiée · ' + l.exc + ' exclue(s) · ' + l.rien + ' pas encore réglée(s) (elles resteront telles quelles)' + (l.prop ? ' · dont ' + l.prop + ' proposée(s) d\'après les bords, à accepter' : '');
+        $('rgBilan').textContent = l.ok + ' validée(s) · ' + l.def + ' avec la position copiée · ' + l.exc + ' exclue(s) · ' + l.rien + ' pas encore réglée(s) (à l\'application elles prennent la position de la page réglée la plus proche, pour que tout le tome garde la même taille)' + (l.autre ? ' · ' + l.autre + ' d\'une autre taille (couverture…) gardent la leur' : '') + (l.prop ? ' · dont ' + l.prop + ' proposée(s) d\'après les bords, à accepter' : '');
         $('rgNbAuto').textContent = l.prop; $('rgAccepter').style.display = l.prop ? 'block' : 'none'; $('rgNoteAuto').style.display = Object.keys(S.auto).length ? 'block' : 'none';
     }
 
@@ -325,6 +344,12 @@
     $('rgCopiePar').addEventListener('click', function () { copier(true); });
     $('rgCopieTout').addEventListener('click', function () { copier(false); });
 
+    $('rgRef').addEventListener('click', function () {
+        if (!S.ref) return;
+        S.W = S.ref.W; S.H = S.ref.H;
+        ['0', '1'].forEach(function (k) { if (S.ref.defaut && S.ref.defaut[k]) S.defaut[+k] = S.ref.defaut[k]; });
+        sauver(); disposer(true); puces(); bilan(); msg('Taille ' + Math.round(S.W) + ' × ' + Math.round(S.H) + ' et positions des pages paires et impaires reprises du tome « ' + (S.ref.tome || 'précédent') + ' ».');
+    });
     $('rgProposer').addEventListener('click', async function () {
         var bouton = this; bouton.disabled = true; msg('Analyse des bords de toutes les pages (une dizaine de secondes)…');
         try {
@@ -346,10 +371,13 @@
         sauver(); disposer(); puces(); bilan(); msg(n + ' proposition(s) acceptée(s) : vous pouvez encore corriger chaque page.');
     });
     $('rgAppliquer').addEventListener('click', async function () {
-        var l = liste();
+        var l = liste(true);
         var n = Object.keys(l.boites).length;
-        if (!n) { msg('Aucune page n\'est encore réglée.', true); return; }
-        if (!confirm('Rogner ' + n + ' page(s) à ' + Math.round(S.W) + ' × ' + Math.round(S.H) + ' ?\n' + l.rien + ' page(s) pas réglée(s) resteront telles quelles.\nL\'ancien fichier part à la corbeille.')) return;
+        if (!l.ok && !l.def) { msg('Aucune page n\'est encore réglée : validez-en au moins une.', true); return; }
+        var diff = S.ref && (Math.round(S.ref.W) !== Math.round(S.W) || Math.round(S.ref.H) !== Math.round(S.H));
+        if (!confirm('Rogner ' + n + ' page(s) à ' + Math.round(S.W) + ' × ' + Math.round(S.H) + ' ?\n' + (l.remplies ? l.remplies + ' page(s) pas réglée(s) prennent la position de la page réglée la plus proche (tout le tome garde la même taille).\n' : '')
+            + ((l.exc + l.autre) ? (l.exc + l.autre) + ' page(s) exclue(s) ou d\'une autre taille (couverture…) gardent leur taille.\n' : '')
+            + (diff ? '\nATTENTION : les autres tomes déjà rognés de cette série sont à ' + Math.round(S.ref.W) + ' × ' + Math.round(S.ref.H) + ' : ce tome ne leur serait pas identique.\n\n' : '') + 'L\'ancien fichier part à la corbeille.')) return;
         var r = await fetch('/api/rogner/appliquer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ series: SERIE, fichier: FICHIER, boites: l.boites }) }).then(function (x) { return x.json(); });
         if (!r.ok) { msg(r.error || 'Échec', true); return; }
         msg('Rognage en cours…'); suivre();
@@ -392,6 +420,9 @@
         var b = d.brouillon;
         if (b) { S.W = b.W || S.W; S.H = b.H || S.H; S.pages = b.pages || {}; S.defaut = b.defaut || {}; msg('Travail en cours retrouvé (' + (b.date || '') + ').'); }
         else { S.pages = {}; S.defaut = {}; }
+        S.ref = d.reference || null;
+        $('rgRef').style.display = S.ref ? 'block' : 'none';
+        if (!b && S.ref) { S.W = S.ref.W; S.H = S.ref.H; msg('Taille ' + Math.round(S.W) + ' × ' + Math.round(S.H) + ' reprise des autres tomes rognés de la série, pour que tous restent identiques.'); }
         S.n = Math.min(S.n, S.tailles.length - 1); aller(S.n); bilan();
     }
     charger();

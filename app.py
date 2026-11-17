@@ -2580,6 +2580,18 @@ def page_rogner():
     return render_template("rogner.html", version=APP_VERSION, nom=name, tomes=tomes_, tome=f)
 
 
+def _simples_rognage(tailles):
+    """Numéros des pages simples (plus hautes que larges) : les doubles pages ont leur propre largeur."""
+    return [i for i, t in enumerate(tailles) if t[0] <= 1.1 * t[1]]
+
+
+def _mediane_page(tailles):
+    """(largeur, hauteur) médianes des pages simples du tome."""
+    s = [tailles[i] for i in _simples_rognage(tailles)] or tailles
+    ls, hs = sorted(t[0] for t in s), sorted(t[1] for t in s)
+    return ls[len(ls) // 2], hs[len(hs) // 2]
+
+
 @app.route("/api/rogner/infos")
 def api_rogner_infos():
     """Tailles des pages du tome et brouillon en cours (rien si le tome a changé depuis : les numéros de page ne valent plus)."""
@@ -2594,7 +2606,12 @@ def api_rogner_infos():
     b = (_rognages_lire().get(name) or {}).get(fichier)
     if b and (b.get("pages_total") != len(tailles) or b.get("octets") != f.stat().st_size):
         b = None
-    return jsonify({"tailles": tailles, "brouillon": b, "libelle": _libelle_tome(f, name)})
+    ref = (_rognages_lire().get("__reference__") or {}).get(name)          # le dernier tome rogné de la série : tous les tomes gardent la même taille
+    if ref:
+        pw, ph = _mediane_page(tailles)
+        if abs(pw - ref.get("pw", 0)) > 0.08 * ref.get("pw", 1) or abs(ph - ref.get("ph", 0)) > 0.08 * ref.get("ph", 1) or ref.get("tome") == fichier:
+            ref = None                                                       # autre résolution (la même taille en pixels n'aurait pas de sens) ou c'est ce tome lui-même
+    return jsonify({"tailles": tailles, "brouillon": b, "libelle": _libelle_tome(f, name), "reference": ref})
 
 
 @app.route("/api/rogner/image")
@@ -2692,6 +2709,14 @@ def api_rogner_appliquer():
             boites[int(k)] = b
     if not boites:
         return jsonify({"ok": False, "error": "Aucune page à rogner."}), 400
+    try:
+        tailles = optimiser.tailles_pages(f)
+    except (archives.ArchiveError, zipfile.BadZipFile, OSError) as e:
+        return jsonify({"ok": False, "error": f"Lecture impossible : {e}"}), 500
+    simples = set(_simples_rognage(tailles))
+    dims = {(round(b["w"]), round(b["h"])) for i, b in boites.items() if i in simples}
+    if len(dims) > 1 or len({round(b["h"]) for b in boites.values()}) > 1:       # garde-fou : un tome rogné garde partout la même taille (les doubles : même hauteur)
+        return jsonify({"ok": False, "error": "Les pages n'auraient pas toutes la même taille : rien n'a été écrit."}), 400
     avant_travail = _avant_travail(name, [f])
 
     @_sous_verrou_infos
@@ -2702,8 +2727,17 @@ def api_rogner_appliquer():
         edition.ecrire(MANGA_DIR / name, infos)
         edition.invalider(MANGA_DIR / name)
         d = _rognages_lire()                                  # le brouillon ne vaut plus rien : les pages ont changé
-        if (d.get(name) or {}).pop(chemin.name, None) is not None:
-            _rognages_ecrire(d)
+        (d.get(name) or {}).pop(chemin.name, None)
+        simples_b = [b for i, b in boites.items() if i in simples]
+        if simples_b:                                         # la référence de la série : taille et positions (médianes par parité), reprises sur les autres tomes
+            pw, ph = _mediane_page(tailles)
+            par = {}
+            for k in ("0", "1"):
+                v = [(boites[i]["x"], boites[i]["y"], boites[i]["a"]) for i in boites if i in simples and str(i % 2) == k]
+                if v:
+                    par[k] = {c: sorted(x[n] for x in v)[len(v) // 2] for n, c in enumerate(("x", "y", "a"))}
+            d.setdefault("__reference__", {})[name] = {"W": simples_b[0]["w"], "H": simples_b[0]["h"], "pw": pw, "ph": ph, "defaut": par, "tome": chemin.name}
+        _rognages_ecrire(d)
     if not optimiser.lancer_coupes(name, [(f, set(boites), boites)], True, _vers_corbeille, apres, operation=optimiser.rogner):
         return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
     return jsonify({"ok": True, "message": "Rognage lancé…"})
