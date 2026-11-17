@@ -243,6 +243,14 @@
         champs(c);
     }
 
+    function alerteCoupe(c) {                 // le cadre de cette page dépasse-t-il nettement vers l'intérieur de la page ?
+        var t = S.tailles[S.n], l = [];
+        if (t[1] - (c.y + c.h) > 0.02 * t[1]) l.push(Math.round(t[1] - (c.y + c.h)) + ' px coupés en bas');
+        if (c.y > 0.02 * t[1]) l.push(Math.round(c.y) + ' px coupés en haut');
+        if (c.x > 0.02 * t[0]) l.push(Math.round(c.x) + ' px coupés à gauche');
+        if (t[0] - (c.x + c.w) > 0.02 * t[0]) l.push(Math.round(t[0] - (c.x + c.w)) + ' px coupés à droite');
+        return l.join(', ');
+    }
     function champs(c) {
         var vide = !c;
         ['rgX', 'rgY', 'rgL', 'rgH', 'rgAng', 'rgAngN'].forEach(function (id) { $(id).disabled = vide; });
@@ -251,7 +259,7 @@
         $('rgX').value = Math.round(c.x); $('rgY').value = Math.round(c.y); $('rgL').value = Math.round(c.w); $('rgH').value = Math.round(c.h);
         $('rgAng').value = c.a; $('rgAngN').value = c.a;
         $('rgNoteTaille').textContent = (c.etat === 'prop' ? 'Proposition (pas encore validée). ' : c.etat === 'auto' ? 'Proposée d\'après les bords détectés (à vérifier, pas encore acceptée). ' : c.etat === 'def' ? 'Position copiée d\'une autre page (pas encore validée). ' : '')
-            + 'La taille ' + Math.round(S.W) + ' × ' + Math.round(S.H) + ' est la même pour toutes les pages' + (double(S.n) ? ' (double page : sa propre largeur, même hauteur)' : '') + '.';
+            + (alerteCoupe(c) ? '⚠ ' + alerteCoupe(c) + ' ' : '') + 'La taille ' + Math.round(S.W) + ' × ' + Math.round(S.H) + ' est la même pour toutes les pages' + (double(S.n) ? ' (double page : sa propre largeur, même hauteur)' : '') + '.';
     }
 
     function aller(i) {
@@ -423,12 +431,26 @@
         }
         sauver(); disposer(); puces(); bilan(); msg(n + ' proposition(s) acceptée(s) : vous pouvez encore corriger chaque page.');
     });
+    function pertes(boites) {                 // ce que le cadre coupe sur le bord de chaque page : le pire cas par côté (px) et en % de la page
+        var p = { haut: [0, 0], bas: [0, 0], gauche: [0, 0], droite: [0, 0] };
+        Object.keys(boites).forEach(function (k) {
+            var b = boites[k], t = S.tailles[+k];
+            var v = { haut: [b.y, t[1]], bas: [t[1] - (b.y + b.h), t[1]], gauche: [b.x, t[0]], droite: [t[0] - (b.x + b.w), t[0]] };
+            Object.keys(v).forEach(function (c) { if (v[c][0] > p[c][0]) p[c] = [Math.round(v[c][0]), v[c][0] / v[c][1]]; });
+        });
+        return p;
+    }
+    function texte_pertes(boites) {
+        var p = pertes(boites), l = [];
+        Object.keys(p).forEach(function (c) { if (p[c][1] > 0.02) l.push(p[c][0] + ' px en ' + c + ' (' + Math.round(p[c][1] * 100) + ' % de la page)'); });
+        return l.length ? '\n⚠ ATTENTION : le cadre COUPE la page : jusqu\'à ' + l.join(', ') + '.\nSi du dessin se trouve là, il sera perdu. Vérifiez avec 👁 Résultat.\n' : '';
+    }
     $('rgAppliquer').addEventListener('click', async function () {
         var l = liste(true);
         var n = Object.keys(l.boites).length;
         if (!l.ok && !l.def) { msg('Aucune page n\'est encore réglée : validez-en au moins une.', true); return; }
         var diff = S.ref && (Math.round(S.ref.W) !== Math.round(S.W) || Math.round(S.ref.H) !== Math.round(S.H));
-        if (!confirm('Rogner ' + n + ' page(s) à ' + Math.round(S.W) + ' × ' + Math.round(S.H) + ' ?\n' + (l.remplies ? l.remplies + ' page(s) pas réglée(s) prennent la position de la page réglée la plus proche (tout le tome garde la même taille).\n' : '')
+        if (!confirm(texte_pertes(l.boites) + 'Rogner ' + n + ' page(s) à ' + Math.round(S.W) + ' × ' + Math.round(S.H) + ' ?\n' + (l.remplies ? l.remplies + ' page(s) pas réglée(s) prennent la position de la page réglée la plus proche (tout le tome garde la même taille).\n' : '')
             + ((l.exc + l.autre) ? (l.exc + l.autre) + ' page(s) exclue(s) ou d\'une autre taille (couverture…) gardent leur taille.\n' : '')
             + (diff ? '\nATTENTION : les autres tomes déjà rognés de cette série sont à ' + Math.round(S.ref.W) + ' × ' + Math.round(S.ref.H) + ' : ce tome ne leur serait pas identique.\n\n' : '') + 'L\'ancien fichier part à la corbeille.')) return;
         var r = await fetch('/api/rogner/appliquer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ series: SERIE, fichier: FICHIER, boites: l.boites }) }).then(function (x) { return x.json(); });
