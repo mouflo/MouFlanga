@@ -1900,6 +1900,7 @@ def api_optimiser_fichiers():
 
 
 optimiser.HISTORIQUE = str(DATA_DIR / "historique_allegement.jsonl")
+optimiser.ROGNAGE = str(DATA_DIR / "rognage.json")             # tome rogné à la main : la restauration IA sait de combien ses pages ont été agrandies
 
 
 @app.route("/api/optimiser/historique")
@@ -1921,10 +1922,23 @@ def _lancer_optimisation(name, fichiers, appliquer, eclairer, largeur=None, manu
     À la fin d'un traitement appliqué : coches d'assemblage remises, registre des traitements noté, message Telegram si demandé."""
     etaient_assembles = [f for f in fichiers if _est_assemble(name, f)]     # ils le restent (le fichier change de date et de taille)
     avant_travail = _avant_travail(name, fichiers)           # {fichier: (taille, marques)} avant le traitement : pour le registre
+    octets_avant = {}
+    for f in fichiers:
+        try:
+            octets_avant[f] = Path(f).stat().st_size
+        except OSError:
+            pass
 
     def fini():
         if appliquer:
             tomes_cbz._CACHE.clear()
+            if eclairer:                                     # tome rogné à la main : ses retouches seront refaites sur une page recadrée plus tard
+                import rognage
+                for f, octets in octets_avant.items():
+                    try:
+                        rognage.noter_retouches(_rognage_reglages(), f, octets, eclairer)
+                    except Exception as e:
+                        logger.warning("Rognage : retouches de %s non notées : %s", Path(f).name, e)
             for f in etaient_assembles:
                 _marquer_assemble(name, f)
             import edition

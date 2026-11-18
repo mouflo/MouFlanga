@@ -156,18 +156,35 @@ def _caler(g, calage):
     return cv2.LUT(g, np.clip(np.round(lut), 0, 255).astype(np.uint8))
 
 
-def ameliorer(im: Image.Image, reglages, calage=None, cadre=None) -> Image.Image:
+def _ia_page(a, niveau, source, couleur=False, niveaux_auto=True):
+    """Restauration IA d'une page (tableau uint8), ou None si elle ne peut pas être faite. Petite page : agrandie ×2. Page déjà agrandie par le
+    rognage (source = facteur d'agrandissement, voir echelle_du_tome) : ramenée à sa résolution d'origine, restaurée ×2, puis remise à SA taille,
+    sinon une page rognée plus haute que ia.HAUTEUR_MAX ne serait jamais restaurée."""
+    if not ia.disponible():
+        return None
+    h, w = a.shape[:2]
+    faire = (lambda x: ia.agrandir_couleur(x, niveau)) if couleur else (lambda x: ia.agrandir(x, niveau, niveaux_auto=niveaux_auto))
+    if h < ia.HAUTEUR_MAX:
+        return faire(a)
+    if not source or source < 1.3 or h / source >= ia.HAUTEUR_MAX:
+        return None
+    petit = cv2.resize(a, (max(1, round(w / source)), max(1, round(h / source))), interpolation=cv2.INTER_AREA)
+    grand = faire(petit)
+    return cv2.resize(grand, (w, h), interpolation=cv2.INTER_AREA if grand.shape[0] >= h else cv2.INTER_CUBIC)
+
+
+def ameliorer(im: Image.Image, reglages, calage=None, cadre=None, source=None) -> Image.Image:
     """Page noir et blanc d'un vieux scan, rendue plus propre (renvoyée en gris). Une page en couleur n'est touchée que par la restauration IA (renvoyée en couleur).
     « lisser » travaille sur la page doublée (il faut de la place pour arrondir) puis la ramène à sa taille : les bords
     restent lisses (anticrénelage) sans alourdir le fichier. « agrandir » garde la page doublée (petits scans de moins
-    de 1700 px de haut seulement) : plus fin en zoomant, mais fichier bien plus lourd."""
+    de 1700 px de haut seulement) : plus fin en zoomant, mais fichier bien plus lourd.
+    « source » : facteur d'agrandissement déjà appliqué à la page par le rognage (voir _ia_page)."""
     r = reglages_amelioration(reglages)
     if not r or not any(v for k, v in r.items() if not (k == "recadrer" and not cadre)):          # « recadrer » seul, sans cadre mesuré : rien à faire
         return im
     if est_couleur(im):                                   # couverture ou illustration : seule la restauration IA (en couleur) la touche, tous les autres réglages sont faits pour le noir et blanc
-        if r["ia"] and ia.disponible() and im.height < ia.HAUTEUR_MAX:
-            return Image.fromarray(ia.agrandir_couleur(np.asarray(im.convert("RGB")), r["ia"]))
-        return im
+        restauree = _ia_page(np.asarray(im.convert("RGB")), r["ia"], source, couleur=True) if r["ia"] else None
+        return im if restauree is None else Image.fromarray(restauree)
     g = np.asarray(im.convert("L"))                       # une teinte (page un peu violette ou jaune) disparaît ici : tout est rendu en gris
     h, w = g.shape
     echelle = max(1.0, (w * h) / 1.2e6)                   # les tailles suivent la résolution de la page
@@ -181,8 +198,9 @@ def ameliorer(im: Image.Image, reglages, calage=None, cadre=None) -> Image.Image
     if r["dos"]:                                          # ombre du dos : le papier s'assombrit vers la reliure
         g = reliure.ombre_dos(g, r["dos"])
     angle = reliure.angle_page(g) if r["redresser"] else None       # mesuré sur la page d'origine, appliqué à la fin (une rotation après l'agrandissement floute moins)
-    if r["ia"] and ia.disponible() and h < ia.HAUTEUR_MAX:    # petit scan : le réseau agrandit ×2, débruite et lisse les traits à la place des réglages classiques
-        g = ia.agrandir(g, r["ia"], niveaux_auto=not (r["uniformiser"] and calage))
+    restauree = _ia_page(g, r["ia"], source, niveaux_auto=not (r["uniformiser"] and calage)) if r["ia"] else None
+    if restauree is not None:                             # petit scan : le réseau agrandit ×2, débruite et lisse les traits à la place des réglages classiques
+        g = restauree
         h, w = g.shape
         echelle = max(1.0, (w * h) / 1.2e6)
         r = {**r, "debruit": 0, "trames": 0, "lisser": 0, "agrandir": 0}
@@ -286,11 +304,12 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite
         qpage = {n: (q or qualite_forcee) for n, q in qpage.items()}
     eclairer = reglages_amelioration(eclairer)
     cadre = cadre_du_tome(chemin, eclairer)
+    source = echelle_du_tome(chemin, eclairer)
     inchangees = set(images)
     if eclairer:
         traitees = {}
         for i, (n, im) in enumerate(images.items()):
-            traitees[n] = ameliorer(im, eclairer, calage, cadre)
+            traitees[n] = ameliorer(im, eclairer, calage, cadre, source)
             _avancer("analyse", i + 1, len(images))
         inchangees = {n for n in images if traitees[n] is images[n]}
         images = traitees
@@ -337,6 +356,7 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
     (une page en couleur) et qui n'est pas réduite garde ses octets d'origine, sans nouvelle compression."""
     eclairer = reglages_amelioration(eclairer)
     cadre = cadre_du_tome(chemin, eclairer)
+    source = echelle_du_tome(chemin, eclairer)
     tmp = destination if destination is not None else chemin.with_name("." + chemin.name + ".allege")
     vu_comicinfo = False
     with zipfile.ZipFile(chemin) as src, zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as dst:
@@ -348,7 +368,7 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
             if qualite and Path(info.filename).suffix.lower() in _IMAGES:
                 im = Image.open(io.BytesIO(data))
                 im.load()
-                traitee = ameliorer(im, eclairer, calage, cadre) if eclairer else im
+                traitee = ameliorer(im, eclairer, calage, cadre, source) if eclairer else im
                 im2 = reduire(traitee, largeur_max)
                 if not (fidele and im2 is im):
                     nouveau = _jpeg(im2, (qualite_jpeg(im) or qualite) if fidele else qualite)
@@ -385,6 +405,17 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
     chemin.rename(chemin.with_name(chemin.name + ".avant"))
     tmp.rename(chemin)
     return gagne
+
+
+ROGNAGE = None                   # app.py : data/rognage.json (cadres du rognage à la main, voir rognage.echelle_source)
+
+
+def echelle_du_tome(chemin: Path, eclairer) -> float | None:
+    """Facteur d'agrandissement des pages d'un tome rogné à la main (le fichier est bien celui écrit par le rognage), pour la restauration IA ; None sinon."""
+    if not (eclairer or {}).get("ia") or not ROGNAGE:
+        return None
+    import rognage
+    return rognage.echelle_source(ROGNAGE, chemin)
 
 
 _CADRES = {}                     # {(chemin, date du fichier): cadre commun du tome} : mesuré une fois, l'aperçu et l'écriture donnent le même résultat
@@ -690,7 +721,7 @@ def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage=None, 
     im = Image.open(io.BytesIO(data))
     im.load()
     couleur = bool(eclairer) and est_couleur(im)
-    traitee = ameliorer(im, eclairer, calage, cadre_du_tome(chemin, eclairer)) if eclairer else im
+    traitee = ameliorer(im, eclairer, calage, cadre_du_tome(chemin, eclairer), echelle_du_tome(chemin, eclairer)) if eclairer else im
     im2 = reduire(traitee, largeur_max)
     q_page = (qualite_jpeg(im) or qualite) if fidele else qualite                  # mode « même qualité » : celle de CETTE page
     nouveau = _jpeg(im2, q_page) if qualite and not (fidele and im2 is im) else data

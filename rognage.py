@@ -28,7 +28,7 @@ import archives
 
 DOSSIER = ".rognage"            # dans le dossier des mangas : ignoré par la bibliothèque (commence par un point)
 MINI = 20                       # px : plus petit cadre accepté
-RETOUCHES = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete")   # ✨ retouches de ton refaites sur une page réécrite (jamais ce qui change sa taille)
+RETOUCHES = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "ia")   # ✨ retouches refaites sur une page réécrite (jamais ce qui change sa taille)
 _VERROU = threading.RLock()
 _TAILLES = {}
 
@@ -334,6 +334,69 @@ def noter_application(manga_dir, fichier_reglages, serie, chemin, travail):
         _ecrire(fichier_reglages, d)
 
 
+def _entree_produite(d, chemin):
+    """(série, entrée) du tome dont le fichier est exactement celui écrit par le rognage, sinon (None, None)."""
+    chemin = Path(chemin)
+    try:
+        octets = chemin.stat().st_size
+    except OSError:
+        return None, None
+    for serie, tomes in d["tomes"].items():
+        e = tomes.get(chemin.name)
+        if e and (e.get("produit") or {}).get("octets") == octets:
+            return serie, e
+    return None, None
+
+
+def facteur(boite, taille) -> float:
+    """Agrandissement d'une page : cadre → taille de sortie."""
+    return min(int(taille[0]) / max(1, int(boite["w"])), int(taille[1]) / max(1, int(boite["h"])))
+
+
+def echelle_source(fichier_reglages, chemin) -> float | None:
+    """Agrandissement médian des pages simples d'un tome rogné ici (la restauration IA travaille à la résolution d'origine), None si le fichier n'est
+    pas celui écrit par le rognage."""
+    _, e = _entree_produite(_lire(fichier_reglages), chemin)
+    if not e:
+        return None
+    p, tailles = e["produit"], e.get("tailles") or []
+    f = [facteur(b, (p["W"], p["H"])) for k, b in (p.get("boites") or {}).items() if int(k) < len(tailles) and not est_double(tailles[int(k)])]
+    return round(float(np.median(f)), 3) if f else None
+
+
+def noter_retouches(fichier_reglages, chemin, octets_avant, reglages):
+    """Après un ✨ Améliorer appliqué à un tome rogné ici : si le tome était celui écrit par le rognage et que ses pages gardent leur taille, les retouches
+    sont notées (une page refaite plus tard les reçoit aussi) et le fichier redevient « le produit » (ses pages ne passent pas pour des pages d'origine
+    modifiées). Renvoie True si c'est noté."""
+    chemin = Path(chemin)
+    r = {k: int(v) for k, v in (reglages or {}).items() if k in RETOUCHES and v}
+    with _VERROU:
+        d = _lire(fichier_reglages)
+        for serie, tomes in d["tomes"].items():
+            e = tomes.get(chemin.name)
+            if e and (e.get("produit") or {}).get("octets") == octets_avant:
+                break
+        else:
+            return False
+        p, tailles = e["produit"], e.get("tailles") or []
+        attendu = [list(cible(t, p["W"], p["H"])) for t in tailles]
+        with zipfile.ZipFile(chemin) as z:
+            ordre = archives._names(z)
+            if len(ordre) != len(attendu):
+                return False
+            empreintes = {}
+            for i, n in enumerate(ordre):
+                data = z.read(n)
+                with Image.open(io.BytesIO(data)) as im:
+                    if [im.width, im.height] != attendu[i]:
+                        return False
+                empreintes[str(i)] = empreinte(data)
+        e["retouches"] = {**(e.get("retouches") or {}), **r}
+        p.update(octets=chemin.stat().st_size, empreintes=empreintes)
+        _ecrire(fichier_reglages, d)
+        return True
+
+
 def etat_liste(fichier_reglages, serie) -> dict:
     """{fichier: {"date", "octets"}} des tomes rognés ici, et ceux qui ont des réglages pas encore appliqués."""
     d = _lire(fichier_reglages)
@@ -381,7 +444,9 @@ def ecrire_tome(chemin, indices, sens_manga=True, destination=None, travail=None
                 im.load()
                 sortie = rendre_page(im, pages[i]["boite"], pages[i]["taille"])
                 if retouches:                              # le tome avait été ✨ amélioré après le rognage : la page refaite reçoit la même retouche que ses voisines
-                    sortie = optimiser.ameliorer(sortie, retouches)
+                    sortie = optimiser.ameliorer(sortie, retouches, source=facteur(pages[i]["boite"], pages[i]["taille"]))
+                    if list(sortie.size) != list(pages[i]["taille"]):
+                        sortie = sortie.resize(tuple(pages[i]["taille"]), Image.LANCZOS)
                 data = optimiser._octets_page(sortie, info.filename)
                 attendu[info.filename] = list(pages[i]["taille"])
             if i is not None:

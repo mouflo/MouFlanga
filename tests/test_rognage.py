@@ -7,7 +7,9 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
+import cv2
 import numpy as np
 from PIL import Image
 
@@ -110,7 +112,7 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(rognage.nettoyer_boite({"x": 1.4, "y": 2.6, "w": 50, "h": 300, "a": 42, "c": 1}), {"x": 1, "y": 3, "w": 50, "h": 300, "a": 10.0, "c": 1})
 
 
-class TomeTest(unittest.TestCase):
+class _Tome(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.racine = Path(self.tmp.name)
@@ -127,7 +129,7 @@ class TomeTest(unittest.TestCase):
         p = rognage.plan(etat["entree"], etat["tailles"])
         copier = not etat["entree"].get("source")
         travail = {"source": str(rognage.chemin_source(self.racine, "Serie", self.cbz.name) if copier else etat["source"]), "copier_source": copier,
-                   "pages": p["pages"], "W": p["W"], "H": p["H"]}
+                   "pages": p["pages"], "W": p["W"], "H": p["H"], "retouches": etat["entree"].get("retouches")}       # comme /api/rogner/appliquer
         ecrire = {i for i, x in enumerate(p["pages"]) if not x["garder"]}
         res = rognage.ecrire_tome(self.cbz, ecrire, travail=travail)
         res["avant"].unlink()
@@ -146,6 +148,9 @@ class TomeTest(unittest.TestCase):
                     out.append(im.size)
             return out
 
+
+
+class TomeTest(_Tome):
     def test_toutes_les_pages_a_la_meme_taille_et_origines_gardees(self):
         original = self.cbz.read_bytes()
         self.sauver({"0": {"x": 40, "y": 50, "w": 200, "h": 300, "a": 0}, "1": {"x": 0, "y": 0, "w": 150, "h": 300, "a": 0.5}}, 200, 300)
@@ -248,6 +253,83 @@ class TomeTest(unittest.TestCase):
             rognage.ecrire_tome(self.cbz, {0}, travail={"source": str(self.cbz), "copier_source": False, "pages": p["pages"], "W": 200, "H": 300})
         self.assertEqual(self.cbz.read_bytes(), avant)
         self.assertEqual(sorted(x.name for x in self.cbz.parent.iterdir()), [self.cbz.name])
+
+
+class IaTest(_Tome):
+    """✨ Restauration IA d'un tome rogné : ses pages ont été agrandies au-delà de la hauteur que l'IA accepte ; elle travaille à leur résolution d'origine."""
+
+    def setUp(self):
+        super().setUp()
+        with zipfile.ZipFile(self.cbz, "w", zipfile.ZIP_STORED) as z:          # ✨ Améliorer ne retouche que les JPEG
+            for i, (w, h) in enumerate([(300, 500), (300, 500), (600, 500), (320, 520)], 1):
+                a = np.full((h, w), 235, np.uint8)
+                a[60:160, 50:150] = 10
+                out = io.BytesIO()
+                Image.fromarray(a).save(out, "JPEG", quality=90)
+                z.writestr(f"{i:04d}.jpg", out.getvalue())
+        import ia
+        import optimiser
+        self.vues = []
+
+        def faux_agrandir(g, niveau, niveaux_auto=True):                     # le vrai réseau est lent : un faux qui double et inverse la page
+            self.vues.append(g.shape)
+            return 255 - cv2.resize(g, (g.shape[1] * 2, g.shape[0] * 2))
+        self.patches = [mock.patch.object(ia, "disponible", return_value=True), mock.patch.object(ia, "agrandir", faux_agrandir),
+                        mock.patch.object(ia, "HAUTEUR_MAX", 400), mock.patch.object(optimiser, "ROGNAGE", str(self.reglages))]
+        for x in self.patches:
+            x.start()
+
+    def tailles(self):
+        with zipfile.ZipFile(self.cbz) as z:
+            return [Image.open(io.BytesIO(z.read(n))).size for n in sorted(z.namelist())]
+
+    def tearDown(self):
+        for x in self.patches:
+            x.stop()
+        super().tearDown()
+
+    def test_page_agrandie_par_le_rognage_restauree_a_sa_resolution_d_origine(self):
+        import optimiser
+        im = Image.fromarray(np.full((600, 360), 200, np.uint8))              # plus haute que HAUTEUR_MAX (400)
+        self.assertTrue((np.asarray(optimiser.ameliorer(im, {"ia": 2})) == 200).all())     # sans rien savoir de la page : l'IA n'y touche pas (comme avant)
+        r = optimiser.ameliorer(im, {"ia": 2}, source=2.0)
+        self.assertEqual(self.vues, [(300, 180)])                            # ramenée à sa résolution d'origine
+        self.assertEqual(r.size, (360, 600))                                 # et rendue à SA taille
+        self.assertLess(np.asarray(r).mean(), 100)                           # restaurée (le faux réseau inverse)
+        self.assertTrue((np.asarray(optimiser.ameliorer(im, {"ia": 2}, source=1.1)) == 200).all())    # presque pas agrandie : rien à gagner
+        self.assertEqual(len(self.vues), 1)
+
+    def test_ameliorer_un_tome_rogne_puis_refaire_une_page(self):
+        import optimiser
+        self.sauver({"0": {"x": 40, "y": 50, "w": 150, "h": 250, "a": 0}, "1": {"x": 0, "y": 0, "w": 150, "h": 250, "a": 0}}, 300, 500)
+        self.appliquer()
+        self.assertEqual(optimiser.echelle_du_tome(self.cbz, {"ia": 2}), 2.0)
+        self.assertIsNone(optimiser.echelle_du_tome(self.cbz, {"noirs": 1}))
+        octets = self.cbz.stat().st_size
+        optimiser.reecrire(self.cbz, 90, {"ia": 2})
+        self.cbz.with_name(self.cbz.name + ".avant").unlink()
+        self.assertTrue(self.vues)                                           # l'IA a bien travaillé sur ce tome de pages de 500 px
+        self.assertEqual(self.tailles(), [(300, 500), (300, 500), (600, 500), (300, 500)])
+        self.assertTrue(rognage.noter_retouches(self.reglages, self.cbz, octets, {"ia": 2, "agrandir": 0}))
+        etat = rognage.ouvrir(self.racine, self.reglages, "Serie", self.cbz)
+        self.assertFalse(etat.get("message"))                                # les pages améliorées ne passent pas pour des pages d'origine changées
+        self.assertEqual(etat["tailles"][0], [300, 500])                     # les pages d'origine restent les vraies
+        self.assertEqual(etat["entree"]["retouches"], {"ia": 2})
+        b = dict(etat["entree"]["boites"])
+        b["1"] = {"x": 0, "y": 0, "w": 140, "h": 240, "a": 0}
+        self.sauver(b, 300, 500)
+        self.vues.clear()
+        self.assertEqual(self.appliquer(), {1})
+        self.assertEqual(len(self.vues), 1)                                  # la page refaite reçoit aussi la restauration IA
+        self.assertEqual(self.tailles()[1], (300, 500))
+
+    def test_retouches_pas_notees_si_le_tome_n_est_pas_celui_du_rognage_ou_change_de_taille(self):
+        self.sauver({"0": {"x": 40, "y": 50, "w": 150, "h": 250, "a": 0}}, 300, 500)
+        self.appliquer()
+        self.assertFalse(rognage.noter_retouches(self.reglages, self.cbz, 123, {"ia": 2}))
+        octets = self.cbz.stat().st_size
+        faire_cbz(self.cbz, [page_png(w=600, h=1000)] * 4, info=False)                    # pages doublées (« agrandir ») : plus la taille du rognage
+        self.assertFalse(rognage.noter_retouches(self.reglages, self.cbz, octets, {"agrandir": 1, "ia": 2}))
 
 
 if __name__ == "__main__":
