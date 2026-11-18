@@ -582,7 +582,7 @@ body.mou-skin .gerer-liste button:hover, body.mou-skin .gerer-liste a:hover { bo
 #allCmp details summary { padding:8px 0; min-height:24px; cursor:pointer; color:var(--accent, #52b54b); }
 #regTomes, #regRetour { margin-bottom:22px; }          /* l'ombre des onglets collants masquait le bas de la carte */
 #allCmp #cmpRideau { max-width:100%; box-sizing:border-box; }
-#allCmp.cmp-zoom .cmp-img { width:100%; height:var(--h-zoom, 22vh); max-height:none; object-fit:cover; cursor:zoom-out; }
+#allCmp.cmp-zoom .cmp-img { width:100%; height:var(--h-zoom, 22vh); max-height:none; object-fit:contain; cursor:zoom-out; }   /* le détail a déjà la forme de l'aperçu : rien n'est recoupé */
 #allCmp.cmp-zoom .cmp-boite .cmp-dessus { height:100%; }
 #allListe summary { cursor:pointer; padding:12px 0; min-height:24px; color:var(--accent, #52b54b); font-weight:600; }
 #allCmp.cmp-zoom { margin:0 -10px; }

@@ -1228,7 +1228,9 @@
     var cmp = null, cmpMinuterie = null;
     var NIVEAUX_ZOOM = [1.5, 2, 2.5, 3.5, 5];                       // zoom du détail : N pixels d'écran pour un pixel de l'image
     function tailleZoom() {                                         // un morceau de l'image qui, agrandi ×N, remplit toute la largeur de l'écran
-      var w = window.innerWidth, n = NIVEAUX_ZOOM[cmp.niveau == null ? 2 : cmp.niveau];
+      var boite = $('allCmp'), n = NIVEAUX_ZOOM[cmp.niveau == null ? 2 : cmp.niveau];
+      var w = (boite && boite.clientWidth) || window.innerWidth;    // la largeur réelle de l'aperçu (sur PC il n'a qu'une colonne) : sinon le détail servi
+                                                                    // n'avait pas sa forme et l'image, recadrée au centre, montrait une autre zone
       var cw = Math.max(120, Math.min(1800, Math.round(w * (window.devicePixelRatio || 1) / n)));
       return {cw: cw, ch: Math.max(80, Math.round(cw * cmp.zoom[4] / w)), n: n};
     }
