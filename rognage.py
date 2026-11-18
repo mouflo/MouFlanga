@@ -28,7 +28,7 @@ import archives
 
 DOSSIER = ".rognage"            # dans le dossier des mangas : ignoré par la bibliothèque (commence par un point)
 MINI = 20                       # px : plus petit cadre accepté
-RETOUCHES = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "ia", "redresser")   # ✨ retouches refaites sur une page réécrite (jamais ce qui change sa taille)
+RETOUCHES = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "ia", "redresser", "flashback")   # ✨ retouches refaites sur une page réécrite (jamais ce qui change sa taille)
 _VERROU = threading.RLock()
 _TAILLES = {}
 

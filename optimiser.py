@@ -111,7 +111,8 @@ def est_couleur(im: Image.Image) -> bool:
 # noirs, les blancs et la teinte du tome sur ceux des autres tomes de la série (voir uniformite.py) : il lui faut le calage du tome.
 # « ia » (0 à 3) : restauration par réseau de neurones des petits scans (agrandi ×2, voir ia.py) ; elle remplace débruiter, adoucir les trames, lisser et agrandir.
 # « dos » (0 à 3 : ombre du dos), « redresser » et « bords » (0 ou 1) : défauts d'un tome relié scanné à plat, voir reliure.py.
-AMELIORATIONS = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "agrandir", "uniformiser", "ia", "dos", "redresser", "bords", "recadrer")
+# « flashback » (0 ou 1) : sur une page à fond noir (gouttières noires entre les cases), le fond délavé redevient noir uni (reliure.noir_uni).
+AMELIORATIONS = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "agrandir", "uniformiser", "ia", "dos", "redresser", "bords", "recadrer", "flashback")
 
 
 def reglages_amelioration(x) -> dict | None:
@@ -126,7 +127,7 @@ def reglages_amelioration(x) -> dict | None:
     r = {}
     for k in AMELIORATIONS:
         try:
-            r[k] = max(0, min(1 if k in ("uniformiser", "redresser", "bords", "recadrer") else 3, int(x.get(k) or 0)))
+            r[k] = max(0, min(1 if k in ("uniformiser", "redresser", "bords", "recadrer", "flashback") else 3, int(x.get(k) or 0)))
         except (TypeError, ValueError):
             r[k] = 0
     return r if any(r.values()) else None
@@ -263,6 +264,8 @@ def ameliorer(im: Image.Image, reglages, calage=None, cadre=None, source=None) -
         g = cv2.resize(g, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
     if correction:
         g = reliure.redresser(g, correction)
+    if r["flashback"]:                                    # après le redressement : ses coins font partie du fond
+        g = reliure.noir_uni(g)
     if r["nettete"]:                                      # masque flou : traits plus francs
         a = (0, 0.5, 0.9, 1.4)[r["nettete"]]
         g = cv2.addWeighted(g, 1 + a, cv2.GaussianBlur(g, (0, 0), 1.0), -a, 0)

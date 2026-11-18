@@ -331,6 +331,28 @@ def fond_noir(g: np.ndarray) -> bool:
     return n >= 2
 
 
+def noir_uni(g: np.ndarray) -> np.ndarray:
+    """Flash-back sur fond noir (fond_noir) : le fond délavé (gris, inégal) redevient un noir uni ; les cases ne sont pas touchées. Les cases sont les grandes zones
+    claires (dessins bouchés par une fermeture, puis contour convexe de chacune, trait de cadre compris) ; hors des cases, ce qui est sombre ou gris devient noir, ce
+    qui est clair (texte blanc sur le fond) reste. Une autre page est rendue telle quelle."""
+    if not fond_noir(g):
+        return g
+    h, w = g.shape
+    papier = float(np.percentile(g, 95))
+    clair = (g > 0.6 * papier).astype(np.uint8)
+    k = max(5, int(0.015 * min(h, w)) | 1)
+    ferme = cv2.morphologyEx(clair, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (k, k)))
+    n, lab, st, _ = cv2.connectedComponentsWithStats(ferme, connectivity=8)
+    cases = np.zeros_like(clair)
+    for i in range(1, n):
+        if st[i, cv2.CC_STAT_AREA] >= 0.004 * h * w:
+            cv2.fillConvexPoly(cases, cv2.convexHull(cv2.findNonZero((lab == i).astype(np.uint8))), 1)
+    cases = cv2.dilate(cases, np.ones((5, 5), np.uint8))
+    sortie = g.copy()
+    sortie[(cases == 0) & (g < 0.75 * papier)] = int(min(30, np.percentile(g, 1)))
+    return sortie
+
+
 def bords_page(g: np.ndarray):
     """Les bords du papier d'une page scannée : (x0, y0, x1, y1) à garder, en pixels. Chaque bord est repéré sur le profil des colonnes (ou des lignes) au 80e centile : le papier
     est clair, la bande d'ombre de la page voisine, la bande du scanner ou le reste de la couverture sont plus sombres (moins de 82 % du papier). On coupe jusqu'à cette bande, au

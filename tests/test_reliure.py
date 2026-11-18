@@ -185,6 +185,23 @@ class FondNoirTest(unittest.TestCase):
         sortie = reliure.recadrer(g, cadre)
         self.assertLess(sortie[:5].mean(), 120)                              # aucun bord blanc
 
+    def test_noir_uni_sur_le_fond_seulement(self):
+        g = flash_back()
+        g[:, 615:] = 115                                                     # bord droit délavé (≈ 105 mesuré sur le tome 3)
+        g[100:200, 80:200] = 20                                              # du noir dessiné dans une case
+        g[100:200, 230:290] = 150                                            # et du gris dans une case
+        s = reliure.noir_uni(g)
+        self.assertLessEqual(s[5:30, :].max(), 30)                           # fond du haut : noir uni
+        self.assertLessEqual(s[:, 615:].max(), 30)                           # bord droit délavé : noir aussi
+        self.assertLessEqual(s[330:340, 100:500].max(), 30)                  # gouttière entre les cases
+        np.testing.assert_array_equal(s[60:300, 50:300], g[60:300, 50:300])  # l'intérieur des cases ne bouge pas
+        sortie = np.asarray(optimiser.ameliorer(Image.fromarray(g), {"flashback": 1}))
+        self.assertLessEqual(sortie[5:30, :].max(), 30)
+
+    def test_noir_uni_ne_touche_pas_une_page_normale(self):
+        g = planche()
+        self.assertIs(reliure.noir_uni(g), g)
+
     def test_page_normale_pas_un_flash_back(self):
         self.assertFalse(reliure.fond_noir(planche()))
         self.assertFalse(reliure.fond_noir(page_a_cases()))
