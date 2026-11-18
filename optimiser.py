@@ -443,6 +443,10 @@ def cadre_du_tome(chemin: Path, eclairer) -> dict | None:
     if not (eclairer or {}).get("recadrer"):
         return None
     chemin = Path(chemin)
+    if ROGNAGE:                                           # tome rogné à la main : ses cadres font déjà ce travail (et « recadrer » prenait le fond noir des flash-backs pour une bande)
+        import rognage
+        if rognage.est_rogne(ROGNAGE, chemin):
+            return None
     cle = (str(chemin), chemin.stat().st_mtime_ns)
     if cle in _CADRES:
         return _CADRES[cle]

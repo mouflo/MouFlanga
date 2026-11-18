@@ -305,13 +305,39 @@ def _debut_papier(profil: np.ndarray, seuil: float, maxi: int) -> int:
     return i + 1 if float(np.median(profil[i + 1:i + 1 + tenue])) >= seuil else 0
 
 
+def fond_noir(g: np.ndarray) -> bool:
+    """Page sur fond noir (flash-back) : les gouttières entre les rangées de cases sont noires (ou gris foncé, scan délavé) au lieu d'être blanches. On compte les fines
+    bandes sombres qui traversent toute la page (80 % du milieu de la largeur), uniformes, avec des cases claires juste au-dessus et juste en dessous ; deux ou plus :
+    fond noir. Mesuré le 18/11/2026 sur Nori Taka tomes 1 à 3 : les flash-backs du tome 3 (pages 4 à 6) trouvés, 2 autres pages sombres sur ~530 (sans gravité :
+    elles gardent seulement leurs bords)."""
+    h, w = g.shape
+    papier = float(np.percentile(g, 95))
+    if papier < 120:
+        return False
+    bande = g[:, int(0.1 * w):int(0.9 * w)]
+    sombre = (bande < 0.6 * papier).mean(1) > 0.85
+    clair = (bande > 0.8 * papier).mean(1)
+    n, i, fin, m = 0, int(0.05 * h), int(0.95 * h), int(0.03 * h)
+    while i < fin:
+        if not sombre[i]:
+            i += 1
+            continue
+        j = i
+        while j < fin and sombre[j]:
+            j += 1
+        if 0.006 * h <= j - i <= 0.045 * h and clair[max(0, i - m):i].max(initial=0) > 0.3 and clair[j:j + m].max(initial=0) > 0.3:
+            n += 1
+        i = j
+    return n >= 2
+
+
 def bords_page(g: np.ndarray):
     """Les bords du papier d'une page scannée : (x0, y0, x1, y1) à garder, en pixels. Chaque bord est repéré sur le profil des colonnes (ou des lignes) au 80e centile : le papier
     est clair, la bande d'ombre de la page voisine, la bande du scanner ou le reste de la couverture sont plus sombres (moins de 82 % du papier). On coupe jusqu'à cette bande, au
     plus 8 % par côté ; un côté sans bande franche reste tel quel. Une page presque toute sombre n'est pas touchée."""
     h, w = g.shape
     papier = float(np.percentile(g, 90))
-    if papier < 150:
+    if papier < 150 or fond_noir(g):                         # flash-back sur fond noir : le noir du bord est le fond de la page, pas une bande
         return (0, 0, w, h)
     seuil = 0.82 * papier
     colonnes = np.percentile(g, 80, axis=0)
@@ -354,6 +380,8 @@ def recadrer(g: np.ndarray, cadre: dict) -> np.ndarray:
         return g
     x0, y0, x1, y1 = bords_page(g)
     papier = int(min(255, max(200, _papier(g))))
+    if fond_noir(g):                                         # ce qui manque continue le fond noir
+        papier = int(np.median(np.concatenate([g[:4].ravel(), g[-4:].ravel(), g[:, :4].ravel(), g[:, -4:].ravel()])))
     p = g[y0:y1, x0:x1]
     W, H = (p.shape[1] if double else cadre["w"]), cadre["h"]
     sortie = np.full((H, W), papier, g.dtype)

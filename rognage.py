@@ -49,15 +49,22 @@ def empreinte(data: bytes) -> str:
 # --- Rendu d'une page --------------------------------------------------------------------------------------------------------------------
 
 def ton_papier(a):
-    """Couleur ajoutée autour de la page : le ton du papier (page au bord clair), sinon du blanc (couverture, dessin pleine page : jamais une
-    couleur tirée du dessin, c'était la bande rose des couvertures)."""
+    """Couleur ajoutée autour de la page : le ton du papier (page au bord clair) ; page noir et blanc au bord sombre (flash-back sur fond noir) : le ton
+    de son bord, pour que le fond noir continue ; sinon du blanc (couverture en couleur, dessin pleine page : jamais une couleur tirée du dessin, c'était
+    la bande rose des couvertures)."""
     h, w = a.shape[:2]
     bande = max(2, min(h, w) // 100)
     plat = lambda x: x.reshape(-1, *a.shape[2:])
     bord = np.concatenate([plat(a[:bande]), plat(a[-bande:]), plat(a[:, :bande]), plat(a[:, -bande:])])
-    if float(np.median(bord.mean(axis=-1) if a.ndim == 3 else bord)) >= 190:
+    gris_bord = bord.mean(axis=-1) if a.ndim == 3 else bord
+    if float(np.median(gris_bord)) >= 190:
         p = np.percentile(plat(a[::4, ::4]).reshape(-1, 1 if a.ndim == 2 else a.shape[2]), 90, axis=0)
         return int(p[0]) if a.ndim == 2 else tuple(int(x) for x in p)
+    petit = a[::8, ::8].astype(np.int16)
+    gris = a.ndim == 2 or float(np.mean(np.abs(petit[..., 0] - petit[..., 1]) + np.abs(petit[..., 1] - petit[..., 2]))) < 12
+    if gris and float(np.median(gris_bord)) < 120:                 # fond noir (ou gris foncé) tout autour : il continue
+        t = int(np.median(gris_bord))
+        return t if a.ndim == 2 else (t, t, t)
     return 255 if a.ndim == 2 else (255, 255, 255)
 
 
@@ -110,7 +117,9 @@ def rendre_page(im, boite, taille):
         im = im.convert("RGB")
     a = np.array(im)
     h, w = a.shape[:2]
-    papier = ton_papier(a)
+    bx, by, bw0, bh0 = (int(round(float(boite[k]))) for k in ("x", "y", "w", "h"))
+    vu = a[max(0, by):min(h, by + bh0), max(0, bx):min(w, bx + bw0)]
+    papier = ton_papier(vu if min(vu.shape[:2]) >= 20 else a)        # le ton du bord de ce que le cadre montre (pas de la tranche des pages voisines, dehors)
     angle = float(boite.get("a") or 0)
     if abs(angle) > 0.005:
         m = cv2.getRotationMatrix2D((w / 2, h / 2), -angle, 1.0)                 # OpenCV : positif = sens inverse des aiguilles ; ici positif = sens horaire
@@ -390,6 +399,11 @@ def _entree_produite(d, chemin):
         if e and (e.get("produit") or {}).get("octets") == octets:
             return serie, e
     return None, None
+
+
+def est_rogne(fichier_reglages, chemin) -> bool:
+    """Le fichier est-il celui écrit par le rognage à la main ?"""
+    return _entree_produite(_lire(fichier_reglages), chemin)[1] is not None
 
 
 def facteur(boite, taille) -> float:

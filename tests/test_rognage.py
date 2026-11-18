@@ -46,12 +46,12 @@ class RenduTest(unittest.TestCase):
         a = np.full((400, 400), 240, np.uint8)
         a[100:300, 100:300] = 0                                             # un carré noir de 200 px
         im = Image.fromarray(a)
-        s = np.array(rognage.rendre_page(im, {"x": 100, "y": 100, "w": 200, "h": 200, "a": 0}, (300, 600)))
+        s = np.array(rognage.rendre_page(im, {"x": 90, "y": 90, "w": 220, "h": 220, "a": 0}, (300, 600)))
         self.assertEqual(s.shape, (600, 300))
         noir = np.argwhere(s < 60)
         hauteur, largeur = np.ptp(noir[:, 0]) + 1, np.ptp(noir[:, 1]) + 1
-        self.assertAlmostEqual(hauteur / largeur, 1.0, delta=0.02)          # le carré reste un carré (agrandi à 300 px)
-        self.assertAlmostEqual(largeur, 300, delta=3)
+        self.assertAlmostEqual(hauteur / largeur, 1.0, delta=0.02)          # le carré reste un carré (agrandi de 300/220)
+        self.assertAlmostEqual(largeur, 200 * 300 / 220, delta=3)
         self.assertTrue((s[:140] >= 230).all() and (s[-140:] >= 230).all())  # papier ajouté en haut et en bas, centré
 
     def test_cadre_plus_grand_que_la_cible_est_reduit(self):
@@ -72,6 +72,15 @@ class RenduTest(unittest.TestCase):
         s = np.array(rognage.rendre_page(Image.fromarray(a), {"x": 0, "y": 0, "w": 200, "h": 300, "a": 0}, (300, 300)))
         self.assertEqual(s.shape, (300, 300, 3))
         self.assertTrue((s[:, :40] == 255).all())
+
+    def test_flash_back_sur_fond_noir_complete_de_noir(self):
+        a = np.full((400, 300), 35, np.uint8)                                # fond noir tout autour
+        a[40:360, 30:270] = 240                                              # une case claire au milieu
+        s = np.array(rognage.rendre_page(Image.fromarray(a), {"x": 0, "y": 0, "w": 300, "h": 400, "a": 0}, (300, 500)))
+        self.assertLess(s[:30].mean(), 60)                                   # le papier ajouté continue le fond noir
+        couleur = np.dstack([a, a, a]).copy()
+        self.assertEqual(rognage.ton_papier(couleur), (35, 35, 35))           # même en RVB tant que la page est grise
+        self.assertEqual(rognage.ton_papier(np.full((100, 100), 240, np.uint8)), 240)
 
     def test_angle_et_couleurs(self):
         im = Image.new("RGB", (200, 300), (230, 230, 230))
@@ -385,6 +394,7 @@ class RedresserTest(_Tome):
         self.sauver(b, 600, 980)
         self.assertEqual(self.appliquer(), {1})
         self.assertIsNone(reliure.redressement(self.page(1)))                       # la page refaite est redressée elle aussi
+        self.assertIsNone(optimiser.cadre_du_tome(self.cbz, {"recadrer": 1}))      # « recadrer » : les cadres à la main le font déjà
 
 
 if __name__ == "__main__":

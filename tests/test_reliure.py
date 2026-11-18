@@ -167,6 +167,32 @@ class RedressementTest(unittest.TestCase):
         self.assertIsNone(reliure.redressement(sortie))
 
 
+def flash_back(h=1000, w=640, fond=90):
+    """Page de flash-back : fond gris foncé (noir délavé) partout, y compris entre les cases ; trois rangées de cases claires."""
+    g = np.full((h, w), fond, np.uint8)
+    for y0, y1 in ((40, 320), (350, 640), (670, 960)):
+        g[y0:y1, 30:w // 2 - 8] = 240
+        g[y0:y1, w // 2 + 8:w - 30] = 240
+    return g
+
+
+class FondNoirTest(unittest.TestCase):
+    def test_flash_back_reconnu_et_jamais_blanchi(self):
+        g = flash_back()
+        self.assertTrue(reliure.fond_noir(g))
+        self.assertEqual(reliure.bords_page(g), (0, 0, 640, 1000))           # le fond noir n'est pas une bande à couper
+        cadre = {"w": 600, "h": 980, "pw": 640, "ph": 1000}
+        sortie = reliure.recadrer(g, cadre)
+        self.assertLess(sortie[:5].mean(), 120)                              # aucun bord blanc
+
+    def test_page_normale_pas_un_flash_back(self):
+        self.assertFalse(reliure.fond_noir(planche()))
+        self.assertFalse(reliure.fond_noir(page_a_cases()))
+        g = planche()
+        g[:, :25] = 90                                                       # une bande d'ombre au bord : toujours coupée
+        self.assertGreaterEqual(reliure.bords_page(g)[0], 20)
+
+
 class DansAmeliorerTest(unittest.TestCase):
     def test_les_trois_reglages_agissent_et_gardent_la_taille(self):
         g = avec_ombre(page_a_cases())
