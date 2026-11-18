@@ -257,10 +257,21 @@ def couper_cases(c, rempli, cote_dos, epaisseur=3):
     lim[cote_dos] = max(lim[cote_dos], fin + 3, k0 + int(0.015 * t.shape[0]))
     # jamais de texte coupé : une lettre (avec des voisines sur sa ligne) entre le bord et la coupe fait reculer la coupe juste avant elle
     enc = (c < 0.5 * papier).astype(np.uint8)
-    blanc = cv2.blur((c > 0.8 * papier).astype(np.float32), (21, 21)) > 0.55
-    nl, labl, stl, cen = cv2.connectedComponentsWithStats(enc, connectivity=8)
     e_ = h / 1040                                         # tailles de lettre mesurées sur une page de 1040 px (scans plus grands : lettres plus grandes)
-    lettres = [j for j in range(1, nl) if 5 * e_ <= stl[j, 3] <= 30 * e_ and 2 * e_ <= stl[j, 2] <= 30 * e_ and blanc[int(cen[j][1]), int(cen[j][0])]]
+    nl, labl, stl, cen = cv2.connectedComponentsWithStats(enc, connectivity=8)
+    clair_ = c > 0.7 * papier
+
+    def sur_fond_clair(j):
+        """Lettre : le liseré juste autour d'elle est clair (fond de bulle), même gras et même dans l'ombre légère du dos."""
+        x_, y_, ww_, hh_ = stl[j, 0], stl[j, 1], stl[j, 2], stl[j, 3]
+        m_ = max(2, int(3 * e_))
+        ya, yb, xa, xb = max(0, y_ - m_), min(h, y_ + hh_ + m_), max(0, x_ - m_), min(w, x_ + ww_ + m_)
+        autour = (labl[ya:yb, xa:xb] != j) & ~enc[ya:yb, xa:xb].astype(bool)
+        if not autour.any():
+            return False
+        fond = c[ya:yb, xa:xb][autour]
+        return clair_[ya:yb, xa:xb][autour].mean() > 0.75 or (float(np.median(fond)) > 0.5 * papier and float(fond.std()) < 30)   # ombre du dos : fond gris uni
+    lettres = [j for j in range(1, nl) if 5 * e_ <= stl[j, 3] <= 36 * e_ and 2 * e_ <= stl[j, 2] <= 36 * e_ and sur_fond_clair(j)]
     pc = np.array([cen[j] for j in lettres]) if lettres else np.zeros((0, 2))
     texte = []
     for i_, j in enumerate(lettres):
@@ -654,10 +665,11 @@ def placer(gauche, droite, est_gauche, fb, HR, WR, partenaire_y):
     return c, rempli
 
 
-def recadrer_tome(chemin, source, boites, taille, retouches, destination, progres=None) -> dict:
+def recadrer_tome(chemin, source, boites, taille, retouches, destination, progres=None, retoucher_autres=None, paires_connues=None) -> dict:
     """Écrit dans `destination` le tome recadré aux cases. `source` : fichier des pages d'origine ; `boites` : cadres réglés à la main {numéro: boîte}
     (mesure du redressement) ; `taille` : (W, H) des pages finales ; `retouches` : réglages ✨ à appliquer (sans redresser ni flash-back, faits ici).
-    Les pages hors paires sont recopiées du tome actuel. Retour : {"pages", "flashbacks", "hauteur", "zoom"}."""
+    Les pages hors paires sont recopiées du tome actuel ; `retoucher_autres` (numéros) : celles-là sont plutôt mises à la taille (double page : 2W × H)
+    et retouchées comme les autres (tome refait depuis l'archive d'origine). Retour : {"pages", "flashbacks", "hauteur", "zoom"}."""
     import optimiser
     W, H = int(taille[0]), int(taille[1])
     ordre_s, ordre = archives.pages(source), archives.pages(chemin)
@@ -665,7 +677,7 @@ def recadrer_tome(chemin, source, boites, taille, retouches, destination, progre
         raise RuntimeError("le tome n'a plus le même nombre de pages que ses pages d'origine")
     with zipfile.ZipFile(source) as zs:
         tailles = [Image.open(io.BytesIO(zs.read(n))).size for n in ordre_s]
-    lp = paires(tailles)
+    lp = paires_connues if paires_connues is not None else paires(tailles)      # paires sûres (tome refait depuis l'archive) ou devinées
     regl = optimiser.reglages_amelioration({k: v for k, v in (retouches or {}).items() if k not in ("redresser", "flashback", "recadrer")})
     tmp = Path(tempfile.mkdtemp(prefix="cases-"))
     etapes = 3 * len(lp)
@@ -746,7 +758,12 @@ def recadrer_tome(chemin, source, boites, taille, retouches, destination, progre
             rang = {n: i for i, n in enumerate(ordre)}
             for inf in zc.infolist():
                 i = rang.get(inf.filename)
-                data = optimiser._octets_page(pages[i], inf.filename) if i in pages else zc.read(inf.filename)
+                if i in pages:
+                    data = optimiser._octets_page(pages[i], inf.filename)
+                elif retoucher_autres and i in retoucher_autres:
+                    data = optimiser._octets_page(autre_page(zc.read(inf.filename), (W, H), regl), inf.filename)
+                else:
+                    data = zc.read(inf.filename)
                 z2 = zipfile.ZipInfo(inf.filename, date_time=inf.date_time)
                 dst.writestr(z2, data)
         with zipfile.ZipFile(part) as z:
@@ -756,6 +773,93 @@ def recadrer_tome(chemin, source, boites, taille, retouches, destination, progre
         return {"pages": len(pages), "flashbacks": sorted(i for i in pages if info[i]), "hauteur": HR, "zoom": round(zoom, 3)}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def autre_page(data, taille, regl):
+    """Page hors paires d'un tome refait depuis l'archive (couverture, double page) : mise à la taille finale sans déformation (double page : 2W × H),
+    retouchée comme les autres."""
+    import optimiser
+    import rognage
+    im = Image.open(io.BytesIO(data))
+    im.load()
+    W, H = taille
+    cible = (2 * W, H) if im.width > im.height else (W, H)
+    sortie = rognage.rendre_page(im, rognage.boite_entiere(list(im.size)), cible)
+    if regl:
+        sortie = optimiser.ameliorer(sortie, regl, source=rognage.facteur(rognage.boite_entiere(list(im.size)), cible))
+        if sortie.size != cible:
+            sortie = sortie.resize(cible, Image.LANCZOS)
+    return sortie
+
+
+def depuis_archive(archive, dossier, tome_actuel, destination) -> dict:
+    """Pages d'origine d'un tome reconstruites depuis l'archive téléchargée (`dossier` : son dossier dans l'archive) : chaque scan double page est coupé
+    en deux moitiés (moitié gauche d'abord, comme les tomes déjà coupés), sauf s'il est resté une double page dans le tome actuel (dessin à cheval sur
+    les deux pages : choix de l'utilisateur gardé). Une couverture ajoutée en tête du tome actuel est reprise telle quelle. Écrit `destination` (cbz) ;
+    retour : {"pages", "doubles", "couverture" (numéros à recopier tels quels), "autres" (numéros hors paires à retoucher)}."""
+    with zipfile.ZipFile(archive) as z:
+        noms = sorted(n for n in z.namelist() if n.startswith(dossier.rstrip("/") + "/") and n.lower().endswith((".jpg", ".jpeg", ".png")))
+        tailles_a = [Image.open(io.BytesIO(z.read(n))).size for n in noms]
+        actuel = [Image.open(io.BytesIO(zipfile.ZipFile(tome_actuel).read(n))).size for n in archives.pages(tome_actuel)]
+        for decale in (0, 1):
+            plan, k = [], decale
+            for n, (w, h) in zip(noms, tailles_a):
+                if w <= h:
+                    plan.append(("simple", n))
+                    k += 1
+                elif k < len(actuel) and actuel[k][0] > actuel[k][1]:
+                    plan.append(("double", n))
+                    k += 1
+                else:
+                    plan += [("gauche", n), ("droite", n)]
+                    k += 2
+            if k == len(actuel):
+                break
+        else:
+            raise RuntimeError(f"l'archive ne correspond pas au tome actuel ({len(actuel)} pages)")
+        if not decale and plan and plan[0][0] == "simple":
+            plan, decale = plan[1:], 1                     # la couverture du tome actuel (remise à la main, meilleure que le scan) est gardée
+        destination = Path(destination)
+        part = destination.with_name(destination.name + ".part")
+        with zipfile.ZipFile(part, "w", zipfile.ZIP_STORED) as dst:
+            i = 0
+            if decale:
+                with zipfile.ZipFile(tome_actuel) as zt:
+                    n0 = archives.pages(tome_actuel)[0]
+                    dst.writestr(f"{i:04d}{Path(n0).suffix.lower()}", zt.read(n0))
+                i += 1
+            for genre, n in plan:
+                data = z.read(n)
+                if genre in ("gauche", "droite"):
+                    im = Image.open(io.BytesIO(data))
+                    im.load()
+                    w = im.width
+                    im = im.crop((0, 0, w // 2, im.height) if genre == "gauche" else (w // 2, 0, w, im.height))
+                    out = io.BytesIO()
+                    im.convert("L" if im.mode in ("L", "1") else "RGB").save(out, "JPEG", quality=97)
+                    data = out.getvalue()
+                dst.writestr(f"{i:04d}.jpg", data)
+                i += 1
+        part.replace(destination)
+    autres = [j + decale for j, (g, _) in enumerate(plan) if g in ("simple", "double")]
+    sures = [(j + decale, j + decale + 1) for j, (g, _) in enumerate(plan) if g == "gauche"]
+    # moitiés déjà coupées par le scanneur (pages simples consécutives) : appariées comme d'habitude, entre deux scans doubles
+    simples = [j + decale for j, (g, _) in enumerate(plan) if g == "simple"]
+    with zipfile.ZipFile(destination) as zd:
+        noms_d = archives.pages(destination)
+        tailles_d = [Image.open(io.BytesIO(zd.read(n))).size for n in noms_d]
+    k = 0
+    while k < len(simples):
+        bloc = [simples[k]]
+        while k + 1 < len(simples) and simples[k + 1] == bloc[-1] + 1:
+            k += 1
+            bloc.append(simples[k])
+        sures += [(bloc[0] + a, bloc[0] + b) for a, b in paires([tailles_d[j] for j in bloc])]
+        k += 1
+    sures.sort()
+    dans = {j for p_ in sures for j in p_}
+    return {"pages": i, "doubles": sum(1 for g, _ in plan if g == "double"), "couverture": [0] if decale else [],
+            "autres": [j for j in autres if j not in dans], "paires": sures}
 
 
 # --- Dans l'appli (optimiser.lancer_coupes) --------------------------------------------------------------------------------------------------
