@@ -302,12 +302,26 @@ def couper_cases(c, rempli, cote_dos, epaisseur=3):
         if not autour.any():
             return False
         fond = c[ya:yb, xa:xb][autour]
-        return clair_[ya:yb, xa:xb][autour].mean() > 0.75 or (float(np.median(fond)) > 0.5 * papier and float(fond.std()) < 30)   # ombre du dos : fond gris uni
-    lettres = [j for j in range(1, nl) if 5 * e_ <= stl[j, 3] <= 36 * e_ and 2 * e_ <= stl[j, 2] <= 36 * e_ and sur_fond_clair(j)]
+        if clair_[ya:yb, xa:xb][autour].mean() > 0.75:
+            return 1
+        # contre la reliure, le côté dos du liseré tombe dans l'ombre : on regarde seulement l'autre côté (Nori Taka tome 2 page 28)
+        if cote_dos == "droite" and x_ + ww_ > 0.88 * w:
+            cote_ = autour[:, :max(1, (xb - xa) // 2)]
+            if cote_.any() and clair_[ya:yb, xa:xa + cote_.shape[1]][cote_].mean() > 0.75:
+                return 1
+        if cote_dos == "gauche" and x_ < 0.12 * w:
+            k_ = (xb - xa) // 2
+            cote_ = autour[:, k_:]
+            if cote_.any() and clair_[ya:yb, xa + k_:xb][cote_].mean() > 0.75:
+                return 1
+        return 2 if (float(np.median(fond)) > 0.5 * papier and float(fond.std()) < 30) else 0    # ombre du dos : fond gris uni (2 : à confirmer)
+    fonds = {j: sur_fond_clair(j) for j in range(1, nl) if 5 * e_ <= stl[j, 3] <= 48 * e_ and 2 * e_ <= stl[j, 2] <= 40 * e_}
+    lettres = [j for j, f in fonds.items() if f]
     pc = np.array([cen[j] for j in lettres]) if lettres else np.zeros((0, 2))
     texte = []
     for i_, j in enumerate(lettres):
-        if np.sum((np.abs(pc[:, 1] - pc[i_, 1]) < 6 * e_) & (np.abs(pc[:, 0] - pc[i_, 0]) < 40 * e_)) - 1 < 2:
+        mini = 1 if fonds[j] == 1 else 2                  # « ET », « OÙ » : deux lettres suffisent sur fond blanc ; sur fond gris, un mot (sinon les
+        if np.sum((np.abs(pc[:, 1] - pc[i_, 1]) < 6 * e_) & (np.abs(pc[:, 0] - pc[i_, 0]) < 40 * e_)) - 1 < mini:   # salissures du bord du scan)
             continue
         x_, y_, ww_, hh_ = stl[j, 0], stl[j, 1], stl[j, 2], stl[j, 3]
         texte.append((x_, y_, ww_, hh_))
@@ -383,8 +397,29 @@ def couper_cases(c, rempli, cote_dos, epaisseur=3):
                 if c1 - c0 >= 15:
                     vs[p:p + epaisseur, a_ + c0:a_ + c1] = np.minimum(vs[p:p + epaisseur, a_ + c0:a_ + c1], noir)
                     tv[p:p + epaisseur, a_ + c0:a_ + c1] = True
+    fy0, fy1 = y0 + final.get("haut", 0), y1 - final.get("bas", 0)
+    fx0, fx1 = x0 + final.get("gauche", 0), x1 - final.get("droite", 0)
+    # dernier contrôle : une lettre (petite tache d'encre entourée de clair) coupée par le bord gardé fait reculer ce bord jusqu'à la contenir
+    # entière (Nori Taka tome 2 page 28 : « SOIT UN » contre la reliure)
+    for _ in range(3):
+        bouge = False
+        for j in range(1, nl):
+            x_, y_, ww_, hh_ = stl[j, 0], stl[j, 1], stl[j, 2], stl[j, 3]
+            if not (5 * e_ <= hh_ <= 48 * e_ and ww_ <= 40 * e_) or not fonds.get(j):
+                continue
+            if y_ + hh_ <= fy0 or y_ >= fy1 or x_ + ww_ <= fx0 or x_ >= fx1:
+                continue                                  # entièrement dehors
+            if x_ < fx0: fx0, bouge = max(0, x_ - 2), True
+            if x_ + ww_ > fx1: fx1, bouge = min(w, x_ + ww_ + 2), True
+            if y_ < fy0: fy0, bouge = max(0, y_ - 2), True
+            if y_ + hh_ > fy1: fy1, bouge = min(h, y_ + hh_ + 2), True
+        if not bouge:
+            break
+    if (fy0, fy1, fx0, fx1) != (y0 + final.get("haut", 0), y1 - final.get("bas", 0), x0 + final.get("gauche", 0), x1 - final.get("droite", 0)):
+        s_[fy0:fy1, fx0:fx1] = np.where(trace[fy0:fy1, fx0:fx1], c[fy0:fy1, fx0:fx1], s_[fy0:fy1, fx0:fx1])     # le trait tracé en travers d'une lettre s'efface
+        trace[:] = False
     garde = np.zeros((h, w), bool)
-    garde[y0 + final.get("haut", 0):y1 - final.get("bas", 0), x0 + final.get("gauche", 0):x1 - final.get("droite", 0)] = True
+    garde[fy0:fy1, fx0:fx1] = True
     s_[~garde] = papier
     trace[~garde] = False
     return s_, trace
@@ -835,7 +870,11 @@ def placer(gauche, droite, est_gauche, fb, HR, WR, partenaire_y):
     planche = np.hstack([gauche, droite])
     dx = 0 if est_gauche else gauche.shape[1]
     m = int(0.05 * g.shape[1])                            # un peu de marge côté extérieur : du texte peut déborder du cadre des cases voisines
-    x0 = (ext - m if est_gauche else ext - WR + m) + dx    # (Nori Taka tome 1 page 6) ; couper_cases recoupe ensuite au bon endroit
+    gw = g.shape[1]                                        # (Nori Taka tome 1 page 6), mais seulement si le côté dos reste entier (sinon le
+    if est_gauche:                                         # texte près de la reliure était coupé : tome 2 page 28)
+        x0 = max(ext - m, min(ext, gw - WR)) + dx
+    else:
+        x0 = min(ext - WR + m, max(ext - WR, 0)) + dx
     if WR < g.shape[1]:                                   # boîte plus étroite que la page (format différent de la sortie) : elle couvre toute la largeur,
         HR2 = int(np.ceil(g.shape[1] * HR / WR))          # la coupe aux cadres retire les parasites (sinon du texte était coupé : Nori Taka tome 2)
         y0 -= (HR2 - HR) // 2
@@ -928,7 +967,11 @@ def recadrer_tome(chemin, source, boites, taille, retouches, destination, progre
                 g = redresse(np.array(Image.open(io.BytesIO(zs.read(ordre_s[i]))).convert("L")), boites.get(str(i)))
                 info[i] = est_flashback(g)
                 if not info[i]:
-                    c, _ = couper_cases(g, np.zeros_like(g, bool), cote_du_dos(g))
+                    if lp:                                # même parité que la moitié gauche d'un scan double : page de gauche, reliure à droite
+                        dos = "droite" if (i - lp[0][0]) % 2 == 0 else "gauche"
+                    else:
+                        dos = cote_du_dos(g)
+                    c, _ = couper_cases(g, np.zeros_like(g, bool), dos)
                     c, _ = fermer_cases(c)
                 else:
                     c = g
@@ -1062,13 +1105,14 @@ def depuis_archive(archive, dossier, tome_actuel, destination) -> dict:
         while k + 1 < len(simples) and simples[k + 1] == bloc[-1] + 1:
             k += 1
             bloc.append(simples[k])
-        sures += [(bloc[0] + a, bloc[0] + b) for a, b in paires([tailles_d[j] for j in bloc])]
+        pass        # pages déjà simples dans l'archive : jamais appariées (tailles toutes différentes, ce ne sont pas deux moitiés d'un scan : Nori Taka tome 1)
         k += 1
     sures.sort()
     dans = {j for p_ in sures for j in p_}
     restes = [j for j in autres if j not in dans]
     doubles = {j + decale for j, (g, _) in enumerate(plan) if g == "double"}
-    return {"pages": i, "doubles": len(doubles), "couverture": [0] if decale else [], "paires": sures,
+    deja_coupees = False
+    return {"pages": i, "doubles": len(doubles), "couverture": [0] if decale else [], "paires": sures, "deja_coupees": deja_coupees,
             "autres": [j for j in restes if j in doubles], "seules": [j for j in restes if j not in doubles]}
 
 
