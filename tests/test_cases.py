@@ -56,8 +56,11 @@ def faire_tome(chemin, moities):
 
 class OutilsTest(unittest.TestCase):
     def test_paires(self):
-        tailles = [(400, 600), (320, 530), (321, 530), (640, 530), (320, 530), (320, 530), (320, 531)]
+        tailles = [(400, 600), (320, 530), (300, 534), (640, 530), (320, 530), (310, 530), (320, 600)]
         self.assertEqual(cases.paires(tailles), [(1, 2), (4, 5)])
+        # une page seule entre deux scans ne décale pas les paires suivantes (appariement glouton : 3-4 puis 5 seule ; tome 3 réel, page 6)
+        tailles = [(400, 600), (637, 1068), (638, 1068), (620, 1068), (637, 1060), (638, 1060), (637, 1082), (638, 1082)]
+        self.assertEqual(cases.paires(tailles), [(1, 2), (4, 5), (6, 7)])
 
     def test_flashback_cases_intactes_fond_noir(self):
         g = np.full((400, 300), 120, np.uint8)                          # fond délavé gris

@@ -128,10 +128,20 @@ def gouttieres_relatives(g):
 
 def est_flashback(g):
     """Page sur fond noir (gris délavé compris), ou moitié de page (fond sombre en haut et au moins une gouttière sombre)."""
-    if reliure.fond_noir(g):
-        return True
     f = fond_sombre(g)
-    return f["haut"] is not None and f["haut"] > BORD and gouttieres_relatives(g) >= 1
+    h, w = g.shape
+    # le fond noir d'un flash-back part du bord du papier : en haut (à moins de 3 % de la hauteur) et sur les deux côtés, ou sur un seul côté sans que
+    # l'autre ait de bord sombre (demi flash-back). Une page simplement sombre (grande case noire) commence plus bas ou s'arrête avant un côté
+    # (mesuré sur Nori Taka tomes 1 à 3 : tome 3 pages 78 et 94, tome 1 pages 14 et 144)
+    if f["haut"] is None or f["haut"] > 0.03 * h:
+        return False
+    g_bord = f["gauche"] is not None and f["gauche"] <= 8
+    d_bord = f["droite"] is not None and f["droite"] >= w - 8
+    if g_bord and d_bord:
+        return reliure.fond_noir(g) or (f["haut"] > BORD and gouttieres_relatives(g) >= 1)
+    if (g_bord and f["droite"] is None) or (d_bord and f["gauche"] is None):
+        return f["haut"] > BORD and gouttieres_relatives(g) >= 1
+    return False
 
 
 # --- Taille réelle et boîte --------------------------------------------------------------------------------------------------------------
@@ -249,11 +259,12 @@ def couper_cases(c, rempli, cote_dos, epaisseur=3):
     enc = (c < 0.5 * papier).astype(np.uint8)
     blanc = cv2.blur((c > 0.8 * papier).astype(np.float32), (21, 21)) > 0.55
     nl, labl, stl, cen = cv2.connectedComponentsWithStats(enc, connectivity=8)
-    lettres = [j for j in range(1, nl) if 5 <= stl[j, 3] <= 22 and 2 <= stl[j, 2] <= 22 and blanc[int(cen[j][1]), int(cen[j][0])]]
+    e_ = h / 1040                                         # tailles de lettre mesurées sur une page de 1040 px (scans plus grands : lettres plus grandes)
+    lettres = [j for j in range(1, nl) if 5 * e_ <= stl[j, 3] <= 30 * e_ and 2 * e_ <= stl[j, 2] <= 30 * e_ and blanc[int(cen[j][1]), int(cen[j][0])]]
     pc = np.array([cen[j] for j in lettres]) if lettres else np.zeros((0, 2))
     texte = []
     for i_, j in enumerate(lettres):
-        if np.sum((np.abs(pc[:, 1] - pc[i_, 1]) < 6) & (np.abs(pc[:, 0] - pc[i_, 0]) < 40)) - 1 < 2:
+        if np.sum((np.abs(pc[:, 1] - pc[i_, 1]) < 6 * e_) & (np.abs(pc[:, 0] - pc[i_, 0]) < 40 * e_)) - 1 < 2:
             continue
         x_, y_, ww_, hh_ = stl[j, 0], stl[j, 1], stl[j, 2], stl[j, 3]
         texte.append((x_, y_, ww_, hh_))
@@ -350,7 +361,7 @@ def liseres_noirs(g, papier):
                 k = d0
                 while k < n and ligne[k] >= 0.6 * papier:
                     k += 1
-                if d0 < k < n and k - d0 <= 0.025 * w and (ligne[k:k + 8] < 0.6 * papier).mean() > 0.7:
+                if d0 < k < n and (ligne[k:k + 8] < 0.6 * papier).mean() > 0.7:
                     c[i, d0:k] = noir
     return g
 
@@ -526,6 +537,7 @@ def fond_cases(g, rempli=None, seuil_g=0.93):
 
 def flashback(a, rempli):
     """Flash-back fini (après les retouches) : (image, masque du contenu)."""
+    a = liseres_noirs(a, float(np.percentile(a, 95)))     # le papier au-delà du fond noir n'est pas une case
     fc, cs = fond_cases(a, rempli=rempli)
     if cs.mean() < 0.85:
         return fc, cs
@@ -556,12 +568,49 @@ def flashback(a, rempli):
 
 # --- Une page, un tome -----------------------------------------------------------------------------------------------------------------------
 
+def sans_folio(contenu):
+    """Le numéro de page (petite tache isolée en haut ou en bas, hors des cases) ne compte pas dans le contenu : sinon une bande blanche restait sous
+    les cases (Nori Taka tomes 1 et 3)."""
+    h, w = contenu.shape
+    n, lab, st, _ = cv2.connectedComponentsWithStats(contenu.astype(np.uint8), connectivity=8)
+    grands = [j for j in range(1, n) if st[j, cv2.CC_STAT_AREA] >= 0.002 * h * w]
+    if not grands:
+        return contenu
+    y0 = min(st[j, cv2.CC_STAT_TOP] for j in grands)
+    y1 = max(st[j, cv2.CC_STAT_TOP] + st[j, cv2.CC_STAT_HEIGHT] for j in grands)
+    sortie = contenu.copy()
+    for j in range(1, n):
+        t, hh = st[j, cv2.CC_STAT_TOP], st[j, cv2.CC_STAT_HEIGHT]
+        if st[j, cv2.CC_STAT_AREA] < 0.002 * h * w and (t >= y1 or t + hh <= y0) and (t + hh <= 0.08 * h or t >= 0.92 * h):
+            sortie[lab == j] = False
+    return sortie
+
+
 def paires(tailles):
-    """[(gauche, droite)] : pages simples consécutives de même hauteur et de largeurs à 2 px près (les deux moitiés d'un même scan)."""
-    res, i = [], 0
-    while i + 1 < len(tailles):
+    """[(gauche, droite)] : pages simples consécutives de hauteurs proches (les deux moitiés d'un même scan double page ; recoupées à la main, la
+    hauteur peut varier de quelques px et la largeur davantage : constaté sur Nori Taka tome 1)."""
+    def cout(i):
+        """Écart entre les pages i et i + 1 si ce peuvent être les deux moitiés d'un scan, sinon None."""
         (wa, ha), (wb, hb) = tailles[i], tailles[i + 1]
-        if ha == hb and abs(wa - wb) <= 2 and wa < 0.8 * ha and wb < 0.8 * hb:
+        if abs(ha - hb) <= 0.02 * max(ha, hb) and abs(wa - wb) <= 0.12 * max(wa, wb) and wa < 0.8 * ha and wb < 0.8 * hb:
+            return abs(ha - hb) / max(ha, hb) + abs(wa - wb) / max(wa, wb)
+        return None
+    # le plus de paires possible et, à nombre égal, les moitiés les plus semblables (un appariement glouton décalait tout après une page seule :
+    # Nori Taka tome 3, page 6 laissée de côté)
+    n = len(tailles)
+    meilleur = [(0, 0.0, None)] * (n + 2)                 # meilleur[i] = (paires, -écart, choix) pour les pages i et suivantes
+    for i in range(n - 1, -1, -1):
+        sans = meilleur[i + 1][:2]
+        choix = (sans[0], sans[1], "seule")
+        c = cout(i) if i + 1 < n else None
+        if c is not None:
+            avec = (meilleur[i + 2][0] + 1, meilleur[i + 2][1] - c)
+            if avec > sans:
+                choix = (avec[0], avec[1], "paire")
+        meilleur[i] = choix
+    res, i = [], 0
+    while i < n:
+        if meilleur[i][2] == "paire":
             res.append((i, i + 1))
             i += 2
         else:
@@ -581,6 +630,10 @@ def placer(gauche, droite, est_gauche, fb, HR, WR, partenaire_y):
     planche = np.hstack([gauche, droite])
     dx = 0 if est_gauche else gauche.shape[1]
     x0 = (ext if est_gauche else ext - WR) + dx
+    if WR < g.shape[1]:                                   # boîte plus étroite que la page (format différent de la sortie) : elle couvre toute la largeur,
+        HR2 = int(np.ceil(g.shape[1] * HR / WR))          # la coupe aux cadres retire les parasites (sinon du texte était coupé : Nori Taka tome 2)
+        y0 -= (HR2 - HR) // 2
+        HR, WR, x0 = HR2, g.shape[1], dx
     H, W = planche.shape
     c = np.full((HR, WR), int(np.percentile(g, 2)) if fb else int(np.percentile(g, 95)), np.uint8)
     ya, yb, xa, xb = max(0, y0), min(H, y0 + HR), max(0, x0), min(W, x0 + WR)
@@ -634,6 +687,9 @@ def recadrer_tome(chemin, source, boites, taille, retouches, destination, progre
         for a, b in lp:
             gauche = cv2.imread(str(tmp / f"r{a}.png"), cv2.IMREAD_GRAYSCALE)
             droite = cv2.imread(str(tmp / f"r{b}.png"), cv2.IMREAD_GRAYSCALE)
+            hm = max(gauche.shape[0], droite.shape[0])        # moitiés recoupées à des hauteurs un peu différentes : complétées en bas
+            gauche = cv2.copyMakeBorder(gauche, 0, hm - gauche.shape[0], 0, 0, cv2.BORDER_REPLICATE)
+            droite = cv2.copyMakeBorder(droite, 0, hm - droite.shape[0], 0, 0, cv2.BORDER_REPLICATE)
             hauts = {}
             for i, est_g in ((a, True), (b, False)):
                 y0, _, sur = boite(gauche if est_g else droite, "gauche" if est_g else "droite", info[i], HR)
@@ -652,7 +708,7 @@ def recadrer_tome(chemin, source, boites, taille, retouches, destination, progre
                 if info[i]:
                     out, contenu = flashback(out, rem)
                 else:
-                    contenu = out < 128
+                    contenu = sans_folio(out < 128)
                 rows, cols = np.where(contenu.sum(1) >= 3)[0], np.where(contenu.sum(0) >= 3)[0]
                 if len(rows) < 10 or len(cols) < 10:
                     rows, cols = np.arange(H), np.arange(W)
