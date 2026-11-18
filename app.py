@@ -2750,6 +2750,9 @@ def api_rogner_cases():
     except (archives.ArchiveError, zipfile.BadZipFile, OSError, RuntimeError) as e:
         return jsonify({"ok": False, "error": f"Lecture impossible : {e}"}), 500
     pl = rognage.plan(etat["entree"], etat["tailles"])
+    ref = etat.get("reference") or {}
+    if ref.get("W") and ref.get("H"):                     # tous les tomes de la série à la même taille
+        pl = dict(pl, W=int(ref["W"]), H=int(ref["H"]))
     n = 2 * len(cases.paires(etat["tailles"]))
     res = {"ok": True, "W": pl["W"], "H": pl["H"], "pages": n, "autres": len(etat["tailles"]) - n}
     if not n:
