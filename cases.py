@@ -330,10 +330,16 @@ def couper_cases(c, rempli, cote_dos, epaisseur=3):
                 p = max(p, int(np.percentile(prof[prof >= 0], 90)) + 1)
         p = max(0, min(p, texte_avant(cote) - epaisseur - 2))
         final[cote] = p
+        # le trait n'est tracé que là où le dessin (ou son ancien trait) arrive jusqu'à la coupe : une marge blanche entre la coupe et l'image n'est pas
+        # une case (sinon un cadre inventé au bord de la page, à un centimètre du dessin : Nori Taka tomes 1 et 2, moitiés recoupées à la main)
+        dessin = (vs[p:p + epaisseur + 8] < 0.6 * papier).any(0)
+        dessin = cv2.morphologyEx(dessin.astype(np.uint8).reshape(1, -1), cv2.MORPH_CLOSE, np.ones((1, 15), np.uint8)).ravel() > 0
         vs[:p, :] = papier
         for a_, b_ in troncons:
-            vs[p:p + epaisseur, a_:b_] = np.minimum(vs[p:p + epaisseur, a_:b_], noir)
-            tv[p:p + epaisseur, a_:b_] = True
+            for c0, c1 in runs(dessin[a_:b_]):
+                if c1 - c0 >= 15:
+                    vs[p:p + epaisseur, a_ + c0:a_ + c1] = np.minimum(vs[p:p + epaisseur, a_ + c0:a_ + c1], noir)
+                    tv[p:p + epaisseur, a_ + c0:a_ + c1] = True
     garde = np.zeros((h, w), bool)
     garde[y0 + final.get("haut", 0):y1 - final.get("bas", 0), x0 + final.get("gauche", 0):x1 - final.get("droite", 0)] = True
     s_[~garde] = papier
@@ -579,10 +585,12 @@ def sans_folio(contenu):
     y0 = min(st[j, cv2.CC_STAT_TOP] for j in grands)
     y1 = max(st[j, cv2.CC_STAT_TOP] + st[j, cv2.CC_STAT_HEIGHT] for j in grands)
     sortie = contenu.copy()
-    for j in range(1, n):
-        t, hh = st[j, cv2.CC_STAT_TOP], st[j, cv2.CC_STAT_HEIGHT]
-        if st[j, cv2.CC_STAT_AREA] < 0.002 * h * w and (t >= y1 or t + hh <= y0) and (t + hh <= 0.08 * h or t >= 0.92 * h):
-            sortie[lab == j] = False
+    for haut in (True, False):
+        bande = [j for j in range(1, n) if (st[j, cv2.CC_STAT_TOP] + st[j, cv2.CC_STAT_HEIGHT] <= min(y0, 0.08 * h)) if haut]
+        bande = bande if haut else [j for j in range(1, n) if st[j, cv2.CC_STAT_TOP] >= max(y1, 0.92 * h)]
+        if 0 < len(bande) <= 4 and all(st[j, cv2.CC_STAT_AREA] < 0.002 * h * w for j in bande):     # 1 à 4 chiffres ; une ligne de texte : plus
+            for j in bande:
+                sortie[lab == j] = False
     return sortie
 
 
