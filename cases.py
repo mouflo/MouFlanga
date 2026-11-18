@@ -226,7 +226,7 @@ def couper_cases(c, rempli, cote_dos, epaisseur=3):
     ver[pres] = 0
     ch = cv2.dilate(hor, np.ones((3, 1), np.uint8)).sum(1) / w
     cv = cv2.dilate(ver, np.ones((1, 3), np.uint8)).sum(0) / h
-    zh, zw = int(0.06 * h), int(0.08 * w)
+    zh, zw = int(0.10 * h), int(0.12 * w)                 # marge sous le cadre jusqu à 8 % (folio), tranche jusqu à 9 % de la largeur (Nori Taka tome 2 pages 25 et 36)
 
     def premier(prof):
         """Le plus INTÉRIEUR des longs traits du bord (la tranche des pages du dessous et le bord du scan sont dehors, souvent plus longs)."""
@@ -235,7 +235,15 @@ def couper_cases(c, rempli, cote_dos, epaisseur=3):
             return 0
         m = max(x[2] for x in r)
         return int([x for x in r if x[2] >= 0.4 * m][-1][0])
-    lim = {"haut": premier(ch[:zh]), "bas": premier(ch[::-1][:zh]), "gauche": premier(cv[:zw]), "droite": premier(cv[::-1][:zw])}
+    def cadre_hb(prof):
+        """En haut et en bas : le trait du cadre est celui qui couvre le plus de largeur (le bord sombre du scan, collé au bord, est écarté ; un trait du
+        dessin, le sol par exemple, est plus court). À couverture égale, le plus extérieur."""
+        r = [(a, b, float(prof[a:b].max())) for a, b in runs(prof >= 0.15) if a >= 0.012 * h]
+        if not r:
+            return 0
+        m = max(x[2] for x in r)
+        return int([x for x in r if x[2] >= 0.85 * m][0][0])
+    lim = {"haut": cadre_hb(ch[:zh]), "bas": cadre_hb(ch[::-1][:zh]), "gauche": premier(cv[:zw]), "droite": premier(cv[::-1][:zw])}
     # côté reliure : bande parasite (gris lisse ou traits) depuis le bord, coupée juste après
     t = c.T
     lp = ver.T
@@ -343,7 +351,7 @@ def couper_cases(c, rempli, cote_dos, epaisseur=3):
         final[cote] = p
         # le trait n'est tracé que là où le dessin (ou son ancien trait) arrive jusqu'à la coupe : une marge blanche entre la coupe et l'image n'est pas
         # une case (sinon un cadre inventé au bord de la page, à un centimètre du dessin : Nori Taka tomes 1 et 2, moitiés recoupées à la main)
-        dessin = (vs[p:p + epaisseur + 8] < 0.6 * papier).any(0)
+        dessin = (vs[p:p + epaisseur + 8] < 0.6 * papier).any(0) | vt[max(0, p - 6):p + 2].any(0)     # ou un ancien trait de cadre, remplacé
         dessin = cv2.morphologyEx(dessin.astype(np.uint8).reshape(1, -1), cv2.MORPH_CLOSE, np.ones((1, 15), np.uint8)).ravel() > 0
         vs[:p, :] = papier
         for a_, b_ in troncons:
@@ -585,6 +593,62 @@ def flashback(a, rempli):
 
 # --- Une page, un tome -----------------------------------------------------------------------------------------------------------------------
 
+def retoucher(c, regl, taille):
+    """Retouches ✨ sur la page coupée mise à la taille finale (l'IA travaille à la résolution du scan, voir optimiser._ia_page). L'IA bouche l'œil des
+    petits caractères (récitatifs : « e » lu « o », quel que soit le niveau d'IA ou de noirs, constaté sur Nori Taka tome 2 page 32) : les blocs de
+    petit texte sur fond blanc gardent l'agrandissement simple, recalé et rendu net."""
+    import optimiser
+    import ia
+    W, H = taille
+    brut = cv2.resize(c, (W, H), interpolation=cv2.INTER_CUBIC)
+    out = np.array(optimiser.ameliorer(Image.fromarray(brut), regl, source=H / c.shape[0]).convert("L"))
+    if out.shape != (H, W):
+        out = cv2.resize(out, (W, H), interpolation=cv2.INTER_AREA)
+    if not regl.get("ia"):
+        return out
+    m = blocs_petit_texte(c)
+    if m is None:
+        return out
+    m = cv2.resize(m.astype(np.uint8), (W, H), interpolation=cv2.INTER_NEAREST).astype(np.float32)
+    doux = ia._nettete(ia._niveaux(brut), sigma=1.2, force=0.9)
+    a = cv2.GaussianBlur(m, (0, 0), 3)
+    return np.clip(out * (1 - a) + np.minimum(doux, out.max()) * a, 0, 255).astype(np.uint8)
+
+
+def blocs_petit_texte(g):
+    """Masque des blocs de petits caractères sur fond blanc (au moins deux lignes de lettres alignées), ou None. `g` : page à la résolution du scan."""
+    h, w = g.shape
+    e = h / 1040
+    papier = float(np.percentile(g, 95))
+    enc = (g < 0.55 * papier).astype(np.uint8)
+    n, lab, st, cen = cv2.connectedComponentsWithStats(enc, connectivity=8)
+    hh, ww, aire = st[:, cv2.CC_STAT_HEIGHT], st[:, cv2.CC_STAT_WIDTH], st[:, cv2.CC_STAT_AREA]
+    ok = (hh >= 4) & (hh <= 8 * e) & (ww >= 2) & (ww <= 14 * e) & (aire >= 0.35 * ww * hh)      # petites lettres grasses (pas les traits fins)
+    ok[0] = False
+    m0 = ok[lab].astype(np.uint8)
+    if m0.sum() < 100:
+        return None
+    lignes = cv2.morphologyEx(m0, cv2.MORPH_CLOSE, np.ones((int(4 * e) | 1, int(9 * e) | 1), np.uint8))
+    blocs = cv2.morphologyEx(lignes, cv2.MORPH_CLOSE, np.ones((int(8 * e) | 1, int(5 * e) | 1), np.uint8))
+    nb, lb, sb, _ = cv2.connectedComponentsWithStats(blocs, connectivity=8)
+    clair = g > 0.8 * papier
+    masque = np.zeros((h, w), bool)
+    for k in range(1, nb):
+        x, y, bw, bh = sb[k, 0], sb[k, 1], sb[k, 2], sb[k, 3]
+        if bw < 25 * e or bh < 10 * e or bh > 120 * e:
+            continue
+        zone = lb[y:y + bh, x:x + bw] == k
+        if len(np.unique(lab[y:y + bh, x:x + bw][zone & (m0[y:y + bh, x:x + bw] > 0)])) < 15:      # au moins une quinzaine de lettres
+            continue
+        fond = ~enc[y:y + bh, x:x + bw].astype(bool) & zone
+        if not fond.any() or clair[y:y + bh, x:x + bw][fond].mean() < 0.7:       # du texte posé sur du blanc (liseré gris des lettres compris), pas une trame
+            continue
+        if m0[y:y + bh, x:x + bw][zone].mean() < 0.2:
+            continue
+        masque[y:y + bh, x:x + bw] |= zone
+    return masque if masque.any() else None
+
+
 def sans_folio(contenu):
     """Le numéro de page (petite tache isolée en haut ou en bas, hors des cases) ne compte pas dans le contenu : sinon une bande blanche restait sous
     les cases (Nori Taka tomes 1 et 3)."""
@@ -719,12 +783,11 @@ def recadrer_tome(chemin, source, boites, taille, retouches, destination, progre
                 c, rempli = placer(gauche, droite, est_g, info[i], HR, WR, hauts[autre])
                 if not info[i]:
                     c, _ = couper_cases(c, rempli, "droite" if est_g else "gauche")
-                out = cv2.resize(c, (W, H), interpolation=cv2.INTER_CUBIC)
                 rem = cv2.resize(rempli.astype(np.uint8), (W, H), interpolation=cv2.INTER_NEAREST)
                 if regl:
-                    out = np.array(optimiser.ameliorer(Image.fromarray(out), regl, source=H / HR).convert("L"))
-                    if out.shape != (H, W):
-                        out = cv2.resize(out, (W, H), interpolation=cv2.INTER_AREA)
+                    out = retoucher(c, regl, (W, H))
+                else:
+                    out = cv2.resize(c, (W, H), interpolation=cv2.INTER_CUBIC)
                 if info[i]:
                     out, contenu = flashback(out, rem)
                 else:
