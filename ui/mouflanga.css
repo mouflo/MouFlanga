@@ -587,8 +587,10 @@ body.mou-skin .gerer-liste button:hover, body.mou-skin .gerer-liste a:hover { bo
 #allListe summary { cursor:pointer; padding:12px 0; min-height:24px; color:var(--accent, #52b54b); font-weight:600; }
 #allCmp.cmp-zoom { margin:0 -10px; }
 #allCmp.cmp-zoom .cmp { margin:0; padding:6px 0; border-radius:0; border-width:0 0 1px; }
+@media not ((min-width:1100px) and (hover:hover)) {   /* téléphone : le détail zoomé va d un bord à l autre */
 #infosVue:has(#allCmp.cmp-zoom) { padding:0; }
 #infosVue:has(#allCmp.cmp-zoom) .dem-boite { max-width:none; border-width:0; border-radius:0; padding-left:10px; padding-right:10px; }
+}
 #allCmp.cmp-zoom .cmp-haut { padding:0 8px; }
 #allCmp.cmp-zoom .cmp-boite { margin:0; }
 #allCmp.cmp-zoom .cmp-img { border-radius:0; }
@@ -598,3 +600,16 @@ body.mou-skin .gerer-liste button:hover, body.mou-skin .gerer-liste a:hover { bo
 .amel-ligne.amel-grise select { cursor:not-allowed; }
 
 .all-bloque { margin:8px 0; padding:8px 10px; border-radius:8px; border:1px solid #6b2f35; background:#2a1416; color:#ffb4b4; font-size:.9rem; }
+
+/* 🖥 Grand écran : l aperçu avant / après à gauche, sur toute la hauteur de la fenêtre, les réglages à droite (sur PC, l aperçu « téléphone » collé en
+   haut ne montrait qu une bande minuscule de l image, surtout zoomée) */
+@media (min-width:1100px) and (hover:hover) {
+  #infosVue:has(#allCmp:not(:empty)) .dem-boite { max-width:min(1700px, 96vw); }       /* la fenêtre s élargit quand l aperçu est ouvert */
+  #infosVue:has(#allCmp:not(:empty)) .onglets-4 { grid-template-columns:repeat(4, 1fr); }
+  [data-panneau="image"]:not([hidden]):has(> #allCmp:not(:empty)) { display:grid; grid-template-columns:minmax(0, 1.35fr) minmax(380px, 1fr); gap:16px; align-items:start; }
+  [data-panneau="image"]:has(> #allCmp:not(:empty)) > #allCmp { grid-column:1; grid-row:1 / span 50; top:64px; box-shadow:none; border-radius:10px; }
+  [data-panneau="image"]:has(> #allCmp:not(:empty)) > :not(#allCmp) { grid-column:2; min-width:0; }
+  #allCmp .cmp-img, #allCmp.cmp-grand .cmp-img { max-height:calc(100vh - var(--h-onglets, 56px) - 200px); }
+  #allCmp.cmp-zoom { margin:0; }
+  #allCmp.cmp-zoom .cmp { padding:6px 8px; border-radius:10px; }
+}

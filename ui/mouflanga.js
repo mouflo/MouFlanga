@@ -1306,6 +1306,7 @@
         '<div class="ident-actions"><button type="button" class="mou-btn ghost small" data-cmp="fermer">✕ Fermer l\'aperçu</button></div></details></div>';
       imagesCmp();
       chargerInfoCmp();
+      if (typeof posOnglets === 'function') posOnglets();       // la fenêtre a pu s'élargir (grand écran) : les onglets changent de hauteur
     }
     // Avant, Après, ou les deux superposés avec un rideau (l'original à gauche du trait, le résultat à droite)
     function imagesCmp() {
@@ -1398,6 +1399,8 @@
           var r = img.getBoundingClientRect(), sc = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight),
               dw = img.naturalWidth * sc, dh = img.naturalHeight * sc;
           var haut = Math.round(Math.min(0.27 * window.innerHeight, 0.62 * window.innerWidth));       // bande pleine largeur, un peu plus d'un quart de l'écran
+          if (window.matchMedia('(min-width:1100px) and (hover:hover)').matches)                 // grand écran : l'aperçu a toute la hauteur de la fenêtre
+            haut = Math.max(300, Math.round(window.innerHeight - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--h-onglets')) || 56) - 200));
           cmp.zoom = [(e.clientX - r.left - (r.width - dw) / 2) / dw, (e.clientY - r.top - (r.height - dh) / 2) / dh, 0, 0, haut];
         }
         dessinerComparaison();
