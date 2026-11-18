@@ -405,6 +405,9 @@ def fermer_cases(c, epaisseur=3):
         z = encre[y0:y1, x0:x1]
         for axe in ((0, 1) if prof % 2 == 0 else (1, 0)):
             blanc = z.mean(1 - axe) < 0.004
+            for a_, b_ in runs(blanc):                    # une gouttière a une épaisseur : 1 à 3 lignes blanches dans un dessin n'en sont pas une
+                if b_ - a_ < 0.006 * (h if axe == 0 else w):
+                    blanc[a_:b_] = False
             parts = [(a, b) for a, b in runs(~blanc) if b - a >= (0.04 * h if axe == 0 else 0.06 * w)]
             if len(parts) > 1 and prof < 7:
                 for a, b in parts:
@@ -438,9 +441,20 @@ def fermer_cases(c, epaisseur=3):
         cote = {"haut": meilleur(fin[max(0, y0 - d):y0 + d, x0:x1], 1), "bas": meilleur(fin[y1 - d:y1 + d, x0:x1], 1),
                 "gauche": meilleur(fin[y0:y1, max(0, x0 - d):x0 + d], 0), "droite": meilleur(fin[y0:y1, x1 - d:x1 + d], 0)}
         cote = {k: (1.0 if v >= 0.3 else v) for k, v in cote.items()}      # un trait déjà là, même pâle ou interrompu : pas de second trait
-        if max(cote.values()) < 0.9:                      # aucune vraie bordure : case ouverte, on n'invente rien
+        pleine = len(rects) == 1 and (y1 - y0) * (x1 - x0) >= 0.8 * (Y1 - Y0) * (X1 - X0)
+        if pleine:                                        # une seule image sur toute la page : son cadre en fait tout le tour (Nori Taka tomes 2-3)
+            # le bord du dessin touche forcément de l'encre : on cherche un vrai trait droit (long, fin) le long de chaque côté
+            lh, lv = lignes_fines(c)
+            def trait(bande, axe):
+                return float(bande.any(axe).mean()) if bande.size else 0.0
+            cote = {"haut": trait(lh[max(0, y0 - d):y0 + d, x0:x1], 0), "bas": trait(lh[y1 - d:y1 + d, x0:x1], 0),
+                    "gauche": trait(lv[y0:y1, max(0, x0 - d):x0 + d], 1), "droite": trait(lv[y0:y1, x1 - d:x1 + d], 1)}
+            cote = {k: (1.0 if v >= 0.6 else 0.0) for k, v in cote.items()}
+        elif max(cote.values()) < 0.9:                    # aucune vraie bordure : case ouverte, on n'invente rien
             continue
         au_bord = {"haut": y0 - Y0 <= marge, "bas": Y1 - y1 <= marge, "gauche": x0 - X0 <= marge, "droite": X1 - x1 <= marge}
+        if pleine:
+            au_bord = dict.fromkeys(au_bord, True)
         # le trait se pose au bord du dessin de toute la page de ce côté (les cases d'un même bord restent alignées), jamais sur du texte ou du dessin
         bx0, bx1, by0, by1 = x0, x1, y0, y1
         x0 = X0 if au_bord["gauche"] else x0
