@@ -268,13 +268,14 @@ def couper_cases(c, rempli, cote_dos, epaisseur=3):
     e_ = h / 1040                                         # tailles de lettre mesurées sur une page de 1040 px (scans plus grands : lettres plus grandes)
     nl, labl, stl, cen = cv2.connectedComponentsWithStats(enc, connectivity=8)
     clair_ = c > 0.7 * papier
+    encl = cv2.dilate(enc, np.ones((3, 3), np.uint8)).astype(bool)
 
     def sur_fond_clair(j):
         """Lettre : le liseré juste autour d'elle est clair (fond de bulle), même gras et même dans l'ombre légère du dos."""
         x_, y_, ww_, hh_ = stl[j, 0], stl[j, 1], stl[j, 2], stl[j, 3]
         m_ = max(2, int(3 * e_))
         ya, yb, xa, xb = max(0, y_ - m_), min(h, y_ + hh_ + m_), max(0, x_ - m_), min(w, x_ + ww_ + m_)
-        autour = (labl[ya:yb, xa:xb] != j) & ~enc[ya:yb, xa:xb].astype(bool)
+        autour = (labl[ya:yb, xa:xb] != j) & ~encl[ya:yb, xa:xb]          # le liseré gris des lettres voisines, collées, ne compte pas
         if not autour.any():
             return False
         fond = c[ya:yb, xa:xb][autour]
@@ -364,6 +365,74 @@ def couper_cases(c, rempli, cote_dos, epaisseur=3):
     s_[~garde] = papier
     trace[~garde] = False
     return s_, trace
+
+
+def fermer_cases(c, epaisseur=3):
+    """Page blanche : chaque case est un rectangle entre les gouttières blanches ; un côté de case qui arrive au bord du dessin sans trait (coupé par le
+    scan) reçoit un trait droit sur toute la longueur de la case, juste à l'extérieur. Seulement pour une case qui a déjà un vrai trait sur au moins un
+    autre côté (une illustration ou un titre à fond perdu reste ouvert). Retour : image, masque des traits tracés."""
+    h, w = c.shape
+    papier = float(np.percentile(c, 95))
+    encre = c < 0.6 * papier
+    traits = np.zeros((h, w), bool)
+    rects = []
+
+    def decouper(y0, y1, x0, x1, prof):
+        z = encre[y0:y1, x0:x1]
+        for axe in ((0, 1) if prof % 2 == 0 else (1, 0)):
+            blanc = z.mean(1 - axe) < 0.004
+            parts = [(a, b) for a, b in runs(~blanc) if b - a >= (0.04 * h if axe == 0 else 0.06 * w)]
+            if len(parts) > 1 and prof < 7:
+                for a, b in parts:
+                    if axe == 0:
+                        decouper(y0 + a, y0 + b, x0, x1, prof + 1)
+                    else:
+                        decouper(y0, y1, x0 + a, x0 + b, prof + 1)
+                return
+        rects.append((y0, y1, x0, x1))
+
+    rows, cols = np.where(encre.mean(1) > 0.004)[0], np.where(encre.mean(0) > 0.004)[0]
+    if len(rows) < 10 or len(cols) < 10:
+        return c, traits
+    Y0, Y1, X0, X1 = rows[0], rows[-1] + 1, cols[0], cols[-1] + 1
+    decouper(Y0, Y1, X0, X1, 0)
+    noir = int(np.percentile(c[encre], 10)) if encre.any() else 20
+    s_ = c.copy()
+    marge = max(4, int(0.03 * min(h, w)))
+    for y0, y1, x0, x1 in rects:
+        z = encre[y0:y1, x0:x1]
+        r_ = np.where(z.mean(1) > 0.02)[0]
+        c_ = np.where(z.mean(0) > 0.02)[0]
+        if len(r_) < 20 or len(c_) < 20:
+            continue
+        y0, y1, x0, x1 = y0 + r_[0], y0 + r_[-1] + 1, x0 + c_[0], x0 + c_[-1] + 1
+        if y1 - y0 < 0.06 * h or x1 - x0 < 0.08 * w:
+            continue
+        d = 4
+        cote = {"haut": encre[y0:y0 + d, x0:x1].any(0).mean(), "bas": encre[y1 - d:y1, x0:x1].any(0).mean(),
+                "gauche": encre[y0:y1, x0:x0 + d].any(1).mean(), "droite": encre[y0:y1, x1 - d:x1].any(1).mean()}
+        if max(cote.values()) < 0.9:                      # aucune vraie bordure : case ouverte, on n'invente rien
+            continue
+        au_bord = {"haut": y0 - Y0 <= marge, "bas": Y1 - y1 <= marge, "gauche": x0 - X0 <= marge, "droite": X1 - x1 <= marge}
+        # le trait se pose au bord du dessin de toute la page de ce côté (les cases d'un même bord restent alignées), jamais sur du texte ou du dessin
+        bx0, bx1, by0, by1 = x0, x1, y0, y1
+        x0 = X0 if au_bord["gauche"] else x0
+        x1 = X1 if au_bord["droite"] else x1
+        y0 = Y0 if au_bord["haut"] else y0
+        y1 = Y1 if au_bord["bas"] else y1
+        for k, v in cote.items():
+            if v >= 0.9 or not au_bord[k]:
+                continue
+            if k == "haut":
+                ya = max(0, y0 - epaisseur); s_[ya:ya + epaisseur, x0:x1] = noir; traits[ya:ya + epaisseur, x0:x1] = True
+            elif k == "bas":
+                ya = min(h - epaisseur, y1); s_[ya:ya + epaisseur, x0:x1] = noir; traits[ya:ya + epaisseur, x0:x1] = True
+            elif k == "gauche":
+                xa = max(0, x0 - epaisseur); s_[y0:y1, xa:xa + epaisseur] = noir; traits[y0:y1, xa:xa + epaisseur] = True
+            else:
+                xa = min(w - epaisseur, x1); s_[y0:y1, xa:xa + epaisseur] = noir; traits[y0:y1, xa:xa + epaisseur] = True
+        x0, x1, y0, y1 = bx0, bx1, by0, by1
+    return s_, traits
 
 
 # --- Flash-back -----------------------------------------------------------------------------------------------------------------------------
@@ -649,6 +718,16 @@ def blocs_petit_texte(g):
     return masque if masque.any() else None
 
 
+def cote_du_dos(g):
+    """Page simple : côté de la reliure, celui dont la bande du bord est la plus grise et lisse (ombre, tranche)."""
+    h, w = g.shape
+    f = g.astype(np.float32)
+    ecart = np.sqrt(np.maximum(cv2.blur(f * f, (5, 5)) - cv2.blur(f, (5, 5)) ** 2, 0))
+    gris = (g > 90) & (g < 225) & (ecart < 8)
+    b = max(8, int(0.06 * w))
+    return "gauche" if gris[:, :b].mean() > gris[:, -b:].mean() else "droite"
+
+
 def sans_folio(contenu):
     """Le numéro de page (petite tache isolée en haut ou en bas, hors des cases) ne compte pas dans le contenu : sinon une bande blanche restait sous
     les cases (Nori Taka tomes 1 et 3)."""
@@ -712,7 +791,8 @@ def placer(gauche, droite, est_gauche, fb, HR, WR, partenaire_y):
         y0 = (g.shape[0] - HR) // 2
     planche = np.hstack([gauche, droite])
     dx = 0 if est_gauche else gauche.shape[1]
-    x0 = (ext if est_gauche else ext - WR) + dx
+    m = int(0.05 * g.shape[1])                            # un peu de marge côté extérieur : du texte peut déborder du cadre des cases voisines
+    x0 = (ext - m if est_gauche else ext - WR + m) + dx    # (Nori Taka tome 1 page 6) ; couper_cases recoupe ensuite au bon endroit
     if WR < g.shape[1]:                                   # boîte plus étroite que la page (format différent de la sortie) : elle couvre toute la largeur,
         HR2 = int(np.ceil(g.shape[1] * HR / WR))          # la coupe aux cadres retire les parasites (sinon du texte était coupé : Nori Taka tome 2)
         y0 -= (HR2 - HR) // 2
@@ -729,7 +809,7 @@ def placer(gauche, droite, est_gauche, fb, HR, WR, partenaire_y):
     return c, rempli
 
 
-def recadrer_tome(chemin, source, boites, taille, retouches, destination, progres=None, retoucher_autres=None, paires_connues=None) -> dict:
+def recadrer_tome(chemin, source, boites, taille, retouches, destination, progres=None, retoucher_autres=None, paires_connues=None, seules=None) -> dict:
     """Écrit dans `destination` le tome recadré aux cases. `source` : fichier des pages d'origine ; `boites` : cadres réglés à la main {numéro: boîte}
     (mesure du redressement) ; `taille` : (W, H) des pages finales ; `retouches` : réglages ✨ à appliquer (sans redresser ni flash-back, faits ici).
     Les pages hors paires sont recopiées du tome actuel ; `retoucher_autres` (numéros) : celles-là sont plutôt mises à la taille (double page : 2W × H)
@@ -783,6 +863,7 @@ def recadrer_tome(chemin, source, boites, taille, retouches, destination, progre
                 c, rempli = placer(gauche, droite, est_g, info[i], HR, WR, hauts[autre])
                 if not info[i]:
                     c, _ = couper_cases(c, rempli, "droite" if est_g else "gauche")
+                    c, _ = fermer_cases(c)
                 rem = cv2.resize(rempli.astype(np.uint8), (W, H), interpolation=cv2.INTER_NEAREST)
                 if regl:
                     out = retoucher(c, regl, (W, H))
@@ -798,6 +879,27 @@ def recadrer_tome(chemin, source, boites, taille, retouches, destination, progre
                 cadrage[i] = (int(rows[0]), int(rows[-1]) + 1, int(cols[0]), int(cols[-1]) + 1)
                 cv2.imwrite(str(tmp / f"c{i}.png"), out)
             avance()
+        # pages simples sans moitié sœur (tome déjà coupé au scan) : chacune redressée et coupée seule, le côté de la reliure repéré à sa bande grise
+        with zipfile.ZipFile(source) as zs:
+            for i in sorted(seules or ()):
+                g = redresse(np.array(Image.open(io.BytesIO(zs.read(ordre_s[i]))).convert("L")), boites.get(str(i)))
+                info[i] = est_flashback(g)
+                if not info[i]:
+                    c, _ = couper_cases(g, np.zeros_like(g, bool), cote_du_dos(g))
+                    c, _ = fermer_cases(c)
+                else:
+                    c = g
+                taille_i = (max(1, round(c.shape[1] * H / c.shape[0])), H)
+                out = retoucher(c, regl, taille_i) if regl else cv2.resize(c, taille_i, interpolation=cv2.INTER_CUBIC)
+                if info[i]:
+                    out, contenu = flashback(out, np.zeros_like(out, np.uint8))
+                else:
+                    contenu = sans_folio(out < 128)
+                rows, cols = np.where(contenu.sum(1) >= 3)[0], np.where(contenu.sum(0) >= 3)[0]
+                if len(rows) < 10 or len(cols) < 10:
+                    rows, cols = np.arange(out.shape[0]), np.arange(out.shape[1])
+                cadrage[i] = (int(rows[0]), int(rows[-1]) + 1, int(cols[0]), int(cols[-1]) + 1)
+                cv2.imwrite(str(tmp / f"c{i}.png"), out)
         # 3. mise en page : page blanche plein écran, flash-back au zoom médian des pages blanches
         zooms = {i: min(W * MARGE / (x1 - x0), H * MARGE / (y1 - y0)) for i, (y0, y1, x0, x1) in cadrage.items()}
         blanches = [z for i, z in zooms.items() if not info[i]]
@@ -921,8 +1023,10 @@ def depuis_archive(archive, dossier, tome_actuel, destination) -> dict:
         k += 1
     sures.sort()
     dans = {j for p_ in sures for j in p_}
-    return {"pages": i, "doubles": sum(1 for g, _ in plan if g == "double"), "couverture": [0] if decale else [],
-            "autres": [j for j in autres if j not in dans], "paires": sures}
+    restes = [j for j in autres if j not in dans]
+    doubles = {j + decale for j, (g, _) in enumerate(plan) if g == "double"}
+    return {"pages": i, "doubles": len(doubles), "couverture": [0] if decale else [], "paires": sures,
+            "autres": [j for j in restes if j in doubles], "seules": [j for j in restes if j not in doubles]}
 
 
 # --- Dans l'appli (optimiser.lancer_coupes) --------------------------------------------------------------------------------------------------
