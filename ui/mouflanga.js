@@ -1148,7 +1148,7 @@
       ['uniformiser', '🎨 Aligner sur les autres tomes', 'même noir, même blanc, sans teinte ; demande la mesure de l\'onglet 🎨 Uniformité', ['Non', 'Oui']],
       ['ia', '🧠 Restauration IA', 'petits scans (moins de 1700 px de haut) : agrandi ×2 par un réseau de neurones pour mangas, texte et contours francs, remplace grain, trames, lisser et agrandir', ['Non', 'Naturel', 'Net', 'Maximum']],
       ['dos', '📖 Ombre du dos', 'le papier assombri vers la reliure est éclairci (double page : chaque moitié) ; fort = jusqu\'à 50 % de gain', ['Non', 'Léger', 'Moyen', 'Fort']],
-      ['redresser', '📐 Redresser la page', 'petite inclinaison du scan (de 0,2 à 3°), mesurée sur les bords de cases', ['Non', 'Oui']],
+      ['redresser', '📐 Redresser la page', 'page penchée ou de travers (jusqu\'à 3°), mesurée sur les bords de cases ; une page sans repère sûr n\'est pas touchée', ['Non', 'Oui']],
       ['bords', '🧽 Bords noirs du scan', 'bandes sombres et étroites le long du bord de la page', ['Non', 'Oui']],
       ['recadrer', '✂️ Recadrer et aligner', 'toutes les pages à la même taille (aucun zoom) ; coupe les bandes d\'ombre des pages voisines et les bords du scan, sur les bords gauche, droit, haut et bas. Pages simples : découpez d\'abord les doubles', ['Non', 'Oui']]];
     var REMPLACES_PAR_IA = ['debruit', 'trames', 'lisser', 'agrandir'];       // ce que la restauration IA fait déjà à leur place (voir optimiser.ameliorer)

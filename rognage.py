@@ -28,7 +28,7 @@ import archives
 
 DOSSIER = ".rognage"            # dans le dossier des mangas : ignoré par la bibliothèque (commence par un point)
 MINI = 20                       # px : plus petit cadre accepté
-RETOUCHES = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "ia")   # ✨ retouches refaites sur une page réécrite (jamais ce qui change sa taille)
+RETOUCHES = ("debruit", "trames", "papier", "noirs", "taches", "lisser", "nettete", "ia", "redresser")   # ✨ retouches refaites sur une page réécrite (jamais ce qui change sa taille)
 _VERROU = threading.RLock()
 _TAILLES = {}
 
@@ -59,6 +59,48 @@ def ton_papier(a):
         p = np.percentile(plat(a[::4, ::4]).reshape(-1, 1 if a.ndim == 2 else a.shape[2]), 90, axis=0)
         return int(p[0]) if a.ndim == 2 else tuple(int(x) for x in p)
     return 255 if a.ndim == 2 else (255, 255, 255)
+
+
+_CORRECTIONS = {}
+
+
+def rendre_redressee(im, boite, taille):
+    """rendre_page sur la page d'origine redressée. Le redressement est mesuré DANS le cadre (la tranche des pages voisines, dehors, fausserait la mesure),
+    il remplace l'angle réglé à la main ; le cadre subit le même redressement et on garde le plus grand rectangle qu'il contient : on ne voit que ce que le
+    cadre montrait (jamais la bande voisine qu'il laissait dehors). Page en couleur ou rien de sûr : rendre_page tel quel."""
+    import optimiser
+    import reliure
+    if optimiser.est_couleur(im):
+        return rendre_page(im, boite, taille)
+    if im.mode not in ("L", "RGB"):
+        im = im.convert("RGB")
+    a = np.array(im)
+    H, W = a.shape[:2]
+    x, y, w, h = (float(boite[k]) for k in ("x", "y", "w", "h"))
+    cx0, cy0, cx1, cy1 = max(0, int(x)), max(0, int(y)), min(W, int(x + w)), min(H, int(y + h))
+    if cx1 - cx0 < 200 or cy1 - cy0 < 200:
+        return rendre_page(im, boite, taille)
+    gris = a if a.ndim == 2 else cv2.cvtColor(a, cv2.COLOR_RGB2GRAY)
+    dedans = np.ascontiguousarray(gris[cy0:cy1, cx0:cx1])
+    cle = (hashlib.blake2b(dedans.tobytes(), digest_size=16).hexdigest(), dedans.shape)
+    if cle not in _CORRECTIONS:
+        if len(_CORRECTIONS) > 512:
+            _CORRECTIONS.clear()
+        _CORRECTIONS[cle] = reliure.redressement(dedans)
+    c = _CORRECTIONS[cle]
+    if not c:
+        return rendre_page(im, boite, taille)
+    T = np.array([[1, 0, -cx0], [0, 1, -cy0], [0, 0, 1.]])
+    M = np.linalg.inv(T) @ reliure.matrice_redressement(c, cx1 - cx0, cy1 - cy0) @ T          # mesurée dans le cadre, appliquée à toute la page
+    papier = ton_papier(a)
+    a2 = cv2.warpPerspective(a, M, (W, H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=papier)
+    coins = np.array([[x, y, 1], [x + w, y, 1], [x + w, y + h, 1], [x, y + h, 1]]) @ M.T
+    coins = coins[:, :2] / coins[:, 2:]
+    x0, x1 = max(coins[0, 0], coins[3, 0]), min(coins[1, 0], coins[2, 0])
+    y0, y1 = max(coins[0, 1], coins[1, 1]), min(coins[2, 1], coins[3, 1])
+    x0, y0 = int(np.ceil(x0)), int(np.ceil(y0))
+    inscrit = {"x": x0, "y": y0, "w": max(MINI, int(np.floor(x1)) - x0), "h": max(MINI, int(np.floor(y1)) - y0), "a": 0.0}
+    return rendre_page(Image.fromarray(a2), inscrit, taille)
 
 
 def rendre_page(im, boite, taille):
@@ -399,6 +441,30 @@ def noter_retouches(fichier_reglages, chemin, octets_avant, reglages):
         return True
 
 
+def page_redressee(manga_dir, fichier_reglages, chemin, nom):
+    """Page `nom` d'un tome rogné ici (le fichier est celui écrit par le rognage), refaite depuis sa page d'origine redressée avec le même cadre et la même taille :
+    {"image", "retouches" (déjà faites sur ce tome), "source" (facteur d'agrandissement)}, ou None."""
+    _, e = _entree_produite(_lire(fichier_reglages), chemin)
+    if not e or not e.get("source"):
+        return None
+    ordre = archives.pages(chemin)
+    if nom not in ordre:
+        return None
+    i = ordre.index(nom)
+    source = Path(manga_dir) / e["source"]
+    p, tailles = e["produit"], e.get("tailles") or []
+    b = (p.get("boites") or {}).get(str(i))
+    ordre_s = archives.pages(source)
+    if b is None or len(ordre_s) != len(ordre) or i >= len(tailles):
+        return None
+    with zipfile.ZipFile(source) as z:
+        im = Image.open(io.BytesIO(z.read(ordre_s[i])))
+        im.load()
+    taille = cible(tailles[i], p["W"], p["H"])
+    return {"image": rendre_redressee(im, b, taille), "retouches": {k: v for k, v in (e.get("retouches") or {}).items() if k != "redresser"},
+            "source": facteur(b, taille)}
+
+
 def etat_liste(fichier_reglages, serie) -> dict:
     """{fichier: {"date", "octets"}} des tomes rognés ici, et ceux qui ont des réglages pas encore appliqués."""
     d = _lire(fichier_reglages)
@@ -433,7 +499,8 @@ def ecrire_tome(chemin, indices, sens_manga=True, destination=None, travail=None
     if not (len(ordre) == len(ordre_s) == len(pages)):
         raise RuntimeError("le tome n'a plus le même nombre de pages : rien n'a été écrit")
     rang = {n: i for i, n in enumerate(ordre)}
-    retouches = optimiser.reglages_amelioration({k: v for k, v in (travail.get("retouches") or {}).items() if k in RETOUCHES})
+    redresse = bool((travail.get("retouches") or {}).get("redresser"))                   # ✨ « redresser » : refait sur la page d'origine, avant le cadre
+    retouches = optimiser.reglages_amelioration({k: v for k, v in (travail.get("retouches") or {}).items() if k in RETOUCHES and k != "redresser"})
     tmp = Path(destination) if destination is not None else chemin.with_name("." + chemin.name + ".rogne")
     attendu, empreintes = {}, {}
     with zipfile.ZipFile(chemin) as zc, zipfile.ZipFile(source) as zs, zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as dst:
@@ -444,7 +511,7 @@ def ecrire_tome(chemin, indices, sens_manga=True, destination=None, travail=None
             else:
                 im = Image.open(io.BytesIO(zs.read(ordre_s[i])))
                 im.load()
-                sortie = rendre_page(im, pages[i]["boite"], pages[i]["taille"])
+                sortie = (rendre_redressee if redresse else rendre_page)(im, pages[i]["boite"], pages[i]["taille"])
                 if retouches:                              # le tome avait été ✨ amélioré après le rognage : la page refaite reçoit la même retouche que ses voisines
                     sortie = optimiser.ameliorer(sortie, retouches, source=facteur(pages[i]["boite"], pages[i]["taille"]))
                     if list(sortie.size) != list(pages[i]["taille"]):

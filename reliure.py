@@ -6,7 +6,7 @@
 - les bords noirs ou gris du scanner : une bande étroite le long du bord de la page, parfois des bouts de la page voisine.
 
 Tout travaille sur une page en niveaux de gris (uint8) et rend une page de même taille ; une page qui n'a pas le défaut est rendue telle quelle.
-La déformation géométrique près du dos (lignes courbes, texte comprimé) n'est PAS corrigée : sur ces scans les bords de cases restent droits à moins
+L'inclinaison et le cisaillement de la page sont corrigés par redressement() ; la courbure près du dos (lignes courbes, texte comprimé) n'est PAS corrigée : sur ces scans les bords de cases restent droits à moins
 d'un degré, et la deviner sur une page sans cadre serait pire que le mal.
 """
 import cv2
@@ -126,6 +126,163 @@ def pivoter(g: np.ndarray, angle: float) -> np.ndarray:
     papier = int(min(255, max(200, _papier(g))))
     m = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)         # OpenCV : angle positif = sens inverse des aiguilles ; une page tournée de +a (horaire) se remet avec +a
     return cv2.warpAffine(g, m, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=papier)
+
+
+# --- Redressement : rotation et cisaillement (18/11/2026) ---------------------------------------------------------------------------------------------------------
+# Mesuré sur Nori Taka tome 3 (bords de cases, 154 pages simples) : 1,1° d'inclinaison médiane ; après redressement 0,15°. Une page de livre scannée à plat n'est pas
+# seulement tournée : ses traits horizontaux et verticaux ne penchent souvent pas du même angle (cisaillement), et une simple rotation laisse alors un côté de travers.
+# Modèles essayés du plus simple au plus riche (rotation, + cisaillement, + perspective) ; un modèle plus riche n'est gardé que s'il redresse nettement mieux. Garde-fous :
+# seuls les longs traits proches de l'inclinaison la plus partagée de leur famille (horizontaux, verticaux) comptent (les traits dessinés, de vitesse ou de décor, sont écartés) ; il faut des traits horizontaux ET
+# verticaux ; la correction refaite sur deux moitiés des traits tirées au hasard doit déplacer les coins pareil (à 0,3 % près) ; sinon la page n'est pas touchée.
+# Sur les tomes 1 et 2 (déjà droits) : 4 et 18 pages corrigées sur ~170.
+
+REDRESSE_MAX = 3.0               # degrés : au-delà, c'est le dessin qui penche, pas la page
+
+
+def _traits_droits(g):
+    """Longs segments presque horizontaux (H) et presque verticaux (V), en coordonnées centrées réduites (demi-largeur et demi-hauteur = 1)."""
+    h, w = g.shape
+    k = 1.0 if max(h, w) <= 1400 else 1400.0 / max(h, w)
+    p = cv2.resize(g, None, fx=k, fy=k, interpolation=cv2.INTER_AREA) if k != 1.0 else g
+    ph, pw = p.shape
+    m = int(0.02 * min(ph, pw))
+    s = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD).detect(p[m:ph - m, m:pw - m])[0]
+    H, V = [], []
+    if s is not None:
+        mini = 0.12 * min(ph, pw)
+        for xa, ya, xb, yb in s.reshape(-1, 4):
+            if np.hypot(xb - xa, yb - ya) < mini:
+                continue
+            a = np.degrees(np.arctan2(yb - ya, xb - xa)) % 180
+            seg = [(xa + m - pw / 2) / (pw / 2), (ya + m - ph / 2) / (ph / 2), (xb + m - pw / 2) / (pw / 2), (yb + m - ph / 2) / (ph / 2)]
+            if a < REDRESSE_MAX + 1 or a > 179 - REDRESSE_MAX:
+                H.append(seg)
+            elif abs(a - 90) < REDRESSE_MAX + 1:
+                V.append(seg)
+    return np.array(H).reshape(-1, 4), np.array(V).reshape(-1, 4)
+
+
+def _matrice_redresse(p, rapport):
+    """p = (angle, cisaillement, perspective x, perspective y) → matrice 3×3 en coordonnées centrées réduites ; rapport = largeur / hauteur."""
+    q = list(p) + [0.0] * (4 - len(p))
+    t = np.radians(q[0])
+    A, Ai = np.diag([rapport, 1.0, 1.0]), np.diag([1 / rapport, 1.0, 1.0])
+    R = np.array([[np.cos(t), -np.sin(t), 0], [np.sin(t), np.cos(t), 0], [0, 0, 1]])
+    return Ai @ R @ A @ np.array([[1, q[1], 0], [0, 1, 0], [q[2], q[3], 1]])
+
+
+def _ecarts_redresse(p, H, V, rapport):
+    """Angle (degrés) de chaque trait après correction, par rapport à l'horizontale ou à la verticale (pixels carrés)."""
+    M = _matrice_redresse(p, rapport)
+    out = []
+    for S, vertical in ((H, False), (V, True)):
+        if len(S):
+            a, b = np.c_[S[:, :2], np.ones(len(S))] @ M.T, np.c_[S[:, 2:], np.ones(len(S))] @ M.T
+            a, b = a[:, :2] / a[:, 2:], b[:, :2] / b[:, 2:]
+            dx, dy = (b[:, 0] - a[:, 0]) * rapport, b[:, 1] - a[:, 1]
+            out.append(np.degrees(np.arctan(dx / dy)) if vertical else np.degrees(np.arctan(dy / dx)))
+    return np.concatenate(out) if out else np.zeros(0)
+
+
+def _ajuster_redresse(H, V, rapport, n):
+    """Moindres carrés robustes (Gauss-Newton amorti, poids de Huber) sur n paramètres."""
+    x, lam = np.zeros(n), 1e-3
+    f = lambda q: _ecarts_redresse(q, H, V, rapport)
+    for _ in range(50):
+        r = f(x)
+        wgt = np.sqrt(np.minimum(1, 0.4 / np.maximum(np.abs(r), 1e-9)))
+        J = np.empty((len(r), n))
+        for k in range(n):
+            d = np.zeros(n)
+            d[k] = 1e-4 if k == 0 else 1e-6
+            J[:, k] = (f(x + d) - r) / d[k]
+        Jw, rw = J * wgt[:, None], r * wgt
+        A = Jw.T @ Jw
+        pas = np.linalg.solve(A + lam * np.diag(np.diag(A) + 1e-12), -Jw.T @ rw)
+        rn = f(x + pas)
+        if np.sum(np.minimum(1, 0.4 / np.maximum(np.abs(rn), 1e-9)) * rn ** 2) < np.sum(wgt ** 2 * r ** 2):
+            x, lam = x + pas, lam / 3
+        else:
+            lam *= 5
+        if np.abs(pas).max() < 1e-8:
+            break
+    return x
+
+
+def _coins_redresse(p, rapport):
+    c = np.array([[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1.]]) @ _matrice_redresse(p, rapport).T
+    return c[:, :2] / c[:, 2:]
+
+
+def redressement(g: np.ndarray):
+    """Correction de la page {"genre": « rotation », « cisaillement » ou « perspective », "p": paramètres}, ou None si rien de sûr (voir plus haut).
+    La correction est en coordonnées réduites : elle s'applique aussi à la page agrandie ou réduite (redresser)."""
+    h, w = g.shape
+    if min(h, w) < 200:
+        return None
+    rapport = w / h
+    H, V = _traits_droits(g)
+    if len(H) + len(V) < 8:
+        return None
+
+    def penche(S, vertical):
+        dx, dy = (S[:, 2] - S[:, 0]) * rapport, S[:, 3] - S[:, 1]
+        return -np.degrees(np.arctan(dx / dy)) if vertical else np.degrees(np.arctan(dy / dx))
+    grille = np.arange(-REDRESSE_MAX - 1, REDRESSE_MAX + 1, 0.05)
+
+    def pic(S, vertical):                                 # l'inclinaison la plus partagée de cette famille (histogramme pondéré par la longueur)
+        poids = np.hypot((S[:, 2] - S[:, 0]) * rapport, S[:, 3] - S[:, 1])
+        return float(grille[np.argmax((poids[None, :] * np.exp(-0.5 * ((grille[:, None] - penche(S, vertical)[None, :]) / 0.25) ** 2)).sum(1))])
+    if len(H) < 2 or len(V) < 2:
+        return None
+    pH, pV = pic(H, False), pic(V, True)
+    if abs(pH - pV) > 1.5:                                # horizontales et verticales trop en désaccord : pas un défaut de scan
+        return None
+    H, V = H[np.abs(penche(H, False) - pH) <= 0.7], V[np.abs(penche(V, True) - pV) <= 0.7]
+    if len(H) < 2 or len(V) < 2:                          # horizontaux ET verticaux doivent confirmer : un dessin aux traits parallèles ne suffit pas
+        return None
+    avant = float(np.median(np.abs(_ecarts_redresse([0], H, V, rapport))))
+    tout_autour = (len(V) >= 4 and len(H) >= 4 and (V[:, 0] < -0.2).any() and (V[:, 0] > 0.2).any() and (H[:, 1] < -0.2).any() and (H[:, 1] > 0.2).any())
+    hasard = np.random.default_rng(0)
+    bons = []
+    for genre, n in (("rotation", 1), ("cisaillement", 2), ("perspective", 4)):
+        if (n == 2 and min(len(H), len(V)) < 3) or (n == 4 and not tout_autour):
+            continue
+        p = _ajuster_redresse(H, V, rapport, n)
+        apres = float(np.median(np.abs(_ecarts_redresse(p, H, V, rapport))))
+        instable = 0.0
+        for _ in range(3):
+            iH, iV = hasard.permutation(len(H)), hasard.permutation(len(V))
+            a = _ajuster_redresse(H[iH[::2]], V[iV[::2]], rapport, n)
+            b = _ajuster_redresse(H[iH[1::2]], V[iV[1::2]], rapport, n)
+            instable = max(instable, float(np.abs(_coins_redresse(a, rapport) - _coins_redresse(b, rapport)).max()))
+        deplacement = float(np.abs(_coins_redresse(p, rapport) - _coins_redresse([0], rapport)).max())
+        if abs(p[0]) <= REDRESSE_MAX and deplacement <= 0.06 and instable <= 0.006 and avant - apres >= 0.15 and apres <= 0.6 * avant:
+            if not bons or bons[-1][2] - apres >= 0.08:     # un modèle plus riche seulement s'il redresse nettement mieux
+                bons.append((genre, p, apres))
+    if not bons:
+        return None
+    genre, p, _ = bons[-1]
+    return {"genre": genre, "p": [round(float(v), 5) for v in p]}
+
+
+def matrice_redressement(correction, w, h) -> np.ndarray:
+    """Matrice 3×3 en pixels (page de w × h) de la correction : un point (x, y, 1) de la page va en M @ (x, y, 1)."""
+    N = np.array([[2 / w, 0, -1], [0, 2 / h, -1], [0, 0, 1.]])
+    return np.linalg.inv(N) @ _matrice_redresse(correction["p"], w / h) @ N
+
+
+def redresser(a: np.ndarray, correction, papier=None) -> np.ndarray:
+    """La page (gris ou couleur, n'importe quelle taille) redressée selon `correction` (voir redressement) ; les coins ouverts prennent le ton du papier."""
+    if not correction:
+        return a
+    h, w = a.shape[:2]
+    M = matrice_redressement(correction, w, h)
+    if papier is None:
+        gris = a if a.ndim == 2 else cv2.cvtColor(a, cv2.COLOR_RGB2GRAY)
+        papier = int(min(255, max(200, _papier(gris))))
+        papier = papier if a.ndim == 2 else (papier,) * 3
+    return cv2.warpPerspective(a, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=papier)
 
 
 TROP_COUPE = 0.08                # on ne coupe jamais plus de 8 % de la largeur ou de la hauteur d'un côté : au-delà, ce n'est plus une bande de scanner mais le dessin

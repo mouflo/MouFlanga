@@ -112,6 +112,61 @@ class RedresserTest(unittest.TestCase):
         self.assertIsNone(reliure.angle_page(np.full((900, 600), 235, np.uint8)))        # aucun trait à mesurer
 
 
+def planche(h=1000, w=640, papier=235):
+    """Une planche de six cases (traits noirs), de quoi mesurer horizontales et verticales."""
+    g = np.full((h, w), papier, np.uint8)
+    for y0, y1 in ((40, 330), (360, 650), (680, 960)):
+        cv2.rectangle(g, (40, y0), (w // 2 - 10, y1), 20, 3)
+        cv2.rectangle(g, (w // 2 + 10, y0), (w - 40, y1), 20, 3)
+    return g
+
+
+def deformee(g, degres=0.0, cisaillement=0.0):
+    """Page tournée (sens horaire) puis cisaillée (les verticales penchent de `cisaillement`, les horizontales restent)."""
+    h, w = g.shape
+    t = np.radians(degres)
+    R = np.array([[np.cos(t), -np.sin(t), 0], [np.sin(t), np.cos(t), 0], [0, 0, 1]])
+    C = np.array([[1, cisaillement, 0], [0, 1, 0], [0, 0, 1]])
+    T = np.array([[1, 0, -w / 2], [0, 1, -h / 2], [0, 0, 1.]])
+    M = np.linalg.inv(T) @ R @ C @ T
+    return cv2.warpPerspective(g, M, (w, h), flags=cv2.INTER_CUBIC, borderValue=235)
+
+
+class RedressementTest(unittest.TestCase):
+    """Rotation + cisaillement (page de travers, pas seulement penchée) : la nouvelle mesure de ✨ « redresser »."""
+
+    def test_page_penchee_redressee(self):
+        g = deformee(planche(), 1.3)
+        c = reliure.redressement(g)
+        self.assertEqual(c["genre"], "rotation")
+        apres = reliure.redresser(g, c)
+        self.assertEqual(apres.shape, g.shape)
+        self.assertIsNone(reliure.redressement(apres))                                   # plus rien à redresser
+
+    def test_page_de_travers_cisaillement_redressee(self):
+        g = deformee(planche(), 0.8, 0.02)                                               # les verticales penchent de ~1,9°, les horizontales de 0,8°
+        c = reliure.redressement(g)
+        self.assertEqual(c["genre"], "cisaillement")
+        self.assertIsNone(reliure.redressement(reliure.redresser(g, c)))
+        tournee = reliure.redresser(g, {"genre": "rotation", "p": [c["p"][0]]})            # une rotation seule laisse la page de travers
+        self.assertIsNotNone(reliure.redressement(tournee))
+
+    def test_rien_de_sur_rien_ne_bouge(self):
+        self.assertIsNone(reliure.redressement(planche()))                               # déjà droite
+        self.assertIsNone(reliure.redressement(np.full((900, 600), 235, np.uint8)))      # aucun trait
+        hachures = np.full((900, 600), 235, np.uint8)
+        for y in range(60, 840, 25):                                                     # un dessin de traits parallèles penchés, rien de vertical
+            cv2.line(hachures, (40, y), (560, y + 14), 20, 2)
+        self.assertIsNone(reliure.redressement(hachures))
+        self.assertIsNone(reliure.redressement(deformee(planche(), 5.0)))                 # plus de 3° : c'est le dessin
+
+    def test_dans_ameliorer_la_page_garde_sa_taille(self):
+        g = deformee(planche(), -1.1)
+        sortie = np.asarray(optimiser.ameliorer(Image.fromarray(g), {"redresser": 1}))
+        self.assertEqual(sortie.shape, g.shape)
+        self.assertIsNone(reliure.redressement(sortie))
+
+
 class DansAmeliorerTest(unittest.TestCase):
     def test_les_trois_reglages_agissent_et_gardent_la_taille(self):
         g = avec_ombre(page_a_cases())

@@ -1901,6 +1901,7 @@ def api_optimiser_fichiers():
 
 optimiser.HISTORIQUE = str(DATA_DIR / "historique_allegement.jsonl")
 optimiser.ROGNAGE = str(DATA_DIR / "rognage.json")             # tome rogné à la main : la restauration IA sait de combien ses pages ont été agrandies
+optimiser.MANGAS = MANGA_DIR                                     # et « redresser » refait ses pages depuis les pages d'origine gardées
 
 
 @app.route("/api/optimiser/historique")

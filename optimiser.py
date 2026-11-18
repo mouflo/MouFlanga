@@ -197,7 +197,7 @@ def ameliorer(im: Image.Image, reglages, calage=None, cadre=None, source=None) -
         h, w = g.shape
     if r["dos"]:                                          # ombre du dos : le papier s'assombrit vers la reliure
         g = reliure.ombre_dos(g, r["dos"])
-    angle = reliure.angle_page(g) if r["redresser"] else None       # mesuré sur la page d'origine, appliqué à la fin (une rotation après l'agrandissement floute moins)
+    correction = reliure.redressement(g) if r["redresser"] else None    # mesurée sur la page d'origine, appliquée à la fin (après l'agrandissement, elle floute moins)
     restauree = _ia_page(g, r["ia"], source, niveaux_auto=not (r["uniformiser"] and calage)) if r["ia"] else None
     if restauree is not None:                             # petit scan : le réseau agrandit ×2, débruite et lisse les traits à la place des réglages classiques
         g = restauree
@@ -261,8 +261,8 @@ def ameliorer(im: Image.Image, reglages, calage=None, cadre=None, source=None) -
             g = cv2.resize(g, (w, h), interpolation=cv2.INTER_AREA)
     elif r["agrandir"] and h < 1700:
         g = cv2.resize(g, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-    if angle:
-        g = reliure.pivoter(g, angle)
+    if correction:
+        g = reliure.redresser(g, correction)
     if r["nettete"]:                                      # masque flou : traits plus francs
         a = (0, 0.5, 0.9, 1.4)[r["nettete"]]
         g = cv2.addWeighted(g, 1 + a, cv2.GaussianBlur(g, (0, 0), 1.0), -a, 0)
@@ -309,7 +309,8 @@ def analyser(chemin: Path, nb_essai=8, eclairer=False, largeur_max=None, qualite
     if eclairer:
         traitees = {}
         for i, (n, im) in enumerate(images.items()):
-            traitees[n] = ameliorer(im, eclairer, calage, cadre, source)
+            base, regl, fac = _depuis_l_origine(chemin, n, eclairer, eclairer, source)
+            traitees[n] = ameliorer(im if base is None else base, regl, calage, cadre, fac)
             _avancer("analyse", i + 1, len(images))
         inchangees = {n for n in images if traitees[n] is images[n]}
         images = traitees
@@ -368,7 +369,8 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
             if qualite and Path(info.filename).suffix.lower() in _IMAGES:
                 im = Image.open(io.BytesIO(data))
                 im.load()
-                traitee = ameliorer(im, eclairer, calage, cadre, source) if eclairer else im
+                base, regl, fac = _depuis_l_origine(chemin, info.filename, eclairer, eclairer, source)
+                traitee = ameliorer(im if base is None else base, regl, calage, cadre, fac) if eclairer else im
                 im2 = reduire(traitee, largeur_max)
                 if not (fidele and im2 is im):
                     nouveau = _jpeg(im2, (qualite_jpeg(im) or qualite) if fidele else qualite)
@@ -408,6 +410,20 @@ def reecrire(chemin: Path, qualite: int, eclairer=False, largeur_max=None, desti
 
 
 ROGNAGE = None                   # app.py : data/rognage.json (cadres du rognage à la main, voir rognage.echelle_source)
+MANGAS = None                    # app.py : dossier des mangas (les pages d'origine d'un tome rogné y sont gardées)
+
+
+def _depuis_l_origine(chemin, nom, eclairer, reglages, source):
+    """Tome rogné à la main et « redresser » demandé : (page refaite depuis sa page d'origine redressée, réglages, facteur d'agrandissement), les coins
+    venant de la vraie page au lieu de papier ajouté. Sinon (None, reglages, source) : la page du tome est retouchée telle quelle."""
+    if not (eclairer or {}).get("redresser") or not ROGNAGE or MANGAS is None:
+        return None, reglages, source
+    import rognage
+    r = rognage.page_redressee(MANGAS, ROGNAGE, chemin, nom)
+    if r is None:
+        return None, reglages, source
+    fusion = {**(r["retouches"] or {}), **{k: v for k, v in eclairer.items() if v}, "redresser": 0}     # déjà redressée ; les retouches déjà faites sont refaites
+    return r["image"], reglages_amelioration(fusion), r["source"]
 
 
 def echelle_du_tome(chemin: Path, eclairer) -> float | None:
@@ -721,7 +737,8 @@ def _comparer(chemin, index, qualite, eclairer, largeur_max, zoom, calage=None, 
     im = Image.open(io.BytesIO(data))
     im.load()
     couleur = bool(eclairer) and est_couleur(im)
-    traitee = ameliorer(im, eclairer, calage, cadre_du_tome(chemin, eclairer), echelle_du_tome(chemin, eclairer)) if eclairer else im
+    base, regl, fac = _depuis_l_origine(chemin, noms[index], eclairer, eclairer, echelle_du_tome(chemin, eclairer))
+    traitee = ameliorer(im if base is None else base, regl, calage, cadre_du_tome(chemin, eclairer), fac) if eclairer else im
     im2 = reduire(traitee, largeur_max)
     q_page = (qualite_jpeg(im) or qualite) if fidele else qualite                  # mode « même qualité » : celle de CETTE page
     nouveau = _jpeg(im2, q_page) if qualite and not (fidele and im2 is im) else data

@@ -332,5 +332,60 @@ class IaTest(_Tome):
         self.assertFalse(rognage.noter_retouches(self.reglages, self.cbz, octets, {"agrandir": 1, "ia": 2}))
 
 
+class RedresserTest(_Tome):
+    """✨ « redresser » sur un tome rogné ici : la page est redressée sur sa page d'origine, AVANT le cadre (les coins viennent de la vraie page)."""
+
+    def setUp(self):
+        super().setUp()
+        import optimiser
+        with zipfile.ZipFile(self.cbz, "w", zipfile.ZIP_STORED) as z:
+            for i in range(1, 5):
+                a = np.full((1000, 640), 235, np.uint8)
+                for y0, y1 in ((40, 330), (360, 650), (680, 960)):
+                    cv2.rectangle(a, (40, y0), (310, y1), 20, 3)
+                    cv2.rectangle(a, (330, y0), (600, y1), 20, 3)
+                a[:, :12] = 90                                                   # la bande de la page voisine, au bord
+                m = cv2.getRotationMatrix2D((320, 500), -1.3, 1.0)                # page scannée penchée
+                a = cv2.warpAffine(a, m, (640, 1000), flags=cv2.INTER_CUBIC, borderValue=235)
+                out = io.BytesIO()
+                Image.fromarray(a).save(out, "JPEG", quality=92)
+                z.writestr(f"{i:04d}.jpg", out.getvalue())
+        self.patches = [mock.patch.object(optimiser, "ROGNAGE", str(self.reglages)), mock.patch.object(optimiser, "MANGAS", self.racine)]
+        for x in self.patches:
+            x.start()
+
+    def tearDown(self):
+        for x in self.patches:
+            x.stop()
+        super().tearDown()
+
+    def page(self, n):
+        with zipfile.ZipFile(self.cbz) as z:
+            return np.asarray(Image.open(io.BytesIO(z.read(sorted(z.namelist())[n]))).convert("L"))
+
+    def test_redresse_sur_l_origine_puis_garde_pour_les_pages_refaites(self):
+        import optimiser
+        import reliure
+        cadre = {"x": 20, "y": 10, "w": 600, "h": 980, "a": 0}
+        self.sauver({str(i): dict(cadre) for i in range(4)}, 600, 980)
+        self.appliquer()
+        self.assertIsNotNone(reliure.redressement(self.page(0)))                  # le rognage seul laisse la page penchée
+        octets = self.cbz.stat().st_size
+        optimiser.reecrire(self.cbz, 90, {"redresser": 1})
+        self.cbz.with_name(self.cbz.name + ".avant").unlink()
+        p = self.page(0)
+        self.assertEqual(p.shape, (980, 600))
+        self.assertIsNone(reliure.redressement(p))                                 # droite
+        self.assertLess(np.abs(p[:, :8].astype(float) - 235).mean(), 20)           # pas de coin de bande grise : redressée avant le cadre
+        self.assertTrue(rognage.noter_retouches(self.reglages, self.cbz, octets, {"redresser": 1}))
+        etat = rognage.ouvrir(self.racine, self.reglages, "Serie", self.cbz)
+        self.assertFalse(etat.get("message"))
+        b = dict(etat["entree"]["boites"])
+        b["1"] = dict(cadre, w=590)
+        self.sauver(b, 600, 980)
+        self.assertEqual(self.appliquer(), {1})
+        self.assertIsNone(reliure.redressement(self.page(1)))                       # la page refaite est redressée elle aussi
+
+
 if __name__ == "__main__":
     unittest.main()
