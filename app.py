@@ -2542,20 +2542,9 @@ def api_doubles_couper():
     return jsonify({"ok": True, "message": "Découpe lancée…"})
 
 
-# ✂️ Rognage manuel : une page plein écran, un cadre de taille commune à tout le tome, une position (et un petit angle) par page.
-def _rognages_chemin():
-    return Path(DATA_DIR) / "rognages.json"
-
-
-def _rognages_lire() -> dict:
-    try:
-        return json.loads(_rognages_chemin().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def _rognages_ecrire(d: dict):
-    _rognages_chemin().write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+# ✂️ Rognage à la main : un cadre libre par page, réglé sur la page d'origine ; toutes les pages mises à la même taille sans déformation (rognage.py).
+def _rognage_reglages():
+    return Path(DATA_DIR) / "rognage.json"
 
 
 def _tome_a_rogner(name, fichier):
@@ -2568,199 +2557,158 @@ def _tome_a_rogner(name, fichier):
     return f
 
 
+def _rognage_ouvrir(name, f):
+    import rognage
+    etat = rognage.ouvrir(MANGA_DIR, _rognage_reglages(), name, f)
+    if etat["jeter"]:                                       # pages d'origine d'un tome qui a changé depuis : à la corbeille (récupérables)
+        try:
+            _vers_corbeille(Path(etat["jeter"]))
+        except OSError as e:
+            logger.warning("Rognage : ancienne copie de %s : %s", f, e)
+    return etat
+
+
 @app.route("/rogner")
 def page_rogner():
     name = request.args.get("id", "")
     if name not in _scan() or name == "(Sans série)":
         return Response("Série introuvable", status=404)
-    brouillons = (_rognages_lire().get(name) or {})
     import edition
+    import rognage
     infos = edition.lire(MANGA_DIR / name)
+    faits = rognage.etat_liste(_rognage_reglages(), name)
     tomes_ = []
     for f in _fichiers_a_alleger(name):
         if not zipfile.is_zipfile(f):
             continue
-        marque = traitements.lire(infos, f.name, _taille_fichier(f)).get("rognage")          # valable tant que le fichier n'a pas été remplacé
-        jour = ""
-        if marque and re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(marque.get("date", ""))):
-            jour = "/".join(reversed(marque["date"].split("-")))
-        tomes_.append({"fichier": f.name, "libelle": _libelle_tome(f, name), "brouillon": f.name in brouillons,
-                       "rogne": {"date": jour, "detail": str(marque.get("detail", ""))} if marque else None})
+        r, taille = faits.get(f.name) or {}, _taille_fichier(f)
+        rogne = None
+        if r.get("octets") and r["octets"] == taille:
+            rogne = {"date": str(r.get("date", ""))[:10], "detail": ""}
+        else:
+            marque = traitements.lire(infos, f.name, taille).get("rognage")          # rognage fait avant ce module : valable tant que le fichier n'a pas été remplacé
+            if marque:
+                jour = "/".join(reversed(marque["date"].split("-"))) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(marque.get("date", ""))) else ""
+                rogne = {"date": jour, "detail": str(marque.get("detail", ""))}
+        tomes_.append({"fichier": f.name, "libelle": _libelle_tome(f, name), "brouillon": bool(r.get("en_cours")), "rogne": rogne})
     f = next((t for t in tomes_ if t["fichier"] == request.args.get("fichier", "")), None)
     return render_template("rogner.html", version=APP_VERSION, nom=name, tomes=tomes_, tome=f)
 
 
-def _simples_rognage(tailles):
-    """Numéros des pages simples (plus hautes que larges) : les doubles pages ont leur propre largeur."""
-    return [i for i, t in enumerate(tailles) if t[0] <= 1.1 * t[1]]
-
-
-def _mediane_page(tailles):
-    """(largeur, hauteur) médianes des pages simples du tome."""
-    s = [tailles[i] for i in _simples_rognage(tailles)] or tailles
-    ls, hs = sorted(t[0] for t in s), sorted(t[1] for t in s)
-    return ls[len(ls) // 2], hs[len(hs) // 2]
-
-
 @app.route("/api/rogner/infos")
 def api_rogner_infos():
-    """Tailles des pages du tome et brouillon en cours (rien si le tome a changé depuis : les numéros de page ne valent plus)."""
+    """Pages d'origine du tome (tailles), cadres enregistrés, taille finale et ce que contient le tome depuis la dernière application."""
     name, fichier = request.args.get("series", ""), request.args.get("fichier", "")
     f = _tome_a_rogner(name, fichier)
     if f is None:
         return jsonify({"error": "Tome introuvable."}), 404
     try:
-        tailles = optimiser.tailles_pages(f)
-    except (archives.ArchiveError, zipfile.BadZipFile, OSError) as e:
+        etat = _rognage_ouvrir(name, f)
+    except (archives.ArchiveError, zipfile.BadZipFile, OSError, RuntimeError) as e:
         return jsonify({"error": f"Lecture impossible : {e}"}), 500
-    b = (_rognages_lire().get(name) or {}).get(fichier)
-    if b and (b.get("pages_total") != len(tailles) or b.get("octets") != f.stat().st_size):
-        b = None
-    ref = (_rognages_lire().get("__reference__") or {}).get(name)          # le dernier tome rogné de la série : tous les tomes gardent la même taille
-    if ref:
-        pw, ph = _mediane_page(tailles)
-        if abs(pw - ref.get("pw", 0)) > 0.08 * ref.get("pw", 1) or abs(ph - ref.get("ph", 0)) > 0.08 * ref.get("ph", 1) or ref.get("tome") == fichier:
-            ref = None                                                       # autre résolution (la même taille en pixels n'aurait pas de sens) ou c'est ce tome lui-même
-    import edition
-    deja = bool(traitements.lire(edition.lire(MANGA_DIR / name), f.name, _taille_fichier(f)).get("rognage"))       # tome déjà rogné : on ne réécrit que les pages modifiées
-    return jsonify({"tailles": tailles, "brouillon": b, "libelle": _libelle_tome(f, name), "reference": ref, "deja_rogne": deja})
+    e, p = etat["entree"], etat["entree"].get("produit")
+    return jsonify({"tailles": etat["tailles"], "W": e.get("W"), "H": e.get("H"), "boites": e.get("boites") or {},
+                    "produit": {"W": p["W"], "H": p["H"], "boites": p.get("boites") or {}, "date": p.get("date", "")} if p else None,
+                    "message": etat["message"], "libelle": _libelle_tome(f, name), "origine": bool(e.get("source")), "reference": etat["reference"]})
 
 
 @app.route("/api/rogner/image")
 def api_rogner_image():
-    f = _tome_a_rogner(request.args.get("series", ""), request.args.get("fichier", ""))
+    """Une page D'ORIGINE du tome (celle sur laquelle on règle le cadre)."""
+    name, fichier = request.args.get("series", ""), request.args.get("fichier", "")
+    f = _tome_a_rogner(name, fichier)
     if f is None:
         return Response("Introuvable", status=404)
+    import rognage
+    source = rognage.source_de(MANGA_DIR, _rognage_reglages(), name, f)
     try:
         largeur = max(300, min(2600, int(request.args.get("w", "1600"))))
-        jpeg = optimiser.page_jpeg(f, int(request.args.get("n", "0")), largeur)
+        jpeg = optimiser.page_jpeg(source, int(request.args.get("n", "0")), largeur)
     except (ValueError, archives.ArchiveError) as e:
         return Response(str(e), status=404)
-    return _page_revalidee(jpeg, "image/jpeg", f, f"r{request.args.get('n', '0')}-{largeur}")
+    return _page_revalidee(jpeg, "image/jpeg", source, f"r{request.args.get('n', '0')}-{largeur}")
 
 
-@app.route("/api/rogner/propositions")
-def api_rogner_propositions():
-    """Bords de page détectés pour proposer un cadre (jamais appliqués sans accord) : {"pages": {numéro: {g, d, a}}, "largeur", "analysees"}. Voir bords_pages.py."""
-    f = _tome_a_rogner(request.args.get("series", ""), request.args.get("fichier", ""))
-    if f is None:
-        return jsonify({"error": "Tome introuvable."}), 404
-    import bords_pages
-    try:
-        return jsonify(bords_pages.proposer(f))
-    except (archives.ArchiveError, zipfile.BadZipFile, OSError, ValueError) as e:
-        return jsonify({"error": f"Analyse impossible : {e}"}), 500
-
-
-def _nombre(v, mini, maxi, defaut=0.0):
-    try:
-        x = float(v)
-    except (TypeError, ValueError):
-        return defaut
-    return max(mini, min(maxi, x)) if x == x else defaut
-
-
-@app.route("/api/rogner/brouillon", methods=["POST"])
-def api_rogner_brouillon():
-    """POST {series, fichier, brouillon: {W, H, pages: {n: {x, y, a, w?, ok?, exclue?}}, defaut: {"0": {x, y, a}, "1": {...}}}} : le travail en cours est gardé
-    (on peut quitter la page et revenir). Chaque valeur est bornée ; ce qui n'a pas la bonne forme est jeté."""
+@app.route("/api/rogner/sauver", methods=["POST"])
+def api_rogner_sauver():
+    """POST {series, fichier, W, H (null : automatique), boites: {numéro de page: {x, y, w, h, a}}} : le travail est gardé à chaque modification."""
     body = request.get_json(silent=True) or {}
     name, fichier = str(body.get("series", "")), str(body.get("fichier", ""))
     f = _tome_a_rogner(name, fichier)
     if f is None:
         return jsonify({"ok": False, "error": "Tome introuvable"}), 404
-    b = body.get("brouillon")
-    if not isinstance(b, dict):
-        return jsonify({"ok": False, "error": "Brouillon invalide"}), 400
+    import rognage
     try:
-        total = len(archives.pages(f))
-    except archives.ArchiveError:
-        return jsonify({"ok": False, "error": "Tome illisible"}), 500
-    pages_ = {}
-    for k, v in (b.get("pages") or {}).items():
-        if str(k).isdigit() and int(k) < total and isinstance(v, dict):
-            p = {"x": _nombre(v.get("x"), -5000, 20000), "y": _nombre(v.get("y"), -5000, 20000), "a": _nombre(v.get("a"), -10, 10)}
-            if v.get("w") is not None:
-                p["w"] = _nombre(v.get("w"), 50, 20000, 50)
-            g = v.get("gomme")
-            if isinstance(g, dict):
-                p["gomme"] = {c: _nombre(g.get(c), 0, 20000) for c in ("x", "y", "w", "h")}
-            if v.get("exclue"):
-                p["exclue"] = True
-            if v.get("ok"):
-                p["ok"] = True
-            pages_[str(int(k))] = p
-    defaut = {}
-    for k in ("0", "1"):
-        v = (b.get("defaut") or {}).get(k)
-        if isinstance(v, dict):
-            defaut[k] = {"x": _nombre(v.get("x"), -5000, 20000), "y": _nombre(v.get("y"), -5000, 20000), "a": _nombre(v.get("a"), -10, 10)}
-    propre = {"W": _nombre(b.get("W"), 50, 20000, 50), "H": _nombre(b.get("H"), 50, 20000, 50), "pages": pages_, "defaut": defaut,
-              "pages_total": total, "octets": f.stat().st_size, "date": datetime.now().strftime("%d/%m/%Y %H:%M")}
-    d = _rognages_lire()
-    d.setdefault(name, {})[fichier] = propre
-    _rognages_ecrire(d)
+        etat = _rognage_ouvrir(name, f)
+    except (archives.ArchiveError, zipfile.BadZipFile, OSError, RuntimeError) as e:
+        return jsonify({"ok": False, "error": f"Lecture impossible : {e}"}), 500
+    boites = body.get("boites")
+    if not isinstance(boites, dict):
+        return jsonify({"ok": False, "error": "Cadres invalides"}), 400
+    rognage.sauver(_rognage_reglages(), name, f.name, etat, body.get("W"), body.get("H"), boites)
     return jsonify({"ok": True})
 
 
 @app.route("/api/rogner/appliquer", methods=["POST"])
 def api_rogner_appliquer():
-    """POST {series, fichier, boites: {numéro de page: {x, y, w, h, a}}} : réécrit le tome en arrière-plan (suivi : /api/doubles/etat). Même sécurité que la
-    découpe des doubles pages : version à côté relue puis mise en place, ancien fichier à la corbeille, tome partagé par qBittorrent jamais modifié."""
+    """POST {series, fichier, verifier?} : réécrit le tome d'après les réglages enregistrés (avec verifier : dit seulement ce qui serait écrit).
+    En arrière-plan (suivi : /api/doubles/etat). Même sécurité que la découpe des doubles pages : version à côté relue puis mise en place, ancien
+    fichier à la corbeille, tome partagé par qBittorrent jamais modifié."""
     body = request.get_json(silent=True) or {}
     name, fichier = str(body.get("series", "")), str(body.get("fichier", ""))
     f = _tome_a_rogner(name, fichier)
     if f is None:
         return jsonify({"ok": False, "error": "Tome introuvable"}), 404
-    if _en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours") or optimiser.etat(name).get("en_cours"):
+    if _en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours") or optimiser.etat(name).get("en_cours") \
+            or optimiser.coupes_etat(name).get("en_cours"):
         return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
-    boites = {}
-    for k, v in (body.get("boites") or {}).items():
-        if not str(k).isdigit() or not isinstance(v, dict):
-            continue
-        b = {"x": _nombre(v.get("x"), -5000, 20000), "y": _nombre(v.get("y"), -5000, 20000), "w": _nombre(v.get("w"), 0, 20000, 0),
-             "h": _nombre(v.get("h"), 0, 20000, 0), "a": _nombre(v.get("a"), -10, 10)}
-        g = v.get("gomme")
-        if isinstance(g, dict):                                  # tome déjà rogné : on repeint le bord de la page, sa taille ne change pas
-            b["gomme"] = {"x": _nombre(g.get("x"), 0, 20000), "y": _nombre(g.get("y"), 0, 20000), "w": _nombre(g.get("w"), 1, 20000, 1), "h": _nombre(g.get("h"), 1, 20000, 1)}
-            boites[int(k)] = b
-        elif b["w"] >= 50 and b["h"] >= 50:
-            boites[int(k)] = b
-    if not boites:
-        return jsonify({"ok": False, "error": "Aucune page à rogner."}), 400
+    import rognage
     try:
-        tailles = optimiser.tailles_pages(f)
-    except (archives.ArchiveError, zipfile.BadZipFile, OSError) as e:
+        etat = _rognage_ouvrir(name, f)
+    except (archives.ArchiveError, zipfile.BadZipFile, OSError, RuntimeError) as e:
         return jsonify({"ok": False, "error": f"Lecture impossible : {e}"}), 500
-    simples = set(_simples_rognage(tailles))
-    rognees = {i: b for i, b in boites.items() if "gomme" not in b}
-    dims = {(round(b["w"]), round(b["h"])) for i, b in rognees.items() if i in simples}
-    if len(dims) > 1 or len({round(b["h"]) for b in rognees.values()}) > 1:       # garde-fou : un tome rogné garde partout la même taille (les doubles : même hauteur)
-        return jsonify({"ok": False, "error": "Les pages n'auraient pas toutes la même taille : rien n'a été écrit."}), 400
+    pl = rognage.plan(etat["entree"], etat["tailles"])
+    ecrire = [i for i, p in enumerate(pl["pages"]) if not p["garder"]]
+    res = {"ok": True, "W": pl["W"], "H": pl["H"], "ecrire": len(ecrire), "garder": len(pl["pages"]) - len(ecrire),
+           "non_reglees": sum(1 for i in ecrire if not pl["pages"][i]["reglee"]), "doubles": sum(1 for i in ecrire if rognage.est_double(etat["tailles"][i]))}
+    if body.get("verifier"):
+        return jsonify(res)
+    if not ecrire:
+        return jsonify({"ok": False, "error": "Rien à écrire : aucune page n'a changé depuis le dernier rognage."}), 400
+    copier = not etat["entree"].get("source")
+    travail = {"source": str(rognage.chemin_source(MANGA_DIR, name, f.name) if copier else etat["source"]), "copier_source": copier,
+               "pages": pl["pages"], "W": pl["W"], "H": pl["H"], "retouches": etat["entree"].get("retouches")}
     avant_travail = _avant_travail(name, [f])
 
     @_sous_verrou_infos
     def apres(chemin, carte):
         import edition
+        rognage.noter_application(MANGA_DIR, _rognage_reglages(), name, chemin, travail)
         infos = edition.lire(MANGA_DIR / name)
-        _noter_travail(name, chemin, avant_travail.get(chemin.name), {"rognage": {"detail": f"{len(boites)} page(s) rognée(s) à la main"}}, infos=infos)
+        _noter_travail(name, chemin, avant_travail.get(chemin.name), {"rognage": {"detail": f"{len(ecrire)} page(s) réécrite(s) à {pl['W']} × {pl['H']}"}}, infos=infos)
         edition.ecrire(MANGA_DIR / name, infos)
         edition.invalider(MANGA_DIR / name)
-        d = _rognages_lire()                                  # le brouillon ne vaut plus rien : les pages ont changé
-        (d.get(name) or {}).pop(chemin.name, None)
-        simples_b = [b for i, b in rognees.items() if i in simples]
-        if simples_b:                                         # la référence de la série : taille et positions (médianes par parité), reprises sur les autres tomes
-            pw, ph = _mediane_page(tailles)
-            par = {}
-            for k in ("0", "1"):
-                v = [(rognees[i]["x"], rognees[i]["y"], rognees[i]["a"]) for i in rognees if i in simples and str(i % 2) == k]
-                if v:
-                    par[k] = {c: sorted(x[n] for x in v)[len(v) // 2] for n, c in enumerate(("x", "y", "a"))}
-            d.setdefault("__reference__", {})[name] = {"W": simples_b[0]["w"], "H": simples_b[0]["h"], "pw": pw, "ph": ph, "defaut": par, "tome": chemin.name}
-        _rognages_ecrire(d)
-    if not optimiser.lancer_coupes(name, [(f, set(boites), boites)], True, _vers_corbeille, apres, operation=optimiser.rogner):
+    if not optimiser.lancer_coupes(name, [(f, set(ecrire), travail)], True, _vers_corbeille, apres, operation=rognage.ecrire_tome):
         return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
-    return jsonify({"ok": True, "message": "Rognage lancé…"})
+    return jsonify(dict(res, message="Rognage lancé…"))
+
+
+@app.route("/api/rogner/repartir", methods=["POST"])
+def api_rogner_repartir():
+    """POST {series, fichier} : oublie les cadres de ce tome et repart du fichier tel qu'il est (les pages d'origine gardées vont à la corbeille)."""
+    body = request.get_json(silent=True) or {}
+    name, fichier = str(body.get("series", "")), str(body.get("fichier", ""))
+    f = _tome_a_rogner(name, fichier)
+    if f is None:
+        return jsonify({"ok": False, "error": "Tome introuvable"}), 404
+    if optimiser.coupes_etat(name).get("en_cours"):
+        return jsonify({"ok": False, "error": "Un rognage est en cours : attends la fin."}), 409
+    import rognage
+    source = rognage.source_de(MANGA_DIR, _rognage_reglages(), name, f)
+    if source != f and source.is_file():
+        _vers_corbeille(source)
+    rognage.oublier(_rognage_reglages(), name, f.name)
+    return jsonify({"ok": True})
 
 
 def _assembles_chemin():
