@@ -244,6 +244,29 @@ def couper_cases(c, rempli, cote_dos, epaisseur=3):
         m = max(x[2] for x in r)
         return int([x for x in r if x[2] >= 0.85 * m][0][0])
     lim = {"haut": cadre_hb(ch[:zh]), "bas": cadre_hb(ch[::-1][:zh]), "gauche": premier(cv[:zw]), "droite": premier(cv[::-1][:zw])}
+    # le vrai cadre est là où s'arrêtent les traits des cases qui le rejoignent (les traits horizontaux finissent sur le cadre vertical, et l'inverse) :
+    # ni la tranche des pages du dessous, ni une trame verticale dans une case n'en reçoivent (Nori Taka tome 1 page 21, tome 2 page 36)
+    def bouts(masque, axe, debut):
+        n_, lab_, st_, _ = cv2.connectedComponentsWithStats(masque.astype(np.uint8), connectivity=8)
+        long_ = 0.12 * (w if axe == 0 else h)
+        v = []
+        for j in range(1, n_):
+            x_, y_, ww_, hh_ = st_[j, 0], st_[j, 1], st_[j, 2], st_[j, 3]
+            if axe == 0 and ww_ >= long_:
+                v.append(x_ if debut else w - (x_ + ww_))
+            elif axe == 1 and hh_ >= long_:
+                v.append(y_ if debut else h - (y_ + hh_))
+        return v
+    for cote, prof, n_zone, (masque, axe, debut) in (("gauche", cv, zw, (hor, 0, True)), ("droite", cv[::-1], zw, (hor, 0, False)),
+                                                     ("haut", ch, zh, (ver, 1, True)), ("bas", ch[::-1], zh, (ver, 1, False))):
+        b = [x for x in bouts(masque, axe, debut) if x < n_zone]
+        if len(b) < 2:
+            continue
+        cible = float(np.median(b))
+        cands = [a for a, b_ in runs(prof[:n_zone] >= 0.1)]
+        proches = [a for a in cands if abs(a - cible) <= 8]
+        if proches:
+            lim[cote] = int(min(proches, key=lambda a: abs(a - cible)))
     # côté reliure : bande parasite (gris lisse ou traits) depuis le bord, coupée juste après
     t = c.T
     lp = ver.T
@@ -258,7 +281,7 @@ def couper_cases(c, rempli, cote_dos, epaisseur=3):
         k0 += 1
     fin = 0
     for k in range(k0, zone + k0):
-        if score[k] > 0.15:
+        if score[k] > 0.45:                              # la bande du dos court sur presque toute la hauteur ; une trame grise dans une case non (Nori Taka tome 1 page 21)
             fin = k + 1
         elif k - max(fin, k0) > 4:
             break
@@ -374,6 +397,7 @@ def fermer_cases(c, epaisseur=3):
     h, w = c.shape
     papier = float(np.percentile(c, 95))
     encre = c < 0.6 * papier
+    fin = encre | (cv2.morphologyEx(c, cv2.MORPH_BLACKHAT, np.ones((7, 7), np.uint8)) > 25)      # un trait de cadre gris pâle du scan compte
     traits = np.zeros((h, w), bool)
     rects = []
 
@@ -408,9 +432,12 @@ def fermer_cases(c, epaisseur=3):
         y0, y1, x0, x1 = y0 + r_[0], y0 + r_[-1] + 1, x0 + c_[0], x0 + c_[-1] + 1
         if y1 - y0 < 0.06 * h or x1 - x0 < 0.08 * w:
             continue
-        d = 4
-        cote = {"haut": encre[y0:y0 + d, x0:x1].any(0).mean(), "bas": encre[y1 - d:y1, x0:x1].any(0).mean(),
-                "gauche": encre[y0:y1, x0:x0 + d].any(1).mean(), "droite": encre[y0:y1, x1 - d:x1].any(1).mean()}
+        d = max(4, int(0.02 * min(h, w)))              # un trait existant un peu penché ou interrompu compte aussi (sinon : trait doublé)
+        def meilleur(bande, axe):
+            return float(bande.mean(axe).max()) if bande.size else 0.0
+        cote = {"haut": meilleur(fin[max(0, y0 - d):y0 + d, x0:x1], 1), "bas": meilleur(fin[y1 - d:y1 + d, x0:x1], 1),
+                "gauche": meilleur(fin[y0:y1, max(0, x0 - d):x0 + d], 0), "droite": meilleur(fin[y0:y1, x1 - d:x1 + d], 0)}
+        cote = {k: (1.0 if v >= 0.3 else v) for k, v in cote.items()}      # un trait déjà là, même pâle ou interrompu : pas de second trait
         if max(cote.values()) < 0.9:                      # aucune vraie bordure : case ouverte, on n'invente rien
             continue
         au_bord = {"haut": y0 - Y0 <= marge, "bas": Y1 - y1 <= marge, "gauche": x0 - X0 <= marge, "droite": X1 - x1 <= marge}
@@ -424,13 +451,15 @@ def fermer_cases(c, epaisseur=3):
             if v >= 0.9 or not au_bord[k]:
                 continue
             if k == "haut":
-                ya = max(0, y0 - epaisseur); s_[ya:ya + epaisseur, x0:x1] = noir; traits[ya:ya + epaisseur, x0:x1] = True
+                ya = max(0, y0 - epaisseur); sl = np.s_[ya:ya + epaisseur, bx0:bx1]
             elif k == "bas":
-                ya = min(h - epaisseur, y1); s_[ya:ya + epaisseur, x0:x1] = noir; traits[ya:ya + epaisseur, x0:x1] = True
+                ya = min(h - epaisseur, y1); sl = np.s_[ya:ya + epaisseur, bx0:bx1]
             elif k == "gauche":
-                xa = max(0, x0 - epaisseur); s_[y0:y1, xa:xa + epaisseur] = noir; traits[y0:y1, xa:xa + epaisseur] = True
+                xa = max(0, x0 - epaisseur); sl = np.s_[by0:by1, xa:xa + epaisseur]
             else:
-                xa = min(w - epaisseur, x1); s_[y0:y1, xa:xa + epaisseur] = noir; traits[y0:y1, xa:xa + epaisseur] = True
+                xa = min(w - epaisseur, x1); sl = np.s_[by0:by1, xa:xa + epaisseur]
+            s_[sl] = noir
+            traits[sl] = True
         x0, x1, y0, y1 = bx0, bx1, by0, by1
     return s_, traits
 
