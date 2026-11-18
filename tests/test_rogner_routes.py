@@ -124,6 +124,19 @@ class RoutesRognerTest(unittest.TestCase):
             html = self.A.page_rogner()
         self.assertIn("rogné le", html)
 
+    def test_proposer_ne_touche_pas_aux_cadres_regles(self):
+        corps = {"series": "Serie", "fichier": self.cbz.name, "boites": {"0": {"x": 1, "y": 2, "w": 250, "h": 400, "a": 0}}}
+        rep, code = self._post("api_rogner_proposer", corps)
+        self.assertEqual(code, 200)
+        d = rep.get_json()
+        self.assertTrue(d["ok"])
+        self.assertEqual(sorted(d["boites"]), ["1", "2"])
+        self.assertTrue(all(b["d"] == 1 for b in d["boites"].values()))
+        self.assertEqual((d["boites"]["1"]["y"], d["boites"]["1"]["h"]), (2, 400))   # hauteur prise sur le cadre réglé
+        self.assertEqual(self.infos()["boites"], {})                                  # rien n'est enregistré par la proposition
+        self.assertEqual(self._post("api_rogner_sauver", dict(corps, boites=d["boites"], W=None, H=None))[1], 200)
+        self.assertEqual(self.infos()["boites"]["1"].get("d"), 1)                    # gardée « à vérifier » une fois enregistrée par la page
+
     def test_repartir_oublie_les_reglages(self):
         self._post("api_rogner_sauver", {"series": "Serie", "fichier": self.cbz.name, "W": None, "H": None, "boites": {"0": {"x": 1, "y": 1, "w": 200, "h": 300, "a": 0}}})
         self.assertEqual(self._post("api_rogner_repartir", {"series": "Serie", "fichier": self.cbz.name})[1], 200)

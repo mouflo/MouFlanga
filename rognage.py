@@ -151,6 +151,8 @@ def nettoyer_boite(b):
     out = {"x": x, "y": y, "w": w, "h": h, "a": max(-10.0, min(10.0, a))}
     if b.get("c"):
         out["c"] = 1                                     # cadre copié d'une autre page (pas encore revu)
+    elif b.get("d"):
+        out["d"] = 1                                     # 🪄 cadre proposé d'après les bords détectés (pas encore revu)
     return out
 
 

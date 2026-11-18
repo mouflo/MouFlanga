@@ -27,8 +27,9 @@
         #rgCadre { position: absolute; touch-action: none; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .55); outline: 2px solid var(--accent); cursor: move; box-sizing: border-box; }
         #rgCadre.vide { outline-style: dashed; outline-color: #e6b94c; }
         #rgCadre.copie { outline-color: #6fa8e8; }
+        #rgCadre.propose { outline-color: #c49af0; }
         .rg-poi { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; background: var(--accent); border: 2px solid #0b0c0e; border-radius: 50%; box-sizing: border-box; }
-        #rgCadre.vide .rg-poi { background: #e6b94c; } #rgCadre.copie .rg-poi { background: #6fa8e8; }
+        #rgCadre.vide .rg-poi { background: #e6b94c; } #rgCadre.copie .rg-poi { background: #6fa8e8; } #rgCadre.propose .rg-poi { background: #c49af0; }
         .rg-poi[data-p="no"] { left: 0; top: 0; } .rg-poi[data-p="n"] { left: 50%; top: 0; } .rg-poi[data-p="ne"] { left: 100%; top: 0; } .rg-poi[data-p="e"] { left: 100%; top: 50%; }
         .rg-poi[data-p="se"] { left: 100%; top: 100%; } .rg-poi[data-p="s"] { left: 50%; top: 100%; } .rg-poi[data-p="so"] { left: 0; top: 100%; } .rg-poi[data-p="o"] { left: 0; top: 50%; }
         .rg-poi[data-p="n"], .rg-poi[data-p="s"] { cursor: ns-resize; } .rg-poi[data-p="e"], .rg-poi[data-p="o"] { cursor: ew-resize; }
@@ -54,6 +55,7 @@
         #rgPuces b { position: relative; flex: 0 0 auto; min-width: 34px; height: 34px; line-height: 34px; text-align: center; border-radius: 6px; background: #1f2126; color: #aaa; border: 1px solid #2c2f36; cursor: pointer; font-weight: 400; font-size: 13px; }
         #rgPuces b.ok { background: #1c3a24; color: #9be3a6; border-color: #2f6b3a; }
         #rgPuces b.copie { background: #1d2a3a; color: #9cc4ee; border-color: #35557a; }
+        #rgPuces b.propose { background: #2c2140; color: #d2b4f5; border-color: #5b4382; }
         #rgPuces b.mod::after { content: ""; position: absolute; top: 2px; right: 2px; width: 7px; height: 7px; border-radius: 50%; background: #f0a030; }
         #rgPuces b.cur { outline: 2px solid var(--accent); }
         #rgRapide { grid-column: 1; display: none; gap: 6px; padding: 5px 6px; background: #15171b; border-top: 1px solid #2c2f36; }
@@ -131,6 +133,8 @@
         <div class="ligne"><button data-bord="gauche">◀ Gauche</button><button data-bord="droite">▶ Droite</button></div>
         <button id="rgAjuste" style="text-align:center">Voir la page entière</button>
         <h3>Gagner du temps</h3>
+        <button id="rgProposer">🪄 Proposer un cadre pour les pages pas encore réglées</button>
+        <p class="rg-note">D'après les bords détectés (bande de la page voisine) et vos cadres déjà réglés. Les cadres proposés sont en violet : à vérifier, ils deviennent verts quand vous les validez ou les touchez. Vos cadres réglés ne sont jamais changés.</p>
         <button id="rgCopieSuite">📋 Ce cadre pour les pages suivantes pas encore réglées</button>
         <button id="rgCopiePar">📋 Ce cadre pour toutes les pages <span id="rgParite"></span> pas encore réglées</button>
         <label class="coche"><input type="checkbox" id="rgAvecAngle" checked> avec l'angle</label>
@@ -176,7 +180,7 @@
     // Le cadre d'une page : celui qui est réglé, sinon la page entière (en pointillés).
     function cadre(i) {
         var b = S.boites[i], t = S.tailles[i];
-        if (b) return { x: b.x, y: b.y, w: b.w, h: b.h, a: b.a || 0, etat: b.c ? 'copie' : 'ok' };
+        if (b) return { x: b.x, y: b.y, w: b.w, h: b.h, a: b.a || 0, etat: b.c ? 'copie' : b.d ? 'propose' : 'ok' };
         return { x: 0, y: 0, w: t[0], h: t[1], a: 0, etat: 'vide' };
     }
     function memeCadre(a, b) {
@@ -258,7 +262,7 @@
         $('rgX').value = Math.round(c.x); $('rgY').value = Math.round(c.y); $('rgL').value = Math.round(c.w); $('rgH').value = Math.round(c.h);
         $('rgAng').value = c.a; $('rgAngN').value = c.a;
         var tc = cible(S.n), s = Math.min(tc[0] / c.w, tc[1] / c.h), e = [];
-        e.push(c.etat === 'ok' ? '✓ Cadre réglé.' : c.etat === 'copie' ? 'Cadre copié d\'une autre page (à vérifier).' : 'Pas encore réglée : le cadre est la page entière.');
+        e.push(c.etat === 'ok' ? '✓ Cadre réglé.' : c.etat === 'copie' ? 'Cadre copié d\'une autre page (à vérifier).' : c.etat === 'propose' ? '🪄 Cadre proposé d\'après les bords (à vérifier).' : 'Pas encore réglée : le cadre est la page entière.');
         if (Math.abs(s - 1) > 0.005) e.push(s > 1 ? 'Sera agrandie de ' + Math.round((s - 1) * 100) + ' %.' : 'Sera réduite de ' + Math.round((1 - s) * 100) + ' %.');
         var pw = Math.round(tc[0] - c.w * s), ph = Math.round(tc[1] - c.h * s);
         if (pw > 1 || ph > 1) e.push('Papier ajouté : ' + (pw > 1 ? pw + ' px en largeur' : '') + (pw > 1 && ph > 1 ? ', ' : '') + (ph > 1 ? ph + ' px en hauteur' : '') + '.');
@@ -301,13 +305,13 @@
     $('rgPuces').addEventListener('click', function (e) { var b = e.target.closest('b[data-i]'); if (b) aller(+b.dataset.i); });
 
     function compte() {
-        var o = { ok: 0, copie: 0, vide: 0, mod: 0 };
+        var o = { ok: 0, copie: 0, propose: 0, vide: 0, mod: 0 };
         for (var i = 0; i < S.tailles.length; i++) { o[cadre(i).etat]++; if (S.produit && modifiee(i)) o.mod++; }
         return o;
     }
     function bilan() {
         var o = compte(), f = tailleFinale();
-        $('rgBilan').textContent = o.ok + ' page(s) réglée(s) · ' + o.copie + ' avec un cadre copié · ' + o.vide + ' pas réglée(s) (page entière). '
+        $('rgBilan').textContent = o.ok + ' page(s) réglée(s) · ' + o.copie + ' avec un cadre copié · ' + (o.propose ? o.propose + ' avec un cadre proposé (à vérifier) · ' : '') + o.vide + ' pas réglée(s) (page entière). '
             + (S.produit ? o.mod + ' page(s) seront réécrites, les autres restent telles quelles.' : 'Taille finale : ' + f[0] + ' × ' + f[1] + '.');
         champsTaille();
     }
@@ -369,7 +373,7 @@
         var c = courant(), n = 0, avecAngle = $('rgAvecAngle').checked;
         enregistrer(S.n, c);
         for (var j = 0; j < S.tailles.length; j++) {
-            if (j === S.n || S.boites[j] || double(j) !== double(S.n) || !filtre(j)) continue;
+            if (j === S.n || (S.boites[j] && !S.boites[j].d) || double(j) !== double(S.n) || !filtre(j)) continue;
             var b = arrondi({ x: c.x, y: c.y, w: c.w, h: c.h, a: avecAngle ? c.a : 0 }); b.c = 1; S.boites[j] = b; n++;
         }
         sauver(); disposer(); puces(); bilan();
@@ -377,6 +381,19 @@
     }
     $('rgCopieSuite').addEventListener('click', function () { var d = S.n; copier(function (j) { return j > d; }, 'suivantes'); });
     $('rgCopiePar').addEventListener('click', function () { var p = S.n % 2; copier(function (j) { return j % 2 === p; }, (S.n + 1) % 2 ? 'impaires' : 'paires'); });
+
+    $('rgProposer').addEventListener('click', async function () {
+        var bouton = this; bouton.disabled = true; msg('Recherche des bords sur toutes les pages (quelques secondes)…');
+        try {
+            var r = await envoyer('/api/rogner/proposer', { series: SERIE, fichier: FICHIER, boites: S.boites });
+            if (!r.ok) { msg(r.error || 'Analyse impossible', true); return; }
+            var n = 0;
+            Object.keys(r.boites).forEach(function (k) { var j = +k; if (!S.boites[j] || S.boites[j].d) { S.boites[j] = r.boites[k]; n++; } });
+            sauver(); disposer(); puces(); bilan();
+            msg(n ? n + ' cadre(s) proposé(s), en violet : passez-les en revue (bord trouvé sur ' + r.traits + ' page(s), les autres vont jusqu\'au bord de la page).' : 'Toutes les pages simples sont déjà réglées : rien à proposer.');
+        } catch (e) { msg('Analyse impossible (réseau) : réessayez.', true); }
+        finally { bouton.disabled = false; }
+    });
 
     // Taille finale
     function changerTaille() {

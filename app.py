@@ -2663,6 +2663,29 @@ def api_rogner_sauver():
     return jsonify({"ok": True})
 
 
+@app.route("/api/rogner/proposer", methods=["POST"])
+def api_rogner_proposer():
+    """POST {series, fichier, boites (cadres actuels de la page)} : 🪄 cadres proposés d'après les bords détectés pour les pages simples pas encore réglées
+    (rien n'est enregistré ici : la page les montre « à vérifier » puis les enregistre). Voir bords_pages.py."""
+    body = request.get_json(silent=True) or {}
+    name, fichier = str(body.get("series", "")), str(body.get("fichier", ""))
+    f = _tome_a_rogner(name, fichier)
+    if f is None:
+        return jsonify({"ok": False, "error": "Tome introuvable"}), 404
+    import bords_pages
+    import rognage
+    try:
+        etat = _rognage_ouvrir(name, f)
+        mesures = bords_pages.mesurer(etat["source"])
+    except (archives.ArchiveError, zipfile.BadZipFile, OSError, RuntimeError, ValueError) as e:
+        return jsonify({"ok": False, "error": f"Analyse impossible : {e}"}), 500
+    boites = body.get("boites") if isinstance(body.get("boites"), dict) else etat["entree"].get("boites") or {}
+    propres = {str(int(k)): b for k, b in ((k, rognage.nettoyer_boite(v)) for k, v in boites.items() if str(k).isdigit()) if b}
+    proposees = bords_pages.proposer(mesures, etat["tailles"], propres)
+    return jsonify({"ok": True, "boites": {str(i): dict(b, d=1) for i, b in proposees.items()},
+                    "traits": sum(1 for i in proposees if any((mesures.get(i) or {}).values())), "simples": len(mesures)})
+
+
 @app.route("/api/rogner/appliquer", methods=["POST"])
 def api_rogner_appliquer():
     """POST {series, fichier, verifier?} : réécrit le tome d'après les réglages enregistrés (avec verifier : dit seulement ce qui serait écrit).
