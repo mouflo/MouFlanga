@@ -145,6 +145,8 @@
         <p class="rg-note" id="rgNoteTaille"></p>
         <div id="rgBilan"></div>
         <button id="rgAppliquer" class="vert">✂️ Appliquer au tome</button>
+        <button id="rgCases">🧩 Recadrer tout le tome aux cases (automatique)</button>
+        <p class="rg-note">Pour un tome scanné à plat, deux pages par scan : chaque page est redressée, coupée au ras des cadres de cases (bords du scan, ombre de la reliure et page voisine supprimés, traits refaits bien droits), puis mise en plein écran. Les flash-backs gardent leur fond noir et leurs cases réduites. Les retouches ✨ du tome sont refaites. Quelques minutes ; l'ancien fichier part à la corbeille.</p>
         <p class="rg-note">L'ancien fichier part à la corbeille. Les pages d'origine et vos cadres restent gardés : vous pouvez revenir corriger une page, seules les pages modifiées seront réécrites. Le travail est enregistré à chaque geste : vous pouvez quitter et revenir.</p>
         <button id="rgRepartir" class="discret">↺ Tout oublier et repartir du fichier actuel</button>
     </div>
@@ -447,10 +449,21 @@
         if (!r.ok) { msg(r.error || 'Échec', true); return; }
         $('rgAppliquer').disabled = true; msg('Écriture du tome en cours…'); suivre();
     });
+    $('rgCases').addEventListener('click', async function () {
+        if (minuteur || !envoi) await sauverMaintenant(); else await envoi;
+        var v = await envoyer('/api/rogner/cases', { series: SERIE, fichier: FICHIER, verifier: true });
+        if (!v.ok) { msg(v.error || 'Impossible', true); return; }
+        if (!confirm('Recadrer ' + v.pages + ' page(s) aux cases, à ' + v.W + ' × ' + v.H + ' ?\n\n'
+            + (v.autres ? v.autres + ' autre(s) page(s) (couverture, doubles pages…) restent telles quelles.\n' : '')
+            + 'Tout est automatique et refait depuis les pages d\'origine (quelques minutes avec l\'IA).\nL\'ancien fichier part à la corbeille.')) return;
+        var r = await envoyer('/api/rogner/cases', { series: SERIE, fichier: FICHIER });
+        if (!r.ok) { msg(r.error || 'Échec', true); return; }
+        $('rgAppliquer').disabled = true; $('rgCases').disabled = true; msg('Recadrage aux cases en cours (quelques minutes)…'); suivre();
+    });
     async function suivre() {
         var e = await q('/api/doubles/etat?series=' + encodeURIComponent(SERIE));
         if (e.en_cours) { setTimeout(suivre, 1200); return; }
-        $('rgAppliquer').disabled = false;
+        $('rgAppliquer').disabled = false; $('rgCases').disabled = false;
         var ligne = (e.rapport || [])[0] || {};
         if ((e.message || '').indexOf('Erreur') === 0 || (ligne.note || '').indexOf('erreur') === 0) { msg((ligne.note || e.message) + ' — le tome n\'a pas été modifié.', true); return; }
         await charger();

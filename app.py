@@ -2731,6 +2731,49 @@ def api_rogner_appliquer():
     return jsonify(dict(res, message="Rognage lancé…"))
 
 
+@app.route("/api/rogner/cases", methods=["POST"])
+def api_rogner_cases():
+    """POST {series, fichier, verifier?} : 🧩 recadre tout le tome aux cases (cases.py), depuis ses pages d'origine, sans réglage page par page.
+    En arrière-plan (suivi : /api/doubles/etat), même sécurité que l'application du rognage."""
+    body = request.get_json(silent=True) or {}
+    name, fichier = str(body.get("series", "")), str(body.get("fichier", ""))
+    f = _tome_a_rogner(name, fichier)
+    if f is None:
+        return jsonify({"ok": False, "error": "Tome introuvable"}), 404
+    if _en_telechargement(name) or (_RANGEMENTS.get(name) or {}).get("en_cours") or optimiser.etat(name).get("en_cours") \
+            or optimiser.coupes_etat(name).get("en_cours"):
+        return jsonify({"ok": False, "error": "Cette série est en cours de traitement : attends la fin."}), 409
+    import cases
+    import rognage
+    try:
+        etat = _rognage_ouvrir(name, f)
+    except (archives.ArchiveError, zipfile.BadZipFile, OSError, RuntimeError) as e:
+        return jsonify({"ok": False, "error": f"Lecture impossible : {e}"}), 500
+    pl = rognage.plan(etat["entree"], etat["tailles"])
+    n = 2 * len(cases.paires(etat["tailles"]))
+    res = {"ok": True, "W": pl["W"], "H": pl["H"], "pages": n, "autres": len(etat["tailles"]) - n}
+    if not n:
+        return jsonify({"ok": False, "error": "Ce tome n'a pas de pages scannées deux par deux : le recadrage aux cases ne s'applique pas."}), 400
+    if body.get("verifier"):
+        return jsonify(res)
+    copier = not etat["entree"].get("source")
+    travail = {"source": str(rognage.chemin_source(MANGA_DIR, name, f.name) if copier else etat["source"]), "copier_source": copier,
+               "boites": etat["entree"].get("boites") or {}, "W": pl["W"], "H": pl["H"], "retouches": etat["entree"].get("retouches")}
+    avant_travail = _avant_travail(name, [f])
+
+    @_sous_verrou_infos
+    def apres(chemin, carte):
+        import edition
+        cases.noter(MANGA_DIR, _rognage_reglages(), name, chemin, travail)
+        infos = edition.lire(MANGA_DIR / name)
+        _noter_travail(name, chemin, avant_travail.get(chemin.name), {"rognage": {"detail": f"recadré aux cases ({n} pages) à {pl['W']} × {pl['H']}"}}, infos=infos)
+        edition.ecrire(MANGA_DIR / name, infos)
+        edition.invalider(MANGA_DIR / name)
+    if not optimiser.lancer_coupes(name, [(f, set(range(len(etat["tailles"]))), travail)], True, _vers_corbeille, apres, operation=cases.ecrire_tome):
+        return jsonify({"ok": False, "error": "Déjà en cours pour cette série."}), 409
+    return jsonify(dict(res, message="Recadrage aux cases lancé…"))
+
+
 @app.route("/api/rogner/repartir", methods=["POST"])
 def api_rogner_repartir():
     """POST {series, fichier} : oublie les cadres de ce tome et repart du fichier tel qu'il est (les pages d'origine gardées vont à la corbeille)."""
