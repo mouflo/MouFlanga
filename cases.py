@@ -1134,7 +1134,8 @@ def ecrire_tome(chemin, indices, sens_manga=True, destination=None, travail=None
         part.replace(source)
     tmp = Path(destination) if destination is not None else chemin.with_name("." + chemin.name + ".cases")
     try:
-        travail["resultat"] = recadrer_tome(chemin, source, travail.get("boites") or {}, (travail["W"], travail["H"]), travail.get("retouches"), tmp)
+        travail["resultat"] = recadrer_tome(chemin, source, travail.get("boites") or {}, (travail["W"], travail["H"]), travail.get("retouches"), tmp,
+                                            progres=travail.get("progres"))
         with zipfile.ZipFile(tmp) as z:
             travail["empreintes"] = {str(i): rognage.empreinte(z.read(n)) for i, n in enumerate(archives._names(z))}
     except Exception:

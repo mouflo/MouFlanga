@@ -2762,6 +2762,7 @@ def api_rogner_cases():
     copier = not etat["entree"].get("source")
     travail = {"source": str(rognage.chemin_source(MANGA_DIR, name, f.name) if copier else etat["source"]), "copier_source": copier,
                "boites": etat["entree"].get("boites") or {}, "W": pl["W"], "H": pl["H"], "retouches": etat["entree"].get("retouches")}
+    travail["progres"] = lambda fait, total: optimiser.noter_progres(name, fait, total)      # barre de progression de l'éditeur
     avant_travail = _avant_travail(name, [f])
 
     @_sous_verrou_infos

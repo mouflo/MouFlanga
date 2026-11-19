@@ -163,6 +163,8 @@ class RouteTest(unittest.TestCase):
                 time.sleep(0.1)
         etat = self.A.optimiser.coupes_etat("Serie")
         self.assertNotIn("erreur", str(etat.get("rapport")))
+        self.assertEqual(etat.get("etape"), etat.get("etapes"))       # la barre de progression de l'éditeur a été tenue à jour jusqu'au bout
+        self.assertGreater(etat.get("etapes") or 0, 0)
         self.assertNotEqual(self.cbz.read_bytes(), avant)
         import rognage
         e = rognage._lire(str(Path(self.tmp.name) / "data" / "rognage.json"))["tomes"]["Serie"][self.cbz.name]

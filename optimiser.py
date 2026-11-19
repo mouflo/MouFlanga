@@ -1448,3 +1448,12 @@ def lancer_coupes(serie, travaux, sens_manga, vers_corbeille, apres=None, operat
 def coupes_etat(serie):
     with _VERROU:
         return dict(_COUPES_ETAT.get(serie) or {})
+
+
+def noter_progres(serie, fait, total):
+    """Avancement à l'intérieur d'un tome (recadrage aux cases : plusieurs minutes) : étape faite / étapes, pour la barre de progression."""
+    with _VERROU:
+        e = _COUPES_ETAT.get(serie)
+        if e is not None and e.get("en_cours"):
+            e.setdefault("debut_etapes", time.time())
+            e.update(etape=int(fait), etapes=int(total), ecoule=round(time.time() - e["debut_etapes"]))
