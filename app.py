@@ -3178,16 +3178,19 @@ def page_couvertures():
         return Response("Série introuvable", status=404)
     trouvees = {}
     try:
+        # Les éditeurs sont cherchés pour tous les tomes en arrière-plan (la page se rafraîchit seule pendant ce temps)
+        couvertures_tomes.chercher_editeurs_en_fond(name, _titres_serie(name), forcer=request.args.get("chercher") == "1")
         trouvees = couvertures_tomes.couvertures_en_ligne(name, _titres_serie(name), forcer=request.args.get("chercher") == "1")
     except Exception as e:
         logger.warning("Couvertures en ligne de %s : %s", name, e)
     dossier = MANGA_DIR / name
     lignes = [{"tome": n, "nom": f"Tome {n:02d}", "remplacee": bool(couvertures_tomes.remplacement(dossier, n)),
-               "candidates": _preferees(trouvees.get(n, []))[:3]} for n in _tomes_presents(name)]
+               "candidates": _preferees(trouvees.get(n, []))[:6]} for n in _tomes_presents(name)]
     lignes += [{"tome": n, "nom": f"Hors-série : {titre}", "remplacee": bool(couvertures_tomes.remplacement(dossier, n)), "candidates": []}
                for n, titre in _hs_presents(name)]                # pas de recherche en ligne : MangaDex ne range que les tomes
     return render_template("couvertures.html", version=APP_VERSION, nom=name, lignes=lignes, zoo=couvertures_tomes.zoo_adresse(name),
                            total_trouvees=sum(1 for x in lignes if x["candidates"]),
+                           en_cours=couvertures_tomes.recherche_en_cours(name), md_bloque=not couvertures_tomes.mangadex_images_ok(),
                            ok=request.args.get("ok", ""), erreur=request.args.get("erreur", ""))
 
 

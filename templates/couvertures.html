@@ -56,8 +56,15 @@
             })();
         </script>
 
+        {% if en_cours %}
+        <div class="msg ok">⏳ Recherche des couvertures chez les éditeurs (Glénat, Pika, Kana, Kazé, Ki-oon, Kurokawa…) pour tous les tomes. La page se met à jour toute seule, sans rien faire.</div>
+        <script>setTimeout(function () { location.reload(); }, 6000);</script>
+        {% endif %}
+        {% if md_bloque %}
+        <p class="note">ℹ️ MangaDex bloque actuellement l'affichage de ses images (contrôle anti-robot) : ses propositions sont masquées. Les couvertures viennent des éditeurs{% if zoo %} et de ZOO{% endif %}.</p>
+        {% endif %}
         <div class="cv-liens" style="margin-bottom: 12px;">
-            <a href="/couvertures?id={{ nom|urlencode }}&chercher=1">🔎 Chercher en ligne (MangaDex{% if zoo %} + ZOO{% endif %})</a>
+            <a href="/couvertures?id={{ nom|urlencode }}&chercher=1">🔎 Chercher en ligne (éditeurs, MangaDex{% if zoo %}, ZOO{% endif %})</a>
         </div>
 
         <form class="cv-lot" method="post" action="/couvertures/zoo">
@@ -116,7 +123,7 @@
 
                 {% for c in l.candidates %}
                 <div class="cv-case">
-                    <img src="{{ c.vignette }}" alt="Trouvée en ligne, tome {{ l.tome }}" loading="lazy">
+                    <img src="{{ c.vignette }}" alt="Trouvée en ligne, tome {{ l.tome }}" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML='<div style=&quot;height:170px;display:flex;align-items:center;justify-content:center;border:1px dashed #555;border-radius:8px&quot;>image bloquée</div>'">
                     En ligne{% if c.source %} ({{ c.source }}){% endif %}
                     <div class="cv-langue">{{ c.langue or 'langue ?' }}</div>
                     <form method="post" action="/couvertures/appliquer" data-confirme="Remplacer la couverture ({{ l.nom }}) ?">

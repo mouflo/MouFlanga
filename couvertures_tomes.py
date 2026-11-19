@@ -250,15 +250,61 @@ def couvertures_en_ligne(serie: str, titres: list[str], forcer: bool = False) ->
                 tomes[n] = c + tomes.get(n, [])
         except (reseau.Panne, ValueError) as e:
             logger.info("Couvertures ZOO de %s : %s", serie, e)
-    # Les sites d'éditeurs (cherchés avec l'identification ; « Chercher en ligne » les relance) passent devant : c'est la source officielle
-    if forcer:
-        try:
-            editeurs.chercher_serie(serie, [t for t in titres if t], forcer=True)
-        except Exception as e:
-            logger.warning("Couvertures des éditeurs de %s : %s: %s", serie, e.__class__.__name__, e)
+    # Les sites d'éditeurs (cherchés avec l'identification, ou en arrière-plan à l'ouverture de la page) passent devant : source officielle
     for n, c in editeurs.couvertures(serie).items():
         tomes[n] = c + tomes.get(n, [])
+    # MangaDex protège maintenant ses images par un contrôle anti-robot : tant qu'elles ne s'affichent pas, ses propositions sont masquées
+    if tomes and not mangadex_images_ok():
+        for n in tomes:
+            tomes[n] = [c for c in tomes[n] if not c["url"].startswith(PREFIXE_MANGADEX)]
     return tomes
+
+
+_MD_ETAT = [0.0, True]               # [date du dernier essai, les images de MangaDex s'affichent]
+
+
+def mangadex_images_ok() -> bool:
+    """Les images de MangaDex sont-elles servies ? (une demande, gardée 30 min ; un contrôle anti-robot = non). On ne cherche jamais à le passer."""
+    if time.time() - _MD_ETAT[0] < 1800:
+        return _MD_ETAT[1]
+    ok = True
+    try:
+        for f in DOSSIER_CACHE.glob("*.json"):
+            d = json.loads(f.read_text(encoding="utf-8"))
+            cand = next((c for lst in d.get("tomes", {}).values() for c in lst), None)
+            if cand:
+                r = _SESSION.get(cand["vignette"], timeout=15, allow_redirects=False, stream=True)
+                ok = r.status_code == 200 and r.headers.get("content-type", "").startswith("image/")
+                r.close()
+                break
+    except (OSError, ValueError, requests.RequestException):
+        ok = False
+    _MD_ETAT[0], _MD_ETAT[1] = time.time(), ok
+    return ok
+
+
+_RECHERCHES = {}
+
+
+def recherche_en_cours(serie: str) -> bool:
+    t = _RECHERCHES.get(serie)
+    return bool(t and t.is_alive())
+
+
+def chercher_editeurs_en_fond(serie: str, titres: list[str], forcer: bool = False) -> bool:
+    """Lance (sans attendre) la recherche des couvertures de tous les tomes chez leurs éditeurs. Faux si elle tourne déjà."""
+    if recherche_en_cours(serie):
+        return False
+
+    def travail():
+        try:
+            editeurs.chercher_serie(serie, [t for t in titres if t], forcer=forcer)
+        except Exception as e:
+            logger.warning("Couvertures des éditeurs de %s : %s: %s", serie, e.__class__.__name__, e)
+    t = threading.Thread(target=travail, daemon=True, name="couvertures-editeurs")
+    _RECHERCHES[serie] = t
+    t.start()
+    return True
 
 
 def _couvertures_mangadex(serie: str, titres: list[str], forcer: bool = False) -> dict:

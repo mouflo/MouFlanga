@@ -25,6 +25,9 @@ class CouverturesTest(unittest.TestCase):
             p = mock.patch.object(ct.editeurs, cible, return_value=retour)
             p.start()
             self.addCleanup(p.stop)
+        p = mock.patch.object(ct, "mangadex_images_ok", return_value=True)       # jamais Internet
+        p.start()
+        self.addCleanup(p.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.serie = Path(self.tmp.name) / "Worst"
         self.serie.mkdir()
@@ -149,6 +152,9 @@ class ZooTest(unittest.TestCase):
             p = mock.patch.object(ct.editeurs, cible, return_value=retour)
             p.start()
             self.addCleanup(p.stop)
+        p = mock.patch.object(ct, "mangadex_images_ok", return_value=True)
+        p.start()
+        self.addCleanup(p.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.ancien_cache = ct.DOSSIER_CACHE
         ct.DOSSIER_CACHE = Path(self.tmp.name) / "cache"
@@ -207,3 +213,26 @@ class TestTomesPresentsEnChapitres(unittest.TestCase):
         self.assertEqual(A._numero_du_tome_d_une_entree({"num": 7.0, "groupe": "Tome 03"}), 3)
         self.assertIsNone(A._numero_du_tome_d_une_entree({"num": 7.0, "groupe": None}))
         self.assertIsNone(A._numero_du_tome_d_une_entree({"groupe": "Tome 03", "a_importer": True}))
+
+
+class MangaDexBloqueTest(unittest.TestCase):
+    def test_propositions_mangadex_masquees_quand_leurs_images_sont_bloquees(self):
+        md = {"url": ct.PREFIXE_MANGADEX + "x/a.jpg", "vignette": ct.PREFIXE_MANGADEX + "x/a.jpg.256.jpg", "langue": "fr"}
+        ed = {"url": "https://media.hachette.fr/a.jpg", "vignette": "https://media.hachette.fr/a.jpg", "langue": "fr", "source": "Pika"}
+        with mock.patch.object(ct, "_couvertures_mangadex", return_value={1: [md]}), mock.patch.object(ct, "zoo_adresse", return_value=""), \
+                mock.patch.object(ct.editeurs, "couvertures", return_value={1: [ed]}), mock.patch.object(ct, "mangadex_images_ok", return_value=False):
+            self.assertEqual(ct.couvertures_en_ligne("S", ["S"])[1], [ed])
+        with mock.patch.object(ct, "_couvertures_mangadex", return_value={1: [md]}), mock.patch.object(ct, "zoo_adresse", return_value=""), \
+                mock.patch.object(ct.editeurs, "couvertures", return_value={1: [ed]}), mock.patch.object(ct, "mangadex_images_ok", return_value=True):
+            self.assertEqual(ct.couvertures_en_ligne("S", ["S"])[1], [ed, md])
+
+    def test_controle_anti_robot_detecte(self):
+        class R:
+            status_code = 302
+            headers = {"content-type": "text/plain"}
+            def close(self): pass
+        with tempfile.TemporaryDirectory() as t, mock.patch.object(ct, "DOSSIER_CACHE", Path(t)), mock.patch.object(ct._SESSION, "get", return_value=R()):
+            (Path(t) / "a.json").write_text('{"tomes": {"1": [{"url": "u", "vignette": "v"}]}}')
+            ct._MD_ETAT[0] = 0
+            self.assertFalse(ct.mangadex_images_ok())
+        ct._MD_ETAT[0] = 0
