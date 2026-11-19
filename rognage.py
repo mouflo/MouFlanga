@@ -71,14 +71,14 @@ def ton_papier(a):
 _CORRECTIONS = {}
 
 
-def rendre_redressee(im, boite, taille):
+def rendre_redressee(im, boite, taille, traits=False):
     """rendre_page sur la page d'origine redressée. Le redressement est mesuré DANS le cadre (la tranche des pages voisines, dehors, fausserait la mesure),
     il remplace l'angle réglé à la main ; le cadre subit le même redressement et on garde le plus grand rectangle qu'il contient : on ne voit que ce que le
     cadre montrait (jamais la bande voisine qu'il laissait dehors). Page en couleur ou rien de sûr : rendre_page tel quel."""
     import optimiser
     import reliure
     if optimiser.est_couleur(im):
-        return rendre_page(im, boite, taille)
+        return rendre_page(im, boite, taille, traits)
     if im.mode not in ("L", "RGB"):
         im = im.convert("RGB")
     a = np.array(im)
@@ -86,7 +86,7 @@ def rendre_redressee(im, boite, taille):
     x, y, w, h = (float(boite[k]) for k in ("x", "y", "w", "h"))
     cx0, cy0, cx1, cy1 = max(0, int(x)), max(0, int(y)), min(W, int(x + w)), min(H, int(y + h))
     if cx1 - cx0 < 200 or cy1 - cy0 < 200:
-        return rendre_page(im, boite, taille)
+        return rendre_page(im, boite, taille, traits)
     gris = a if a.ndim == 2 else cv2.cvtColor(a, cv2.COLOR_RGB2GRAY)
     dedans = np.ascontiguousarray(gris[cy0:cy1, cx0:cx1])
     cle = (hashlib.blake2b(dedans.tobytes(), digest_size=16).hexdigest(), dedans.shape)
@@ -96,7 +96,7 @@ def rendre_redressee(im, boite, taille):
         _CORRECTIONS[cle] = reliure.redressement(dedans)
     c = _CORRECTIONS[cle]
     if not c:
-        return rendre_page(im, boite, taille)
+        return rendre_page(im, boite, taille, traits)
     T = np.array([[1, 0, -cx0], [0, 1, -cy0], [0, 0, 1.]])
     M = np.linalg.inv(T) @ reliure.matrice_redressement(c, cx1 - cx0, cy1 - cy0) @ T          # mesurée dans le cadre, appliquée à toute la page
     papier = ton_papier(a)
@@ -107,12 +107,87 @@ def rendre_redressee(im, boite, taille):
     y0, y1 = max(coins[0, 1], coins[1, 1]), min(coins[2, 1], coins[3, 1])
     x0, y0 = int(np.ceil(x0)), int(np.ceil(y0))
     inscrit = {"x": x0, "y": y0, "w": max(MINI, int(np.floor(x1)) - x0), "h": max(MINI, int(np.floor(y1)) - y0), "a": 0.0}
-    return rendre_page(Image.fromarray(a2), inscrit, taille)
+    return rendre_page(Image.fromarray(a2), inscrit, taille, traits)
 
 
-def rendre_page(im, boite, taille):
+def _en_couleur(a):
+    if a.ndim == 2:
+        return False
+    petit = a[::8, ::8].astype(np.int16)
+    return float(np.mean(np.abs(petit[..., 0] - petit[..., 1]) + np.abs(petit[..., 1] - petit[..., 2]))) >= 12
+
+
+def traits_coupe(gris, cadre, x, y, bw, bh):
+    """✏️ Cadre redessiné après un rognage à la main au ras des cases (essai voulu par l'utilisateur, 19/11/2026). Pour chaque côté du cadre, là où le
+    dessin touche la coupe, un trait droit est tracé le long de la coupe, SAUF :
+    - si le dessin continue jusqu'au bord du papier de ce côté (image à fond perdu : elle doit toucher le bord de la page, pas de cadre) ;
+    - si un vrai trait de cadre est déjà là, juste à l'intérieur (jamais de trait doublé).
+    `gris` : la page entière (tournée), `cadre` : ce que le cadre en montre. Retourne le cadre avec ses traits."""
+    h, w = gris.shape
+    papier = float(np.percentile(gris, 95))
+    encre = gris < 0.6 * papier
+    # les traits fins parallèles au bord (tranche des pages, bords du scan) ne sont pas du dessin : on les retire pour juger du « fond perdu »
+    fin = (encre & ~(cv2.morphologyEx(encre.astype(np.uint8), cv2.MORPH_OPEN, np.ones((7, 7), np.uint8)) > 0)).astype(np.uint8)   # traits fins seulement
+    vert = cv2.morphologyEx(fin, cv2.MORPH_OPEN, np.ones((max(25, h // 20), 1), np.uint8)) > 0
+    hori = cv2.morphologyEx(fin, cv2.MORPH_OPEN, np.ones((1, max(25, w // 20)), np.uint8)) > 0
+    dessin = encre & ~cv2.dilate((vert | hori).astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+    e = max(2, round(0.003 * min(bw, bh)))                 # épaisseur du trait
+    d = max(4, round(0.006 * min(bw, bh)))                 # profondeur où le dessin « touche » la coupe
+    x0, y0, x1, y1 = max(0, x), max(0, y), min(w, x + bw), min(h, y + bh)
+    if x1 - x0 < 50 or y1 - y0 < 50:
+        return cadre
+    noir = int(np.percentile(gris[y0:y1, x0:x1][encre[y0:y1, x0:x1]], 2)) if encre[y0:y1, x0:x1].any() else 20
+    sortie = cadre.copy()
+    marge = max(3, round(0.004 * min(h, w)))
+    for cote in ("haut", "bas", "gauche", "droite"):
+        if cote == "haut":
+            dedans, deja, dehors, loin = encre[y0:y0 + d, x0:x1], hori[y0:y0 + 3 * d, x0:x1], dessin[:y0, x0:x1][::-1], y0
+            axe = 0
+        elif cote == "bas":
+            dedans, deja, dehors, loin = encre[y1 - d:y1, x0:x1][::-1], hori[y1 - 3 * d:y1, x0:x1][::-1], dessin[y1:, x0:x1], h - y1
+            axe = 0
+        elif cote == "gauche":
+            dedans, deja, dehors, loin = encre[y0:y1, x0:x0 + d].T, vert[y0:y1, x0:x0 + 3 * d].T, dessin[y0:y1, :x0][:, ::-1].T, x0
+            axe = 1
+        else:
+            dedans, deja, dehors, loin = encre[y0:y1, x1 - d:x1].T[::-1], vert[y0:y1, x1 - 3 * d:x1].T[::-1], dessin[y0:y1, x1:].T, w - x1
+            axe = 1
+        if loin <= marge:                                   # la coupe est au bord du papier : l'image touche le bord, pas de cadre
+            continue
+        touche = dedans.any(0)
+        if deja.size and deja.mean(1).max() > 0.6:         # un vrai trait de cadre droit, parallèle à la coupe, est déjà là : rien (hachures exclues)
+            continue
+        # au-delà de la coupe : le dessin va-t-il jusqu'au bord du papier ? (sa dernière bande, côté papier)
+        bande = dehors[max(0, dehors.shape[0] - max(4, dehors.shape[0] // 3)):] if dehors.shape[0] else dehors
+        perdu = bande.mean(0) > 0.12 if bande.size else np.zeros(touche.shape, bool)
+        perdu = cv2.dilate(perdu.astype(np.uint8).reshape(1, -1), np.ones((1, 31), np.uint8)).ravel() > 0
+        tracer = touche & ~perdu
+        tracer = cv2.morphologyEx(tracer.astype(np.uint8).reshape(1, -1), cv2.MORPH_CLOSE, np.ones((1, 25), np.uint8)).ravel() > 0
+        for a_, b_ in _suites(tracer):
+            if b_ - a_ < 20:
+                continue
+            if cote == "haut":
+                sl = np.s_[y0 - y:y0 - y + e, x0 - x + a_:x0 - x + b_]
+            elif cote == "bas":
+                sl = np.s_[y1 - y - e:y1 - y, x0 - x + a_:x0 - x + b_]
+            elif cote == "gauche":
+                sl = np.s_[y0 - y + a_:y0 - y + b_, x0 - x:x0 - x + e]
+            else:
+                sl = np.s_[y0 - y + a_:y0 - y + b_, x1 - x - e:x1 - x]
+            sortie[sl] = noir
+    return sortie
+
+
+def _suites(v):
+    v = np.r_[False, v, False].astype(np.int8)
+    dv = np.diff(v)
+    return list(zip(np.where(dv == 1)[0], np.where(dv == -1)[0]))
+
+
+def rendre_page(im, boite, taille, traits=False):
     """La page tournée de `a` degrés (sens horaire, autour de son centre), coupée au cadre x, y, w, h (ce qui sort de la page : papier), puis mise
-    à l'échelle SANS déformation pour tenir dans taille = (largeur, hauteur), centrée, papier autour. La sortie fait exactement `taille`."""
+    à l'échelle SANS déformation pour tenir dans taille = (largeur, hauteur), centrée, papier autour. La sortie fait exactement `taille`.
+    traits : le cadre des cases coupées par le cadre est redessiné le long de la coupe (voir traits_coupe)."""
     if im.mode not in ("L", "RGB"):
         im = im.convert("RGB")
     a = np.array(im)
@@ -131,6 +206,8 @@ def rendre_page(im, boite, taille):
     x0, y0, x1, y1 = max(0, x), max(0, y), min(w, x + bw), min(h, y + bh)
     if x1 > x0 and y1 > y0:
         cadre[y0 - y:y1 - y, x0 - x:x1 - x] = a[y0:y1, x0:x1]
+    if traits and a.ndim == 2 or (traits and not _en_couleur(a)):
+        cadre = traits_coupe(a if a.ndim == 2 else cv2.cvtColor(a, cv2.COLOR_RGB2GRAY), cadre, x, y, bw, bh)
     tw, th = int(taille[0]), int(taille[1])
     s = min(tw / bw, th / bh)
     nw, nh = min(tw, max(1, round(bw * s))), min(th, max(1, round(bh * s)))
@@ -242,7 +319,7 @@ def plan(entree, tailles) -> dict:
     la dernière application, la page actuelle est recopiée telle quelle."""
     W, H = taille_finale(entree, tailles)
     produit = entree.get("produit") or {}
-    meme = produit.get("W") == W and produit.get("H") == H
+    meme = produit.get("W") == W and produit.get("H") == H and bool(produit.get("traits")) == bool(entree.get("traits"))   # ✏️ changé : tout est réécrit
     deja = produit.get("boites") or {}
     pages = []
     for i, t in enumerate(tailles):
@@ -381,7 +458,8 @@ def noter_application(manga_dir, fichier_reglages, serie, chemin, travail):
         e["W"], e["H"] = travail["W"], travail["H"]                 # la taille est figée : modifier une page ne change plus les autres
         e["produit"] = {"octets": chemin.stat().st_size, "W": travail["W"], "H": travail["H"],
                         "boites": {str(i): p["boite"] for i, p in enumerate(travail["pages"])}, "empreintes": travail["empreintes"],
-                        "date": datetime.now().strftime("%d/%m/%Y %H:%M")}
+                        "date": datetime.now().strftime("%d/%m/%Y %H:%M"), "traits": bool(travail.get("traits"))}
+        e["traits"] = bool(travail.get("traits"))
         d["tomes"].setdefault(serie, {})[chemin.name] = e
         d["series"][serie] = {"W": travail["W"], "H": travail["H"], "tome": chemin.name}
         _ecrire(fichier_reglages, d)
@@ -525,7 +603,7 @@ def ecrire_tome(chemin, indices, sens_manga=True, destination=None, travail=None
             else:
                 im = Image.open(io.BytesIO(zs.read(ordre_s[i])))
                 im.load()
-                sortie = (rendre_redressee if redresse else rendre_page)(im, pages[i]["boite"], pages[i]["taille"])
+                sortie = (rendre_redressee if redresse else rendre_page)(im, pages[i]["boite"], pages[i]["taille"], bool(travail.get("traits")))
                 if retouches:                              # le tome avait été ✨ amélioré après le rognage : la page refaite reçoit la même retouche que ses voisines
                     sortie = optimiser.ameliorer(sortie, retouches, source=facteur(pages[i]["boite"], pages[i]["taille"]))
                     if list(sortie.size) != list(pages[i]["taille"]):

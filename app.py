@@ -2622,7 +2622,7 @@ def api_rogner_infos():
     except (archives.ArchiveError, zipfile.BadZipFile, OSError, RuntimeError) as e:
         return jsonify({"error": f"Lecture impossible : {e}"}), 500
     e, p = etat["entree"], etat["entree"].get("produit")
-    return jsonify({"tailles": etat["tailles"], "W": e.get("W"), "H": e.get("H"), "boites": e.get("boites") or {},
+    return jsonify({"tailles": etat["tailles"], "W": e.get("W"), "H": e.get("H"), "boites": e.get("boites") or {}, "traits": bool(e.get("traits")),
                     "produit": {"W": p["W"], "H": p["H"], "boites": p.get("boites") or {}, "date": p.get("date", "")} if p else None,
                     "message": etat["message"], "libelle": _libelle_tome(f, name), "origine": bool(e.get("source")), "reference": etat["reference"]})
 
@@ -2705,6 +2705,8 @@ def api_rogner_appliquer():
         etat = _rognage_ouvrir(name, f)
     except (archives.ArchiveError, zipfile.BadZipFile, OSError, RuntimeError) as e:
         return jsonify({"ok": False, "error": f"Lecture impossible : {e}"}), 500
+    if "traits" in body:                                  # ✏️ redessiner les cadres coupés : choix de l'éditeur (pris en compte dans ce qui serait écrit)
+        etat["entree"]["traits"] = bool(body.get("traits"))
     pl = rognage.plan(etat["entree"], etat["tailles"])
     ecrire = [i for i, p in enumerate(pl["pages"]) if not p["garder"]]
     res = {"ok": True, "W": pl["W"], "H": pl["H"], "ecrire": len(ecrire), "garder": len(pl["pages"]) - len(ecrire),
@@ -2715,7 +2717,8 @@ def api_rogner_appliquer():
         return jsonify({"ok": False, "error": "Rien à écrire : aucune page n'a changé depuis le dernier rognage."}), 400
     copier = not etat["entree"].get("source")
     travail = {"source": str(rognage.chemin_source(MANGA_DIR, name, f.name) if copier else etat["source"]), "copier_source": copier,
-               "pages": pl["pages"], "W": pl["W"], "H": pl["H"], "retouches": etat["entree"].get("retouches")}
+               "pages": pl["pages"], "W": pl["W"], "H": pl["H"], "retouches": etat["entree"].get("retouches"),
+               "traits": bool(etat["entree"].get("traits"))}
     avant_travail = _avant_travail(name, [f])
 
     @_sous_verrou_infos

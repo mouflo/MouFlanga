@@ -147,6 +147,8 @@
         <label class="coche"><input type="checkbox" id="rgAuto"> automatique (taille médiane des cadres réglés)</label>
         <p class="rg-note" id="rgNoteTaille"></p>
         <div id="rgBilan"></div>
+        <label class="coche"><input type="checkbox" id="rgTraits"> ✏️ Redessiner les cadres coupés par mon rognage (essai)</label>
+        <p class="rg-note">Là où votre cadre coupe une case au ras du dessin, un trait droit est tracé le long de la coupe. Rien n'est tracé si un trait est déjà là, ni si le dessin va jusqu'au bord du papier (image à fond perdu), ni si votre cadre est au bord de la page.</p>
         <button id="rgAppliquer" class="vert">✂️ Appliquer au tome</button>
         <button id="rgCases">🧩 Recadrer tout le tome aux cases (automatique)</button>
         <p class="rg-note">Pour un tome scanné à plat, deux pages par scan : chaque page est redressée, coupée au ras des cadres de cases (bords du scan, ombre de la reliure et page voisine supprimés, traits refaits bien droits), puis mise en plein écran. Les flash-backs gardent leur fond noir et leurs cases réduites. Les retouches ✨ du tome sont refaites. Quelques minutes ; l'ancien fichier part à la corbeille.</p>
@@ -440,7 +442,7 @@
     // Appliquer
     $('rgAppliquer').addEventListener('click', async function () {
         if (minuteur || !envoi) await sauverMaintenant(); else await envoi;
-        var v = await envoyer('/api/rogner/appliquer', { series: SERIE, fichier: FICHIER, verifier: true });
+        var v = await envoyer('/api/rogner/appliquer', { series: SERIE, fichier: FICHIER, verifier: true, traits: $('rgTraits').checked });
         if (!v.ok) { msg(v.error || 'Impossible', true); return; }
         if (!v.ecrire) { msg('Rien à écrire : aucune page n\'a changé depuis le dernier rognage.'); return; }
         var t = 'Écrire ' + v.ecrire + ' page(s) à ' + v.W + ' × ' + v.H + (v.doubles ? ' (dont ' + v.doubles + ' double(s) page(s) à ' + (2 * v.W) + ' × ' + v.H + ')' : '') + ' ?\n\n'
@@ -449,7 +451,7 @@
             + 'Chaque cadre est agrandi ou réduit sans déformation ; s\'il manque de la place, du papier est ajouté autour.\n'
             + 'L\'ancien fichier part à la corbeille ; les pages d\'origine et vos cadres restent gardés.';
         if (!confirm(t)) return;
-        var r = await envoyer('/api/rogner/appliquer', { series: SERIE, fichier: FICHIER });
+        var r = await envoyer('/api/rogner/appliquer', { series: SERIE, fichier: FICHIER, traits: $('rgTraits').checked });
         if (!r.ok) { msg(r.error || 'Échec', true); return; }
         $('rgAppliquer').disabled = true; msg('Écriture du tome en cours…'); suivre();
     });
@@ -519,7 +521,7 @@
         S.tailles = d.tailles; S.boites = {}; S.produit = null;
         Object.keys(d.boites || {}).forEach(function (k) { S.boites[+k] = d.boites[k]; });
         if (d.produit) { S.produit = { W: d.produit.W, H: d.produit.H, boites: {} }; Object.keys(d.produit.boites).forEach(function (k) { S.produit.boites[+k] = d.produit.boites[k]; }); }
-        S.W = d.W || null; S.H = d.H || null;
+        S.W = d.W || null; S.H = d.H || null; $('rgTraits').checked = !!d.traits;
         if (d.message) msg(d.message, true);
         else if (!d.produit && !Object.keys(S.boites).length && S.W && d.reference) msg('Taille finale reprise des autres tomes rognés de la série : ' + S.W + ' × ' + S.H + ' (modifiable dans ⚙ Réglages).');
         S.n = Math.min(S.n, S.tailles.length - 1); aller(S.n); bilan();
