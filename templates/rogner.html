@@ -150,6 +150,7 @@
         <label class="coche"><input type="checkbox" id="rgTraits"> ✏️ Redessiner les cadres coupés par mon rognage (essai)</label>
         <p class="rg-note">Là où votre cadre coupe une case au ras du dessin, un trait droit est tracé le long de la coupe. Rien n'est tracé si un trait est déjà là, ni si le dessin va jusqu'au bord du papier (image à fond perdu), ni si votre cadre est au bord de la page.</p>
         <button id="rgAppliquer" class="vert">✂️ Appliquer au tome</button>
+        <button id="rgTout">↻ Tout réécrire (toutes les pages, même inchangées)</button>
         <button id="rgCases">🧩 Recadrer tout le tome aux cases (automatique)</button>
         <p class="rg-note">Pour un tome scanné à plat, deux pages par scan : chaque page est redressée, coupée au ras des cadres de cases (bords du scan, ombre de la reliure et page voisine supprimés, traits refaits bien droits), puis mise en plein écran. Les flash-backs gardent leur fond noir et leurs cases réduites. Les retouches ✨ du tome sont refaites. Quelques minutes ; l'ancien fichier part à la corbeille.</p>
         <p class="rg-note">L'ancien fichier part à la corbeille. Les pages d'origine et vos cadres restent gardés : vous pouvez revenir corriger une page, seules les pages modifiées seront réécrites. Le travail est enregistré à chaque geste : vous pouvez quitter et revenir.</p>
@@ -440,9 +441,9 @@
     $('rgNum').addEventListener('change', function () { aller((+this.value || 1) - 1); });
 
     // Appliquer
-    $('rgAppliquer').addEventListener('click', async function () {
+    async function appliquer(tout) {
         if (minuteur || !envoi) await sauverMaintenant(); else await envoi;
-        var v = await envoyer('/api/rogner/appliquer', { series: SERIE, fichier: FICHIER, verifier: true, traits: $('rgTraits').checked });
+        var v = await envoyer('/api/rogner/appliquer', { series: SERIE, fichier: FICHIER, verifier: true, traits: $('rgTraits').checked, tout: tout });
         if (!v.ok) { msg(v.error || 'Impossible', true); return; }
         if (!v.ecrire) { msg('Rien à écrire : aucune page n\'a changé depuis le dernier rognage.'); return; }
         var t = 'Écrire ' + v.ecrire + ' page(s) à ' + v.W + ' × ' + v.H + (v.doubles ? ' (dont ' + v.doubles + ' double(s) page(s) à ' + (2 * v.W) + ' × ' + v.H + ')' : '') + ' ?\n\n'
@@ -451,10 +452,12 @@
             + 'Chaque cadre est agrandi ou réduit sans déformation ; s\'il manque de la place, du papier est ajouté autour.\n'
             + 'L\'ancien fichier part à la corbeille ; les pages d\'origine et vos cadres restent gardés.';
         if (!confirm(t)) return;
-        var r = await envoyer('/api/rogner/appliquer', { series: SERIE, fichier: FICHIER, traits: $('rgTraits').checked });
+        var r = await envoyer('/api/rogner/appliquer', { series: SERIE, fichier: FICHIER, traits: $('rgTraits').checked, tout: tout });
         if (!r.ok) { msg(r.error || 'Échec', true); return; }
-        $('rgAppliquer').disabled = true; msg('Écriture du tome en cours…'); suivre();
-    });
+        $('rgAppliquer').disabled = true; $('rgTout').disabled = true; msg('Écriture du tome en cours…'); suivre();
+    }
+    $('rgAppliquer').addEventListener('click', function () { appliquer(false); });
+    $('rgTout').addEventListener('click', function () { appliquer(true); });
     $('rgCases').addEventListener('click', async function () {
         if (minuteur || !envoi) await sauverMaintenant(); else await envoi;
         var v = await envoyer('/api/rogner/cases', { series: SERIE, fichier: FICHIER, verifier: true });
@@ -482,8 +485,8 @@
     async function suivre() {
         var e = await q('/api/doubles/etat?series=' + encodeURIComponent(SERIE));
         progres(e);
-        if (e.en_cours) { $('rgAppliquer').disabled = true; $('rgCases').disabled = true; setTimeout(suivre, 1500); return; }
-        $('rgAppliquer').disabled = false; $('rgCases').disabled = false;
+        if (e.en_cours) { $('rgAppliquer').disabled = true; $('rgTout').disabled = true; $('rgCases').disabled = true; setTimeout(suivre, 1500); return; }
+        $('rgAppliquer').disabled = false; $('rgTout').disabled = false; $('rgCases').disabled = false;
         var ligne = (e.rapport || [])[0] || {};
         if ((e.message || '').indexOf('Erreur') === 0 || (ligne.note || '').indexOf('erreur') === 0) { msg((ligne.note || e.message) + ' — le tome n\'a pas été modifié.', true); return; }
         await charger();

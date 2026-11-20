@@ -2708,6 +2708,9 @@ def api_rogner_appliquer():
     if "traits" in body:                                  # ✏️ redessiner les cadres coupés : choix de l'éditeur (pris en compte dans ce qui serait écrit)
         etat["entree"]["traits"] = bool(body.get("traits"))
     pl = rognage.plan(etat["entree"], etat["tailles"])
+    if body.get("tout"):                                  # ↻ tout réécrire : chaque page refaite depuis son origine (réglage de retouche corrigé…)
+        for p in pl["pages"]:
+            p["garder"] = False
     ecrire = [i for i, p in enumerate(pl["pages"]) if not p["garder"]]
     res = {"ok": True, "W": pl["W"], "H": pl["H"], "ecrire": len(ecrire), "garder": len(pl["pages"]) - len(ecrire),
            "non_reglees": sum(1 for i in ecrire if not pl["pages"][i]["reglee"]), "doubles": sum(1 for i in ecrire if rognage.est_double(etat["tailles"][i]))}
