@@ -473,7 +473,7 @@
         p.hidden = false;
         var f = e.etapes ? e.etape / e.etapes : 0, t = 'Écriture du tome en cours, ne fermez pas tout de suite';
         if (e.etapes) {
-            t = 'Recadrage aux cases : ' + Math.round(100 * f) + ' %';
+            t = (e.quoi || 'Recadrage aux cases') + ' : ' + Math.round(100 * f) + ' %';
             if (f > 0.03 && e.ecoule) t += ' · encore environ ' + duree(e.ecoule * (1 - f) / f);
         }
         $('rgProgresTxt').textContent = t + '…';

@@ -595,6 +595,8 @@ def ecrire_tome(chemin, indices, sens_manga=True, destination=None, travail=None
     retouches = optimiser.reglages_amelioration({k: v for k, v in (travail.get("retouches") or {}).items() if k in RETOUCHES and k != "redresser"})
     tmp = Path(destination) if destination is not None else chemin.with_name("." + chemin.name + ".rogne")
     attendu, empreintes = {}, {}
+    a_ecrire, faites = sum(1 for p in pages if not p["garder"]), 0
+    progres = travail.get("progres")
     with zipfile.ZipFile(chemin) as zc, zipfile.ZipFile(source) as zs, zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as dst:
         for info in zc.infolist():
             i = rang.get(info.filename)
@@ -610,6 +612,9 @@ def ecrire_tome(chemin, indices, sens_manga=True, destination=None, travail=None
                         sortie = sortie.resize(tuple(pages[i]["taille"]), Image.LANCZOS)
                 data = optimiser._octets_page(sortie, info.filename)
                 attendu[info.filename] = list(pages[i]["taille"])
+                faites += 1
+                if progres:
+                    progres(faites, a_ecrire)
             if i is not None:
                 empreintes[str(i)] = empreinte(data)
             info2 = zipfile.ZipInfo(info.filename, date_time=info.date_time)
