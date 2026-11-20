@@ -331,25 +331,53 @@ def fond_noir(g: np.ndarray) -> bool:
     return n >= 2
 
 
-def noir_uni(g: np.ndarray) -> np.ndarray:
-    """Flash-back sur fond noir (fond_noir) : le fond délavé (gris, inégal) redevient un noir uni ; les cases ne sont pas touchées. Les cases sont les grandes zones
-    claires (dessins bouchés par une fermeture, puis contour convexe de chacune, trait de cadre compris) ; hors des cases, ce qui est sombre ou gris devient noir, ce
-    qui est clair (texte blanc sur le fond) reste. Une autre page est rendue telle quelle."""
-    if not fond_noir(g):
-        return g
+def _ajoute(g):
+    """Papier ajouté autour de la page (mise à la taille finale) : colonnes et lignes uniformes depuis chaque bord. Masque."""
+    h, w = g.shape
+    m = np.zeros((h, w), bool)
+    plat = lambda v: v.max() - v.min() <= 6
+    k = 0
+    while k < w // 4 and plat(g[:, k]): k += 1
+    m[:, :k] = True
+    k = 0
+    while k < w // 4 and plat(g[:, w - 1 - k]): k += 1
+    m[:, w - k:] = True
+    k = 0
+    while k < h // 4 and plat(g[k]): k += 1
+    m[:k] = True
+    k = 0
+    while k < h // 4 and plat(g[h - 1 - k]): k += 1
+    m[h - k:] = True
+    return m
+
+
+def _bords_gris(g, ajoute=None):
+    """Page déjà coupée au ras (rognage à la main) d'un flash-back délavé : les quatre bords sont gris (pas de papier blanc autour) et au moins une
+    gouttière horizontale est plus sombre que les cases (Nori Taka tome 3 page 9, fond ≈ 120)."""
+    import cases
+    if ajoute is not None and ajoute.any():                # on juge la page elle-même, sans le papier ajouté autour
+        r, c = np.where(~ajoute.all(1))[0], np.where(~ajoute.all(0))[0]
+        if len(r) < 50 or len(c) < 50:
+            return False
+        g = g[r[0]:r[-1] + 1, c[0]:c[-1] + 1]
     h, w = g.shape
     papier = float(np.percentile(g, 95))
-    clair = (g > 0.6 * papier).astype(np.uint8)
-    k = max(5, int(0.015 * min(h, w)) | 1)
-    ferme = cv2.morphologyEx(clair, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (k, k)))
-    n, lab, st, _ = cv2.connectedComponentsWithStats(ferme, connectivity=8)
-    cases = np.zeros_like(clair)
-    for i in range(1, n):
-        if st[i, cv2.CC_STAT_AREA] >= 0.004 * h * w:
-            cv2.fillConvexPoly(cases, cv2.convexHull(cv2.findNonZero((lab == i).astype(np.uint8))), 1)
-    cases = cv2.dilate(cases, np.ones((5, 5), np.uint8))
-    sortie = g.copy()
-    sortie[(cases == 0) & (g < 0.75 * papier)] = int(min(30, np.percentile(g, 1)))
+    b = max(3, min(h, w) // 60)
+    bords = [g[:b, w // 5:4 * w // 5], g[-b:, w // 5:4 * w // 5], g[h // 5:4 * h // 5, :b], g[h // 5:4 * h // 5, -b:]]
+    return all(float(np.median(x)) < 0.7 * papier for x in bords) and cases.gouttieres_relatives(g) >= 1
+
+
+def noir_uni(g: np.ndarray) -> np.ndarray:
+    """Flash-back sur fond noir : le fond délavé (gris, inégal) redevient un noir uni ; l'intérieur des cases n'est pas touché. Même méthode que le
+    recadrage aux cases (cases.flashback : cases = rectangles droits entre les gouttières sombres, gouttières en biais suivies, lignes de texte
+    gardées) ; l'ancienne (contours convexes des zones claires) laissait un trapèze gris sur les pages délavées (Nori Taka tome 3 page 9).
+    Une autre page est rendue telle quelle."""
+    import cases
+    ajoute = _ajoute(g)
+    if not (cases.est_flashback(g) or _bords_gris(g, ajoute)):
+        return g
+    sortie, _ = cases.flashback(np.ascontiguousarray(g), ajoute.astype(np.uint8))       # le papier ajouté est du fond : noir aussi
+    sortie[ajoute] = int(min(25, np.percentile(sortie, 1)))
     return sortie
 
 
