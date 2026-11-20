@@ -2622,7 +2622,10 @@ def api_rogner_infos():
     except (archives.ArchiveError, zipfile.BadZipFile, OSError, RuntimeError) as e:
         return jsonify({"error": f"Lecture impossible : {e}"}), 500
     e, p = etat["entree"], etat["entree"].get("produit")
+    import rognage
+    ret, origine = rognage.retouches_effectives(_rognage_reglages(), name, e)
     return jsonify({"tailles": etat["tailles"], "W": e.get("W"), "H": e.get("H"), "boites": e.get("boites") or {}, "traits": bool(e.get("traits")),
+                    "retouches": ret, "retouches_origine": origine,
                     "produit": {"W": p["W"], "H": p["H"], "boites": p.get("boites") or {}, "date": p.get("date", "")} if p else None,
                     "message": etat["message"], "libelle": _libelle_tome(f, name), "origine": bool(e.get("source")), "reference": etat["reference"]})
 
@@ -2720,7 +2723,7 @@ def api_rogner_appliquer():
         return jsonify({"ok": False, "error": "Rien à écrire : aucune page n'a changé depuis le dernier rognage."}), 400
     copier = not etat["entree"].get("source")
     travail = {"source": str(rognage.chemin_source(MANGA_DIR, name, f.name) if copier else etat["source"]), "copier_source": copier,
-               "pages": pl["pages"], "W": pl["W"], "H": pl["H"], "retouches": etat["entree"].get("retouches"),
+               "pages": pl["pages"], "W": pl["W"], "H": pl["H"], "retouches": rognage.retouches_effectives(_rognage_reglages(), name, etat["entree"])[0],
                "traits": bool(etat["entree"].get("traits"))}
     travail["progres"] = lambda fait, total: optimiser.noter_progres(name, fait, total, "Écriture du tome")      # barre de progression de l'éditeur
     avant_travail = _avant_travail(name, [f])
@@ -2768,7 +2771,8 @@ def api_rogner_cases():
         return jsonify(res)
     copier = not etat["entree"].get("source")
     travail = {"source": str(rognage.chemin_source(MANGA_DIR, name, f.name) if copier else etat["source"]), "copier_source": copier,
-               "boites": etat["entree"].get("boites") or {}, "W": pl["W"], "H": pl["H"], "retouches": etat["entree"].get("retouches")}
+               "boites": etat["entree"].get("boites") or {}, "W": pl["W"], "H": pl["H"],
+               "retouches": rognage.retouches_effectives(_rognage_reglages(), name, etat["entree"])[0]}
     travail["progres"] = lambda fait, total: optimiser.noter_progres(name, fait, total)      # barre de progression de l'éditeur
     avant_travail = _avant_travail(name, [f])
 

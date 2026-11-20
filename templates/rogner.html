@@ -149,6 +149,7 @@
         <div id="rgBilan"></div>
         <label class="coche"><input type="checkbox" id="rgTraits"> ✏️ Redessiner les cadres coupés par mon rognage (essai)</label>
         <p class="rg-note">Là où votre cadre coupe une case au ras du dessin, un trait droit est tracé le long de la coupe. Rien n'est tracé si un trait est déjà là, ni si le dessin va jusqu'au bord du papier (image à fond perdu), ni si votre cadre est au bord de la page.</p>
+        <p class="rg-note" id="rgRetouches"></p>
         <button id="rgAppliquer" class="vert">✂️ Appliquer au tome</button>
         <button id="rgTout">↻ Tout réécrire (toutes les pages, même inchangées)</button>
         <button id="rgCases">🧩 Recadrer tout le tome aux cases (automatique)</button>
@@ -525,6 +526,10 @@
         Object.keys(d.boites || {}).forEach(function (k) { S.boites[+k] = d.boites[k]; });
         if (d.produit) { S.produit = { W: d.produit.W, H: d.produit.H, boites: {} }; Object.keys(d.produit.boites).forEach(function (k) { S.produit.boites[+k] = d.produit.boites[k]; }); }
         S.W = d.W || null; S.H = d.H || null; $('rgTraits').checked = !!d.traits;
+        var NOMS = { ia: 'IA Net', noirs: 'noirs', papier: 'papier', redresser: 'redressement', flashback: 'noir des flash-backs', debruit: 'grain', trames: 'trames', taches: 'taches', lisser: 'lissage', nettete: 'netteté' };
+        var ret = d.retouches ? Object.keys(d.retouches).filter(function (k) { return +d.retouches[k]; }).map(function (k) { return NOMS[k] || k; }) : [];
+        $('rgRetouches').textContent = ret.length ? '✨ Fait en même temps, sur chaque page écrite : ' + ret.join(', ') + (d.retouches_origine && d.retouches_origine !== 'tome' ? ' (réglages repris de ' + (d.retouches_origine === 'série' ? 'la série' : d.retouches_origine.replace('.cbz', '')) + ')' : '') + '. Rien à relancer ensuite.'
+            : '✨ Aucune retouche : seul le recadrage est fait. Réglez « ✨ Améliorer » une fois sur un tome de la série, les suivants le reprendront.';
         if (d.message) msg(d.message, true);
         else if (!d.produit && !Object.keys(S.boites).length && S.W && d.reference) msg('Taille finale reprise des autres tomes rognés de la série : ' + S.W + ' × ' + S.H + ' (modifiable dans ⚙ Réglages).');
         S.n = Math.min(S.n, S.tailles.length - 1); aller(S.n); bilan();

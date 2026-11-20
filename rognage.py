@@ -446,6 +446,23 @@ def oublier(fichier_reglages, serie, fichier):
         _ecrire(fichier_reglages, d)
 
 
+def retouches_effectives(fichier_reglages, serie, entree):
+    """(retouches, d'où elles viennent) : celles du tome ; sinon celles de la série (le dernier tome rogné de la série qui en a), pour que
+    « Appliquer au tome » fasse tout en une étape (coupe + IA + noirs…) même sur un tome qui n'a jamais reçu ✨ (Nori Taka tome 4)."""
+    if entree.get("retouches"):
+        return dict(entree["retouches"]), "tome"
+    d = _lire(fichier_reglages)
+    tomes = d["tomes"].get(serie) or {}
+    ref = (d["series"].get(serie) or {}).get("retouches")
+    if ref:
+        return dict(ref), "série"
+    avec = [(n, e) for n, e in tomes.items() if e.get("retouches")]
+    if not avec:
+        return None, None
+    n, e = max(avec, key=lambda x: (len(x[1]["retouches"]), (x[1].get("produit") or {}).get("date") or ""))
+    return dict(e["retouches"]), n
+
+
 def noter_application(manga_dir, fichier_reglages, serie, chemin, travail):
     """Après l'écriture : la source gardée, ce que contient maintenant le tome (cadres, taille, empreinte de chaque page) et la taille de la série."""
     chemin = Path(chemin)
@@ -460,6 +477,8 @@ def noter_application(manga_dir, fichier_reglages, serie, chemin, travail):
                         "boites": {str(i): p["boite"] for i, p in enumerate(travail["pages"])}, "empreintes": travail["empreintes"],
                         "date": datetime.now().strftime("%d/%m/%Y %H:%M"), "traits": bool(travail.get("traits"))}
         e["traits"] = bool(travail.get("traits"))
+        if travail.get("retouches"):
+            e["retouches"] = dict(travail["retouches"])       # reprises de la série : elles deviennent celles du tome
         d["tomes"].setdefault(serie, {})[chemin.name] = e
         d["series"][serie] = {"W": travail["W"], "H": travail["H"], "tome": chemin.name}
         _ecrire(fichier_reglages, d)
