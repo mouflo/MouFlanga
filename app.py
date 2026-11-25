@@ -640,6 +640,8 @@ def _entrees_calculees(files):
         return int(t) in connus_de[serie]
 
     def titre_tome(serie, t):                    # « Romance Dawn » (mémoire de tomes.titres_tomes, sans aller sur Internet)
+        if t is not None and _edition_differente(serie):
+            return None                          # Perfect, Deluxe… : les titres de l'édition standard ne suivent pas ses tomes
         if serie not in titres_de:
             titres_de[serie] = ((tomes._charger(serie) or {}).get("titres_tomes") or {}).get("titres") or {}
         return titres_de[serie].get(str(int(t))) if t is not None else None
