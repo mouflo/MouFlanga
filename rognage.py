@@ -99,6 +99,10 @@ def rendre_redressee(im, boite, taille, traits=False):
         return rendre_page(im, boite, taille, traits)
     T = np.array([[1, 0, -cx0], [0, 1, -cy0], [0, 0, 1.]])
     M = np.linalg.inv(T) @ reliure.matrice_redressement(c, cx1 - cx0, cy1 - cy0) @ T          # mesurée dans le cadre, appliquée à toute la page
+    a_main = float(boite.get("a") or 0)
+    if abs(a_main) > 0.005:                               # l'angle réglé à la main S'AJOUTE au redressement automatique (même centre, même sens que rendre_page)
+        R = np.vstack([cv2.getRotationMatrix2D((W / 2, H / 2), -a_main, 1.0), [0, 0, 1.0]])
+        M = R @ M
     papier = ton_papier(a)
     a2 = cv2.warpPerspective(a, M, (W, H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=papier)
     coins = np.array([[x, y, 1], [x + w, y, 1], [x + w, y + h, 1], [x, y + h, 1]]) @ M.T
