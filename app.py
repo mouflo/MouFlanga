@@ -344,6 +344,13 @@ def _edition_differente(serie):
         # intégrale sans nombre dans son nom (« 20th Century Boys [Intégrale] ») : le nombre de tomes reçus fait foi
         v = len({m.group(1) for f in (_scan().get(serie) or [])
                  for m in [re.match(r"Tome (\d+)$", f.parent.name)] if m}) or None
+    if not v:
+        # Édition sans nombre de tomes dans son nom (Perfect Edition) : le nombre du catalogue de l'éditeur fait foi
+        import editeurs
+        import edition as edition_mod
+        nom = _edition_vue(serie).get("edition") or ""
+        if nom and not edition_mod.edition_generique(nom):
+            v = len(editeurs.collection_isbn(serie, nom)) or None
     officiel = ((tomes._charger(serie) or {}).get("statut_officiel") or {}).get("volumes")
     return bool(v and officiel and int(v) != int(officiel))
 

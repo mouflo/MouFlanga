@@ -264,7 +264,8 @@ def etape_notices(serie: str, forcer: bool = False) -> Bilan:
     # 1 quater. Le site de l'éditeur de chaque tome (Pika, Glénat, Kana, Kazé, Ki-oon, Kurokawa…) dès que l'ISBN est connu : résumé, date,
     # pages et couverture viennent de celui qui a publié le livre. Un tome cherché sans succès n'est pas redemandé avant un mois.
     def chez_les_editeurs():
-        _, _, p = editeurs.chercher_serie(serie, noms, voulus=voulus, forcer=forcer)
+        _, _, p = editeurs.chercher_serie(serie, noms, voulus=voulus, forcer=forcer,
+                                          edition=(edition if differente else ""))
         pannes.extend(p)
     chez_les_editeurs()
     # 2. Google Books : ce qu'il manque encore, une recherche de toute la série puis quelques tomes un à un

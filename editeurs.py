@@ -363,13 +363,49 @@ def chercher(noms: list, cibles: dict) -> tuple:
 
 # ---------------------------------------------------------------- Une série entière
 
-def _cibles(serie: str, voulus, essayes: dict, forcer: bool) -> dict:
+_COLLECTIONS: dict = {}     # (série, édition) → (date, {tome: isbn})
+DUREE_COLLECTION = 3600
+
+
+def collection_isbn(serie: str, edition: str) -> dict:
+    """{tome: isbn} d'une édition du catalogue Glénat, d'après l'adresse de chaque livre :
+    « …/glenat-manga/dragon-ball-perfect-edition-tome-07-<isbn>/ » pour « Dragon Ball » + « Perfect ».
+    Vide si l'édition n'a pas de nom ou si le catalogue ne répond pas (rien n'est inventé)."""
+    if not edition or not serie:
+        return {}
+    cle = (serie, edition)
+    garde = _COLLECTIONS.get(cle)
+    if garde and time.time() - garde[0] < DUREE_COLLECTION:
+        return dict(garde[1])
+    base = _slug(f"{serie} {edition}")
+    if not base.endswith("edition"):
+        base += "-edition"
+    motif = re.compile(r"/" + re.escape(base) + r"-tome-0*(\d+)-(\d{13})/?$")
+    try:
+        catalogue = index("glenat", "https://www.glenat.com/products.xml")
+    except reseau.Panne:
+        return {}
+    out = {}
+    for isbn, url in catalogue.items():
+        m = motif.search(url or "")
+        if m and m.group(2) == isbn:
+            out[int(m.group(1))] = isbn
+    _COLLECTIONS[cle] = (time.time(), dict(out))
+    return out
+
+
+def _cibles(serie: str, voulus, essayes: dict, forcer: bool, edition: str = "") -> dict:
     import notices
     obs = notices.observations(serie)
+    # Une édition particulière (Perfect…) : ses ISBN viennent de SON catalogue, jamais de ceux de l'édition standard.
+    collection = collection_isbn(serie, edition) if edition else {}
     out = {}
-    for t in sorted({int(x) for x in voulus} if voulus else {int(x) for x in obs}):
+    for t in sorted({int(x) for x in voulus} if voulus else {int(x) for x in obs} | set(collection)):
         par = obs.get(str(t)) or {}
-        isbn = notices.isbn_du_tome(par)[0]
+        if edition:
+            isbn = collection.get(t)
+        else:
+            isbn = notices.isbn_du_tome(par)[0]
         if not isbn or (not forcer and time.time() - essayes.get(t, 0) < DUREE_ESSAI):
             continue
         cle = editeur_de(isbn, next((o.get("editeur") for o in par.values() if o.get("editeur")), ""))
@@ -378,14 +414,14 @@ def _cibles(serie: str, voulus, essayes: dict, forcer: bool) -> dict:
     return out
 
 
-def chercher_serie(serie: str, noms: list, voulus=None, forcer: bool = False) -> tuple:
+def chercher_serie(serie: str, noms: list, voulus=None, forcer: bool = False, edition: str = "") -> tuple:
     """Cherche chez leur éditeur les tomes de la série dont l'ISBN est connu, et garde ce qui est trouvé (source « editeur » des notices).
     Rend (nombre de tomes trouvés, nombre cherchés, [pannes]). Un tome cherché sans succès n'est pas redemandé avant un mois."""
     import notices
     import tomes
     avant = ((tomes._charger(serie) or {}).get("recherches") or {}).get("editeurs") or {}
     essayes = {int(t): ts for t, ts in (avant.get("essayes") or {}).items()}
-    cibles = _cibles(serie, voulus, essayes, forcer)
+    cibles = _cibles(serie, voulus, essayes, forcer, edition)
     if not cibles:
         return 0, 0, []
     trouves, cherches, pannes = chercher(noms, cibles)

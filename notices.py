@@ -18,8 +18,9 @@ import tomes
 
 logger = logging.getLogger("mouflanga")
 
-SOURCES = ("editeur", "wikipedia", "vega", "ankama", "glenat", "bnf", "google")       # ordre de confiance
-LIBELLES = {"editeur": "Site de l'éditeur", "wikipedia": "Wikipédia", "vega": "Vega Livres", "ankama": "Ankama", "glenat": "Glénat", "bnf": "BnF", "google": "Google Books"}
+SOURCES = ("editeur", "wikipedia", "vega", "ankama", "glenat", "bnf", "google", "auteur")       # ordre de confiance
+LIBELLES = {"editeur": "Site de l'éditeur", "wikipedia": "Wikipédia", "vega": "Vega Livres", "ankama": "Ankama", "glenat": "Glénat", "bnf": "BnF", "google": "Google Books",
+            "auteur": "Rédigé par Claude, non vérifié"}
 
 
 def enregistrer(serie: str, source: str, par_tome: dict):
