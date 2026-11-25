@@ -2672,6 +2672,31 @@ def api_rogner_image():
     return _page_revalidee(jpeg, "image/jpeg", source, f"r{request.args.get('n', '0')}-{largeur}")
 
 
+@app.route("/api/rogner/apercu")
+def api_rogner_apercu():
+    """Une page du tome AMÉLIORÉE (réglages du tome, redressement automatique compris) pour l'écran de rognage. Les premières pages
+    se calculent tout de suite, le reste en arrière-plan (apercu_ameliore.lancer_fond)."""
+    name, fichier = request.args.get("series", ""), request.args.get("fichier", "")
+    f = _tome_a_rogner(name, fichier)
+    if f is None:
+        return Response("Introuvable", status=404)
+    import rognage, apercu_ameliore
+    reglages_fichier = _rognage_reglages()
+    source = rognage.source_de(MANGA_DIR, reglages_fichier, name, f)
+    entree = (rognage._lire(reglages_fichier).get("tomes") or {}).get(name, {}).get(fichier, {})
+    retouches, _ = rognage.retouches_effectives(reglages_fichier, name, entree)
+    reglages = optimiser.reglages_amelioration({k: v for k, v in (retouches or {}).items() if k != "recadrer"}) or {}
+    try:
+        largeur = max(300, min(2600, int(request.args.get("w", "1600"))))
+        n = int(request.args.get("n", "0"))
+        cache = Path(DATA_DIR) / "apercus" / re.sub(r"[^A-Za-z0-9]+", "_", name + "_" + fichier)[:80]
+        jpeg = apercu_ameliore.calculer(source, reglages, n, largeur, cache)
+        apercu_ameliore.lancer_fond(source, reglages, len(archives.pages(source)), largeur, cache)
+    except (ValueError, archives.ArchiveError) as e:
+        return Response(str(e), status=404)
+    return Response(jpeg, mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
 @app.route("/api/rogner/sauver", methods=["POST"])
 def api_rogner_sauver():
     """POST {series, fichier, W, H (null : automatique), boites: {numéro de page: {x, y, w, h, a}}} : le travail est gardé à chaque modification."""

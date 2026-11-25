@@ -125,6 +125,7 @@
     <div id="rgPanneau">
         <h3>Cette page</h3>
         <div id="rgEtat"></div>
+        <label class="ligne" style="cursor: pointer;"><input type="checkbox" id="rgAmeliore" style="min-width: 22px; min-height: 22px;"> <span>Voir la page améliorée (IA, reliure, redressement)</span></label>
         <div class="ligne cadre-chiffres"><label>X</label><input type="number" id="rgX" step="1"><label>Y</label><input type="number" id="rgY" step="1"></div>
         <div class="ligne cadre-chiffres"><label>Larg.</label><input type="number" id="rgL" step="1"><label>Haut.</label><input type="number" id="rgH" step="1"></div>
         <div class="ligne"><label>Angle</label><input type="range" id="rgAng" min="-3" max="3" step="0.05" value="0"><input type="number" id="rgAngN" step="0.05" style="max-width: 78px;"></div>
@@ -172,7 +173,7 @@
 
     function q(u) { return fetch(u).then(function (r) { return r.json(); }); }
     function envoyer(u, corps) { return fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps) }).then(function (r) { return r.json(); }); }
-    function url(n, w) { return '/api/rogner/image?series=' + encodeURIComponent(SERIE) + '&fichier=' + encodeURIComponent(FICHIER) + '&n=' + n + '&w=' + w; }
+    function url(n, w) { var ameliore = $('rgAmeliore') && $('rgAmeliore').checked; return (ameliore ? '/api/rogner/apercu?' : '/api/rogner/image?') + 'series=' + encodeURIComponent(SERIE) + '&fichier=' + encodeURIComponent(FICHIER) + '&n=' + n + '&w=' + w; }
     var minuteurMsg = null;
     function msg(t, err) { var m = $('rgMsg'); m.textContent = t; m.className = err ? 'err' : ''; m.style.display = 'block'; clearTimeout(minuteurMsg); minuteurMsg = setTimeout(function () { m.style.display = 'none'; }, err ? 12000 : 6000); }
     $('rgMsg').addEventListener('click', function () { this.style.display = 'none'; });
@@ -435,6 +436,7 @@
     document.querySelectorAll('[data-bord]').forEach(function (b) { b.addEventListener('click', function () { versBord(b.dataset.bord); }); });
     $('rgAjuste').addEventListener('click', function () { zoom = 1; disposer(true); if (window.innerWidth <= 760) $('rg').classList.remove('reglages'); });
     $('rgVue').addEventListener('click', function () { S.vue = !S.vue; this.classList.toggle('on', S.vue); disposer(); });
+    $('rgAmeliore').addEventListener('change', function () { aller(S.n); });
     $('rgReglages').addEventListener('click', function () { $('rg').classList.toggle('reglages'); this.classList.toggle('on', $('rg').classList.contains('reglages')); });
     $('rgPrec').addEventListener('click', function () { aller(S.n - 1); });
     $('rgSuiv').addEventListener('click', function () { aller(S.n + 1); });
