@@ -772,6 +772,10 @@ def _volumes_attendus(name):
     v = infos.get("volumes_attendus")
     if not v:                                           # séries importées avant : lu dans le nom des archives gardées (« … (01-18) »)
         v = max([n for n in (edition.volumes_du_titre(a) for a in infos.get("archives", [])) if n] or [0]) or None
+    if not v and infos.get("edition") and not edition.edition_generique(infos.get("edition")):
+        # édition particulière sans nombre dans son nom (Perfect) : le catalogue de l'éditeur donne le nombre de tomes
+        import editeurs
+        v = len(editeurs.collection_isbn(name, infos["edition"])) or None
     return v or ((tomes._charger(name) or {}).get("statut_officiel") or {}).get("volumes")
 
 
