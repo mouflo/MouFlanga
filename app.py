@@ -779,6 +779,15 @@ def _volumes_attendus(name):
     return v or ((tomes._charger(name) or {}).get("statut_officiel") or {}).get("volumes")
 
 
+def _resume_de_l_edition(name):
+    """Synopsis de l'édition importée (Perfect…) d'après la page de son éditeur, tome 1 ; "" sinon. L'édition standard
+    n'est pas la même œuvre-livre : son synopsis ne sert pas à une édition particulière."""
+    import notices
+    if not (tomes._charger(name) or {}).get("edition_differente"):
+        return ""
+    return ((notices.observations(name).get("1") or {}).get("editeur") or {}).get("resume") or ""
+
+
 def _volumes_edition(name):
     """Nombre de tomes de l'édition importée (nom de l'archive « … (01-18) », « Intégrale 15 tomes »), ou None."""
     import edition
@@ -1383,8 +1392,11 @@ def api_series():
     etat, etat_texte = _etat_serie(name, chapters) if name != "(Sans série)" else (None, "")
     st = (tomes._charger(name) or {}).get("statut_officiel") or {}
     perso = _read_json(RESUMES, {}).get(name)
+    edition_resume = _resume_de_l_edition(name) if name != "(Sans série)" else ""
     if perso:
         st = dict(st, resume=perso, resume_langue="perso")
+    elif edition_resume:
+        st = dict(st, resume=edition_resume, resume_langue="fr", resume_source="texte de l'éditeur pour ton édition")
     elif st.get("resume_langue") != "fr" and name != "(Sans série)":
         synopsis_nfo = (_infos_serie(name).get("nfo_infos") or {}).get("synopsis")
         suivie = suivi.lire()["series"].get(name) or {}
