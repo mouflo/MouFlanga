@@ -73,7 +73,7 @@ _CORRECTIONS = {}
 
 def rendre_redressee(im, boite, taille, traits=False):
     """rendre_page sur la page d'origine redressée. Le redressement est mesuré DANS le cadre (la tranche des pages voisines, dehors, fausserait la mesure),
-    il remplace l'angle réglé à la main ; le cadre subit le même redressement et on garde le plus grand rectangle qu'il contient : on ne voit que ce que le
+    un angle réglé à la main reste l'angle FINAL de la page (pas de redressement automatique par-dessus) ; le cadre subit le même redressement et on garde le plus grand rectangle qu'il contient : on ne voit que ce que le
     cadre montrait (jamais la bande voisine qu'il laissait dehors). Page en couleur ou rien de sûr : rendre_page tel quel."""
     import optimiser
     import reliure
@@ -87,6 +87,8 @@ def rendre_redressee(im, boite, taille, traits=False):
     cx0, cy0, cx1, cy1 = max(0, int(x)), max(0, int(y)), min(W, int(x + w)), min(H, int(y + h))
     if cx1 - cx0 < 200 or cy1 - cy0 < 200:
         return rendre_page(im, boite, taille, traits)
+    if abs(float(boite.get("a") or 0)) > 0.005:          # angle réglé à la main = angle FINAL de la page : pas de redressement automatique par-dessus (il déformerait l'autre côté)
+        return rendre_page(im, boite, taille, traits)
     gris = a if a.ndim == 2 else cv2.cvtColor(a, cv2.COLOR_RGB2GRAY)
     dedans = np.ascontiguousarray(gris[cy0:cy1, cx0:cx1])
     cle = (hashlib.blake2b(dedans.tobytes(), digest_size=16).hexdigest(), dedans.shape)
@@ -99,10 +101,6 @@ def rendre_redressee(im, boite, taille, traits=False):
         return rendre_page(im, boite, taille, traits)
     T = np.array([[1, 0, -cx0], [0, 1, -cy0], [0, 0, 1.]])
     M = np.linalg.inv(T) @ reliure.matrice_redressement(c, cx1 - cx0, cy1 - cy0) @ T          # mesurée dans le cadre, appliquée à toute la page
-    a_main = float(boite.get("a") or 0)
-    if abs(a_main) > 0.005:                               # l'angle réglé à la main S'AJOUTE au redressement automatique (même centre, même sens que rendre_page)
-        R = np.vstack([cv2.getRotationMatrix2D((W / 2, H / 2), -a_main, 1.0), [0, 0, 1.0]])
-        M = R @ M
     papier = ton_papier(a)
     a2 = cv2.warpPerspective(a, M, (W, H), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=papier)
     coins = np.array([[x, y, 1], [x + w, y, 1], [x + w, y + h, 1], [x, y + h, 1]]) @ M.T
